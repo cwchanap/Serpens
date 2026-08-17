@@ -3,7 +3,7 @@ import type { ArchetypeId, StoreArchetype } from './types';
 function cloneArchetype(archetype: StoreArchetype): StoreArchetype {
 	return {
 		...archetype,
-		startingCategories: archetype.startingCategories.map((category) => ({ ...category })),
+		startingProductIds: [...archetype.startingProductIds],
 		risks: [...archetype.risks]
 	};
 }
@@ -11,9 +11,7 @@ function cloneArchetype(archetype: StoreArchetype): StoreArchetype {
 function freezeArchetype(archetype: StoreArchetype): StoreArchetype {
 	return Object.freeze({
 		...archetype,
-		startingCategories: Object.freeze(
-			archetype.startingCategories.map((category) => Object.freeze({ ...category }))
-		),
+		startingProductIds: Object.freeze([...archetype.startingProductIds]),
 		risks: Object.freeze([...archetype.risks])
 	}) as StoreArchetype;
 }
@@ -29,60 +27,14 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 		baseWage: 420,
 		baseTraffic: 132,
 		customerExpectation: 58,
-		startingCategories: [
-			{
-				id: 'bottled-water',
-				name: 'Bottled Water',
-				baseDemand: 96,
-				margin: 0.3,
-				demandWeight: 1.2,
-				importCost: 2,
-				defaultSellingPrice: 3,
-				priceSensitivity: 0.7
-			},
-			{
-				id: 'snacks',
-				name: 'Snacks',
-				baseDemand: 72,
-				margin: 0.34,
-				demandWeight: 1,
-				importCost: 3,
-				defaultSellingPrice: 5,
-				priceSensitivity: 0.9
-			},
-			{
-				id: 'drinks',
-				name: 'Drinks',
-				baseDemand: 88,
-				margin: 0.3,
-				demandWeight: 1.15,
-				importCost: 2,
-				defaultSellingPrice: 4,
-				priceSensitivity: 0.8
-			},
-			{
-				id: 'essentials',
-				name: 'Essentials',
-				baseDemand: 45,
-				margin: 0.22,
-				demandWeight: 0.8,
-				importCost: 6,
-				defaultSellingPrice: 8,
-				priceSensitivity: 0.45
-			},
-			{
-				// Household is intentionally unreachable: prepending bottled-water
-				// gives convenience 5 categories, but the milestone cap unlocks only
-				// 4 product categories. Tested in state.spec.ts.
-				id: 'household',
-				name: 'Household',
-				baseDemand: 30,
-				margin: 0.28,
-				demandWeight: 0.7,
-				importCost: 7,
-				defaultSellingPrice: 11,
-				priceSensitivity: 0.5
-			}
+		startingProductIds: [
+			'bottled-water',
+			'snacks',
+			'soft-drinks',
+			'essentials',
+			// Household is intentionally unreachable: convenience has five
+			// authored products, but the milestone cap unlocks only four.
+			'household'
 		],
 		risks: ['Stockouts', 'Low margins', 'High foot traffic pressure']
 	},
@@ -96,48 +48,7 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 		baseWage: 390,
 		baseTraffic: 58,
 		customerExpectation: 72,
-		startingCategories: [
-			{
-				id: 'apparel',
-				name: 'Apparel',
-				baseDemand: 36,
-				margin: 0.5,
-				demandWeight: 1,
-				importCost: 18,
-				defaultSellingPrice: 38,
-				priceSensitivity: 1.05
-			},
-			{
-				id: 'home-goods',
-				name: 'Home Goods',
-				baseDemand: 30,
-				margin: 0.44,
-				demandWeight: 0.85,
-				importCost: 14,
-				defaultSellingPrice: 28,
-				priceSensitivity: 0.85
-			},
-			{
-				id: 'gifts',
-				name: 'Gifts',
-				baseDemand: 26,
-				margin: 0.48,
-				demandWeight: 0.75,
-				importCost: 9,
-				defaultSellingPrice: 20,
-				priceSensitivity: 0.95
-			},
-			{
-				id: 'fashion-accessories',
-				name: 'Accessories',
-				baseDemand: 24,
-				margin: 0.52,
-				demandWeight: 0.7,
-				importCost: 12,
-				defaultSellingPrice: 26,
-				priceSensitivity: 1.0
-			}
-		],
+		startingProductIds: ['apparel', 'home-goods', 'gifts', 'fashion-accessories'],
 		risks: ['Trend mismatch', 'Reputation swings', 'Premium service expectations']
 	},
 	{
@@ -150,48 +61,7 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 		baseWage: 460,
 		baseTraffic: 52,
 		customerExpectation: 68,
-		startingCategories: [
-			{
-				id: 'games',
-				name: 'Games',
-				baseDemand: 40,
-				margin: 0.28,
-				demandWeight: 1,
-				importCost: 32,
-				defaultSellingPrice: 48,
-				priceSensitivity: 0.75
-			},
-			{
-				id: 'accessories',
-				name: 'Accessories',
-				baseDemand: 34,
-				margin: 0.42,
-				demandWeight: 0.9,
-				importCost: 11,
-				defaultSellingPrice: 22,
-				priceSensitivity: 0.9
-			},
-			{
-				id: 'devices',
-				name: 'Devices',
-				baseDemand: 18,
-				margin: 0.24,
-				demandWeight: 0.55,
-				importCost: 180,
-				defaultSellingPrice: 240,
-				priceSensitivity: 0.5
-			},
-			{
-				id: 'peripherals',
-				name: 'Peripherals',
-				baseDemand: 28,
-				margin: 0.4,
-				demandWeight: 0.7,
-				importCost: 24,
-				defaultSellingPrice: 44,
-				priceSensitivity: 0.85
-			}
-		],
+		startingProductIds: ['games', 'accessories', 'devices', 'peripherals'],
 		risks: ['Launch volatility', 'Shrink', 'Expensive inventory']
 	},
 	{
@@ -204,48 +74,7 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 		baseWage: 520,
 		baseTraffic: 118,
 		customerExpectation: 65,
-		startingCategories: [
-			{
-				id: 'produce',
-				name: 'Produce',
-				baseDemand: 64,
-				margin: 0.26,
-				demandWeight: 1,
-				importCost: 2,
-				defaultSellingPrice: 4,
-				priceSensitivity: 0.7
-			},
-			{
-				id: 'pantry',
-				name: 'Pantry',
-				baseDemand: 74,
-				margin: 0.24,
-				demandWeight: 1.1,
-				importCost: 3,
-				defaultSellingPrice: 6,
-				priceSensitivity: 0.55
-			},
-			{
-				id: 'prepared',
-				name: 'Prepared Food',
-				baseDemand: 38,
-				margin: 0.38,
-				demandWeight: 0.75,
-				importCost: 5,
-				defaultSellingPrice: 10,
-				priceSensitivity: 0.85
-			},
-			{
-				id: 'bakery',
-				name: 'Bakery',
-				baseDemand: 34,
-				margin: 0.4,
-				demandWeight: 0.7,
-				importCost: 3,
-				defaultSellingPrice: 7,
-				priceSensitivity: 0.8
-			}
-		],
+		startingProductIds: ['produce', 'pantry', 'prepared', 'bakery'],
 		risks: ['Freshness', 'Waste', 'Staffing pressure']
 	}
 ];

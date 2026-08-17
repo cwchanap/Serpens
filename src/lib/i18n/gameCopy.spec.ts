@@ -2372,7 +2372,7 @@ describe('game copy builders', () => {
 		expect.assertions(2);
 		const en = createI18n('en');
 		const summary: ProductChainCategorySummary = {
-			categoryId: 'snacks',
+			productId: 'snacks',
 			name: 'Snacks',
 			tier: 1,
 			health: 'healthy',

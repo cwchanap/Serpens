@@ -74,7 +74,7 @@ function loan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
 
 function product(overrides: Partial<StoreProduct> = {}): StoreProduct {
 	return {
-		categoryId: 'snacks',
+		productId: 'snacks',
 		stock: 50,
 		reorderThreshold: 10,
 		targetStock: 60,

@@ -87,7 +87,7 @@ function openStoreDefinition(): ScenarioDefinition {
 			productCategoryIds: [
 				'bottled-water',
 				'snacks',
-				'drinks',
+				'soft-drinks',
 				'essentials',
 				'games',
 				'accessories',

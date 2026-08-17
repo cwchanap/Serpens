@@ -305,7 +305,7 @@ function applyAuthoredOverrides(
 			(override.products ?? []).map((product) => [product.categoryId, product])
 		);
 		for (const [productIndex, product] of (override.products ?? []).entries()) {
-			if (!store.products.some((candidate) => candidate.categoryId === product.categoryId)) {
+			if (!store.products.some((candidate) => candidate.productId === product.categoryId)) {
 				diagnostics.push({
 					path: `start.overrides.stores[${overrideIndex}].products[${productIndex}].categoryId`,
 					code: 'invalid-reference',
@@ -315,8 +315,16 @@ function applyAuthoredOverrides(
 			}
 		}
 		const products = store.products.map((product) => {
-			const patch = productPatches.get(product.categoryId);
-			return patch ? { ...patch } : product;
+			const patch = productPatches.get(product.productId);
+			return patch
+				? {
+						productId: patch.categoryId,
+						stock: patch.stock,
+						reorderThreshold: patch.reorderThreshold,
+						targetStock: patch.targetStock,
+						sellingPrice: patch.sellingPrice
+					}
+				: product;
 		});
 		stores = stores.map((candidate, index) =>
 			index === storeIndex
@@ -511,7 +519,7 @@ function strictSetupFailure(error: SaveDataError, game: GameState): ScenarioDiag
 			return {
 				path: 'start.overrides.stores',
 				code: 'setup-invariant-failed',
-				value: game.stores.flatMap((store) => store.products.map((product) => product.categoryId)),
+				value: game.stores.flatMap((store) => store.products.map((product) => product.productId)),
 				detail:
 					'The built game product categories must exactly match the categories unlocked at its store level.'
 			};

@@ -2,6 +2,7 @@
 	import { asset } from '$app/paths';
 	import { getProductArt } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
+	import { getProductDefinition } from '$lib/game/products';
 	import { getStoreProductStatus } from '$lib/game/stock';
 	import { localizeStockStatus } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
@@ -9,6 +10,7 @@
 	import type {
 		DailyProductReport,
 		DailyStoreReport,
+		ProductId,
 		Store,
 		StoreProductPatch
 	} from '$lib/game/types';
@@ -21,7 +23,7 @@
 		onUpdate: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
 		canUpdateSellingPrice?: boolean;
 		canUpdateInventoryTargets?: boolean;
-		allowedProductCategoryIds?: string[];
+		allowedProductIds?: string[];
 		disabledReason?: string | null;
 	}
 
@@ -33,26 +35,27 @@
 		onUpdate,
 		canUpdateSellingPrice = true,
 		canUpdateInventoryTargets = true,
-		allowedProductCategoryIds = store.products.map((product) => product.categoryId),
+		allowedProductIds = store.products.map((product) => product.productId),
 		disabledReason = null
 	}: Props = $props();
-	const allowedProductSet = $derived(new Set(allowedProductCategoryIds));
+	const allowedProductSet = $derived(new Set(allowedProductIds));
 	const hasDisallowedProduct = $derived(
-		store.products.some((product) => !allowedProductSet.has(product.categoryId))
+		store.products.some((product) => !allowedProductSet.has(product.productId))
 	);
-
-	const categories = $derived(getArchetype(store.archetypeId).startingCategories);
 
 	function getCategoryName(categoryId: string): string {
 		return i18n.labels.productCategory(categoryId);
 	}
 
 	function getImportCost(categoryId: string): number {
-		return categories.find((category) => category.id === categoryId)?.importCost ?? 0;
+		if (!getArchetype(store.archetypeId).startingProductIds.includes(categoryId as ProductId)) {
+			return 0;
+		}
+		return getProductDefinition(categoryId as ProductId)?.importCost ?? 0;
 	}
 
 	function getProductReport(categoryId: string): DailyProductReport | null {
-		return latestReport?.productReports.find((report) => report.categoryId === categoryId) ?? null;
+		return latestReport?.productReports.find((report) => report.productId === categoryId) ?? null;
 	}
 
 	function updateNumber(categoryId: string, field: keyof StoreProductPatch, event: Event): void {
@@ -98,10 +101,10 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each store.products as product (product.categoryId)}
-					{@const categoryName = getCategoryName(product.categoryId)}
-					{@const productArt = getProductArt(product.categoryId)}
-					{@const report = getProductReport(product.categoryId)}
+				{#each store.products as product (product.productId)}
+					{@const categoryName = getCategoryName(product.productId)}
+					{@const productArt = getProductArt(product.productId)}
+					{@const report = getProductReport(product.productId)}
 					<tr>
 						<td>
 							<div class="product-cell">
@@ -109,7 +112,7 @@
 									<img
 										src={asset(productArt.path)}
 										alt=""
-										data-testid={`product-art-${product.categoryId}`}
+										data-testid={`product-art-${product.productId}`}
 										width="96"
 										height="96"
 										loading="lazy"
@@ -120,18 +123,18 @@
 							</div>
 						</td>
 						<td>{i18n.format.integer(product.stock)}</td>
-						<td>{i18n.format.currency(getImportCost(product.categoryId))}</td>
+						<td>{i18n.format.currency(getImportCost(product.productId))}</td>
 						<td>
 							<input
 								type="number"
 								min="1"
 								step="1"
 								value={product.sellingPrice}
-								disabled={!canUpdateSellingPrice || !allowedProductSet.has(product.categoryId)}
+								disabled={!canUpdateSellingPrice || !allowedProductSet.has(product.productId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.sellingPrice', {
 									categoryName
 								})}
-								onchange={(event) => updateNumber(product.categoryId, 'sellingPrice', event)}
+								onchange={(event) => updateNumber(product.productId, 'sellingPrice', event)}
 							/>
 						</td>
 						<td>
@@ -140,11 +143,11 @@
 								min="0"
 								step="1"
 								value={product.reorderThreshold}
-								disabled={!canUpdateInventoryTargets || !allowedProductSet.has(product.categoryId)}
+								disabled={!canUpdateInventoryTargets || !allowedProductSet.has(product.productId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.reorderThreshold', {
 									categoryName
 								})}
-								onchange={(event) => updateNumber(product.categoryId, 'reorderThreshold', event)}
+								onchange={(event) => updateNumber(product.productId, 'reorderThreshold', event)}
 							/>
 						</td>
 						<td>
@@ -153,11 +156,11 @@
 								min="0"
 								step="1"
 								value={product.targetStock}
-								disabled={!canUpdateInventoryTargets || !allowedProductSet.has(product.categoryId)}
+								disabled={!canUpdateInventoryTargets || !allowedProductSet.has(product.productId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.targetStock', {
 									categoryName
 								})}
-								onchange={(event) => updateNumber(product.categoryId, 'targetStock', event)}
+								onchange={(event) => updateNumber(product.productId, 'targetStock', event)}
 							/>
 						</td>
 						<td>{localizeStockStatus(getStoreProductStatus(product), i18n)}</td>

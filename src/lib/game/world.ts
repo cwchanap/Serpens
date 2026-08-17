@@ -30,6 +30,7 @@ import type {
 	IndustrialBuildingTypeId,
 	IndustryResourceProfile,
 	MaterialId,
+	ProductId,
 	WorldCityDefinition,
 	WorldCityId,
 	WorldMilestoneId,
@@ -297,10 +298,10 @@ export function selectWorldCity(game: GameState, cityId: WorldCityId): GameState
 export function getRetailCityDemandMultiplier(
 	_game: Pick<GameState, 'world'>,
 	cityId: string,
-	categoryId: string
+	productId: ProductId
 ): number {
 	const city = getWorldCityDefinition(cityId);
-	return city?.retailDemandProfile[categoryId] ?? 1;
+	return city?.retailDemandProfile[productId] ?? 1;
 }
 
 export function getIndustryCityResourceProfile(cityId: string): IndustryResourceProfile | null {

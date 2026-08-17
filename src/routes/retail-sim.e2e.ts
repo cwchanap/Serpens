@@ -312,12 +312,12 @@ function warehousePressurePlannerGame(): GameState {
 	const stores = game.stores.map((store) => {
 		const products = initializeStoreProducts(store.archetypeId, 4)
 			.map((product) =>
-				product.categoryId === 'bottled-water'
+				product.productId === 'bottled-water'
 					? { ...product, stock: 0, reorderThreshold: 1, targetStock: 70 }
 					: product
 			)
 			.sort((left, right) =>
-				left.categoryId === 'snacks' ? -1 : right.categoryId === 'snacks' ? 1 : 0
+				left.productId === 'snacks' ? -1 : right.productId === 'snacks' ? 1 : 0
 			);
 		return { ...store, level: 4, products, stockHealth: calculateStockHealth(products) };
 	});
@@ -426,7 +426,7 @@ function supplyPlannerLogisticsLifecycleGame(): GameState {
 
 	const stores = game.stores.map((store) => {
 		const products = initializeStoreProducts(store.archetypeId, 4).map((product) =>
-			product.categoryId === 'pantry'
+			product.productId === 'pantry'
 				? { ...product, stock: 0, reorderThreshold: 1, targetStock: 10_000 }
 				: product
 		);
@@ -672,7 +672,7 @@ interface SavedMaterialMovement {
 }
 
 interface SavedProductReport {
-	categoryId: string;
+	productId: string;
 	name: string;
 	unitsSold: number;
 	endingStock: number;
@@ -765,7 +765,7 @@ interface SavedGame {
 		mapX: number;
 		mapY: number;
 		products: Array<{
-			categoryId: string;
+			productId: string;
 			stock: number;
 			reorderThreshold: number;
 			targetStock: number;
@@ -1257,7 +1257,7 @@ async function waitForSavedProductSettings(
 }
 
 function getSavedProduct(game: SavedGame, categoryId: string) {
-	const product = game.stores[0]?.products.find((item) => item.categoryId === categoryId);
+	const product = game.stores[0]?.products.find((item) => item.productId === categoryId);
 
 	if (!product) {
 		throw new Error(`Missing saved product ${categoryId}`);
@@ -1420,7 +1420,7 @@ test('production supplier bulk discount stays active through its final import an
 	const startingProduct = seededGame.stores[0]?.products[0];
 	if (!startingProduct) throw new Error('Supplier lifecycle game has no retail product.');
 	expect(startingProduct).toMatchObject({
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		stock: 0,
 		targetStock: 10
 	});
@@ -1448,7 +1448,7 @@ test('production supplier bulk discount stays active through its final import an
 			return {
 				cash: saved.cash,
 				profit: saved.scorecard.profit,
-				stock: getSavedProduct(saved, startingProduct.categoryId).stock,
+				stock: getSavedProduct(saved, startingProduct.productId).stock,
 				modifierCount: saved.events.activeModifiers.length
 			};
 		})
@@ -2350,7 +2350,7 @@ test('player builds convenience production and refills from city inventory', asy
 	const latestReport = getLatestReport(postWeeklyGame);
 	const storeReport = latestReport.storeReports[0];
 	const bottledWaterReport = storeReport?.productReports.find(
-		(report) => report.categoryId === 'bottled-water'
+		(report) => report.productId === 'bottled-water'
 	);
 
 	if (!storeReport || !bottledWaterReport) {
@@ -3015,11 +3015,11 @@ test('clicking a category stamp updates the atlas heading', async ({ page }) => 
 	});
 
 	const panel = await openManagementPanel(page, /product chains/i);
-	const drinksStamp = panel.getByTestId('category-stamp-drinks');
-	await expect(drinksStamp).toBeVisible();
-	await drinksStamp.click();
+	const softDrinksStamp = panel.getByTestId('category-stamp-soft-drinks');
+	await expect(softDrinksStamp).toBeVisible();
+	await softDrinksStamp.click();
 
-	await expect(panel.getByRole('heading', { level: 2, name: 'Drinks' })).toBeVisible();
+	await expect(panel.getByRole('heading', { level: 2, name: 'Soft Drinks' })).toBeVisible();
 });
 
 async function injectCashAndReload(page: Page, cash: number): Promise<void> {
@@ -3638,7 +3638,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	const campusStore = getSavedStoreInCity(postCycle, 'campus-junction');
 	const harborProductReport = getLatestReport(postCycle)
 		.storeReports.find((report) => report.storeId === harborStore.id)
-		?.productReports.find((report) => report.categoryId === 'bottled-water');
+		?.productReports.find((report) => report.productId === 'bottled-water');
 
 	if (!harborProductReport) {
 		throw new Error('Missing Harbor City bottled-water replenishment report.');
@@ -3652,10 +3652,10 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 		importSpend: 8
 	});
 	expect(harborStore.products).toMatchObject([
-		{ categoryId: 'bottled-water', stock: 10, reorderThreshold: 1, targetStock: 10 }
+		{ productId: 'bottled-water', stock: 10, reorderThreshold: 1, targetStock: 10 }
 	]);
 	expect(campusStore.products).toMatchObject([
-		{ categoryId: 'bottled-water', stock: 50, reorderThreshold: 1, targetStock: 50 }
+		{ productId: 'bottled-water', stock: 50, reorderThreshold: 1, targetStock: 50 }
 	]);
 	expect(getSavedCityInventory(postCycle, 'industry-city')).toEqual({
 		cityId: 'industry-city',

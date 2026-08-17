@@ -197,7 +197,7 @@ function replenishedStoreReport(): DailyStoreReport {
 		marketPosition: 50,
 		productReports: [
 			{
-				categoryId: 'snacks',
+				productId: 'snacks',
 				name: 'Snacks',
 				unitsSold: 0,
 				demandMissed: 0,

@@ -46,7 +46,7 @@ const latestReport: DailyStoreReport = {
 	marketPosition: 40,
 	productReports: [
 		{
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			name: 'Bottled Water',
 			unitsSold: 12,
 			demandMissed: 2,
@@ -144,7 +144,7 @@ describe('StoreStockTable', () => {
 			products: [
 				...store.products,
 				{
-					categoryId: 'apparel',
+					productId: 'apparel',
 					stock: 10,
 					reorderThreshold: 4,
 					targetStock: 16,
@@ -278,7 +278,7 @@ describe('StoreStockTable', () => {
 			products: [
 				...store.products,
 				{
-					categoryId: 'apparel',
+					productId: 'apparel',
 					stock: 10,
 					reorderThreshold: 4,
 					targetStock: 16,
@@ -295,7 +295,7 @@ describe('StoreStockTable', () => {
 			onUpdate: vi.fn(),
 			canUpdateSellingPrice: true,
 			canUpdateInventoryTargets: true,
-			allowedProductCategoryIds: ['bottled-water'],
+			allowedProductIds: ['bottled-water'],
 			disabledReason: 'This category is locked.'
 		});
 

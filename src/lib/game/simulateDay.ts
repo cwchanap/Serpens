@@ -19,6 +19,7 @@ import { processRecurringRouteDispatches, processTransferArrivals } from './inte
 import { buildRouteModifierRecoveries } from './logisticsRouteModifiers';
 import { simulateIndustryProduction } from './industryProduction';
 import { clampScore } from './reports';
+import { getProductDefinition } from './products';
 import { createRngFromState, randomBetween } from './rng';
 import {
 	DEFAULT_SIMULATION_RULES,
@@ -36,11 +37,7 @@ import {
 	summarizeStoreStaffing
 } from './staffing';
 import { getStaffDailyXp, getStaffXpForLevel, MAX_STAFF_LEVEL } from './staffLeveling';
-import {
-	calculateStockHealth,
-	getFinishedMaterialIdForCategory,
-	simulateProductSalesForCity
-} from './stock';
+import { calculateStockHealth, simulateProductSalesForCity } from './stock';
 import { refreshWorldProgress } from './world';
 import type {
 	ActiveEventModifier,
@@ -755,13 +752,13 @@ function restoreProductSettings(soldStores: Store[], originalStores: Store[]): S
 	const originalProductsByStoreId = new Map(
 		originalStores.map((store) => [
 			store.id,
-			new Map(store.products.map((product) => [product.categoryId, product]))
+			new Map(store.products.map((product) => [product.productId, product]))
 		])
 	);
 
 	return soldStores.map((store) => {
 		const products = store.products.map((product) => {
-			const originalProduct = originalProductsByStoreId.get(store.id)?.get(product.categoryId);
+			const originalProduct = originalProductsByStoreId.get(store.id)?.get(product.productId);
 
 			return originalProduct ? { ...originalProduct, stock: product.stock } : product;
 		});
@@ -794,19 +791,34 @@ function getStoreProductReports(
 	const reports = productReports.get(store.id) ?? [];
 
 	return store.products.map((product) => {
-		const existing = reports.find((report) => report.categoryId === product.categoryId);
+		const existing = reports.find((report) => report.productId === product.productId);
 
 		if (existing) {
 			return existing;
 		}
 
-		const category = getArchetype(store.archetypeId).startingCategories.find(
-			(candidate) => candidate.id === product.categoryId
-		);
+		const productDefinition = getProductDefinition(product.productId);
+		if (!productDefinition) {
+			return {
+				productId: product.productId,
+				name: product.productId,
+				unitsSold: 0,
+				demandMissed: 0,
+				revenue: 0,
+				costOfGoods: 0,
+				grossMargin: 0,
+				endingStock: product.stock,
+				warehouseUnits: 0,
+				warehouseValue: 0,
+				importedUnits: 0,
+				importCost: 0,
+				importSpend: 0
+			};
+		}
 
 		return {
-			categoryId: product.categoryId,
-			name: category?.name ?? product.categoryId,
+			productId: product.productId,
+			name: productDefinition.name,
 			unitsSold: 0,
 			demandMissed: 0,
 			revenue: 0,
@@ -816,7 +828,7 @@ function getStoreProductReports(
 			warehouseUnits: 0,
 			warehouseValue: 0,
 			importedUnits: 0,
-			importCost: category?.importCost ?? 0,
+			importCost: productDefinition.importCost,
 			importSpend: 0
 		};
 	});
@@ -836,7 +848,7 @@ function mergeProductionReplenishmentReport(
 	const warehousePulls = reports
 		.filter(({ report }) => report.warehouseUnits > 0)
 		.flatMap(({ report, replenishment }): DailyMaterialMovement[] => {
-			const materialId = getFinishedMaterialIdForCategory(report.categoryId);
+			const materialId = getProductDefinition(report.productId)?.productionMaterialId;
 
 			return materialId
 				? [
@@ -853,7 +865,7 @@ function mergeProductionReplenishmentReport(
 	const shopImports = reports
 		.filter(({ report }) => report.importedUnits > 0)
 		.flatMap(({ report, replenishment }): DailyMaterialMovement[] => {
-			const materialId = getFinishedMaterialIdForCategory(report.categoryId);
+			const materialId = getProductDefinition(report.productId)?.productionMaterialId;
 
 			return materialId
 				? [

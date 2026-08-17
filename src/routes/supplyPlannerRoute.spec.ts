@@ -4,6 +4,7 @@ import type {
 	GameState,
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
+	ProductId,
 	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
@@ -26,8 +27,8 @@ import {
 } from './supplyPlannerRoute';
 import type { SupplyPlannerActionAvailability } from '$lib/game/supplyPlannerActions';
 
-function product(categoryId: string): StoreProduct {
-	return { categoryId, stock: 0, reorderThreshold: 0, targetStock: 70, sellingPrice: 3 };
+function product(productId: ProductId): StoreProduct {
+	return { productId, stock: 0, reorderThreshold: 0, targetStock: 70, sellingPrice: 3 };
 }
 
 function building(
@@ -150,24 +151,24 @@ describe('getSupplyPlannerCategoryIds', () => {
 
 describe('resolveSupplyPlannerCategory', () => {
 	it('returns the context category when it is valid', () => {
-		const context: SupplyPlannerUiContext = { categoryId: 'produce', horizonDays: 30 };
+		const context: SupplyPlannerUiContext = { productId: 'produce', horizonDays: 30 };
 		expect(resolveSupplyPlannerCategory(context, ['bottled-water', 'produce'])).toBe('produce');
 	});
 
 	it('falls back to the first valid category when the context category is not valid', () => {
-		const context: SupplyPlannerUiContext = { categoryId: 'snacks', horizonDays: 7 };
+		const context: SupplyPlannerUiContext = { productId: 'snacks', horizonDays: 7 };
 		expect(resolveSupplyPlannerCategory(context, ['bottled-water', 'produce'])).toBe(
 			'bottled-water'
 		);
 	});
 
 	it('returns null when the context category is null and no valid categories exist', () => {
-		const context: SupplyPlannerUiContext = { categoryId: null, horizonDays: 30 };
+		const context: SupplyPlannerUiContext = { productId: null, horizonDays: 30 };
 		expect(resolveSupplyPlannerCategory(context, [])).toBeNull();
 	});
 
 	it('falls back to the first valid category when context category is null', () => {
-		const context: SupplyPlannerUiContext = { categoryId: null, horizonDays: 30 };
+		const context: SupplyPlannerUiContext = { productId: null, horizonDays: 30 };
 		expect(resolveSupplyPlannerCategory(context, ['bottled-water'])).toBe('bottled-water');
 	});
 });
@@ -187,7 +188,7 @@ describe('deriveSupplyPlannerResult', () => {
 			isOpen: false,
 			game: baseGame(),
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			availability
 		};
 		expect(deriveSupplyPlannerResult(input)).toBeNull();
@@ -198,7 +199,7 @@ describe('deriveSupplyPlannerResult', () => {
 			isOpen: true,
 			game: null,
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			availability
 		};
 		expect(deriveSupplyPlannerResult(input)).toBeNull();
@@ -209,7 +210,7 @@ describe('deriveSupplyPlannerResult', () => {
 			isOpen: true,
 			game: baseGame(),
 			retailCityId: 'harbor-city',
-			categoryId: null,
+			productId: null,
 			availability
 		};
 		expect(deriveSupplyPlannerResult(input)).toBeNull();
@@ -225,14 +226,14 @@ describe('deriveSupplyPlannerResult', () => {
 			isOpen: true,
 			game,
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			availability
 		};
 		deriveSupplyPlannerResult(input, buildPlan, snapshotGame);
 		expect(snapshotGame).toHaveBeenCalledWith(game);
 		expect(buildPlan).toHaveBeenCalledWith(
 			snapshotGame.mock.results[0]!.value,
-			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
 			availability
 		);
 	});
@@ -246,13 +247,13 @@ describe('deriveSupplyPlannerResult', () => {
 			isOpen: true,
 			game,
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water',
+			productId: 'bottled-water',
 			availability
 		};
 		deriveSupplyPlannerResult(input, buildPlan);
 		expect(buildPlan).toHaveBeenCalledWith(
 			game,
-			{ retailCityId: 'harbor-city', categoryId: 'bottled-water' },
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
 			availability
 		);
 	});

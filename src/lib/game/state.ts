@@ -290,14 +290,14 @@ export function upgradeStore(game: GameState, storeId: string): GameState {
 	if (isMilestoneLevel(nextLevel)) {
 		const archetype = getArchetype(store.archetypeId);
 		const unlockedCount = getUnlockedCategoryCount(nextLevel);
-		const newCategory = archetype.startingCategories.find(
-			(category) => !products.some((product) => product.categoryId === category.id)
+		const newProductId = archetype.startingProductIds.find(
+			(productId) => !products.some((product) => product.productId === productId)
 		);
 
 		// Cap at unlockedCount: a store only catches up to its level's unlock
 		// budget — never gains more categories than its milestones allow.
-		if (newCategory && products.length < unlockedCount) {
-			products = [...products, createStoreProduct(newCategory)];
+		if (newProductId && products.length < unlockedCount) {
+			products = [...products, createStoreProduct(newProductId)];
 		}
 
 		staffCapacity = clampScore(

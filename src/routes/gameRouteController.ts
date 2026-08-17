@@ -51,6 +51,7 @@ import type {
 	GameState,
 	IndustrialBuildingTypeId,
 	LoanTermDays,
+	ProductId,
 	WorldCityId
 } from '$lib/game/types';
 import {
@@ -1175,7 +1176,7 @@ export class GameRouteController {
 
 	updateStoreSellingPrice(
 		storeId: string,
-		categoryId: string,
+		categoryId: ProductId,
 		sellingPrice: number
 	): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
@@ -1187,7 +1188,7 @@ export class GameRouteController {
 
 	updateStoreInventoryTargets(
 		storeId: string,
-		categoryId: string,
+		categoryId: ProductId,
 		reorderThreshold: number,
 		targetStock: number
 	): Promise<GameRouteCommitResult> {

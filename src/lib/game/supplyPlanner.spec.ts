@@ -22,6 +22,7 @@ import type {
 	GameState,
 	IndustrialBuilding,
 	MaterialId,
+	ProductId,
 	ProductionRecipeId,
 	RecurringRoute,
 	StoreProduct,
@@ -30,11 +31,11 @@ import type {
 } from './types';
 
 function product(
-	categoryId: string,
-	options: Partial<Omit<StoreProduct, 'categoryId'>> = {}
+	productId: ProductId,
+	options: Partial<Omit<StoreProduct, 'productId'>> = {}
 ): StoreProduct {
 	return {
-		categoryId,
+		productId,
 		stock: 0,
 		reorderThreshold: 0,
 		targetStock: 70,
@@ -249,7 +250,7 @@ function pantryPlannerGame(): GameState {
 
 function readySnapshot(
 	game: GameState,
-	request: SupplyPlannerRequest = { retailCityId: 'harbor-city', categoryId: 'bottled-water' }
+	request: SupplyPlannerRequest = { retailCityId: 'harbor-city', productId: 'bottled-water' }
 ) {
 	const result = buildSupplyPlannerSnapshot(game, request);
 	expect(result.status).toBe('ready');
@@ -309,7 +310,7 @@ describe('supply planner snapshot', () => {
 		expect(
 			buildSupplyPlannerSnapshot(game, {
 				retailCityId: 'harbor-city',
-				categoryId: 'snacks'
+				productId: 'snacks'
 			})
 		).toEqual({ status: 'unsupported', reason: 'unsupported-category' });
 	});
@@ -377,7 +378,7 @@ describe('supply planner snapshot', () => {
 		});
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 
 		expect(result.status).toBe('ready');
@@ -393,7 +394,7 @@ describe('supply planner snapshot', () => {
 		expect(
 			buildSupplyPlannerSnapshot(game, {
 				retailCityId: 'harbor-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toEqual({ status: 'unavailable', reason: 'supply-city-unavailable' });
 	});
@@ -406,7 +407,7 @@ describe('supply planner snapshot', () => {
 		expect(() =>
 			buildSupplyPlannerSnapshot(game, {
 				retailCityId: 'harbor-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toThrow(/City inventory invariant/);
 	});
@@ -416,7 +417,7 @@ describe('supply planner snapshot', () => {
 			plannerGame(undefined, {
 				stores: [{ ...baseGame('grocery').stores[0]!, products: [product('pantry')] }]
 			}),
-			{ retailCityId: 'harbor-city', categoryId: 'pantry' }
+			{ retailCityId: 'harbor-city', productId: 'pantry' }
 		);
 		const requirements = buildSupplyMaterialRequirements(snapshot);
 
@@ -442,7 +443,7 @@ describe('supply planner snapshot', () => {
 	it('classifies the upstream-most missing producer from installed producer counts', () => {
 		const snapshot = readySnapshot(pantryPlannerGame(), {
 			retailCityId: 'harbor-city',
-			categoryId: 'pantry'
+			productId: 'pantry'
 		});
 
 		const projection = projectSupplySnapshot(snapshot);
@@ -456,8 +457,8 @@ describe('supply planner snapshot', () => {
 
 	it('aggregates a shared upstream material once for drinks', () => {
 		const snapshot = readySnapshot(
-			plannerGame([product('drinks', { targetStock: 90, sellingPrice: 4 })]),
-			{ retailCityId: 'harbor-city', categoryId: 'drinks' }
+			plannerGame([product('soft-drinks', { targetStock: 90, sellingPrice: 4 })]),
+			{ retailCityId: 'harbor-city', productId: 'soft-drinks' }
 		);
 		const requirements = buildSupplyMaterialRequirements(snapshot);
 		const waterRows = requirements.filter((row) => row.materialId === 'water');
@@ -928,7 +929,7 @@ describe('supply planner snapshot', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'pantry'
+			productId: 'pantry'
 		});
 
 		expect(result.status).toBe('ready');
@@ -967,7 +968,7 @@ describe('supply planner snapshot', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'pantry'
+			productId: 'pantry'
 		});
 
 		expect(result.status).toBe('ready');
@@ -1001,7 +1002,7 @@ describe('supply planner snapshot', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 
 		expect(result.status).toBe('ready');
@@ -1034,7 +1035,7 @@ describe('supply planner snapshot', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 
 		expect(result.status).toBe('ready');
@@ -1050,7 +1051,7 @@ describe('supply planner snapshot', () => {
 		// branch (same rail island). The syrup-plant is on a separate island
 		// with no warehouse bridge. The pump's capacity must be capped at the
 		// reachable (filtration) demand, not credited against total water demand.
-		const base = plannerGame([product('drinks', { targetStock: 90, sellingPrice: 4 })], {
+		const base = plannerGame([product('soft-drinks', { targetStock: 90, sellingPrice: 4 })], {
 			industrialBuildings: [
 				building('water-pump', 'water-pump-1', 'industry-city', 1, 2, 2),
 				building('water-filtration-plant', 'water-filtration-1', 'industry-city', 1, 2, 5),
@@ -1069,7 +1070,7 @@ describe('supply planner snapshot', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'drinks'
+			productId: 'soft-drinks'
 		});
 
 		expect(result.status).toBe('ready');
@@ -1118,7 +1119,7 @@ describe('supply planner snapshot', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'pantry'
+			productId: 'pantry'
 		});
 
 		expect(result.status).toBe('ready');
@@ -1139,7 +1140,7 @@ describe('supply planner snapshot', () => {
 		// plant. Pump B can reach the syrup plant but not the filtration plant.
 		// Each pump's usable capacity must be capped at only the demand of the
 		// branch it can reach, not the aggregate water demand across both.
-		const base = plannerGame([product('drinks', { targetStock: 90, sellingPrice: 4 })], {
+		const base = plannerGame([product('soft-drinks', { targetStock: 90, sellingPrice: 4 })], {
 			industrialBuildings: [
 				building('water-pump', 'water-pump-a', 'industry-city', 1, 2, 2),
 				building('water-filtration-plant', 'water-filtration-1', 'industry-city', 1, 2, 5),
@@ -1162,7 +1163,7 @@ describe('supply planner snapshot', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'drinks'
+			productId: 'soft-drinks'
 		});
 
 		expect(result.status).toBe('ready');
@@ -1200,7 +1201,7 @@ describe('supply planner snapshot', () => {
 		// the filtration branch demand, but without an aggregate clamp the
 		// projection sums both caps — crediting 2× the filtration demand
 		// even though only 1× can be consumed there.
-		const base = plannerGame([product('drinks', { targetStock: 90, sellingPrice: 4 })], {
+		const base = plannerGame([product('soft-drinks', { targetStock: 90, sellingPrice: 4 })], {
 			industrialBuildings: [
 				building('water-pump', 'water-pump-a', 'industry-city', 1, 2, 2),
 				building('water-pump', 'water-pump-b', 'industry-city', 1, 2, 3),
@@ -1220,7 +1221,7 @@ describe('supply planner snapshot', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'drinks'
+			productId: 'soft-drinks'
 		});
 
 		expect(result.status).toBe('ready');
@@ -2371,14 +2372,14 @@ describe('supply planner snapshot edge cases', () => {
 		expect(
 			buildSupplyPlannerSnapshot(plannerGame(), {
 				retailCityId: '' as WorldCityId,
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toEqual({ status: 'invalid', reason: 'invalid-request' });
 
 		expect(
 			buildSupplyPlannerSnapshot(plannerGame(), {
 				retailCityId: 'harbor-city',
-				categoryId: ''
+				productId: '' as ProductId
 			})
 		).toEqual({ status: 'invalid', reason: 'invalid-request' });
 	});
@@ -2387,7 +2388,7 @@ describe('supply planner snapshot edge cases', () => {
 		expect(
 			buildSupplyPlannerSnapshot(plannerGame(), {
 				retailCityId: 'nonexistent-city' as WorldCityId,
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toEqual({ status: 'unavailable', reason: 'retail-city-unavailable' });
 	});
@@ -2402,7 +2403,7 @@ describe('supply planner snapshot edge cases', () => {
 		expect(
 			buildSupplyPlannerSnapshot(game, {
 				retailCityId: 'harbor-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toEqual({ status: 'unavailable', reason: 'retail-city-unavailable' });
 	});
@@ -2411,7 +2412,7 @@ describe('supply planner snapshot edge cases', () => {
 		expect(
 			buildSupplyPlannerSnapshot(plannerGame(), {
 				retailCityId: 'industry-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toEqual({ status: 'unavailable', reason: 'retail-city-unavailable' });
 	});
@@ -2433,7 +2434,7 @@ describe('supply planner snapshot edge cases', () => {
 		expect(
 			buildSupplyPlannerSnapshot(gameNoProducts, {
 				retailCityId: 'harbor-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toEqual({ status: 'empty', reason: 'no-supported-products' });
 	});
@@ -2449,7 +2450,7 @@ describe('supply planner snapshot edge cases', () => {
 		expect(
 			buildSupplyPlannerSnapshot(game, {
 				retailCityId: 'harbor-city',
-				categoryId: 'snacks'
+				productId: 'snacks'
 			})
 		).toEqual({ status: 'unsupported', reason: 'unsupported-category' });
 	});
@@ -2595,7 +2596,7 @@ describe('supply planner snapshot additional coverage', () => {
 		expect(
 			buildSupplyPlannerSnapshot(game, {
 				retailCityId: 'harbor-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toEqual({ status: 'unavailable', reason: 'supply-city-unavailable' });
 	});
@@ -2619,7 +2620,7 @@ describe('supply planner snapshot additional coverage', () => {
 		// selectedContributor check fails.
 		const result = buildSupplyPlannerSnapshot(gameNoHarborProduct, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 		expect(result).toEqual({ status: 'empty', reason: 'no-supported-products' });
 	});
@@ -2636,7 +2637,7 @@ describe('supply planner snapshot additional coverage', () => {
 		// The snapshot should still be ready because harbor has stores.
 		const result = buildSupplyPlannerSnapshot(gameNoCampusStores, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 		expect(result.status).toBe('ready');
 		if (result.status !== 'ready') return;
@@ -2717,7 +2718,7 @@ describe('supply planner snapshot additional coverage', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(gameWithCustom, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 		expect(result.status).toBe('ready');
 		if (result.status !== 'ready') return;
@@ -2750,7 +2751,7 @@ describe('supply planner snapshot additional coverage', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(gameTwoStores, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 		expect(result.status).toBe('ready');
 		if (result.status !== 'ready') return;
@@ -2773,7 +2774,7 @@ describe('supply planner reachability branch coverage', () => {
 			expect(
 				buildSupplyPlannerSnapshot(plannerGame(), {
 					retailCityId: 'harbor-city',
-					categoryId: 'bottled-water'
+					productId: 'bottled-water'
 				})
 			).toEqual({ status: 'unsupported', reason: 'unsupported-category' });
 		} finally {
@@ -2796,7 +2797,7 @@ describe('supply planner reachability branch coverage', () => {
 		expect(
 			buildSupplyPlannerSnapshot(
 				{ ...game, stores: [store] },
-				{ retailCityId: 'harbor-city', categoryId: 'bottled-water' }
+				{ retailCityId: 'harbor-city', productId: 'bottled-water' }
 			)
 		).toEqual({ status: 'empty', reason: 'no-supported-products' });
 	});
@@ -3066,7 +3067,7 @@ describe('supply planner reachability branch coverage', () => {
 			expect(
 				buildSupplyPlannerSnapshot(plannerGame(), {
 					retailCityId: 'harbor-city',
-					categoryId: 'bottled-water'
+					productId: 'bottled-water'
 				})
 			).toEqual({ status: 'unsupported', reason: 'missing-producer-recipe' });
 		} finally {
@@ -3095,7 +3096,7 @@ describe('supply planner reachability branch coverage', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'pantry'
+			productId: 'pantry'
 		});
 		expect(result.status).toBe('ready');
 		if (result.status !== 'ready') return;
@@ -3144,7 +3145,7 @@ describe('supply planner reachability branch coverage', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 		expect(result.status).toBe('ready');
 		if (result.status !== 'ready') return;
@@ -3201,7 +3202,7 @@ describe('supply planner reachability branch coverage', () => {
 		expect(
 			buildSupplyPlannerSnapshot(plannerGame(), {
 				retailCityId: 'industry-city',
-				categoryId: 'bottled-water'
+				productId: 'bottled-water'
 			})
 		).toEqual({ status: 'unavailable', reason: 'retail-city-unavailable' });
 	});
@@ -3250,7 +3251,7 @@ describe('supply planner reachability branch coverage', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(gameWithCustom, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 		expect(result.status).toBe('ready');
 		if (result.status !== 'ready') return;
@@ -3302,7 +3303,7 @@ describe('supply planner reachability branch coverage', () => {
 		};
 		const result = buildSupplyPlannerSnapshot(game, {
 			retailCityId: 'harbor-city',
-			categoryId: 'bottled-water'
+			productId: 'bottled-water'
 		});
 		expect(result.status).toBe('ready');
 		if (result.status !== 'ready') return;
@@ -3321,7 +3322,7 @@ describe('supply planner reachability branch coverage', () => {
 		// and that all materials are visited exactly once.
 		const snapshot = readySnapshot(pantryPlannerGame(), {
 			retailCityId: 'harbor-city',
-			categoryId: 'pantry'
+			productId: 'pantry'
 		});
 		const requirements = buildSupplyMaterialRequirements(snapshot);
 		const materialIds = requirements.map((r) => r.materialId);
@@ -3767,7 +3768,7 @@ describe('supply planner patch coverage', () => {
 				nextTransferSequence: 2
 			}
 		};
-		const request = { retailCityId: 'harbor-city' as const, categoryId: 'pantry' };
+		const request: SupplyPlannerRequest = { retailCityId: 'harbor-city', productId: 'pantry' };
 		const availability = {
 			canBuildIndustry: false,
 			canUpgradeIndustry: false,

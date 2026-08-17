@@ -5,6 +5,7 @@ import type {
 	IndustrialBuildingTypeId,
 	LoanTermDays,
 	MaterialId,
+	ProductId,
 	ScoreKey,
 	WorldCityId
 } from '$lib/game/types';
@@ -77,11 +78,16 @@ export type ScenarioCommand =
 	| { kind: 'assignStaff'; staffId: string; storeId: string }
 	| { kind: 'unassignStaff'; staffId: string }
 	| { kind: 'promoteStaff'; staffId: string }
-	| { kind: 'updateStoreSellingPrice'; storeId: string; categoryId: string; sellingPrice: number }
+	| {
+			kind: 'updateStoreSellingPrice';
+			storeId: string;
+			categoryId: ProductId;
+			sellingPrice: number;
+	  }
 	| {
 			kind: 'updateStoreInventoryTargets';
 			storeId: string;
-			categoryId: string;
+			categoryId: ProductId;
 			reorderThreshold: number;
 			targetStock: number;
 	  }
@@ -136,7 +142,7 @@ export interface ScenarioStartBlueprint {
 			storeRef: string;
 			targetLevel?: number;
 			products?: readonly {
-				categoryId: string;
+				categoryId: ProductId;
 				stock: number;
 				reorderThreshold: number;
 				targetStock: number;
@@ -176,12 +182,12 @@ export type ScenarioMetricQuery =
 	| { metric: 'cumulative-net-income' }
 	| { metric: 'consecutive-positive-net-income-reports' }
 	| { metric: 'completed-retail-import-cycles' }
-	| { metric: 'retail-import-spend'; categoryIds: readonly string[] }
-	| { metric: 'retail-imported-units'; categoryIds: readonly string[] }
-	| { metric: 'retail-local-units'; categoryIds: readonly string[] }
-	| { metric: 'retail-local-share'; categoryIds: readonly string[] }
-	| { metric: 'units-sold'; categoryIds: readonly string[] }
-	| { metric: 'demand-missed'; categoryIds: readonly string[] }
+	| { metric: 'retail-import-spend'; categoryIds: readonly ProductId[] }
+	| { metric: 'retail-imported-units'; categoryIds: readonly ProductId[] }
+	| { metric: 'retail-local-units'; categoryIds: readonly ProductId[] }
+	| { metric: 'retail-local-share'; categoryIds: readonly ProductId[] }
+	| { metric: 'units-sold'; categoryIds: readonly ProductId[] }
+	| { metric: 'demand-missed'; categoryIds: readonly ProductId[] }
 	| { metric: 'scorecard'; score: ScoreKey }
 	| { metric: 'store-count' }
 	| { metric: 'industrial-building-count'; buildingTypeIds: readonly IndustrialBuildingTypeId[] }
@@ -226,7 +232,7 @@ export type ScenarioModifier = {
 export interface ScenarioContentRules {
 	cityIds: readonly WorldCityId[];
 	archetypeIds: readonly ArchetypeId[];
-	productCategoryIds: readonly string[];
+	productCategoryIds: readonly ProductId[];
 	materialIds: readonly MaterialId[];
 	buildingTypeIds: readonly IndustrialBuildingTypeId[];
 	retailPlacements: readonly {

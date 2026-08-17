@@ -34,6 +34,7 @@ import type {
 	GameState,
 	IndustryTile,
 	MaterialId,
+	ProductId,
 	WorldCityId
 } from '$lib/game/types';
 import {
@@ -660,7 +661,7 @@ function logisticsError(operation: () => unknown): SaveDataError {
 
 function createCurrentReport(game: GameState): DailyReport {
 	const warehouseId = game.industrialBuildings[0]!.id;
-	const categoryId = game.stores[0]!.products[0]!.categoryId;
+	const productId = game.stores[0]!.products[0]!.productId;
 
 	return createDailyReport({
 		day: game.day,
@@ -701,7 +702,7 @@ function createCurrentReport(game: GameState): DailyReport {
 				},
 				productReports: [
 					{
-						categoryId,
+						productId,
 						name: 'Starter product',
 						unitsSold: 1,
 						demandMissed: 0,
@@ -771,7 +772,7 @@ function createCurrentBreadbasketOnlyGame(): GameState {
 
 function createCurrentBreadbasketOnlyReport(game: GameState): DailyReport {
 	const warehouseId = game.industrialBuildings[0]!.id;
-	const categoryId = game.stores[0]!.products[0]!.categoryId;
+	const productId = game.stores[0]!.products[0]!.productId;
 
 	return createDailyReport({
 		day: game.day,
@@ -811,7 +812,7 @@ function createCurrentBreadbasketOnlyReport(game: GameState): DailyReport {
 				},
 				productReports: [
 					{
-						categoryId,
+						productId,
 						name: 'Starter product',
 						unitsSold: 1,
 						demandMissed: 0,
@@ -4940,7 +4941,7 @@ describe('saveCodec', () => {
 	test('strict validation rejects a locked product category substituted at the same count', () => {
 		const store = createGame().stores[0]!;
 		const products = initializeStoreProducts('boutique', 4);
-		const lockedSubstitution = [products[0]!, { ...products[1]!, categoryId: 'gifts' }];
+		const lockedSubstitution = [products[0]!, { ...products[1]!, productId: 'gifts' as const }];
 
 		expect(() =>
 			validateCurrentGameState(
@@ -4955,7 +4956,7 @@ describe('saveCodec', () => {
 					]
 				})
 			)
-		).toThrow('products[1] categoryId must be unlocked at level 4');
+		).toThrow('products[1] productId must be unlocked at level 4');
 	});
 
 	test('current schema save record rejects stale stock health rather than recalculating it', () => {
@@ -7457,7 +7458,7 @@ describe('saveCodec', () => {
 			).toEqual(updatedReport);
 		});
 
-		test('preserves a raw-material categoryId with nonzero warehouse units', () => {
+		test('preserves a raw-material productId with nonzero warehouse units', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
@@ -7469,7 +7470,7 @@ describe('saveCodec', () => {
 						productReports: [
 							{
 								...storeReport.productReports[0]!,
-								categoryId: 'grain',
+								productId: 'grain' as ProductId,
 								warehouseUnits: 2,
 								warehouseValue: 4,
 								importedUnits: 0,
@@ -7518,7 +7519,7 @@ describe('saveCodec', () => {
 						productReports: [
 							{
 								...storeReport.productReports[0]!,
-								categoryId: 'bottled-water',
+								productId: 'bottled-water' as const,
 								warehouseUnits: Number.MAX_SAFE_INTEGER,
 								warehouseValue: 0,
 								importedUnits: 0,

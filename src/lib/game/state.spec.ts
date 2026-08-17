@@ -125,7 +125,7 @@ describe('game state', () => {
 		const game = createNewGame('grocery', 20260508);
 		const store = game.stores[0]!;
 
-		expect(store.products.map((product) => product.categoryId)).toEqual(['produce']);
+		expect(store.products.map((product) => product.productId)).toEqual(['produce']);
 		expect(store.products.every((product) => product.stock > 0)).toBe(true);
 		expect(store.stockHealth).toBe(calculateStockHealth(store.products));
 	});
@@ -280,7 +280,7 @@ describe('game state', () => {
 
 		expect(game.stores[0]?.archetypeId).toBe('boutique');
 		expect(result.stores.at(-1)?.archetypeId).toBe('electronics');
-		expect(result.stores.at(-1)?.products.map((product) => product.categoryId)).toEqual(['games']);
+		expect(result.stores.at(-1)?.products.map((product) => product.productId)).toEqual(['games']);
 	});
 
 	test('does not duplicate same-day blocked expansion decisions', () => {
@@ -331,10 +331,7 @@ describe('game state', () => {
 
 		const store = game.stores.find((candidate) => candidate.id === storeId)!;
 		expect(store.level).toBe(4);
-		expect(store.products.map((product) => product.categoryId)).toEqual([
-			'bottled-water',
-			'snacks'
-		]);
+		expect(store.products.map((product) => product.productId)).toEqual(['bottled-water', 'snacks']);
 		expect(store.staffCapacity).toBeGreaterThan(startCapacity);
 	});
 
@@ -366,7 +363,7 @@ describe('game state', () => {
 		expect.assertions(2);
 		const base = createNewGame('convenience', 20260603);
 		const store = base.stores[0]!;
-		const milestoneUnlockCategory = getArchetype('convenience').startingCategories[1]!;
+		const milestoneUnlockProductId = getArchetype('convenience').startingProductIds[1]!;
 		const game = {
 			...base,
 			cash: 1_000_000,
@@ -374,13 +371,13 @@ describe('game state', () => {
 				{
 					...store,
 					level: 3,
-					products: [store.products[0]!, createStoreProduct(milestoneUnlockCategory)]
+					products: [store.products[0]!, createStoreProduct(milestoneUnlockProductId)]
 				}
 			]
 		};
 		const result = upgradeStore(game, store.id);
 		const upgraded = result.stores[0]!;
-		expect(upgraded.products.map((product) => product.categoryId)).toEqual([
+		expect(upgraded.products.map((product) => product.productId)).toEqual([
 			'bottled-water',
 			'snacks'
 		]);
@@ -671,14 +668,14 @@ describe('game state', () => {
 			const legacyStore = {
 				...game.stores[0]!,
 				level: 3,
-				products: [createStoreProduct(getArchetype('convenience').startingCategories[1]!)]
+				products: [createStoreProduct(getArchetype('convenience').startingProductIds[1]!)]
 			};
 			game = { ...game, cash: 1_000_000, stores: [legacyStore] };
 
 			const upgraded = upgradeStore(game, legacyStore.id);
 
 			expect(upgraded.stores[0]!.level).toBe(4);
-			expect(upgraded.stores[0]!.products.map((product) => product.categoryId)).toEqual([
+			expect(upgraded.stores[0]!.products.map((product) => product.productId)).toEqual([
 				'snacks',
 				'bottled-water'
 			]);
@@ -693,9 +690,9 @@ describe('game state', () => {
 				game = upgradeStore(game, game.stores[0]!.id);
 			}
 
-			const categoryIds = game.stores[0]!.products.map((product) => product.categoryId);
-			expect(new Set(categoryIds).size).toBe(categoryIds.length);
-			expect(categoryIds).toEqual(['bottled-water', 'snacks', 'drinks', 'essentials']);
+			const productIds = game.stores[0]!.products.map((product) => product.productId);
+			expect(new Set(productIds).size).toBe(productIds.length);
+			expect(productIds).toEqual(['bottled-water', 'snacks', 'soft-drinks', 'essentials']);
 		});
 	});
 });

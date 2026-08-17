@@ -44,7 +44,7 @@
 	const graph = $derived.by(() => {
 		if (!selectedCategory) return null;
 		return localizeProductChainGraph(
-			buildProductChainTree({ game, store, categoryId: selectedCategory.id }),
+			buildProductChainTree({ game, store, productId: selectedCategory.id }),
 			i18n
 		);
 	});

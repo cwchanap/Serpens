@@ -1062,7 +1062,7 @@ export const en = {
 		products: {
 			'bottled-water': 'Bottled Water',
 			snacks: 'Snacks',
-			drinks: 'Drinks',
+			'soft-drinks': 'Soft Drinks',
 			essentials: 'Essentials',
 			household: 'Household',
 			apparel: 'Apparel',

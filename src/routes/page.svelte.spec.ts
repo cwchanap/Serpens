@@ -205,7 +205,7 @@ function scenarioDefinition(overrides: Partial<ScenarioDefinition> = {}): Scenar
 			// upgradeStore is included below, so the founding convenience store
 			// can reach MAX and materialize its full category set — allowlist all
 			// of it to satisfy the bidirectional content boundary check.
-			productCategoryIds: ['bottled-water', 'snacks', 'drinks', 'essentials'],
+			productCategoryIds: ['bottled-water', 'snacks', 'soft-drinks', 'essentials'],
 			retailPlacements: [
 				{
 					cityId: base.start.foundingStore.cityId,
@@ -343,9 +343,9 @@ describe('supply planner route composition', () => {
 			}))
 		};
 		const bottledWater = base.stores[0]!.products.find(
-			(product) => product.categoryId === 'bottled-water'
+			(product) => product.productId === 'bottled-water'
 		)!;
-		const snacks = base.stores[0]!.products.find((product) => product.categoryId === 'snacks')!;
+		const snacks = base.stores[0]!.products.find((product) => product.productId === 'snacks')!;
 		const game: GameState = {
 			...base,
 			cities: [harbor, campus],
@@ -376,7 +376,7 @@ describe('supply planner route composition', () => {
 		]);
 		expect(plannerCategoryIds).toEqual(['bottled-water']);
 		expect(
-			resolveSupplyPlannerCategory({ categoryId: 'snacks', horizonDays: 7 }, plannerCategoryIds)
+			resolveSupplyPlannerCategory({ productId: 'snacks', horizonDays: 7 }, plannerCategoryIds)
 		).toBe('bottled-water');
 	});
 
@@ -404,7 +404,7 @@ describe('supply planner route composition', () => {
 					isOpen: true,
 					game,
 					retailCityId: 'harbor-city',
-					categoryId: 'bottled-water',
+					productId: 'bottled-water',
 					availability
 				},
 				buildSupplyPlan,
@@ -433,7 +433,7 @@ describe('supply planner route composition', () => {
 					isOpen: false,
 					game,
 					retailCityId: 'harbor-city',
-					categoryId: 'bottled-water',
+					productId: 'bottled-water',
 					availability
 				},
 				buildPlan
@@ -446,14 +446,14 @@ describe('supply planner route composition', () => {
 					isOpen: true,
 					game,
 					retailCityId: 'harbor-city',
-					categoryId: 'bottled-water',
+					productId: 'bottled-water',
 					availability
 				},
 				buildPlan
 			)
 		).not.toBeNull();
 		expect(buildPlan).toHaveBeenCalledOnce();
-		const context: SupplyPlannerUiContext = { categoryId: 'snacks', horizonDays: 7 };
+		const context: SupplyPlannerUiContext = { productId: 'snacks', horizonDays: 7 };
 		expect(resolveSupplyPlannerCategory(context, ['bottled-water', 'snacks'])).toBe('snacks');
 		expect(resolveSupplyPlannerCategory(context, ['bottled-water'])).toBe('bottled-water');
 	});
@@ -797,7 +797,7 @@ describe('GameRouteController sandbox handlers', () => {
 		await assertChanged(
 			'sfx.stock.edit',
 			() =>
-				controller.updateStoreSellingPrice(storeId, product.categoryId, product.sellingPrice + 7),
+				controller.updateStoreSellingPrice(storeId, product.productId, product.sellingPrice + 7),
 			(_before, after) =>
 				expect(after.stores[0]!.products[0]!.sellingPrice).toBe(product.sellingPrice + 7)
 		);
@@ -806,7 +806,7 @@ describe('GameRouteController sandbox handlers', () => {
 			() =>
 				controller.updateStoreInventoryTargets(
 					storeId,
-					product.categoryId,
+					product.productId,
 					product.reorderThreshold + 2,
 					product.targetStock + 4
 				),

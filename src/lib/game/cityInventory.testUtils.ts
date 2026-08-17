@@ -63,7 +63,7 @@ export function createOneCityInventoryFixture(): GameState {
 				...store,
 				products: [
 					{
-						categoryId: 'bottled-water',
+						productId: 'bottled-water',
 						stock: 0,
 						reorderThreshold: 20,
 						targetStock: 20,
@@ -102,7 +102,7 @@ export function projectOneCityParity(game: GameState) {
 		stores: game.stores.map((store) => ({
 			id: store.id,
 			products: store.products.map((product) => ({
-				categoryId: product.categoryId,
+				productId: product.productId,
 				stock: product.stock
 			}))
 		})),

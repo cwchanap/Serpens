@@ -1,5 +1,5 @@
 import { isReplenishmentDay } from '$lib/game/retailSupply';
-import type { DailyReport, GameState } from '$lib/game/types';
+import type { DailyReport, GameState, ProductId } from '$lib/game/types';
 import type {
 	ObjectiveEvidence,
 	ScenarioComparator,
@@ -116,7 +116,7 @@ function averageOperatingCashFlow(reports: readonly DailyReport[], neutral: numb
 	};
 }
 
-function categoryIds(query: ScenarioMetricQuery): ReadonlySet<string> {
+function categoryIds(query: ScenarioMetricQuery): ReadonlySet<ProductId> {
 	return new Set('categoryIds' in query ? query.categoryIds : []);
 }
 
@@ -127,9 +127,9 @@ function productContributions(context: MetricContext): ProductContribution[] {
 	for (const report of context.reports) {
 		for (const storeReport of report.storeReports) {
 			for (const productReport of storeReport.productReports) {
-				if (!included.has(productReport.categoryId)) continue;
+				if (!included.has(productReport.productId)) continue;
 				contributions.push({
-					id: productEvidenceId(report.day, storeReport.storeId, productReport.categoryId),
+					id: productEvidenceId(report.day, storeReport.storeId, productReport.productId),
 					importSpend: productReport.importSpend,
 					importedUnits: productReport.importedUnits,
 					warehouseUnits: productReport.warehouseUnits,
@@ -339,8 +339,8 @@ export function storeReportEvidenceId(day: number, storeId: string): string {
 	return `${reportEvidenceId(day)}/store:${encodeEvidenceSegment(storeId)}`;
 }
 
-export function productEvidenceId(day: number, storeId: string, categoryId: string): string {
-	return `${storeReportEvidenceId(day, storeId)}/product:${encodeEvidenceSegment(categoryId)}`;
+export function productEvidenceId(day: number, storeId: string, productId: ProductId): string {
+	return `${storeReportEvidenceId(day, storeId)}/product:${encodeEvidenceSegment(productId)}`;
 }
 
 export function cityInventoryEvidenceId(cityId: string, materialId: string): string {
@@ -524,17 +524,17 @@ export function validateScenarioReportInvariants(
 				storeIds.add(storeReport.storeId);
 			}
 
-			const categoryIds = new Set<string>();
+			const productIds = new Set<ProductId>();
 			for (const [productIndex, productReport] of storeReport.productReports.entries()) {
-				if (categoryIds.has(productReport.categoryId)) {
+				if (productIds.has(productReport.productId)) {
 					diagnostics.push({
 						code: 'duplicate-product-report-category-id',
 						path: `reports[${reportIndex}].storeReports[${storeIndex}].productReports[${productIndex}].categoryId`,
-						value: productReport.categoryId,
+						value: productReport.productId,
 						detail: 'Product category IDs must be unique within each store report.'
 					});
 				} else {
-					categoryIds.add(productReport.categoryId);
+					productIds.add(productReport.productId);
 				}
 			}
 		}

@@ -1054,7 +1054,7 @@ export const ja = {
 		products: {
 			'bottled-water': 'ボトルウォーター',
 			snacks: 'スナック',
-			drinks: '飲料',
+			'soft-drinks': 'ソフトドリンク',
 			essentials: '生活必需品',
 			household: '日用品',
 			apparel: '衣料品',

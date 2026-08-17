@@ -74,7 +74,7 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 		marketPosition: 48,
 		productReports: [
 			{
-				categoryId: 'snacks',
+				productId: 'snacks',
 				name: 'Snacks',
 				unitsSold: 8,
 				demandMissed: 2,
@@ -97,7 +97,7 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 
 function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
 	return {
-		categoryId: 'snacks',
+		productId: 'snacks',
 		name: 'Snacks',
 		unitsSold: 8,
 		demandMissed: 2,
@@ -187,7 +187,7 @@ describe('product chain graph discovery', () => {
 		expect(categories.map((category) => category.id)).toEqual([
 			'bottled-water',
 			'snacks',
-			'drinks',
+			'soft-drinks',
 			'essentials'
 		]);
 		expect(categories.every((category) => category.name.length > 0)).toBe(true);

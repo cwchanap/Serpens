@@ -32,7 +32,7 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from '$lib/game/storeFootprint';
-import type { GameState } from '$lib/game/types';
+import type { GameState, ProductId } from '$lib/game/types';
 import {
 	financeWorldCityOpening,
 	getWorldCityDefinition,
@@ -221,7 +221,7 @@ function commandDefinition(
 			productCategoryIds: [
 				'bottled-water',
 				'snacks',
-				'drinks',
+				'soft-drinks',
 				'essentials',
 				'games',
 				'accessories',
@@ -719,12 +719,12 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 		const next = changedRun(activeRun(definition, game), definition, {
 			kind: 'updateStoreSellingPrice',
 			storeId: store.id,
-			categoryId: product.categoryId,
+			categoryId: product.productId,
 			sellingPrice: product.sellingPrice + 3
 		});
 
 		expect(next.game).toEqual(
-			updateStoreProduct(game, store.id, product.categoryId, {
+			updateStoreProduct(game, store.id, product.productId, {
 				sellingPrice: product.sellingPrice + 3
 			})
 		);
@@ -743,13 +743,13 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 		const next = changedRun(activeRun(definition, game), definition, {
 			kind: 'updateStoreInventoryTargets',
 			storeId: store.id,
-			categoryId: product.categoryId,
+			categoryId: product.productId,
 			reorderThreshold: product.reorderThreshold + 2,
 			targetStock: product.targetStock + 4
 		});
 
 		expect(next.game).toEqual(
-			updateStoreProduct(game, store.id, product.categoryId, {
+			updateStoreProduct(game, store.id, product.productId, {
 				reorderThreshold: product.reorderThreshold + 2,
 				targetStock: product.targetStock + 4
 			})
@@ -1307,7 +1307,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			executeScenarioCommand(run, definition, {
 				kind: 'updateStoreSellingPrice',
 				storeId: game.stores[0]!.id,
-				categoryId: 'not-allowed',
+				categoryId: 'not-allowed' as ProductId,
 				sellingPrice: 9
 			})
 		).toEqual({ ok: false, code: 'forbidden-command' });
@@ -1318,7 +1318,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			executeScenarioCommand(run, contentDefinition, {
 				kind: 'updateStoreSellingPrice',
 				storeId: game.stores[0]!.id,
-				categoryId: 'not-allowed',
+				categoryId: 'not-allowed' as ProductId,
 				sellingPrice: 9
 			})
 		).toEqual({ ok: false, code: 'forbidden-content' });
@@ -1388,7 +1388,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			command.kind === 'hireStaff'
 				? { ...command, candidateId }
 				: command.kind === 'updateStoreSellingPrice'
-					? { ...command, storeId: store.id, categoryId: product.categoryId }
+					? { ...command, storeId: store.id, categoryId: product.productId }
 					: command;
 		const definition = commandDefinition([resolvedCommand.kind], {
 			requiredObjectives: [cashCondition('cash-preserved', 'gte', 0)],
@@ -1531,7 +1531,7 @@ describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 			{
 				kind: 'updateStoreSellingPrice',
 				storeId: store.id,
-				categoryId: product.categoryId,
+				categoryId: product.productId,
 				sellingPrice: product.sellingPrice + 2
 			},
 			{ kind: 'advanceDay' }

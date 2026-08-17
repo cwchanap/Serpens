@@ -6,6 +6,7 @@ import type {
 	DailyStoreReport,
 	GameState,
 	IndustrialBuilding,
+	ProductId,
 	Store
 } from '$lib/game/types';
 import { createEmptyFinanceState } from '$lib/game/finance';
@@ -50,7 +51,7 @@ function productionReport(): DailyProductionReport {
 
 function product(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
 	return {
-		categoryId: 'bottled-water',
+		productId: 'bottled-water',
 		name: 'Bottled Water',
 		unitsSold: 0,
 		demandMissed: 0,
@@ -279,7 +280,7 @@ function metricGame(): GameState {
 					unitsSold: row.sold,
 					demandMissed: row.missed
 				}),
-				product({ categoryId: 'snacks', name: 'Snacks', unitsSold: 100 })
+				product({ productId: 'snacks', name: 'Snacks', unitsSold: 100 })
 			])
 		])
 	);
@@ -402,7 +403,7 @@ describe('scenario metric evidence IDs', () => {
 	});
 
 	it('derives collision-safe canonical product evidence IDs', () => {
-		expect(productEvidenceId(7, 'store/a', 'water/large')).toBe(
+		expect(productEvidenceId(7, 'store/a', 'water/large' as ProductId)).toBe(
 			'report:7/store:store%2Fa/product:water%2Flarge'
 		);
 	});
@@ -876,8 +877,8 @@ describe('scenario condition statuses and risk projections', () => {
 describe('scenario report invariants', () => {
 	it('accepts strictly increasing report days with unique nested IDs', () => {
 		const reports = [
-			report(1, 0, [storeReport('one', [product({ categoryId: 'bottled-water' })])]),
-			report(2, 0, [storeReport('one', [product({ categoryId: 'bottled-water' })])])
+			report(1, 0, [storeReport('one', [product({ productId: 'bottled-water' })])]),
+			report(2, 0, [storeReport('one', [product({ productId: 'bottled-water' })])])
 		];
 
 		expect(validateScenarioReportInvariants(reports)).toEqual([]);
@@ -887,8 +888,8 @@ describe('scenario report invariants', () => {
 		const reports = [
 			report(2, 0, [
 				storeReport('same/store', [
-					product({ categoryId: 'water/large' }),
-					product({ categoryId: 'water/large' })
+					product({ productId: 'water/large' as ProductId }),
+					product({ productId: 'water/large' as ProductId })
 				]),
 				storeReport('same/store')
 			]),

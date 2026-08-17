@@ -45,7 +45,7 @@ const staleReport: DailyStoreReport = {
 	marketPosition: 45,
 	productReports: [
 		{
-			categoryId: 'snacks',
+			productId: 'snacks',
 			name: 'Snacks',
 			unitsSold: 6,
 			demandMissed: 1,
@@ -184,7 +184,7 @@ describe('StoreOverview', () => {
 			...staleReport,
 			productReports: [
 				{
-					categoryId: 'snacks',
+					productId: 'snacks',
 					name: 'Snacks',
 					unitsSold: 6,
 					demandMissed: 1,

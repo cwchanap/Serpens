@@ -8,7 +8,14 @@ import {
 } from './retailSupply';
 import { DEFAULT_SIMULATION_RULES } from './simulationRules';
 import type { SimulationRuleSource, SimulationRules } from './simulationRules';
-import type { GameState, MaterialId, RetailReplenishmentContext, StoreProduct } from './types';
+import type {
+	DailyProductReport,
+	GameState,
+	MaterialId,
+	ProductId,
+	RetailReplenishmentContext,
+	StoreProduct
+} from './types';
 import { createOpenedMultiCityFixture } from './cityInventory.testUtils';
 import { openWorldCity } from './world';
 
@@ -28,7 +35,7 @@ const eventSource: SimulationRuleSource = {
 
 function withOneReplenishmentProduct(game: GameState): GameState {
 	const product: StoreProduct = {
-		categoryId: 'snacks',
+		productId: 'snacks',
 		stock: 4,
 		reorderThreshold: 10,
 		targetStock: 25,
@@ -66,7 +73,7 @@ function createReplenishmentStore(
 	game: GameState,
 	id: string,
 	cityId: 'harbor-city' | 'campus-junction'
-) {
+): GameState['stores'][number] {
 	return {
 		...game.stores[0]!,
 		id,
@@ -75,7 +82,7 @@ function createReplenishmentStore(
 		tileId: `${cityId}-${id}`,
 		products: [
 			{
-				categoryId: 'bottled-water',
+				productId: 'bottled-water',
 				stock: 0,
 				reorderThreshold: 1,
 				targetStock: 10,
@@ -146,7 +153,7 @@ describe('retail supply assignment', () => {
 	test('inserts a new assignment in catalog order when no existing entry matches', () => {
 		expect.assertions(3);
 		const base = createNewGame('convenience', 292_509);
-		const game = { ...base, retailSupplyAssignments: [] };
+		const game: GameState = { ...base, retailSupplyAssignments: [] };
 
 		const result = setRetailSupplySource(game, 'harbor-city', 'industry-city');
 
@@ -171,7 +178,7 @@ describe('retail supply assignment', () => {
 			},
 			'campus-junction'
 		);
-		const game = { ...opened, retailSupplyAssignments: [] };
+		const game: GameState = { ...opened, retailSupplyAssignments: [] };
 
 		const withCampus = setRetailSupplySource(game, 'campus-junction', 'industry-city');
 		const withHarbor = setRetailSupplySource(withCampus.game, 'harbor-city', 'industry-city');
@@ -403,7 +410,7 @@ describe('weekly retail replenishment', () => {
 
 	test('treats a missing assignment record as imports-only without consuming a city', () => {
 		expect.assertions(6);
-		const game = {
+		const game: GameState = {
 			...withOneReplenishmentProduct(withIndustrySnacks(createNewGame('convenience', 292_513), 21)),
 			retailSupplyAssignments: []
 		};
@@ -426,7 +433,7 @@ describe('weekly retail replenishment', () => {
 	test('falls back to imports when a configured source inventory is missing', () => {
 		expect.assertions(5);
 		const base = withOneReplenishmentProduct(createNewGame('convenience', 292_514));
-		const game = {
+		const game: GameState = {
 			...base,
 			cityInventories: []
 		};
@@ -447,12 +454,12 @@ describe('weekly retail replenishment', () => {
 			withIndustrySnacks(createNewGame('convenience', 292_515), 12)
 		);
 		const storeId = game.stores[0]!.id;
-		const storeReports = new Map([
+		const storeReports: Map<string, DailyProductReport[]> = new Map([
 			[
 				storeId,
 				[
 					{
-						categoryId: 'snacks',
+						productId: 'snacks',
 						name: 'Snacks',
 						unitsSold: 2,
 						demandMissed: 1,
@@ -536,7 +543,7 @@ describe('weekly retail replenishment', () => {
 	test('keeps omitted and explicit default modifiers deeply equal', () => {
 		expect.assertions(1);
 		const base = createNewGame('electronics', 292_509);
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: [
 				{
@@ -560,14 +567,14 @@ describe('weekly retail replenishment', () => {
 	test('rounds import spend after applying a retail product modifier to the entire shortage', () => {
 		expect.assertions(1);
 		const base = createNewGame('electronics', 292_510);
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: [
 				{
 					...base.stores[0]!,
 					products: [
 						{
-							categoryId: 'accessories',
+							productId: 'accessories',
 							stock: 0,
 							reorderThreshold: 1,
 							targetStock: 3,
@@ -596,13 +603,13 @@ describe('weekly retail replenishment', () => {
 	test('does not apply an industrial-material modifier to a retail product import', () => {
 		expect.assertions(2);
 		const base = createNewGame('electronics', 292_511);
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: [
 				{
 					...base.stores[0]!,
 					products: [
-						{ categoryId: 'games', stock: 0, reorderThreshold: 1, targetStock: 3, sellingPrice: 48 }
+						{ productId: 'games', stock: 0, reorderThreshold: 1, targetStock: 3, sellingPrice: 48 }
 					]
 				}
 			]
@@ -642,7 +649,7 @@ describe('weekly retail replenishment', () => {
 			'store-8',
 			'store-9'
 		];
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: storeIds.map((storeId) => createReplenishmentStore(base, storeId, 'harbor-city'))
 		};
@@ -662,7 +669,7 @@ describe('weekly retail replenishment', () => {
 	test('resolves shared-source contention by retail city before restoring global store order', () => {
 		expect.assertions(7);
 		const base = createOpenedMultiCityFixture();
-		const game = {
+		const game: GameState = {
 			...base,
 			cityInventories: base.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
@@ -699,21 +706,21 @@ describe('weekly retail replenishment', () => {
 	test('preserves authored product order while appending replenishment reports', () => {
 		expect.assertions(3);
 		const base = createNewGame('convenience', 292_506);
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: [
 				{
 					...base.stores[0]!,
 					products: [
 						{
-							categoryId: 'snacks',
+							productId: 'snacks',
 							stock: 0,
 							reorderThreshold: 1,
 							targetStock: 2,
 							sellingPrice: 5
 						},
 						{
-							categoryId: 'bottled-water',
+							productId: 'bottled-water',
 							stock: 0,
 							reorderThreshold: 1,
 							targetStock: 2,
@@ -727,11 +734,11 @@ describe('weekly retail replenishment', () => {
 		const result = applyWeeklyReplenishment({ game, storeReports: new Map() });
 		const storeId = game.stores[0]!.id;
 
-		expect(result.stores[0]!.products.map((product) => product.categoryId)).toEqual([
+		expect(result.stores[0]!.products.map((product) => product.productId)).toEqual([
 			'snacks',
 			'bottled-water'
 		]);
-		expect(result.productReports.get(storeId)!.map((report) => report.categoryId)).toEqual([
+		expect(result.productReports.get(storeId)!.map((report) => report.productId)).toEqual([
 			'snacks',
 			'bottled-water'
 		]);
@@ -745,14 +752,14 @@ describe('weekly retail replenishment', () => {
 	test('imports unsupported categories without consuming a city inventory material', () => {
 		expect.assertions(6);
 		const base = withIndustrySnacks(createNewGame('boutique', 292_507), 12);
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: [
 				{
 					...base.stores[0]!,
 					products: [
 						{
-							categoryId: 'apparel',
+							productId: 'apparel',
 							stock: 4,
 							reorderThreshold: 10,
 							targetStock: 25,
@@ -777,14 +784,14 @@ describe('weekly retail replenishment', () => {
 	test('leaves non-attempted products and their store context untouched', () => {
 		expect.assertions(4);
 		const base = createNewGame('convenience', 292_508);
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: [
 				{
 					...base.stores[0]!,
 					products: [
 						{
-							categoryId: 'snacks',
+							productId: 'snacks',
 							stock: 30,
 							reorderThreshold: 10,
 							targetStock: 100,
@@ -806,14 +813,14 @@ describe('weekly retail replenishment', () => {
 	test('skips replenishment for a product whose category is not in the archetype starting categories', () => {
 		expect.assertions(3);
 		const base = createNewGame('convenience', 292_510);
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: [
 				{
 					...base.stores[0]!,
 					products: [
 						{
-							categoryId: 'nonexistent-category',
+							productId: 'nonexistent-category' as ProductId,
 							stock: 4,
 							reorderThreshold: 10,
 							targetStock: 25,
@@ -834,14 +841,14 @@ describe('weekly retail replenishment', () => {
 	test('skips replenishment when needed units is zero despite stock below reorder threshold', () => {
 		expect.assertions(3);
 		const base = createNewGame('convenience', 292_511);
-		const game = {
+		const game: GameState = {
 			...base,
 			stores: [
 				{
 					...base.stores[0]!,
 					products: [
 						{
-							categoryId: 'snacks',
+							productId: 'snacks',
 							stock: 5,
 							reorderThreshold: 10,
 							targetStock: 5,

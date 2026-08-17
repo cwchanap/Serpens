@@ -1071,10 +1071,12 @@ describe('world city status and decision helpers', () => {
 	});
 
 	test('getRetailCityDemandMultiplier returns the profile multiplier, defaulting to 1', () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const game = gameStub();
 		// campus-junction boosts `games` demand to 1.35
 		expect(getRetailCityDemandMultiplier(game, 'campus-junction', 'games')).toBeCloseTo(1.35);
+		// garden-borough uses the retail product identity while its production material remains `drinks`.
+		expect(getRetailCityDemandMultiplier(game, 'garden-borough', 'soft-drinks')).toBeCloseTo(1.08);
 		// harbor-city has an empty demand profile -> default multiplier
 		expect(getRetailCityDemandMultiplier(game, 'harbor-city', 'games')).toBe(1);
 		// unknown city -> default multiplier

@@ -7,6 +7,7 @@ import type {
 	GameState,
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
+	ProductId,
 	WorldCityId
 } from '$lib/game/types';
 import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
@@ -17,19 +18,19 @@ import type {
 } from '$lib/game/supplyPlannerActions';
 
 export interface SupplyPlannerUiContext {
-	categoryId: string | null;
+	productId: ProductId | null;
 	horizonDays: SupplyPlannerHorizonDays;
 }
 
 export function getSupplyPlannerCategoryIds(
 	game: GameState | null,
 	retailCityId: WorldCityId,
-	allowedCategoryIds: readonly string[]
-): string[] {
+	allowedCategoryIds: readonly ProductId[]
+): ProductId[] {
 	if (!game) return [];
 	const allowed = new Set(allowedCategoryIds);
-	return listSupplyPlannerCategories(game, retailCityId).filter((categoryId) =>
-		allowed.has(categoryId)
+	return listSupplyPlannerCategories(game, retailCityId).filter((productId) =>
+		allowed.has(productId)
 	);
 }
 
@@ -53,10 +54,10 @@ export interface SupplyPlannerHandoffHost {
 
 export function resolveSupplyPlannerCategory(
 	context: SupplyPlannerUiContext,
-	validCategoryIds: readonly string[]
-): string | null {
-	if (context.categoryId && validCategoryIds.includes(context.categoryId)) {
-		return context.categoryId;
+	validCategoryIds: readonly ProductId[]
+): ProductId | null {
+	if (context.productId && validCategoryIds.includes(context.productId)) {
+		return context.productId;
 	}
 	return validCategoryIds[0] ?? null;
 }
@@ -65,7 +66,7 @@ export interface SupplyPlannerDerivationInput {
 	isOpen: boolean;
 	game: GameState | null;
 	retailCityId: WorldCityId;
-	categoryId: string | null;
+	productId: ProductId | null;
 	availability: SupplyPlannerActionAvailability;
 }
 
@@ -74,10 +75,10 @@ export function deriveSupplyPlannerResult(
 	_buildPlan: typeof buildSupplyPlan = buildSupplyPlan,
 	snapshotGame: (game: GameState) => GameState = (game) => game
 ): SupplyPlannerResult | null {
-	if (!input.isOpen || !input.game || !input.categoryId) return null;
+	if (!input.isOpen || !input.game || !input.productId) return null;
 	return _buildPlan(
 		snapshotGame(input.game),
-		{ retailCityId: input.retailCityId, categoryId: input.categoryId },
+		{ retailCityId: input.retailCityId, productId: input.productId },
 		input.availability
 	);
 }

@@ -71,7 +71,7 @@ describe('ProductChainAtlas', () => {
 		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const firstNode = graph.nodes[0]!;
 		const onSelectNode = vi.fn();
@@ -95,12 +95,12 @@ describe('ProductChainAtlas', () => {
 		const snacks = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const drinks = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'drinks'
+			productId: 'soft-drinks'
 		});
 		const onSelectNode = vi.fn();
 		const view = render(ProductChainAtlas, {
@@ -126,7 +126,7 @@ describe('ProductChainAtlas', () => {
 		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const firstNode = graph.nodes[0]!;
 		const onSelectNode = vi.fn();
@@ -152,7 +152,7 @@ describe('ProductChainAtlas', () => {
 		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const onSelectNode = vi.fn();
 		const onInteractionFeedback = vi.fn();
@@ -179,7 +179,7 @@ describe('ProductChainAtlas', () => {
 		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
@@ -199,7 +199,7 @@ describe('ProductChainAtlas', () => {
 		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {
@@ -240,7 +240,7 @@ describe('ProductChainAtlas', () => {
 		const graph = buildProductChainTree({
 			game,
 			store: game.stores[0]!,
-			categoryId: 'snacks'
+			productId: 'snacks'
 		});
 		const onSelectNode = vi.fn();
 		render(ProductChainAtlas, {

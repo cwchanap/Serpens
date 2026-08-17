@@ -59,10 +59,8 @@ import type {
 } from '$lib/game/types';
 
 const archetypeIds: ArchetypeId[] = ['convenience', 'boutique', 'electronics', 'grocery'];
-const productCategoryIds = [
-	...new Set(
-		ARCHETYPES.flatMap((archetype) => archetype.startingCategories.map((category) => category.id))
-	)
+const productIds = [
+	...new Set(ARCHETYPES.flatMap((archetype) => archetype.startingProductIds))
 ].sort();
 const industryTerrainPaths = {
 	farmland: '/assets/game/industry/terrain/farmland-tile.png',
@@ -295,14 +293,18 @@ describe('game art asset constants', () => {
 	}, 15000);
 
 	it('defines product art for every product category', () => {
-		expect(Object.keys(PRODUCT_ART).sort()).toEqual(productCategoryIds);
-		expect(PRODUCT_ART_LIST).toHaveLength(productCategoryIds.length);
+		expect(Object.keys(PRODUCT_ART).sort()).toEqual(productIds);
+		expect(PRODUCT_ART_LIST).toHaveLength(productIds.length);
 
-		for (const categoryId of productCategoryIds) {
-			const art = getProductArt(categoryId);
+		for (const productId of productIds) {
+			const art = getProductArt(productId);
 
-			expect(art.categoryId).toBe(categoryId);
-			expect(art.path).toBe(`/assets/game/products/${categoryId}.png`);
+			expect(art.productId).toBe(productId);
+			expect(art.path).toBe(
+				productId === 'soft-drinks'
+					? '/assets/game/products/drinks.png'
+					: `/assets/game/products/${productId}.png`
+			);
 			expect(art.alt).toContain('Product icon');
 			expect(existsSync(staticPath(art.path))).toBe(true);
 
