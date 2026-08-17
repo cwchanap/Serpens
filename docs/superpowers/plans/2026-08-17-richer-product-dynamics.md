@@ -1,32 +1,41 @@
 # Richer Product Types and Archetype-Specific Dynamics Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Use test-driven development for each behavior change. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Implement every behavior change test-first. Checkbox steps are the execution log.
 
-**Goal:** Implement HPA-38 so concrete products have stable data-driven identities, explicit production mappings, deterministic optional dynamics, and player-visible archetype differentiation without introducing SKU inventory or separate archetype simulation engines.
+**Goal:** Implement HPA-38 so concrete products have stable data-driven identities, explicit production mappings, deterministic optional dynamics, and visible archetype differentiation without SKU inventory or separate archetype simulation engines.
 
-**Architecture:** `products.ts` becomes the authoritative static product catalog. `ProductId` is the retail identity across store state, reports, product art, persistence, and future HPA-39 brand attachment; `ProductFamilyId` is grouping metadata only. `StoreProduct` holds FIFO stock lots so age-dependent mechanics have one exact quantity source. `productDynamics.ts` owns pure deterministic aging, trend, obsolescence, markdown, shrink, and stockout/reputation arithmetic. `stock.ts` and `retailSupply.ts` remain the sales/replenishment owners and consume the catalog instead of embedded archetype categories. Save schema 17 is strict; schema 16 is rejected.
+**Architecture:** `ProductId` is the one retail identity. `products.ts` is one static catalog; `familyId` is minimal metadata only, with no family registry/engine/UI. `StoreProduct` moves to FIFO lots as the sole quantity source. `productDynamics.ts` owns pure aging/trend/obsolescence/markdown/shrink arithmetic. `stock.ts` and `retailSupply.ts` remain the sales/replenishment owners. The seven-day replenishment cadence stays fixed. Schema 17 is strict and rejects 16.
 
-**Tech Stack:** TypeScript 6, SvelteKit / Svelte 5 runes, Vitest 4, Playwright, Bun, existing deterministic game state machine.
+**Tech stack:** TypeScript 6, SvelteKit/Svelte 5 runes, Vitest 4, Playwright, Bun, existing deterministic game-state machine.
 
 ## Global constraints
 
-- Keep HPA-38 as one Linear ticket; do not create a second product subsystem or child architecture.
-- Product families are metadata, never a second inventory layer.
-- Concrete `ProductId` is the only final retail identity; no persisted `categoryId` alias or dual-write.
-- Preserve current product economic tuning during the identity migration before adding new dynamics.
-- Preserve current finished `MaterialId` values. Map retail products explicitly to them.
-- Current retail `drinks` becomes product `soft-drinks`; finished material `drinks` remains and maps to it.
-- Store inventory has one quantity source. After the lot migration, do not keep both `stock` and `lots` persisted.
-- FIFO lots are inventory batches, not SKUs; there is no brand/model/shelf identity in HPA-38.
-- No new daily/global RNG draws. Existing sales jitter remains where it is.
-- Product trends use authored deterministic wave parameters.
-- Waste/shrink are non-cash inventory loss expense; markdown reduces revenue and is not also expensed.
-- Replenishment stays weekly and after sales; new lots are stamped with the closing day.
-- Reuse existing warning/detail/report UI; no product-management dashboard.
-- Reuse existing product images. No image-generation work is required.
-- Schema 17 rejects schema 16. Do not add a pre-release migration.
+- Keep HPA-38 as one Linear ticket.
+- Concrete `ProductId` is the only retail identity; no persisted `categoryId` alias or dual-write.
+- Keep `ProductFamilyId` + `ProductDefinition.familyId` only because HPA-38 requires product families/category relationships. Do **not** add `PRODUCT_FAMILIES`, family inventory, family demand, family reports, or family UI.
+- Do not carry unused `ProductCategory.baseDemand` or `margin` into the new catalog. Do not give them new jobs.
+- Preserve current live economic tuning that is actually consumed: `demandWeight`, `importCost`, `defaultSellingPrice`, `priceSensitivity`.
+- Preserve finished `MaterialId` values. Retail `drinks` becomes `soft-drinks`; finished material `drinks` remains.
+- All product-to-production consumers use `productionMaterialId`; no string equality between `ProductId` and `MaterialId`.
+- After Task 3, store inventory has one quantity source: FIFO `lots`; no mirrored persisted `stock` scalar.
+- Every clone of a lot-backed product deep-copies `lots`; no shared mutable lot array.
+- Replenishment remains every 7 days and after sales. HPA-38 does not change cadence or add emergency restocking.
+- Production age thresholds (`shelfLifeDays`, markdown start, obsolescence start) must be **greater than** `REPLENISHMENT_INTERVAL_DAYS` so a normal fresh weekly lot remains sellable through the next scheduled sales day.
+- Age-gated mechanics are leftover-overstock mechanics in this slice.
+- Markdown uses oldest sellable lot age and changes revenue only. It never feeds `priceDemandMultiplier` and never mutates configured selling price.
+- Obsolescence uses the same oldest sellable lot age as markdown.
+- Trend is product/day-global and applies once to the city product pool.
+- Reputation sensitivity scales the reputation-deviation term, not the whole seller score; sensitivity `1` exactly reproduces the current score.
+- No new daily/global RNG draws. Existing sales jitter remains in the same per-seller call site/order.
+- `wasteValue` / `shrinkValue` use `units * ProductDefinition.importCost`.
+- Inventory loss affects operating income, not operating cash flow. Do not double-charge replenishment cash.
+- Correct `DailyStoreReport.netIncome` to `grossMargin - operatingCosts - inventoryLossExpense`; keep `importSpend` separate cash evidence.
+- Do not redefine legacy `DailyReport.netIncome`/finance semantics in this ticket; use explicit `operatingIncome`, `operatingCashFlow`, and `inventoryLossExpense` for HPA-38 reporting.
+- Reuse `StoreStockTable`, `StoreDetailModal`, `ReportsPanel`; no product-management dashboard.
+- Reuse existing product images; no image work.
+- Schema 17 rejects schema 16; no pre-release migration.
 - Brands and competitors remain HPA-39.
-- Before editing any Svelte file, follow repository `AGENTS.md`: use the official Svelte MCP `list-sections`, fetch all relevant docs with `get-documentation`, and run `svelte-autofixer` on every changed Svelte snippet until clean.
+- Before editing Svelte, follow `AGENTS.md`: official Svelte MCP `list-sections`, fetch relevant docs, and run `svelte-autofixer` until clean.
 
 ---
 
@@ -34,33 +43,36 @@
 
 ### New focused files
 
-- `src/lib/game/products.ts` — product families, product catalog, lookup helpers, catalog/archetype validation.
-- `src/lib/game/products.spec.ts` — identity, mapping, validation, and no-duplicate coverage.
-- `src/lib/game/productDynamics.ts` — pure lot-aging and deterministic product-dynamics arithmetic/evidence.
-- `src/lib/game/productDynamics.spec.ts` — spoilage, shrink, trend, obsolescence, markdown, stockout/reputation arithmetic.
+- `src/lib/game/products.ts` — authoritative product catalog, lookup, validation.
+- `src/lib/game/products.spec.ts` — identity, family metadata, mapping, validation.
+- `src/lib/game/productDynamics.ts` — pure aging, shrink, trend, oldest-age, obsolescence, markdown helpers.
+- `src/lib/game/productDynamics.spec.ts` — exact arithmetic/boundaries.
 
-### Existing owners to extend
+### Existing owner groups to extend
 
-- Domain/config: `src/lib/game/types.ts`, `src/lib/game/archetypes.ts`, `src/lib/game/leveling.ts` only for category-oriented naming/call sites if required.
-- Retail simulation: `src/lib/game/stock.ts`, `stock.spec.ts`, `retailSupply.ts`, `retailSupply.spec.ts`, `simulateDay.ts`, relevant `simulateDay*.spec.ts`.
-- Production views: `productChainGraph.ts`, `productChainGraph.spec.ts`, `productChainTree.ts`, `productChainTree.spec.ts`.
+- Domain/config: `src/lib/game/types.ts`, `archetypes.ts`, `leveling.ts` only where product terminology is semantic.
+- Retail: `stock.ts`, `retailSupply.ts`, `simulateDay.ts`, focused specs.
+- Production/read models: `productChainGraph.ts`, `productChainTree.ts`, `simulationRules.ts`, supply-planner files.
+- World: `worldCatalog.ts`, `world.ts` and focused specs.
+- Scenario domain: `src/lib/scenarios/**` and `src/lib/persistence/scenarioCodec.ts` + specs.
 - Art: `src/lib/assets/gameArt.ts`, `gameArt.spec.ts`.
-- Reports/read models: `reports.ts` and focused specs only where aggregation requires the new fields.
-- Persistence: `src/lib/persistence/saveTypes.ts`, `saveCodec.ts`, `saveCodec.spec.ts`, current-schema repository fixtures/specs.
-- UI: `StoreStockTable.svelte`, `StoreStockTable.svelte.spec.ts`, `StoreDetailModal.svelte`, focused modal spec, `ReportsPanel.svelte`, `ReportsPanel.svelte.spec.ts`.
-- Route-level integration: `src/routes/+page.svelte` only if a new prop/read model must be wired; `src/routes/retail-sim.e2e.ts` for one representative end-to-end proof.
+- Reports: `reports.ts` only where aggregation requires new explicit fields.
+- Saves: `saveTypes.ts`, `saveCodec.ts`, current-schema repository fixtures/specs.
+- UI: existing stock/detail/report Svelte components and focused specs.
+- E2E: `src/routes/retail-sim.e2e.ts` for one representative proof.
 
 ---
 
-### Task 1: Introduce the authoritative product catalog without changing runtime identity yet
+## Task 1: Add the authoritative product catalog without changing runtime identity
 
-**Files:**
-- Create: `src/lib/game/products.ts`
-- Create: `src/lib/game/products.spec.ts`
-- Modify: `src/lib/game/types.ts`
-- Read/reference: `src/lib/game/archetypes.ts`, `src/lib/game/industry.ts`
+**Files**
 
-**Interfaces:**
+- Create `src/lib/game/products.ts`
+- Create `src/lib/game/products.spec.ts`
+- Modify `src/lib/game/types.ts`
+- Read/reference `archetypes.ts`, `industry.ts`
+
+**Contracts**
 
 ```ts
 export type ProductFamilyId =
@@ -93,8 +105,6 @@ export interface ProductDefinition {
   id: ProductId;
   familyId: ProductFamilyId;
   name: string;
-  baseDemand: number;
-  margin: number;
   demandWeight: number;
   importCost: number;
   defaultSellingPrice: number;
@@ -104,41 +114,23 @@ export interface ProductDefinition {
 }
 ```
 
-- [ ] **Step 1: Write catalog validation tests**
+- [ ] **1.1 RED: catalog validation tests**
 
-Cover:
+Cover unique IDs, allowed family IDs, finite consumed economic values, finished-material mapping, invalid dynamic parameters, missing archetype references, and duplicate assortment IDs. Use injectable raw validation input; do not mutate the production registry.
 
-- every `ProductId` appears exactly once;
-- family IDs resolve;
-- economic values are finite and in the same valid ranges current category data expects;
-- production mappings resolve to existing `finished` materials;
-- duplicate product IDs fail;
-- missing family/product references fail;
-- invalid dynamic parameters fail.
-
-Use injectable/test-only validation input rather than mutating the exported frozen production registry.
-
-- [ ] **Step 2: Run the focused test and verify RED**
+- [ ] **1.2 Verify RED**
 
 ```bash
 bun run test:unit -- --run src/lib/game/products.spec.ts
 ```
 
-Expected: product catalog/types do not exist.
+- [ ] **1.3 Implement the minimum frozen `PRODUCTS` registry**
 
-- [ ] **Step 3: Implement the minimum frozen catalog and helpers**
+No `PRODUCT_FAMILIES` registry. Family is one field on each product.
 
-Expose:
+Carry only currently consumed category economics. Explicitly **omit** old unused `baseDemand` and `margin`.
 
-```ts
-export const PRODUCT_FAMILIES: Readonly<Record<ProductFamilyId, ProductFamilyDefinition>>;
-export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>>;
-export function getProductDefinition(id: ProductId): ProductDefinition;
-export function getProductDefinitions(ids: readonly ProductId[]): ProductDefinition[];
-export function validateProductCatalog(/* optional test input */): void;
-```
-
-Carry current `ProductCategory` economic values from `archetypes.ts` without balancing changes. Map at least:
+Initial material mappings include:
 
 ```text
 bottled-water -> bottled-water
@@ -150,17 +142,17 @@ produce       -> produce
 pantry        -> pantry
 ```
 
-Unproduced retail products use `productionMaterialId: null`.
+Unproduced products map to null.
 
-- [ ] **Step 4: Add the first richer family relation**
+- [ ] **1.4 Prove the minimal family relation**
 
-Assert both `bottled-water` and `soft-drinks` resolve to the `beverages` family while keeping separate concrete IDs and material mappings.
+Assert `bottled-water` and `soft-drinks` both have `familyId: 'beverages'`, but there is no family lookup/aggregation behavior.
 
-- [ ] **Step 5: Keep dynamics empty/baseline in this task**
+- [ ] **1.5 Keep dynamics neutral**
 
-All definitions may initially use `dynamics: {}`. Do not mix identity migration with balance changes.
+Use `dynamics: {}` initially. No balance change in Task 1.
 
-- [ ] **Step 6: Run focused tests/check and commit**
+- [ ] **1.6 GREEN/check/commit**
 
 ```bash
 bun run test:unit -- --run src/lib/game/products.spec.ts
@@ -171,20 +163,30 @@ git commit -m "feat(products): add product catalog"
 
 ---
 
-### Task 2: Migrate archetypes, store state, reports, production mapping, and art to `ProductId`
+## Task 2: Make `ProductId` the one identity across the full blast radius
 
-**Files:**
-- Modify: `src/lib/game/types.ts`
-- Modify: `src/lib/game/archetypes.ts`
-- Modify: `src/lib/game/stock.ts`
-- Modify: `src/lib/game/retailSupply.ts`
-- Modify: `src/lib/game/productChainGraph.ts`
-- Modify: `src/lib/game/productChainTree.ts`
-- Modify: `src/lib/assets/gameArt.ts`
-- Modify focused specs for each owner
-- Modify any direct fixtures/call sites surfaced by TypeScript/check
+This is one breaking identity cut. Do not split it into category/product dual-write phases.
 
-**Final identity shapes for this task:**
+**Primary files**
+
+- `src/lib/game/types.ts`
+- `src/lib/game/archetypes.ts`
+- `src/lib/game/stock.ts`
+- `src/lib/game/retailSupply.ts`
+- `src/lib/game/productChainGraph.ts`
+- `src/lib/game/productChainTree.ts`
+- `src/lib/game/worldCatalog.ts`
+- `src/lib/game/world.ts`
+- `src/lib/game/supplyPlanner.ts`
+- `src/lib/game/supplyPlannerActions.ts`
+- `src/lib/game/simulateDay.ts`
+- `src/lib/game/simulationRules.ts`
+- `src/lib/assets/gameArt.ts`
+- `src/lib/scenarios/**`
+- `src/lib/persistence/scenarioCodec.ts`
+- focused specs/fixtures for all owners
+
+**Final temporary pre-lot state**
 
 ```ts
 export interface StoreArchetype {
@@ -194,7 +196,7 @@ export interface StoreArchetype {
 
 export interface StoreProduct {
   productId: ProductId;
-  stock: number; // temporary until Task 3
+  stock: number; // removed in Task 3
   reorderThreshold: number;
   targetStock: number;
   sellingPrice: number;
@@ -202,97 +204,131 @@ export interface StoreProduct {
 
 export interface DailyProductReport {
   productId: ProductId;
-  // existing fields unchanged for now
+  // existing fields for now
 }
+
+export type RetailDemandProfile = Partial<Record<ProductId, number>>;
 ```
 
-- [ ] **Step 1: Write migration-focused tests first**
+- [ ] **2.1 RED: identity integration tests**
 
 Prove:
 
-- all four archetypes list valid catalog product IDs in their existing unlock order;
-- convenience contains both `bottled-water` and `soft-drinks`;
-- initialization uses catalog definitions for defaults;
-- `soft-drinks` replenishes from finished material `drinks`;
-- product-chain support uses `productionMaterialId`, not string equality;
+- all four archetypes reference valid product IDs in existing unlock order;
+- convenience contains `bottled-water` + `soft-drinks`;
+- initialization uses catalog definitions;
+- `soft-drinks` replenishes from material `drinks`;
+- product-chain support checks mapped material, not product-ID string equality;
+- Garden Borough retains its old `drinks: 1.08` demand boost under `'soft-drinks': 1.08`;
+- supply-planner snapshot/action paths resolve `productionMaterialId`;
+- scenario metric/command/override product IDs survive the rename;
+- product art resolves `soft-drinks` to the existing PNG;
 - product reports carry `productId`.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [ ] **2.2 Verify RED across focused owners**
 
 ```bash
-bun run test:unit -- --run src/lib/game/products.spec.ts src/lib/game/stock.spec.ts src/lib/game/retailSupply.spec.ts src/lib/game/productChainGraph.spec.ts src/lib/game/productChainTree.spec.ts
+bun run test:unit -- --run \
+  src/lib/game/products.spec.ts \
+  src/lib/game/stock.spec.ts \
+  src/lib/game/retailSupply.spec.ts \
+  src/lib/game/productChainGraph.spec.ts \
+  src/lib/game/productChainTree.spec.ts \
+  src/lib/game/world.spec.ts \
+  src/lib/assets/gameArt.spec.ts
 ```
 
-- [ ] **Step 3: Replace embedded archetype category definitions**
+Include focused supply-planner/scenario specs present in the repo.
 
-Change `archetypes.ts` to `startingProductIds`. `products.ts` owns name/economics/dynamics. Preserve assortment ordering and existing milestone unlock counts.
+- [ ] **2.3 Replace embedded archetype definitions**
 
-Do not introduce per-archetype product copies or override maps in this ticket unless a current behavior truly requires one.
+`archetypes.ts` becomes `startingProductIds`; `products.ts` owns product name/economics/dynamics. Preserve ordering and milestone unlock counts.
 
-- [ ] **Step 4: Rename runtime identity**
+- [ ] **2.4 Rename runtime/report identity**
 
-Move `StoreProduct.categoryId -> productId`, function parameters from `categoryId` to `productId`, and `DailyProductReport.categoryId -> productId`.
+Convert semantic retail-product `categoryId -> productId`, including update commands and fixtures. Do not keep legacy exported identity types.
 
-Temporary source-code helper aliases are allowed only while this task is in progress. Remove them before the final step.
+- [ ] **2.5 Type city demand profiles by `ProductId`**
 
-- [ ] **Step 5: Replace category lookup with catalog lookup**
-
-`stock.ts` should resolve `ProductDefinition` from `ProductId`. Delete duplicated `findStoreCategory` / `getCityStoreCategories` logic that exists only because definitions were embedded in archetypes; replace it with product-definition lookups plus archetype assortment membership.
-
-- [ ] **Step 6: Replace implicit material identity**
-
-Delete `getFinishedMaterialIdForCategory`. `retailSupply.ts`, graph/tree builders, and any production/read-model code use `ProductDefinition.productionMaterialId`.
-
-- [ ] **Step 7: Retarget import-cost rule IDs**
-
-Where the existing `retail-product` simulation-rule scope stores a target string, that string now means `ProductId`. Keep the rule engine shape unchanged; only replace category terminology/call sites.
-
-- [ ] **Step 8: Retarget product art**
-
-Make product art addressable by `ProductId`. Reuse the current drinks image:
+Change `RetailDemandProfile` to `Partial<Record<ProductId, number>>` and update `worldCatalog.ts`:
 
 ```ts
-'soft-drinks': {
-  productId: 'soft-drinks',
-  path: '/assets/game/products/drinks.png',
-  alt: 'Product icon for soft drinks'
-}
+'soft-drinks': 1.08
 ```
 
-Do not generate new art.
+This must compile-time reject future stale `drinks` retail keys.
 
-- [ ] **Step 9: Use `bun run check` as the exhaustive call-site finder**
+- [ ] **2.6 Replace implicit material identity everywhere**
 
-Fix all old `startingCategories`, `categoryId`, and `ProductCategory` call sites. Do not leave a legacy identity type exported just to make compilation easy.
+Delete `getFinishedMaterialIdForCategory`.
+
+Update:
+
+- `retailSupply.ts`;
+- `getSupportedStoreChainCategories` -> product terminology and `productionMaterialId` lookup;
+- product-chain tree/graph callers;
+- `supplyPlanner.ts`;
+- `supplyPlannerActions.ts`;
+- `simulateDay.ts` production/replenishment movement derivation.
+
+No `supported.has(productId)` against `MaterialId` sets.
+
+- [ ] **2.7 Retype retail-product rule targets**
+
+Where simulation/scenario rules identify retail products, use `ProductId` rather than generic category strings. Keep the rule engine architecture unchanged.
+
+- [ ] **2.8 Migrate scenario product identity in the same cut**
+
+At minimum inspect/rename:
+
+- `ScenarioCommand` selling-price/inventory-target payload fields;
+- start blueprint product overrides;
+- metric `categoryIds` -> `productIds`;
+- `metrics.ts` report lookup/evidence IDs;
+- `ScenarioContentRules.productCategoryIds` -> product terminology;
+- scenario definitions/fixtures;
+- `scenarioCodec.ts` validation and specs.
+
+No compatibility alias: scenarios are pre-release too.
+
+- [ ] **2.9 Retarget product art**
+
+Key by `ProductId`; reuse `/assets/game/products/drinks.png` for `soft-drinks`.
+
+- [ ] **2.10 Exhaustive identity audit**
 
 ```bash
 bun run check
+rg "startingCategories|categoryId|getFinishedMaterialIdForCategory|ProductCategory|productCategoryIds|categoryIds" src
 ```
 
-- [ ] **Step 10: Run focused/full unit coverage and commit**
+Review every match. Leave only genuinely non-retail uses. Do not use `bun run check` as the *only* audit.
+
+- [ ] **2.11 GREEN/commit**
+
+Run all touched focused specs plus `bun run check`, then:
 
 ```bash
-bun run test:unit -- --run src/lib/game/products.spec.ts src/lib/game/stock.spec.ts src/lib/game/retailSupply.spec.ts src/lib/game/productChainGraph.spec.ts src/lib/game/productChainTree.spec.ts src/lib/assets/gameArt.spec.ts
-bun run check
-git add src/lib/game src/lib/assets/gameArt.ts
+git add src/lib/game src/lib/assets src/lib/scenarios src/lib/persistence/scenarioCodec* 
 git commit -m "refactor(products): use stable product ids"
 ```
 
 ---
 
-### Task 3: Replace scalar stock with FIFO lots and land strict schema 17
+## Task 3: Replace scalar store stock with FIFO lots and land schema 17
 
-**Files:**
-- Modify: `src/lib/game/types.ts`
-- Modify: `src/lib/game/stock.ts`
-- Modify: `src/lib/game/retailSupply.ts`
-- Modify: any store/read-model code that reads `.stock`
-- Modify: `src/lib/persistence/saveTypes.ts`
-- Modify: `src/lib/persistence/saveCodec.ts`
-- Modify: `src/lib/persistence/saveCodec.spec.ts`
-- Modify current-schema repository fixtures/specs as required
+**Files**
 
-**Final inventory shape:**
+- `src/lib/game/types.ts`
+- `src/lib/game/stock.ts`
+- `src/lib/game/retailSupply.ts`
+- `src/lib/game/simulateDay.ts` clone/restore paths
+- any read model/UI helper that reads `.stock`
+- `src/lib/persistence/saveTypes.ts`
+- `src/lib/persistence/saveCodec.ts`
+- persistence specs/current-schema fixtures
+
+**Final state**
 
 ```ts
 export interface ProductStockLot {
@@ -309,57 +345,50 @@ export interface StoreProduct {
 }
 ```
 
-**Helpers in `stock.ts`:**
+- [ ] **3.1 RED: FIFO behavior**
+
+Test total stock, oldest-first full/partial consumption, zero cleanup, canonical order, replenishment addition.
+
+- [ ] **3.2 RED: clone isolation**
+
+Build a store with multiple lots, clone it through the sales/policy/restore path, mutate/replace the clone's lots through the production helper, and assert the source store lots remain unchanged.
+
+Explicitly cover `cloneStoreForStock`; review `applyPolicyPricingToStores` and `restoreProductSettings` after the shape change.
+
+- [ ] **3.3 Implement pure lot helpers**
 
 ```ts
-export function getStoreProductStock(product: Pick<StoreProduct, 'lots'>): number;
-export function consumeStoreProductStock(product: StoreProduct, quantity: number): StoreProduct;
-export function addStoreProductStockLot(product: StoreProduct, lot: ProductStockLot): StoreProduct;
+getStoreProductStock(...)
+consumeStoreProductStock(...)
+addStoreProductStockLot(...)
+cloneStoreProduct(...)
 ```
 
-- [ ] **Step 1: Write FIFO lot tests**
+Use the clone helper where practical so lot-copy semantics are not repeatedly hand-written.
 
-Cover total calculation, oldest-first partial/full consumption, zero-quantity cleanup, deterministic lot ordering, and replenishment lot addition.
+- [ ] **3.4 Stamp founding/replenishment lots**
 
-- [ ] **Step 2: Run stock tests and verify RED**
+Founding stock is one lot at founding/current day. Replenishment appends one lot with `receivedDay = game.day` after sales.
 
-```bash
-bun run test:unit -- --run src/lib/game/stock.spec.ts src/lib/game/retailSupply.spec.ts
-```
+- [ ] **3.5 RED: schema 17**
 
-- [ ] **Step 3: Implement lot helpers and migrate stock reads/writes**
-
-Initialize founding stock as one lot stamped with the game's current/founding day. Sales consume FIFO. Stock health/status/reorder checks use `getStoreProductStock`.
-
-Do not persist a mirrored `stock` scalar.
-
-- [ ] **Step 4: Make replenishment append a lot**
-
-On replenishment day, add exactly the replenished quantity as a lot with `receivedDay = game.day`. Keep warehouse/import accounting unchanged.
-
-- [ ] **Step 5: Write schema-17 round-trip and rejection tests**
-
-Cover:
+Test:
 
 - `SAVE_SCHEMA_VERSION === 17`;
 - valid lots round-trip;
 - schema 16 rejected;
-- unknown product ID rejected;
-- duplicate product IDs per store rejected;
-- product not allowed by its archetype/unlock state rejected;
-- negative/non-safe quantity rejected;
-- invalid/future `receivedDay` rejected;
-- zero-quantity lots rejected or normalized consistently with the chosen validator rule.
+- invalid/unknown/duplicate product IDs rejected;
+- product not allowed by archetype/unlock state rejected;
+- lot quantity positive safe integer;
+- received day valid/not future;
+- canonical lot ordering;
+- zero lots rejected or normalized consistently with the chosen canonical rule.
 
-- [ ] **Step 6: Bump and validate schema 17**
+- [ ] **3.6 Implement strict schema 17**
 
-```ts
-export const SAVE_SCHEMA_VERSION = 17;
-```
+No schema-16 branch. Preserve only the existing same-schema retail-city normalization safety net.
 
-Do not add schema-16 migration logic. Preserve the existing current-schema retail-city normalization safety net.
-
-- [ ] **Step 7: Run persistence + stock suites/check and commit**
+- [ ] **3.7 GREEN/commit**
 
 ```bash
 bun run test:unit -- --run src/lib/game/stock.spec.ts src/lib/game/retailSupply.spec.ts src/lib/persistence/saveCodec.spec.ts src/lib/persistence/saveRepository.spec.ts
@@ -370,16 +399,15 @@ git commit -m "feat(products): track fifo product stock lots"
 
 ---
 
-### Task 4: Implement pure deterministic product-dynamics resolvers
+## Task 4: Add pure product-dynamics arithmetic and lock the seven-day age contract
 
-**Files:**
-- Create: `src/lib/game/productDynamics.ts`
-- Create: `src/lib/game/productDynamics.spec.ts`
-- Modify: `src/lib/game/types.ts`
-- Modify: `src/lib/game/products.ts`
-- Test: `src/lib/game/products.spec.ts`
+**Files**
 
-**Interfaces:**
+- Create `src/lib/game/productDynamics.ts`
+- Create `src/lib/game/productDynamics.spec.ts`
+- Modify `types.ts`, `products.ts`, `products.spec.ts`
+
+**Interfaces**
 
 ```ts
 export interface ProductInventoryAgingResult {
@@ -390,97 +418,93 @@ export interface ProductInventoryAgingResult {
   shrinkValue: number;
   averageAgeDays: number | null;
   freshnessPercent: number | null;
+  oldestSellableAgeDays: number | null;
 }
 
 export interface ProductMarketDynamics {
   trendMultiplier: number;
   obsolescenceMultiplier: number;
   markdownMultiplier: number;
-  reputationMultiplier: number;
 }
-
-export function applyProductInventoryAging(input: {
-  product: StoreProduct;
-  definition: ProductDefinition;
-  closingDay: number;
-}): ProductInventoryAgingResult;
-
-export function resolveProductMarketDynamics(input: {
-  product: StoreProduct;
-  definition: ProductDefinition;
-  day: number;
-  storeReputation: number;
-}): ProductMarketDynamics;
 ```
 
-- [ ] **Step 1: Write exact shelf-life boundary tests**
+- [ ] **4.1 RED: seven-day production tuning validation**
 
-A lot expires when:
+For authored production definitions, reject:
+
+```text
+shelfLifeDays <= REPLENISHMENT_INTERVAL_DAYS
+markdown.startsAtAgeDays <= REPLENISHMENT_INTERVAL_DAYS
+obsolescence.startsAfterDays <= REPLENISHMENT_INTERVAL_DAYS
+```
+
+Do not make this a generic runtime prohibition on arbitrary future content; it is HPA-38 production-catalog validation.
+
+- [ ] **4.2 RED: exact shelf-life boundary**
 
 ```text
 closingDay - receivedDay >= shelfLifeDays
 ```
 
-Assert expired lots are removed, waste units/value are exact, and non-perishable products do not change.
+Expired lots are removed before sales.
 
-- [ ] **Step 2: Write shrink tests**
+- [ ] **4.3 RED: leftover-overstock proof**
+
+Use two produce lots: one older than shelf life, one new enough to sell. Assert only the old leftover lot wastes.
+
+- [ ] **4.4 RED: shrink and valuation**
 
 ```text
-shrinkUnits = min(remainingStock, floor(remainingStock * shrinkRate))
+shrinkUnits = min(stockAfterSpoilage, floor(stockAfterSpoilage * shrinkRate))
+wasteValue = wasteUnits * definition.importCost
+shrinkValue = shrinkUnits * definition.importCost
 ```
 
-Assert no RNG use, bounds, and zero behavior.
+No RNG/fractional carry/selling-price valuation.
 
-- [ ] **Step 3: Write freshness/age read-model tests**
+- [ ] **4.5 RED: age evidence**
 
-Derive quantity-weighted average age and freshness percent from remaining lots. Do not persist either value on `StoreProduct`.
+Derive quantity-weighted average age/freshness plus **oldest sellable lot age**. Do not persist these on `StoreProduct`.
 
-- [ ] **Step 4: Write trend-wave tests**
+- [ ] **4.6 RED: trend**
 
-Implement an authored triangle wave with finite deterministic output. Test beginning/peak/trough/period wrap and that output is independent of object iteration order/RNG state.
+Authored deterministic triangle wave; test beginning/peak/trough/wrap and RNG independence.
 
-- [ ] **Step 5: Write obsolescence tests**
+- [ ] **4.7 RED: obsolescence + markdown use the same oldest age**
 
-Use oldest/weighted inventory age according to the normative spec; demand stays 1 before the threshold and declines to but never below `demandFloor` after it.
+Neutral before threshold; bounded after threshold. Empty stock -> null age + neutral multipliers.
 
-- [ ] **Step 6: Write markdown tests**
+- [ ] **4.8 Implement focused pure helpers**
 
-At/after the configured age threshold return the authored price multiplier; before threshold return 1. Never mutate `StoreProduct.sellingPrice`.
+No generic effect list/registry/DSL.
 
-- [ ] **Step 7: Write reputation sensitivity tests**
+- [ ] **4.9 Add conservative production tuning**
 
-Verify neutral products return 1 and reputation-sensitive products alter store scoring through a bounded multiplier without branching on archetype.
+Age-gated values must obey the interval constraint. Keep values data-only and easily testable.
 
-- [ ] **Step 8: Implement minimal explicit arithmetic**
-
-Use ordinary pure functions/switch-free optional-field checks. Do not add a generic effect list, visitor, registry, or expression evaluator.
-
-- [ ] **Step 9: Add initial production tuning for representative products**
-
-Add conservative authored dynamics for the four archetype examples, but keep balance values small enough that identity migration remains recognizable. Tests should assert validity/behavior, not arbitrary exact balance constants unless those constants are contractually meaningful.
-
-- [ ] **Step 10: Run focused tests/check and commit**
+- [ ] **4.10 GREEN/commit**
 
 ```bash
 bun run test:unit -- --run src/lib/game/products.spec.ts src/lib/game/productDynamics.spec.ts
 bun run check
-git add src/lib/game/types.ts src/lib/game/products.ts src/lib/game/products.spec.ts src/lib/game/productDynamics.ts src/lib/game/productDynamics.spec.ts
+git add src/lib/game
 git commit -m "feat(products): add deterministic product dynamics"
 ```
 
 ---
 
-### Task 5: Integrate aging, trends, markdowns, stockout attribution, and accounting into the daily simulation
+## Task 5: Integrate one demand/revenue composition, exact stockouts, and accounting
 
-**Files:**
-- Modify: `src/lib/game/stock.ts`
-- Modify: `src/lib/game/simulateDay.ts`
-- Modify: `src/lib/game/types.ts`
-- Modify: `src/lib/game/reports.ts` only if aggregation needs explicit fields
-- Modify: `src/lib/game/retailSupply.ts` report merge/default fields
-- Test: `stock.spec.ts`, relevant `simulateDay*.spec.ts`, `retailSupply.spec.ts`, report specs
+**Files**
 
-**Daily product report additions:**
+- `src/lib/game/stock.ts`
+- `src/lib/game/simulateDay.ts`
+- `src/lib/game/types.ts`
+- `src/lib/game/retailSupply.ts`
+- `src/lib/game/reports.ts` if aggregation requires it
+- focused stock/simulate/replenishment/report specs
+
+**Daily product evidence**
 
 ```ts
 wasteUnits: number;
@@ -490,6 +514,7 @@ shrinkValue: number;
 stockoutLostDemand: number;
 averageAgeDays: number | null;
 freshnessPercent: number | null;
+oldestSellableAgeDays: number | null;
 trendMultiplier: number;
 obsolescenceMultiplier: number;
 baseSellingPrice: number;
@@ -497,52 +522,116 @@ effectiveSellingPrice: number;
 markdownAmount: number;
 ```
 
-- [ ] **Step 1: Write an integration test for pre-sales aging**
+- [ ] **5.1 RED: pre-sales aging integration**
 
-Build a store with one expiring lot. On the closing day, assert spoilage happens before sales, expired units cannot be sold, and report waste matches removed stock.
+Expired stock cannot sell; aging evidence carries into the same product report.
 
-- [ ] **Step 2: Add one pure store-aging pass before city sales**
+- [ ] **5.2 Add one pre-sales aging pass**
 
-Do not put dynamics mutation inside Svelte/UI or persistence code. Build a map of per-store/per-product aging evidence consumed later by report assembly.
+Keep evidence keyed by store/product for report assembly. Do not put product mutation in UI/persistence.
 
-- [ ] **Step 3: Write sales tests for trend/obsolescence demand**
+- [ ] **5.3 RED: city pool formula**
 
-Assert the city/product demand calculation uses the product resolver and remains deterministic for a fixed game/day.
-
-Keep the existing sales jitter RNG call count/order stable.
-
-- [ ] **Step 4: Write markdown revenue tests**
-
-Use configured `sellingPrice` as base price, dynamics multiplier as effective price, and actual effective price for revenue. Calculate `markdownAmount` once from the delta; do not expense it again.
-
-- [ ] **Step 5: Write stockout attribution tests**
-
-Separate `stockoutLostDemand` from broader `demandMissed` by comparing desired sales with stock, capacity, and remaining city demand. A capacity-limited miss must not be labeled stockout loss.
-
-- [ ] **Step 6: Apply reputation sensitivity in store scoring**
-
-Use product definition data to adjust the existing reputation contribution. No `if (store.archetypeId === 'boutique')` branch is allowed.
-
-- [ ] **Step 7: Add inventory-loss accounting tests before changing totals**
-
-Add `inventoryLossExpense` to the appropriate store/daily report shapes. Assert:
+Assert exactly:
 
 ```text
-inventoryLossExpense == sum(product wasteValue + shrinkValue)
-operatingIncome == grossMargin - operatingCosts - inventoryLossExpense
+cityDemandBase
+* demandWeight
+* marketing policy
+* pricing policy
+* retailDemandProfile[productId]
+* trend(day)
 ```
 
-and separately assert operating cash flow does not subtract that same historical inventory purchase a second time.
+Trend applies once at pool construction.
 
-- [ ] **Step 8: Integrate report defaults/replenishment merge**
+- [ ] **5.4 RED: reputation-sensitive share**
 
-Every `DailyProductReport` construction path must provide zero/null neutral dynamics fields, including products with replenishment activity but zero sales.
+Use:
 
-- [ ] **Step 9: Add fixed-seed regression**
+```text
+reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * sensitivity
+score = max(1, reputationTerm + staffCapacity * 0.25 + (100 - competition) * 0.2)
+```
 
-Run the same starting game twice and assert complete relevant daily product/store evidence is identical.
+Test sensitivity `1` equals today's score. Test >1 increases separation between high/low reputation stores. Never multiply the full score by one product-level sensitivity constant.
 
-- [ ] **Step 10: Run focused suites/check and commit**
+- [ ] **5.5 RED: desired-units formula and RNG stability**
+
+```text
+desired = round(
+  cityPool
+  * share
+  * obsolescence(oldestSellableAge)
+  * priceDemandMultiplier(baseSellingPrice)
+  * existingSalesJitter
+)
+```
+
+`baseSellingPrice` is the existing policy-adjusted configured price before markdown. Preserve jitter call count/order.
+
+- [ ] **5.6 RED: markdown is revenue-only**
+
+`priceDemandMultiplier` receives base price, never markdown price.
+
+```text
+effectivePrice = basePrice * markdownMultiplier
+actualRevenue = round(unitsSold * effectivePrice * existing store-level revenue multiplier)
+baseRevenue = round(unitsSold * basePrice * existing store-level revenue multiplier)
+markdownAmount = max(0, baseRevenue - actualRevenue)
+```
+
+Do not mutate configured price or add markdown expense.
+
+- [ ] **5.7 RED: exact stockout attribution**
+
+```text
+sellableDemand = min(desiredUnits, remainingStoreCapacity, remainingCityDemand)
+stockoutLostDemand = max(0, sellableDemand - availableStock)
+unitsSold = min(sellableDemand, availableStock)
+demandMissed = max(0, desiredUnits - unitsSold)
+```
+
+Test capacity misses and exhausted city demand are not stockouts.
+
+- [ ] **5.8 Apply stockout sensitivity through existing reputation/customer penalties**
+
+No demand creation and no archetype branch.
+
+- [ ] **5.9 RED: store accounting**
+
+Add `DailyStoreReport.inventoryLossExpense` and assert:
+
+```text
+inventoryLossExpense = sum(product wasteValue + shrinkValue)
+grossMargin = revenue - costOfGoods
+netIncome = grossMargin - operatingCosts - inventoryLossExpense
+```
+
+`importSpend` remains separate cash evidence and is not subtracted in store income.
+
+- [ ] **5.10 RED: company accounting**
+
+Add `DailyReport.inventoryLossExpense`:
+
+```text
+inventoryLossExpense = sum(store inventoryLossExpense)
+operatingIncome = grossMargin - operatingCosts - inventoryLossExpense
+```
+
+Operating cash flow remains on the current cash basis and does not subtract inventory loss.
+
+Do not alter legacy `DailyReport.netIncome` or finance-interest semantics here.
+
+- [ ] **5.11 Neutral report defaults**
+
+Every `DailyProductReport` construction/merge path provides zero/null dynamics fields, including replenishment-with-zero-sales paths.
+
+- [ ] **5.12 Fixed-seed regression**
+
+Same game/seed/day produces identical complete product/store evidence.
+
+- [ ] **5.13 GREEN/commit**
 
 ```bash
 bun run test:unit -- --run src/lib/game/productDynamics.spec.ts src/lib/game/stock.spec.ts src/lib/game/retailSupply.spec.ts src/lib/game/simulateDay.spec.ts
@@ -551,44 +640,43 @@ git add src/lib/game
 git commit -m "feat(products): apply product dynamics in daily simulation"
 ```
 
-If `simulateDay` behavior is split across multiple spec files, include all touched focused files rather than relying on the single example path above.
+Include all touched split `simulateDay*.spec.ts` files.
 
 ---
 
-### Task 6: Extend persistence validation for complete dynamics report evidence
+## Task 6: Extend strict persistence validation for the complete HPA-38 state/report shape
 
-**Files:**
-- Modify: `src/lib/persistence/saveCodec.ts`
-- Modify: `src/lib/persistence/saveCodec.spec.ts`
-- Modify: repository persistence specs/fixtures surfaced by the current schema
+**Files**
 
-- [ ] **Step 1: Write malformed-report tests**
+- `src/lib/persistence/saveCodec.ts`
+- `src/lib/persistence/saveCodec.spec.ts`
+- current-schema repository fixtures/specs
+- scenario codec/spec only if Task 2 left current-schema checks to this checkpoint
 
-Reject unknown product IDs, negative unit/value fields, invalid freshness percentage, non-finite multipliers/prices, negative markdown amount, and impossible lot data.
+- [ ] **6.1 RED: malformed report/state cases**
 
-- [ ] **Step 2: Verify RED**
+Reject unknown product IDs, invalid lots, negative units/value, invalid freshness/age, non-finite multipliers/prices, negative markdown, invalid `inventoryLossExpense`.
 
-```bash
-bun run test:unit -- --run src/lib/persistence/saveCodec.spec.ts
-```
-
-- [ ] **Step 3: Extend current-schema validators only**
-
-Validate schema-17 state/report contracts with focused helper functions. Do not create schema-16 decode branches.
-
-- [ ] **Step 4: Preserve cross-field invariants where cheap and valuable**
+- [ ] **6.2 Add cheap cross-field invariants**
 
 At minimum:
 
-- store product IDs are unique and valid for the archetype/unlock state;
-- `freshnessPercent` is null or within `[0, 100]`;
-- multipliers/prices are finite and non-negative/positive according to runtime contracts;
-- `inventoryLossExpense` is finite and non-negative;
-- product report values use safe numeric bounds already established by current save validation style.
+- product IDs unique/valid for archetype unlock state;
+- lots canonical and positive;
+- freshness null or `[0,100]`;
+- age null or non-negative safe integer;
+- multipliers/prices finite and contract-valid;
+- `inventoryLossExpense` finite/non-negative;
+- where all product rows exist, store inventory loss equals sum of product waste/shrink values;
+- daily inventory loss equals sum store inventory losses.
 
-Do not attempt to replay the entire daily simulation during decode.
+Do not replay the simulation during decode.
 
-- [ ] **Step 5: Run persistence suite/check and commit**
+- [ ] **6.3 Confirm schema-16 rejection remains direct**
+
+No decode/migration branch.
+
+- [ ] **6.4 GREEN/commit**
 
 ```bash
 bun run test:unit -- --run src/lib/persistence/saveCodec.spec.ts src/lib/persistence/saveRepository.spec.ts
@@ -599,91 +687,90 @@ git commit -m "test(persistence): validate product dynamics state"
 
 ---
 
-### Task 7: Surface product pressure in the existing stock/detail/report UI
+## Task 7: Surface compact pressure through existing UI
 
-**Files:**
-- Modify: `src/lib/components/game/StoreStockTable.svelte`
-- Modify: `src/lib/components/game/StoreStockTable.svelte.spec.ts`
-- Modify: `src/lib/components/game/StoreDetailModal.svelte`
-- Modify focused modal spec
-- Modify: `src/lib/components/game/ReportsPanel.svelte`
-- Modify: `src/lib/components/game/ReportsPanel.svelte.spec.ts`
-- Modify: existing report-warning builder/types in `src/lib/game/simulateDay.ts` / `types.ts` as required
-- Modify i18n messages only where these surfaces already use message keys
+**Files**
 
-- [ ] **Step 1: Load required Svelte docs before editing**
+- `StoreStockTable.svelte` + spec
+- `StoreDetailModal.svelte` + spec
+- `ReportsPanel.svelte` + spec
+- game warning types/builder
+- i18n messages as required
 
-Per `AGENTS.md`, call Svelte MCP `list-sections`, then `get-documentation` for every relevant section. Keep a note of the sections used in implementation work.
+- [ ] **7.1 Load mandatory Svelte docs**
 
-- [ ] **Step 2: Write component tests for compact pressure states**
+Use official Svelte MCP `list-sections` then fetch all relevant documentation before edits.
 
-Cover representative rows/summaries:
+- [ ] **7.2 RED: component pressure states**
 
-- fresh/perishable;
-- freshness risk / waste;
-- markdown/obsolescence;
-- stockout-sensitive lost demand;
-- neutral product with no pressure badge/no noise.
+Cover perishable/freshness, waste, markdown/obsolescence, stockout-sensitive demand, neutral product.
 
-- [ ] **Step 3: Extend store report warnings in game logic**
+- [ ] **7.3 Extend existing warning union/builder**
 
-Add focused warning variants/fields only as needed by the existing warning architecture. Thresholds are derived from product evidence; do not create a second alert engine.
+Focused variants only; no alert subsystem.
 
-- [ ] **Step 4: Update `StoreStockTable.svelte`**
+- [ ] **7.4 Stock table**
 
-Show concrete product name, stock, configured price, and at most one compact highest-priority pressure label per row. Do not expose FIFO lots.
+Show product name, derived stock, configured price, and at most one highest-priority pressure label. No lot UI and no family grouping.
 
-- [ ] **Step 5: Update `StoreDetailModal.svelte`**
+- [ ] **7.5 Store detail**
 
-Surface the store's active product-pressure warning summary using existing modal composition. Avoid a new product tab unless current component structure makes it unavoidable.
+Surface compact active product-pressure summary; do not add a new product tab unless existing composition makes it unavoidable.
 
-- [ ] **Step 6: Update `ReportsPanel.svelte`**
+- [ ] **7.6 Reports**
 
-Expose daily waste/shrink/markdown/stockout-lost-demand evidence in the existing product/store reporting area. Keep totals legible and avoid a new analytics dashboard.
+Show daily waste/shrink/markdown/stockout evidence and `inventoryLossExpense` near operating income/cash-flow evidence so non-cash inventory loss is legible.
 
-- [ ] **Step 7: Run `svelte-autofixer` on every changed Svelte snippet until no issues remain**
+- [ ] **7.7 Run `svelte-autofixer` until clean for every changed Svelte snippet**
 
-This is mandatory repository guidance.
-
-- [ ] **Step 8: Run client component tests/check and commit**
+- [ ] **7.8 GREEN/commit**
 
 ```bash
-bun run test:unit -- --project client --run src/lib/components/game/StoreStockTable.svelte.spec.ts src/lib/components/game/StoreDetailModal.svelte.spec.ts src/lib/components/game/ReportsPanel.svelte.spec.ts
+bun run test:unit -- --project client --run \
+  src/lib/components/game/StoreStockTable.svelte.spec.ts \
+  src/lib/components/game/StoreDetailModal.svelte.spec.ts \
+  src/lib/components/game/ReportsPanel.svelte.spec.ts
 bun run check
-git add src/lib/components/game src/lib/game/types.ts src/lib/game/simulateDay.ts src/lib/i18n
+git add src/lib/components/game src/lib/game src/lib/i18n
 git commit -m "feat(ui): surface product dynamics pressure"
 ```
 
-Use the actual focused modal spec filename present at implementation time.
-
 ---
 
-### Task 8: Tune one visible mechanic per archetype and add one stable end-to-end proof
+## Task 8: Tune one visible mechanic per archetype and add one targeted E2E proof
 
-**Files:**
-- Modify: `src/lib/game/products.ts`
-- Modify: `src/lib/game/products.spec.ts`
-- Modify representative simulation specs
-- Modify: `src/routes/retail-sim.e2e.ts`
+**Files**
 
-- [ ] **Step 1: Add one archetype-differentiation integration test each**
+- `src/lib/game/products.ts`
+- `products.spec.ts`
+- representative simulation specs
+- `src/routes/retail-sim.e2e.ts`
 
-Use focused deterministic fixtures rather than long UI scenarios:
+- [ ] **8.1 Grocery proof**
 
-- grocery: produce/prepared stock ages into waste;
-- electronics: devices age into obsolescence/markdown pressure;
-- convenience: stockout of sensitive beverage produces attributed lost demand and warning;
-- boutique: apparel trend + reputation sensitivity changes demand share.
+Fixture contains an old leftover produce lot plus a newer lot. Assert the old lot wastes while the newer lot remains sellable. Production shelf-life threshold must be >7 days.
 
-- [ ] **Step 2: Tune production definitions conservatively**
+- [ ] **8.2 Electronics proof**
 
-Adjust only product catalog data. Do not branch on archetype in simulation code.
+Old devices cross the >7-day obsolescence/markdown threshold. Assert same oldest-age input drives both; markdown does not increase price-demand multiplier.
 
-- [ ] **Step 3: Add one targeted Playwright scenario**
+- [ ] **8.3 Convenience proof**
 
-Choose the cheapest stable representative pressure to observe through existing UI controls. Prefer a deterministic seeded game/store and text/report assertion. Do not add pixel comparisons, sleeps, or a four-archetype e2e matrix.
+Sensitive beverage stockout produces the exact `stockoutLostDemand` amount and warning; capacity-limited demand is excluded.
 
-- [ ] **Step 4: Run focused e2e and commit**
+- [ ] **8.4 Boutique proof**
+
+For the same city pool/product/day, two stores with different reputations have greater share separation at authored sensitivity >1 than at sensitivity 1.
+
+- [ ] **8.5 Tune only catalog data**
+
+No archetype branches. Keep values conservative and tests focused on behavior/contracts rather than arbitrary balance numbers.
+
+- [ ] **8.6 One targeted Playwright flow**
+
+Choose the cheapest stable pressure observable through existing controls/report UI. Do not create a four-archetype E2E matrix, pixel assertions, or sleeps.
+
+- [ ] **8.7 GREEN/commit**
 
 ```bash
 bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "product pressure"
@@ -693,101 +780,111 @@ git commit -m "test(products): cover archetype dynamics"
 
 ---
 
-### Task 9: Remove migration scaffolding, verify contracts, and run the full gate
+## Task 9: Remove migration scaffolding and run the full gate
 
-**Files:**
-- Search all touched production/test files
-- No new architecture expected
-
-- [ ] **Step 1: Prove legacy identity is gone**
-
-Search for final forbidden/legacy terms in retail-product context:
+- [ ] **9.1 Prove old retail identity is gone**
 
 ```bash
-rg "startingCategories|categoryId|getFinishedMaterialIdForCategory|ProductCategory" src
+rg "startingCategories|categoryId|getFinishedMaterialIdForCategory|ProductCategory|productCategoryIds|categoryIds" src
 ```
 
-Expected: no retail product identity usage remains. If a non-retail concept legitimately uses `categoryId`, verify it is unrelated before leaving it.
+Review all matches. Non-retail `category` terminology may remain only if semantically unrelated.
 
-- [ ] **Step 2: Prove scalar store stock is gone**
+- [ ] **9.2 Prove scalar store stock is gone**
 
-Inspect `StoreProduct` call sites and ensure no persisted `.stock` field remains; UI/read models must use the stock helper/derived value.
+Inspect `StoreProduct` call sites. No persisted `.stock`; all reads derive from lots.
 
-- [ ] **Step 3: Verify no archetype branches implement dynamics**
+- [ ] **9.3 Prove lot cloning is safe**
+
+Audit shallow product copies:
+
+```bash
+rg "\.\.\.product|lots:" src/lib/game src/lib/scenarios src/lib/persistence
+```
+
+Verify every lot-backed clone either uses the canonical clone helper or explicitly clones lots.
+
+- [ ] **9.4 Prove production mapping is explicit**
+
+```bash
+rg "ProductId|productionMaterialId|getSupportedStoreChain" src/lib/game
+```
+
+No retail-product/material equality shortcut remains.
+
+- [ ] **9.5 Prove dynamics are not archetype branches**
 
 ```bash
 rg "archetypeId.*(grocery|electronics|convenience|boutique)|case '(grocery|electronics|convenience|boutique)'" src/lib/game
 ```
 
-Review matches. Existing unrelated archetype configuration switches are fine; HPA-38 dynamics arithmetic must be product-data-driven.
+Review matches; unrelated existing config is fine.
 
-- [ ] **Step 4: Run formatting/lint/type/unit/build gates**
+- [ ] **9.6 Verify accounting invariants**
+
+Confirm:
+
+- waste/shrink reduce inventory once;
+- value basis is `importCost`;
+- store net income includes inventory loss but not replenishment cash spend;
+- daily operating income includes inventory loss;
+- operating cash flow does not double-charge it;
+- markdown affects revenue once;
+- product -> store -> daily totals reconcile.
+
+- [ ] **9.7 Full verification**
 
 ```bash
 bun run check
 bun run lint
 bun run test:unit -- --run
 bun run build
-```
-
-- [ ] **Step 5: Run the full test gate**
-
-```bash
 bun run test
 ```
 
-Expected: unit + e2e green.
-
-- [ ] **Step 6: Review persisted/accounting invariants**
-
-Confirm:
-
-- schema 17 only;
-- no schema-16 migration;
-- store lots are sole quantity source;
-- waste/shrink reduce inventory once;
-- inventory loss expense affects operating income but is not double-charged to cash;
-- markdown affects actual revenue once;
-- product reports and store/daily totals reconcile.
-
-- [ ] **Step 7: Commit cleanup if needed**
+- [ ] **9.8 Cleanup commit if needed**
 
 ```bash
 git add -A
 git commit -m "chore(products): finalize HPA-38 product model"
 ```
 
-Skip the commit if verification required no changes.
+Skip if verification required no changes.
 
 ---
 
 ## Implementation notes
 
-### Keep commits green, but do not preserve legacy architecture
+### Keep checkpoints green without preserving obsolete architecture
 
-The Linear ticket explicitly permits compatibility helpers during incremental migration. Use them only when required to keep a task boundary testable. Delete them before Task 9.
+Temporary source-only helpers are allowed inside a task if needed for a green midpoint. Delete them before Task 9. Do not add persistence compatibility.
 
-### Use existing names as call-site clues, not as contracts
+### Use old names only as search clues
 
-The current repo has many `category` names because `ProductCategory` was the original sellable unit. When the semantics are clearly product identity, rename them. Do not perform unrelated terminology cleanup.
+The existing repo has many `category` names because category was the sellable identity. Rename only semantic retail-product uses; avoid unrelated vocabulary cleanup.
 
-### Preserve deterministic RNG behavior
+### Preserve RNG behavior
 
-Do not add RNG calls for trend, shrink, spoilage, or markdown. Existing city sales jitter remains the only stochastic sales variation in this slice. If an implementation change accidentally moves/adds RNG consumption, treat it as a regression unless a test proves the change is intentional.
+Do not add RNG for trend, shrink, spoilage, markdown, or obsolescence. Existing city-sales jitter stays at the same per-seller point and order. Treat RNG movement as a regression unless explicitly proven necessary.
 
-### Do not solve HPA-39 early
+### Do not solve HPA-39
 
-`ProductId` is deliberately a stable seam that HPA-39 can reference. Do not add `BrandId`, competitor assortment, market share, brand reputation, brand modifiers, or competitor sales in this implementation.
+No `BrandId`, brand assortment, competitor entity, competitor market share, rival event action, or brand modifier belongs here.
 
 ## Definition of done
 
 - HPA-38 acceptance criteria are represented by executable tests.
-- `ProductId` is authoritative across archetypes, store state, reports, persistence, product art, and production mapping.
-- Product families group concrete products without owning stock.
-- FIFO lots support deterministic age-dependent mechanics with no SKU system.
-- Product dynamics are optional, authored, deterministic, and shared across archetypes.
-- Grocery, electronics, convenience, and boutique each have one visible differentiated mechanic.
-- Waste/shrink/markdown/stockout attribution reconciles with inventory, income, and cash semantics.
+- `ProductId` is authoritative across archetypes, stores, reports, city demand profiles, supply planning, scenarios, art, persistence, and production mapping.
+- One minimal `familyId` relation exists, but no family subsystem exists.
+- `soft-drinks` retains Garden Borough demand tuning and maps to finished `drinks`.
+- FIFO lots are sole store quantity state and clone safely.
+- Production age thresholds respect the seven-day replenishment contract.
+- Trend applies once to the city pool; seller share/obsolescence/price apply at their locked sites.
+- Reputation sensitivity is mathematically effective and baseline-preserving at 1.
+- Markdown is revenue-only and uses oldest sellable age with obsolescence.
+- Stockout attribution excludes capacity/city-demand misses.
+- Waste/shrink use import-cost valuation and reconcile income/cash semantics.
+- Grocery/electronics/convenience/boutique each have one visible data-driven mechanic.
 - Schema 17 is strict and schema 16 is rejected.
-- Existing Svelte surfaces present pressure without a broad redesign.
+- Existing Svelte surfaces present compact pressure evidence without a broad redesign.
 - `bun run check`, `bun run lint`, `bun run test`, and `bun run build` pass.
