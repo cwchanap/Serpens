@@ -364,10 +364,10 @@ function createLogisticsReportWithModifierEvidence(): DailyReport['logistics'] {
 		instanceId: 'event-instance-1',
 		optionId: 'accept-delay'
 	};
-	const contributor = (modifierId: string, optionId = 'accept-delay') => ({
+	const contributor = (modifierId: string, optionId: string, explanationKey: string) => ({
 		modifierId,
 		source: { ...contributorSource, optionId },
-		explanation: { key: 'events.freightDisruption.acceptDelay.capacity', params: {} }
+		explanation: { key: explanationKey, params: {} }
 	});
 	return {
 		arrivals: [
@@ -397,13 +397,25 @@ function createLogisticsReportWithModifierEvidence(): DailyReport['logistics'] {
 				dispatchSuspended: false,
 				modifierImpacts: [
 					{
-						contributors: [contributor('event-modifier-1')],
+						contributors: [
+							contributor(
+								'event-modifier-1',
+								'accept-delay',
+								'events.freightDisruption.acceptDelay.leadTime'
+							)
+						],
 						effectKind: 'route-lead-time-adjustment',
 						baselineLeadTimeDays: 2,
 						effectiveLeadTimeDays: 3
 					},
 					{
-						contributors: [contributor('event-modifier-2')],
+						contributors: [
+							contributor(
+								'event-modifier-2',
+								'accept-delay',
+								'events.freightDisruption.acceptDelay.capacity'
+							)
+						],
 						effectKind: 'route-capacity-multiplier',
 						baselineCapacity: 10,
 						effectiveCapacity: 8,
@@ -411,7 +423,13 @@ function createLogisticsReportWithModifierEvidence(): DailyReport['logistics'] {
 						effectiveDispatchedQuantity: 6
 					},
 					{
-						contributors: [contributor('event-modifier-3')],
+						contributors: [
+							contributor(
+								'event-modifier-3',
+								'accept-delay',
+								'events.freightDisruption.charterCarriers.transportCost'
+							)
+						],
 						effectKind: 'route-transport-cost-multiplier',
 						baselineTransportCost: 21,
 						effectiveTransportCost: 31
@@ -435,9 +453,15 @@ function createLogisticsReportWithModifierEvidence(): DailyReport['logistics'] {
 				dispatchSuspended: true,
 				modifierImpacts: [
 					{
-						contributors: [contributor('event-modifier-4', 'suspend-shipments')],
+						contributors: [
+							contributor(
+								'event-modifier-4',
+								'suspend-shipments',
+								'events.freightDisruption.suspendShipments.suspension'
+							)
+						],
 						effectKind: 'route-dispatch-suspension',
-						baselineDispatchedQuantity: 7,
+						baselineDispatchedQuantity: 10,
 						effectiveDispatchedQuantity: 0
 					}
 				]
