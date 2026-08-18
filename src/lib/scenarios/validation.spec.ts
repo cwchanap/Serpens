@@ -2478,6 +2478,26 @@ describe('validateScenarioDefinition coverage gaps', () => {
 		});
 	});
 
+	it.each([
+		['fractional', 2.5],
+		['unsafe', Number.MAX_SAFE_INTEGER + 1]
+	] as const)('rejects a product override with %s stock', (_name, stock) => {
+		const definition = validDefinition();
+		definition.start.overrides.stores![0]!.products![0]!.stock = stock;
+
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].stock',
+			code: 'invalid-non-negative-safe-integer'
+		});
+	});
+
+	it('accepts zero product stock as a valid whole-number quantity', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores![0]!.products![0]!.stock = 0;
+
+		expect(codes(definition)).toEqual([]);
+	});
+
 	it('rejects a building inventory with a non-string buildingRef', () => {
 		const definition = malformedDefinition();
 		definition.start.overrides.buildingInventories = [{ buildingRef: 123, materials: {} }];

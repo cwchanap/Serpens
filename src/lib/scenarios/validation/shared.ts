@@ -340,6 +340,25 @@ export function nonNegativeInteger(
 	return true;
 }
 
+export function nonNegativeSafeInteger(
+	context: ValidationContext,
+	value: unknown,
+	path: string
+): value is number {
+	if (!nonNegativeNumber(context, value, path)) return false;
+	if (!Number.isSafeInteger(value)) {
+		diagnostic(
+			context,
+			path,
+			'invalid-non-negative-safe-integer',
+			value,
+			`${path} must be a non-negative safe integer.`
+		);
+		return false;
+	}
+	return true;
+}
+
 export function positiveNumber(
 	context: ValidationContext,
 	value: unknown,
