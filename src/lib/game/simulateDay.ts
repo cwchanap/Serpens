@@ -600,7 +600,7 @@ function buildDailyStoreReport(
 	const costOfGoods = productReports.reduce((total, report) => total + report.costOfGoods, 0);
 	const importSpend = productReports.reduce((total, report) => total + report.importSpend, 0);
 	const inventoryLossExpense = productReports.reduce(
-		(total, report) => total + (report.wasteValue ?? 0) + (report.shrinkValue ?? 0),
+		(total, report) => total + report.wasteValue + report.shrinkValue,
 		0
 	);
 	const customersServed = productReports.reduce((total, report) => total + report.unitsSold, 0);
@@ -755,7 +755,7 @@ function collectWarnings(
 
 function sum(reports: DailyStoreReport[], key: SummedStoreReportKey): number {
 	return reports.reduce((total, report) => {
-		return total + (report[key] ?? 0);
+		return total + report[key];
 	}, 0);
 }
 

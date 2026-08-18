@@ -55,6 +55,7 @@ function makeReport(railUsage: Record<string, number>): DailyReport {
 		productionReport: { ...emptyProductionReport(), railUsage },
 		logistics: emptyLogisticsReport(),
 		storeReports: [],
+		inventoryLossExpense: 0,
 		modifierImpacts: [],
 		modifierLifecycle: [],
 		warnings: []

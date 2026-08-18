@@ -1273,13 +1273,13 @@ async function waitForAutoSaveDay(page: Page, day: number): Promise<SavedGame> {
 
 async function waitForSavedProductSettings(
 	page: Page,
-	categoryId: string,
+	productId: string,
 	expected: { day: number; reorderThreshold: number; targetStock: number }
 ): Promise<SavedGame> {
 	await expect
 		.poll(async () => {
 			const game = await readAutoSaveGame(page);
-			const product = getSavedProduct(game, categoryId);
+			const product = getSavedProduct(game, productId);
 
 			return [game.day, product.reorderThreshold, product.targetStock].join(':');
 		})
@@ -1288,11 +1288,11 @@ async function waitForSavedProductSettings(
 	return readAutoSaveGame(page);
 }
 
-function getSavedProduct(game: SavedGame, categoryId: string) {
-	const product = game.stores[0]?.products.find((item) => item.productId === categoryId);
+function getSavedProduct(game: SavedGame, productId: string) {
+	const product = game.stores[0]?.products.find((item) => item.productId === productId);
 
 	if (!product) {
-		throw new Error(`Missing saved product ${categoryId}`);
+		throw new Error(`Missing saved product ${productId}`);
 	}
 
 	return product;

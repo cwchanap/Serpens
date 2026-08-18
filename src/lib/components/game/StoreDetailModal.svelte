@@ -12,6 +12,7 @@
 		DailyStoreReport,
 		GameState,
 		HiringCandidate,
+		ProductId,
 		StaffMember,
 		Store,
 		StoreProductPatch
@@ -24,7 +25,7 @@
 		staff: StaffMember[];
 		hiringCandidates: HiringCandidate[];
 		latestStoreReport: DailyStoreReport | null;
-		onUpdateStoreProduct: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
+		onUpdateStoreProduct: (storeId: string, productId: ProductId, patch: StoreProductPatch) => void;
 		onHireStaff: (candidateId: string) => void;
 		onAssignStaff: (staffId: string, storeId: string) => void;
 		onUnassignStaff: (staffId: string) => void;
@@ -32,7 +33,7 @@
 		onClickFeedback?: () => void;
 		canUpdateSellingPrice?: boolean;
 		canUpdateInventoryTargets?: boolean;
-		allowedProductIds?: string[];
+		allowedProductIds?: readonly ProductId[];
 		canHireStaff?: boolean;
 		canAssignStaff?: boolean;
 		canUnassignStaff?: boolean;
@@ -74,7 +75,6 @@
 		const shelfLifeDays = getProductDefinition(report.productId)?.dynamics.shelfLifeDays;
 		if (
 			averageAgeDays === null ||
-			averageAgeDays === undefined ||
 			!Number.isFinite(averageAgeDays) ||
 			shelfLifeDays === undefined ||
 			!Number.isFinite(shelfLifeDays) ||
@@ -90,48 +90,48 @@
 		const messages: PressureMessage[] = [];
 		for (const report of latestStoreReport?.productReports ?? []) {
 			const productName = i18n.labels.productCategory(report.productId);
-			if ((report.wasteUnits ?? 0) > 0) {
+			if (report.wasteUnits > 0) {
 				messages.push({
 					id: `${report.productId}-waste`,
 					text: i18n.t('storeDetail.pressureSummary.waste', {
 						productName,
-						units: i18n.format.integer(report.wasteUnits ?? 0)
+						units: i18n.format.integer(report.wasteUnits)
 					})
 				});
 			}
-			if ((report.shrinkUnits ?? 0) > 0) {
+			if (report.shrinkUnits > 0) {
 				messages.push({
 					id: `${report.productId}-shrink`,
 					text: i18n.t('storeDetail.pressureSummary.shrink', {
 						productName,
-						units: i18n.format.integer(report.shrinkUnits ?? 0)
+						units: i18n.format.integer(report.shrinkUnits)
 					})
 				});
 			}
-			if ((report.stockoutLostDemand ?? 0) > 0) {
+			if (report.stockoutLostDemand > 0) {
 				messages.push({
 					id: `${report.productId}-stockout`,
 					text: i18n.t('storeDetail.pressureSummary.stockout', {
 						productName,
-						units: i18n.format.integer(report.stockoutLostDemand ?? 0)
+						units: i18n.format.integer(report.stockoutLostDemand)
 					})
 				});
 			}
-			if ((report.markdownAmount ?? 0) > 0) {
+			if (report.markdownAmount > 0) {
 				messages.push({
 					id: `${report.productId}-markdown`,
 					text: i18n.t('storeDetail.pressureSummary.markdown', {
 						productName,
-						amount: i18n.format.currency(report.markdownAmount ?? 0)
+						amount: i18n.format.currency(report.markdownAmount)
 					})
 				});
 			}
-			if ((report.obsolescenceMultiplier ?? 1) < 1) {
+			if (report.obsolescenceMultiplier < 1) {
 				messages.push({
 					id: `${report.productId}-obsolescence`,
 					text: i18n.t('storeDetail.pressureSummary.obsolescence', {
 						productName,
-						percent: i18n.format.percent(report.obsolescenceMultiplier ?? 1)
+						percent: i18n.format.percent(report.obsolescenceMultiplier)
 					})
 				});
 			}
@@ -147,7 +147,7 @@
 			}
 		}
 
-		const inventoryLossExpense = latestStoreReport?.inventoryLossExpense ?? 0;
+		const inventoryLossExpense = latestStoreReport ? latestStoreReport.inventoryLossExpense : 0;
 		if (inventoryLossExpense > 0) {
 			messages.push({
 				id: 'inventory-loss',

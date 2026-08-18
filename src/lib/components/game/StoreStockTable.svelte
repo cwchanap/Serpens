@@ -21,10 +21,10 @@
 		store: Store;
 		ordinal: number;
 		latestReport: DailyStoreReport | null;
-		onUpdate: (storeId: string, categoryId: string, patch: StoreProductPatch) => void;
+		onUpdate: (storeId: string, productId: ProductId, patch: StoreProductPatch) => void;
 		canUpdateSellingPrice?: boolean;
 		canUpdateInventoryTargets?: boolean;
-		allowedProductIds?: string[];
+		allowedProductIds?: readonly ProductId[];
 		disabledReason?: string | null;
 	}
 
@@ -44,31 +44,29 @@
 		store.products.some((product) => !allowedProductSet.has(product.productId))
 	);
 
-	function getCategoryName(categoryId: string): string {
-		return i18n.labels.productCategory(categoryId);
+	function getProductName(productId: ProductId): string {
+		return i18n.labels.productCategory(productId);
 	}
 
-	function getImportCost(categoryId: string): number {
-		if (!getArchetype(store.archetypeId).startingProductIds.includes(categoryId as ProductId)) {
+	function getImportCost(productId: ProductId): number {
+		if (!getArchetype(store.archetypeId).startingProductIds.includes(productId)) {
 			return 0;
 		}
-		return getProductDefinition(categoryId as ProductId)?.importCost ?? 0;
+		return getProductDefinition(productId)?.importCost ?? 0;
 	}
 
-	function getProductReport(categoryId: string): DailyProductReport | null {
-		return latestReport?.productReports.find((report) => report.productId === categoryId) ?? null;
+	function getProductReport(productId: ProductId): DailyProductReport | null {
+		return latestReport?.productReports.find((report) => report.productId === productId) ?? null;
 	}
 
 	function getFreshnessPercent(
-		productId: string,
+		productId: ProductId,
 		report: DailyProductReport | null
 	): number | null {
-		const averageAgeDays = report?.averageAgeDays;
-		const shelfLifeDays = getProductDefinition(productId as ProductId)?.dynamics.shelfLifeDays;
+		const averageAgeDays = report ? report.averageAgeDays : null;
+		const shelfLifeDays = getProductDefinition(productId).dynamics.shelfLifeDays;
 		if (
-			report === null ||
 			averageAgeDays === null ||
-			averageAgeDays === undefined ||
 			!Number.isFinite(averageAgeDays) ||
 			shelfLifeDays === undefined ||
 			!Number.isFinite(shelfLifeDays) ||
@@ -92,16 +90,16 @@
 		| 'neutral';
 
 	function getPressureKind(
-		productId: string,
+		productId: ProductId,
 		product: StoreProduct,
 		report: DailyProductReport | null
 	): PressureKind {
 		if (report) {
-			if ((report.stockoutLostDemand ?? 0) > 0) return 'stockout';
-			if ((report.wasteUnits ?? 0) > 0) return 'waste';
-			if ((report.shrinkUnits ?? 0) > 0) return 'shrink';
-			if ((report.markdownAmount ?? 0) > 0) return 'markdown';
-			if ((report.obsolescenceMultiplier ?? 1) < 1) return 'obsolescence';
+			if (report.stockoutLostDemand > 0) return 'stockout';
+			if (report.wasteUnits > 0) return 'waste';
+			if (report.shrinkUnits > 0) return 'shrink';
+			if (report.markdownAmount > 0) return 'markdown';
+			if (report.obsolescenceMultiplier < 1) return 'obsolescence';
 			const freshnessPercent = getFreshnessPercent(productId, report);
 			if (freshnessPercent !== null && freshnessPercent < 100) return 'freshness';
 		}
@@ -117,30 +115,30 @@
 	}
 
 	function pressureLabel(
-		productId: string,
+		productId: ProductId,
 		report: DailyProductReport | null,
 		kind: PressureKind
 	): string {
 		switch (kind) {
 			case 'stockout':
 				return i18n.t('storeStockTable.pressure.stockout', {
-					units: i18n.format.integer(report?.stockoutLostDemand ?? 0)
+					units: i18n.format.integer(report ? report.stockoutLostDemand : 0)
 				});
 			case 'waste':
 				return i18n.t('storeStockTable.pressure.waste', {
-					units: i18n.format.integer(report?.wasteUnits ?? 0)
+					units: i18n.format.integer(report ? report.wasteUnits : 0)
 				});
 			case 'shrink':
 				return i18n.t('storeStockTable.pressure.shrink', {
-					units: i18n.format.integer(report?.shrinkUnits ?? 0)
+					units: i18n.format.integer(report ? report.shrinkUnits : 0)
 				});
 			case 'markdown':
 				return i18n.t('storeStockTable.pressure.markdown', {
-					amount: i18n.format.currency(report?.markdownAmount ?? 0)
+					amount: i18n.format.currency(report ? report.markdownAmount : 0)
 				});
 			case 'obsolescence':
 				return i18n.t('storeStockTable.pressure.obsolescence', {
-					percent: i18n.format.percent(report?.obsolescenceMultiplier ?? 1)
+					percent: i18n.format.percent(report ? report.obsolescenceMultiplier : 1)
 				});
 			case 'freshness':
 				return i18n.t('storeStockTable.pressure.freshness', {
@@ -155,9 +153,9 @@
 		}
 	}
 
-	function updateNumber(categoryId: string, field: keyof StoreProductPatch, event: Event): void {
+	function updateNumber(productId: ProductId, field: keyof StoreProductPatch, event: Event): void {
 		const allowed =
-			allowedProductSet.has(categoryId) &&
+			allowedProductSet.has(productId) &&
 			(field === 'sellingPrice' ? canUpdateSellingPrice : canUpdateInventoryTargets);
 		if (!allowed) return;
 		const input = event.currentTarget as HTMLInputElement;
@@ -167,7 +165,7 @@
 			return;
 		}
 
-		onUpdate(store.id, categoryId, { [field]: value });
+		onUpdate(store.id, productId, { [field]: value });
 	}
 </script>
 
@@ -199,7 +197,7 @@
 			</thead>
 			<tbody>
 				{#each store.products as product (product.productId)}
-					{@const categoryName = getCategoryName(product.productId)}
+					{@const productName = getProductName(product.productId)}
 					{@const productArt = getProductArt(product.productId)}
 					{@const report = getProductReport(product.productId)}
 					{@const freshnessPercent = getFreshnessPercent(product.productId, report)}
@@ -218,7 +216,7 @@
 										decoding="async"
 									/>
 								</span>
-								<span>{categoryName}</span>
+								<span>{productName}</span>
 							</div>
 						</td>
 						<td data-testid={`derived-stock-${product.productId}`}>
@@ -233,7 +231,7 @@
 								value={product.sellingPrice}
 								disabled={!canUpdateSellingPrice || !allowedProductSet.has(product.productId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.sellingPrice', {
-									categoryName
+									categoryName: productName
 								})}
 								onchange={(event) => updateNumber(product.productId, 'sellingPrice', event)}
 							/>
@@ -246,7 +244,7 @@
 								value={product.reorderThreshold}
 								disabled={!canUpdateInventoryTargets || !allowedProductSet.has(product.productId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.reorderThreshold', {
-									categoryName
+									categoryName: productName
 								})}
 								onchange={(event) => updateNumber(product.productId, 'reorderThreshold', event)}
 							/>
@@ -259,7 +257,7 @@
 								value={product.targetStock}
 								disabled={!canUpdateInventoryTargets || !allowedProductSet.has(product.productId)}
 								aria-label={i18n.t('storeStockTable.inputLabels.targetStock', {
-									categoryName
+									categoryName: productName
 								})}
 								onchange={(event) => updateNumber(product.productId, 'targetStock', event)}
 							/>
@@ -291,38 +289,38 @@
 											})}
 										</span>
 									{/if}
-									{#if (report.stockoutLostDemand ?? 0) > 0}
+									{#if report.stockoutLostDemand > 0}
 										<span data-testid={`stockout-loss-${product.productId}`}>
 											{i18n.t('storeStockTable.evidence.stockout', {
-												units: i18n.format.integer(report.stockoutLostDemand ?? 0)
+												units: i18n.format.integer(report.stockoutLostDemand)
 											})}
 										</span>
 									{/if}
-									{#if (report.wasteUnits ?? 0) > 0}
+									{#if report.wasteUnits > 0}
 										<span>
 											{i18n.t('storeStockTable.evidence.waste', {
-												units: i18n.format.integer(report.wasteUnits ?? 0)
+												units: i18n.format.integer(report.wasteUnits)
 											})}
 										</span>
 									{/if}
-									{#if (report.shrinkUnits ?? 0) > 0}
+									{#if report.shrinkUnits > 0}
 										<span>
 											{i18n.t('storeStockTable.evidence.shrink', {
-												units: i18n.format.integer(report.shrinkUnits ?? 0)
+												units: i18n.format.integer(report.shrinkUnits)
 											})}
 										</span>
 									{/if}
-									{#if (report.obsolescenceMultiplier ?? 1) < 1}
+									{#if report.obsolescenceMultiplier < 1}
 										<span>
 											{i18n.t('storeStockTable.evidence.obsolescence', {
-												percent: i18n.format.percent(report.obsolescenceMultiplier ?? 1)
+												percent: i18n.format.percent(report.obsolescenceMultiplier)
 											})}
 										</span>
 									{/if}
-									{#if (report.markdownAmount ?? 0) > 0}
+									{#if report.markdownAmount > 0}
 										<span>
 											{i18n.t('storeStockTable.evidence.markdown', {
-												amount: i18n.format.currency(report.markdownAmount ?? 0)
+												amount: i18n.format.currency(report.markdownAmount)
 											})}
 										</span>
 									{/if}

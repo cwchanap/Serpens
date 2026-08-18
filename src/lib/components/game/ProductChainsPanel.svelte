@@ -17,13 +17,13 @@
 		localizeProductChainGraph
 	} from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
-	import type { GameState } from '$lib/game/types';
+	import type { GameState, ProductId } from '$lib/game/types';
 
 	interface Props {
 		game: GameState;
 		i18n: I18nBundle;
-		onPlanCategory?: (categoryId: string) => void;
-		plannerCategoryIds?: readonly string[];
+		onPlanProduct?: (productId: ProductId) => void;
+		plannerProductIds?: readonly ProductId[];
 	}
 
 	type ChainMode = 'store-categories' | 'warehouse-flow';
@@ -33,10 +33,10 @@
 		nodeId: string | null;
 	}
 
-	let { game, i18n, onPlanCategory = () => {}, plannerCategoryIds = [] }: Props = $props();
+	let { game, i18n, onPlanProduct = () => {}, plannerProductIds = [] }: Props = $props();
 
 	let mode = $state<ChainMode>('store-categories');
-	let selectedCategoryId = $state<string | null>(null);
+	let selectedProductId = $state<ProductId | null>(null);
 	let nodeSelection = $state<NodeSelection>({ graphId: null, nodeId: null });
 
 	const summaries = $derived(
@@ -44,13 +44,13 @@
 			localizeProductChainCategorySummary(summary, i18n)
 		)
 	);
-	const defaultCategoryId = $derived(
+	const defaultProductId = $derived(
 		game.stores.flatMap((store) => getSupportedStoreChainCategories(store))[0]?.id ?? null
 	);
 	const activeCategory = $derived.by(
 		() =>
-			summaries.find((summary) => summary.productId === selectedCategoryId) ??
-			summaries.find((summary) => summary.productId === defaultCategoryId) ??
+			summaries.find((summary) => summary.productId === selectedProductId) ??
+			summaries.find((summary) => summary.productId === defaultProductId) ??
 			summaries[0] ??
 			null
 	);
@@ -146,9 +146,9 @@
 		return labels;
 	}
 
-	function selectCategory(categoryId: string): void {
+	function selectProduct(productId: ProductId): void {
 		mode = 'store-categories';
-		selectedCategoryId = categoryId;
+		selectedProductId = productId;
 		nodeSelection = { graphId: null, nodeId: null };
 	}
 
@@ -179,8 +179,8 @@
 				type="button"
 				class="plan-category"
 				aria-label={i18n.t('supplyAdvisor.dialog')}
-				disabled={!plannerCategoryIds.includes(activeCategory.productId)}
-				onclick={() => onPlanCategory(activeCategory.productId)}
+				disabled={!plannerProductIds.includes(activeCategory.productId)}
+				onclick={() => onPlanProduct(activeCategory.productId)}
 			>
 				{i18n.t('supplyAdvisor.title')}
 			</button>
@@ -218,9 +218,9 @@
 		<CategoryStampIndex
 			{summaries}
 			{i18n}
-			activeCategoryId={activeCategory?.productId ?? null}
+			activeProductId={activeCategory?.productId ?? null}
 			{mode}
-			onSelectCategory={selectCategory}
+			onSelectProduct={selectProduct}
 		/>
 	{:else}
 		<p class="empty">{i18n.t('productChainsPanel.emptyCategories')}</p>

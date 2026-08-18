@@ -83,6 +83,7 @@ const summary: ReportSummary = {
 		netIncome: 69,
 		cashAfter: 12_345,
 		outstandingPrincipalAfter: 5_970,
+		inventoryLossExpense: 0,
 		nextLoanPayment: { loanId: 'loan-1', day: 11, amount: 49 },
 		scorecard: {
 			profit: 55,
@@ -210,9 +211,22 @@ function replenishedStoreReport(): DailyStoreReport {
 				warehouseValue: 8,
 				importedUnits: 3,
 				importCost: 5,
-				importSpend: 15
+				importSpend: 15,
+				wasteUnits: 0,
+				wasteValue: 0,
+				shrinkUnits: 0,
+				shrinkValue: 0,
+				stockoutLostDemand: 0,
+				averageAgeDays: null,
+				oldestSellableAgeDays: null,
+				trendMultiplier: 1,
+				obsolescenceMultiplier: 1,
+				baseSellingPrice: 5,
+				effectiveSellingPrice: 5,
+				markdownAmount: 0
 			}
 		],
+		inventoryLossExpense: 0,
 		warnings: [],
 		replenishment: {
 			retailCityId: 'harbor-city',

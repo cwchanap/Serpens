@@ -22,13 +22,13 @@ export interface SupplyPlannerUiContext {
 	horizonDays: SupplyPlannerHorizonDays;
 }
 
-export function getSupplyPlannerCategoryIds(
+export function getSupplyPlannerProductIds(
 	game: GameState | null,
 	retailCityId: WorldCityId,
-	allowedCategoryIds: readonly ProductId[]
+	allowedProductIds: readonly ProductId[]
 ): ProductId[] {
 	if (!game) return [];
-	const allowed = new Set(allowedCategoryIds);
+	const allowed = new Set(allowedProductIds);
 	return listSupplyPlannerCategories(game, retailCityId).filter((productId) =>
 		allowed.has(productId)
 	);
@@ -52,14 +52,14 @@ export interface SupplyPlannerHandoffHost {
 	canSetRetailSupplySource: boolean;
 }
 
-export function resolveSupplyPlannerCategory(
+export function resolveSupplyPlannerProductId(
 	context: SupplyPlannerUiContext,
-	validCategoryIds: readonly ProductId[]
+	validProductIds: readonly ProductId[]
 ): ProductId | null {
-	if (context.productId && validCategoryIds.includes(context.productId)) {
+	if (context.productId && validProductIds.includes(context.productId)) {
 		return context.productId;
 	}
-	return validCategoryIds[0] ?? null;
+	return validProductIds[0] ?? null;
 }
 
 export interface SupplyPlannerDerivationInput {

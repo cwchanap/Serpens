@@ -61,13 +61,7 @@
 	);
 	const inventoryLossExpense = $derived.by(() => {
 		if (!summary.latest) return 0;
-		return (
-			summary.latest.inventoryLossExpense ??
-			summary.latest.storeReports.reduce(
-				(total, report) => total + (report.inventoryLossExpense ?? 0),
-				0
-			)
-		);
+		return summary.latest.inventoryLossExpense;
 	});
 
 	function cityName(cityId: string): string {
@@ -87,7 +81,6 @@
 		const shelfLifeDays = getProductDefinition(report.productId)?.dynamics.shelfLifeDays;
 		if (
 			averageAgeDays === null ||
-			averageAgeDays === undefined ||
 			!Number.isFinite(averageAgeDays) ||
 			shelfLifeDays === undefined ||
 			!Number.isFinite(shelfLifeDays) ||
@@ -104,11 +97,11 @@
 		freshnessPercent: number | null
 	): boolean {
 		return (
-			(report.wasteUnits ?? 0) > 0 ||
-			(report.shrinkUnits ?? 0) > 0 ||
-			(report.stockoutLostDemand ?? 0) > 0 ||
-			(report.markdownAmount ?? 0) > 0 ||
-			(report.obsolescenceMultiplier ?? 1) < 1 ||
+			report.wasteUnits > 0 ||
+			report.shrinkUnits > 0 ||
+			report.stockoutLostDemand > 0 ||
+			report.markdownAmount > 0 ||
+			report.obsolescenceMultiplier < 1 ||
 			(freshnessPercent !== null && freshnessPercent < 100)
 		);
 	}
@@ -378,56 +371,52 @@
 											})}
 										</li>
 									{/if}
-									{#if (row.report.wasteUnits ?? 0) > 0}
+									{#if row.report.wasteUnits > 0}
 										<li>
 											{i18n.t('reportsPanel.productPressure.waste', {
-												units: i18n.format.integer(row.report.wasteUnits ?? 0),
-												value: i18n.format.currency(row.report.wasteValue ?? 0)
+												units: i18n.format.integer(row.report.wasteUnits),
+												value: i18n.format.currency(row.report.wasteValue)
 											})}
 										</li>
 									{/if}
-									{#if (row.report.shrinkUnits ?? 0) > 0}
+									{#if row.report.shrinkUnits > 0}
 										<li>
 											{i18n.t('reportsPanel.productPressure.shrink', {
-												units: i18n.format.integer(row.report.shrinkUnits ?? 0),
-												value: i18n.format.currency(row.report.shrinkValue ?? 0)
+												units: i18n.format.integer(row.report.shrinkUnits),
+												value: i18n.format.currency(row.report.shrinkValue)
 											})}
 										</li>
 									{/if}
-									{#if (row.report.stockoutLostDemand ?? 0) > 0}
+									{#if row.report.stockoutLostDemand > 0}
 										<li>
 											{i18n.t('reportsPanel.productPressure.stockout', {
-												units: i18n.format.integer(row.report.stockoutLostDemand ?? 0)
+												units: i18n.format.integer(row.report.stockoutLostDemand)
 											})}
 										</li>
 									{/if}
-									{#if (row.report.obsolescenceMultiplier ?? 1) < 1}
+									{#if row.report.obsolescenceMultiplier < 1}
 										<li>
 											{i18n.t('reportsPanel.productPressure.obsolescence', {
-												percent: i18n.format.percent(row.report.obsolescenceMultiplier ?? 1)
+												percent: i18n.format.percent(row.report.obsolescenceMultiplier)
 											})}
 										</li>
 									{/if}
-									{#if (row.report.markdownAmount ?? 0) > 0}
+									{#if row.report.markdownAmount > 0}
 										<li>
 											{i18n.t('reportsPanel.productPressure.markdown', {
-												amount: i18n.format.currency(row.report.markdownAmount ?? 0)
+												amount: i18n.format.currency(row.report.markdownAmount)
 											})}
 										</li>
-										{#if row.report.baseSellingPrice !== undefined}
-											<li>
-												{i18n.t('reportsPanel.productPressure.basePrice', {
-													price: i18n.format.currency(row.report.baseSellingPrice)
-												})}
-											</li>
-										{/if}
-										{#if row.report.effectiveSellingPrice !== undefined}
-											<li>
-												{i18n.t('reportsPanel.productPressure.effectivePrice', {
-													price: i18n.format.currency(row.report.effectiveSellingPrice)
-												})}
-											</li>
-										{/if}
+										<li>
+											{i18n.t('reportsPanel.productPressure.basePrice', {
+												price: i18n.format.currency(row.report.baseSellingPrice)
+											})}
+										</li>
+										<li>
+											{i18n.t('reportsPanel.productPressure.effectivePrice', {
+												price: i18n.format.currency(row.report.effectiveSellingPrice)
+											})}
+										</li>
 									{/if}
 								</ul>
 							</article>
