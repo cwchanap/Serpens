@@ -64,6 +64,18 @@ function product(overrides: Partial<DailyProductReport> = {}): DailyProductRepor
 		importedUnits: 0,
 		importCost: 0,
 		importSpend: 0,
+		wasteUnits: 0,
+		wasteValue: 0,
+		shrinkUnits: 0,
+		shrinkValue: 0,
+		stockoutLostDemand: 0,
+		averageAgeDays: null,
+		oldestSellableAgeDays: null,
+		trendMultiplier: 1,
+		obsolescenceMultiplier: 1,
+		baseSellingPrice: 1,
+		effectiveSellingPrice: 1,
+		markdownAmount: 0,
 		...overrides
 	};
 }
@@ -90,6 +102,10 @@ function storeReport(
 		reputation: 100,
 		marketPosition: 100,
 		productReports,
+		inventoryLossExpense: productReports.reduce(
+			(sum, report) => sum + report.wasteValue + report.shrinkValue,
+			0
+		),
 		warnings: [],
 		...overrides,
 		replenishment: overrides.replenishment ?? null
@@ -133,6 +149,7 @@ function report(
 		},
 		productionReport: productionReport(),
 		storeReports,
+		inventoryLossExpense: storeReports.reduce((sum, item) => sum + item.inventoryLossExpense, 0),
 		modifierImpacts: [],
 		modifierLifecycle: [],
 		warnings: [],

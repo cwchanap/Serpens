@@ -66,6 +66,7 @@ function report(
 		productionReport,
 		logistics: emptyLogisticsReport(),
 		storeReports,
+		inventoryLossExpense: 0,
 		modifierImpacts: [],
 		modifierLifecycle: [],
 		warnings: []
@@ -90,6 +91,7 @@ function storeReport(importSpend: number): DailyStoreReport {
 		reputation: 100,
 		marketPosition: 100,
 		productReports: [],
+		inventoryLossExpense: 0,
 		replenishment: null,
 		warnings: []
 	};

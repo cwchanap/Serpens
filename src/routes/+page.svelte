@@ -114,9 +114,9 @@
 	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
 	import {
 		deriveSupplyPlannerResult,
-		getSupplyPlannerCategoryIds,
+		getSupplyPlannerProductIds,
 		handoffSupplyPlannerAction,
-		resolveSupplyPlannerCategory,
+		resolveSupplyPlannerProductId,
 		type SupplyPlannerHandoffHost,
 		type SupplyPlannerUiContext
 	} from './supplyPlannerRoute';
@@ -527,26 +527,26 @@
 		);
 	});
 	let allowedProductIds = $derived.by(() => {
-		const categoryIds = [
+		const productIds = [
 			...new Set(
 				(game?.stores ?? []).flatMap((store) => store.products.map((product) => product.productId))
 			)
 		];
-		return categoryIds.filter(
-			(categoryId) =>
+		return productIds.filter(
+			(productId) =>
 				playMode === 'sandbox' ||
 				(activeScenarioDefinition !== null &&
 					isScenarioContentAllowed(activeScenarioDefinition, {
 						kind: 'product',
-						productId: categoryId
+						productId
 					}))
 		);
 	});
-	let plannerCategoryIds = $derived.by(() =>
-		getSupplyPlannerCategoryIds(game, activeCity.id as WorldCityId, allowedProductIds)
+	let plannerProductIds = $derived.by(() =>
+		getSupplyPlannerProductIds(game, activeCity.id as WorldCityId, allowedProductIds)
 	);
-	let effectivePlannerCategoryId = $derived(
-		resolveSupplyPlannerCategory(supplyPlannerUiContext, plannerCategoryIds)
+	let effectivePlannerProductId = $derived(
+		resolveSupplyPlannerProductId(supplyPlannerUiContext, plannerProductIds)
 	);
 	let plannerActionAvailability = $derived<SupplyPlannerActionAvailability>({
 		// Planner candidate affordability is cash-only (game.cash >= buildCost),
@@ -950,10 +950,10 @@
 	// doing a full supply projection for a modal that is not mounted while the
 	// route-local category/horizon context remains available for reopen.
 	let supplyPlannerResult = $derived.by(() => {
-		if (!isSupplyAdvisorOpen || !game || !effectivePlannerCategoryId) return null;
+		if (!isSupplyAdvisorOpen || !game || !effectivePlannerProductId) return null;
 		return buildSupplyPlan(
 			snapshotPlannerGame(game),
-			{ retailCityId: activeCity.id as WorldCityId, productId: effectivePlannerCategoryId },
+			{ retailCityId: activeCity.id as WorldCityId, productId: effectivePlannerProductId },
 			plannerActionAvailability
 		);
 	});
@@ -1948,11 +1948,11 @@
 		clearPendingFinancedPurchase();
 	}
 
-	function openSupplyAdvisor(categoryId?: string): void {
-		if (categoryId && plannerCategoryIds.includes(categoryId as ProductId)) {
+	function openSupplyAdvisor(productId?: ProductId): void {
+		if (productId && plannerProductIds.includes(productId)) {
 			supplyPlannerUiContext = {
 				...supplyPlannerUiContext,
-				productId: categoryId as ProductId
+				productId
 			};
 		}
 		isBuildMenuOpen = false;
@@ -1963,11 +1963,11 @@
 		isSupplyAdvisorOpen = false;
 	}
 
-	function selectSupplyPlannerCategory(categoryId: string): void {
-		if (!plannerCategoryIds.includes(categoryId as ProductId)) return;
+	function selectSupplyPlannerProduct(productId: ProductId): void {
+		if (!plannerProductIds.includes(productId)) return;
 		supplyPlannerUiContext = {
 			...supplyPlannerUiContext,
-			productId: categoryId as ProductId
+			productId
 		};
 	}
 
@@ -1975,13 +1975,13 @@
 		supplyPlannerUiContext = { ...supplyPlannerUiContext, horizonDays };
 	}
 
-	function planSupplyCategory(categoryId: string): void {
-		if (!plannerCategoryIds.includes(categoryId as ProductId)) return;
+	function planSupplyProduct(productId: ProductId): void {
+		if (!plannerProductIds.includes(productId)) return;
 		activeManagementPanelId = null;
 		focusedLogisticsRouteId = null;
 		logisticsRoutePreset = null;
 		focusedRetailSupplyCityId = null;
-		openSupplyAdvisor(categoryId);
+		openSupplyAdvisor(productId);
 	}
 
 	function closePlannerOverlays(): void {
@@ -2050,7 +2050,7 @@
 				isOpen: true,
 				game,
 				retailCityId: activeCity.id as WorldCityId,
-				productId: effectivePlannerCategoryId,
+				productId: effectivePlannerProductId,
 				availability: plannerActionAvailability
 			},
 			buildSupplyPlan,
@@ -2207,30 +2207,30 @@
 		}
 	}
 
-	function changeStoreProduct(storeId: string, categoryId: string, patch: StoreProductPatch): void {
+	function changeStoreProduct(
+		storeId: string,
+		productId: ProductId,
+		patch: StoreProductPatch
+	): void {
 		if (!game) {
 			return;
 		}
 		const product = game.stores
 			.find((store) => store.id === storeId)
-			?.products.find((candidate) => candidate.productId === categoryId);
+			?.products.find((candidate) => candidate.productId === productId);
 		if (!product) {
 			return;
 		}
 
 		if (patch.sellingPrice !== undefined) {
 			if (!mutationAvailability.updateStoreSellingPrice) return;
-			void gameRouteController.updateStoreSellingPrice(
-				storeId,
-				categoryId as ProductId,
-				patch.sellingPrice
-			);
+			void gameRouteController.updateStoreSellingPrice(storeId, productId, patch.sellingPrice);
 			return;
 		}
 		if (!mutationAvailability.updateStoreInventoryTargets) return;
 		void gameRouteController.updateStoreInventoryTargets(
 			storeId,
-			categoryId as ProductId,
+			productId,
 			patch.reorderThreshold ?? product.reorderThreshold,
 			patch.targetStock ?? product.targetStock
 		);
@@ -2894,11 +2894,11 @@
 		{#if isSupplyAdvisorOpen}
 			<SupplyAdvisor
 				result={supplyPlannerResult}
-				categoryIds={plannerCategoryIds}
-				selectedCategoryId={effectivePlannerCategoryId}
+				productIds={plannerProductIds}
+				selectedProductId={effectivePlannerProductId}
 				horizonDays={supplyPlannerUiContext.horizonDays}
 				{i18n}
-				onSelectCategory={selectSupplyPlannerCategory}
+				onSelectProduct={selectSupplyPlannerProduct}
 				onSelectHorizon={selectSupplyPlannerHorizon}
 				onAction={handleSupplyPlannerAction}
 				onClose={closeSupplyAdvisor}
@@ -2994,8 +2994,8 @@
 				onRepay={repayFinanceLoan}
 				onPayoff={payOffFinanceLoan}
 				onRefinance={refinanceFinanceLoan}
-				onPlanCategory={planSupplyCategory}
-				{plannerCategoryIds}
+				onPlanProduct={planSupplyProduct}
+				{plannerProductIds}
 				onDispatchManualTransfer={dispatchManualTransfer}
 				onCreateRecurringRoute={createRecurringRoute}
 				onUpdateRecurringRoute={updateRecurringRoute}

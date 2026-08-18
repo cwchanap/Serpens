@@ -8,12 +8,12 @@
 	interface Props {
 		i18n: I18nBundle;
 		summaries: LocalizedProductChainCategorySummary[];
-		activeCategoryId: string | null;
+		activeProductId: ProductId | null;
 		mode: 'store-categories' | 'warehouse-flow';
-		onSelectCategory: (categoryId: string) => void;
+		onSelectProduct: (productId: ProductId) => void;
 	}
 
-	let { i18n, summaries, activeCategoryId, mode, onSelectCategory }: Props = $props();
+	let { i18n, summaries, activeProductId, mode, onSelectProduct }: Props = $props();
 
 	function iconFor(productId: ProductId): string | null {
 		const materialId = getProductDefinition(productId).productionMaterialId;
@@ -23,7 +23,7 @@
 
 <div class="stamp-index" role="group" aria-label={i18n.t('atlas.categoryIndex.ariaLabel')}>
 	{#each summaries as summary (summary.productId)}
-		{@const active = mode === 'store-categories' && activeCategoryId === summary.productId}
+		{@const active = mode === 'store-categories' && activeProductId === summary.productId}
 		{@const icon = iconFor(summary.productId)}
 		{@const categoryName = i18n.labels.productCategory(summary.productId)}
 		<button
@@ -32,7 +32,7 @@
 			data-category-id={summary.productId}
 			data-testid={`category-stamp-${summary.productId}`}
 			aria-pressed={active}
-			onclick={() => onSelectCategory(summary.productId)}
+			onclick={() => onSelectProduct(summary.productId)}
 		>
 			<span class={['seal', `seal-${summary.health}`]}>
 				{i18n.t(`copy.productChainGraph.health.${summary.health}`)}

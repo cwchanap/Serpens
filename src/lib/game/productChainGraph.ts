@@ -529,7 +529,19 @@ export function aggregateProductReports(
 		warehouseValue: sumProductReports(productReports, (report) => report.warehouseValue),
 		importedUnits: sumProductReports(productReports, (report) => report.importedUnits),
 		importCost: aggregateImportCost(productReports),
-		importSpend: sumProductReports(productReports, (report) => report.importSpend)
+		importSpend: sumProductReports(productReports, (report) => report.importSpend),
+		wasteUnits: sumProductReports(productReports, (report) => report.wasteUnits),
+		wasteValue: sumProductReports(productReports, (report) => report.wasteValue),
+		shrinkUnits: sumProductReports(productReports, (report) => report.shrinkUnits),
+		shrinkValue: sumProductReports(productReports, (report) => report.shrinkValue),
+		stockoutLostDemand: sumProductReports(productReports, (report) => report.stockoutLostDemand),
+		averageAgeDays: firstReport.averageAgeDays,
+		oldestSellableAgeDays: firstReport.oldestSellableAgeDays,
+		trendMultiplier: firstReport.trendMultiplier,
+		obsolescenceMultiplier: firstReport.obsolescenceMultiplier,
+		baseSellingPrice: firstReport.baseSellingPrice,
+		effectiveSellingPrice: firstReport.effectiveSellingPrice,
+		markdownAmount: sumProductReports(productReports, (report) => report.markdownAmount)
 	};
 }
 

@@ -40,9 +40,9 @@ import {
 } from '$lib/game/supplyPlannerActions';
 import {
 	handoffSupplyPlannerAction,
-	resolveSupplyPlannerCategory,
+	resolveSupplyPlannerProductId,
 	deriveSupplyPlannerResult,
-	getSupplyPlannerCategoryIds,
+	getSupplyPlannerProductIds,
 	type SupplyPlannerHandoffHost,
 	type SupplyPlannerUiContext
 } from './supplyPlannerRoute';
@@ -370,13 +370,13 @@ describe('supply planner route composition', () => {
 			]
 		};
 
-		const plannerCategoryIds = getSupplyPlannerCategoryIds(game, 'harbor-city', [
+		const plannerProductIds = getSupplyPlannerProductIds(game, 'harbor-city', [
 			'bottled-water',
 			'snacks'
 		]);
-		expect(plannerCategoryIds).toEqual(['bottled-water']);
+		expect(plannerProductIds).toEqual(['bottled-water']);
 		expect(
-			resolveSupplyPlannerCategory({ productId: 'snacks', horizonDays: 7 }, plannerCategoryIds)
+			resolveSupplyPlannerProductId({ productId: 'snacks', horizonDays: 7 }, plannerProductIds)
 		).toBe('bottled-water');
 	});
 
@@ -454,8 +454,8 @@ describe('supply planner route composition', () => {
 		).not.toBeNull();
 		expect(buildPlan).toHaveBeenCalledOnce();
 		const context: SupplyPlannerUiContext = { productId: 'snacks', horizonDays: 7 };
-		expect(resolveSupplyPlannerCategory(context, ['bottled-water', 'snacks'])).toBe('snacks');
-		expect(resolveSupplyPlannerCategory(context, ['bottled-water'])).toBe('bottled-water');
+		expect(resolveSupplyPlannerProductId(context, ['bottled-water', 'snacks'])).toBe('snacks');
+		expect(resolveSupplyPlannerProductId(context, ['bottled-water'])).toBe('bottled-water');
 	});
 
 	it.each([

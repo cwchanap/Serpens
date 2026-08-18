@@ -18,9 +18,9 @@ import type { SupplyPlannerSnapshot } from '$lib/game/supplyPlanner';
 import {
 	deriveSupplyPlannerResult,
 	findPlannerBuilding,
-	getSupplyPlannerCategoryIds,
+	getSupplyPlannerProductIds,
 	handoffSupplyPlannerAction,
-	resolveSupplyPlannerCategory,
+	resolveSupplyPlannerProductId,
 	type SupplyPlannerDerivationInput,
 	type SupplyPlannerHandoffHost,
 	type SupplyPlannerUiContext
@@ -131,45 +131,45 @@ function mockHost(overrides: Partial<SupplyPlannerHandoffHost> = {}): SupplyPlan
 	};
 }
 
-describe('getSupplyPlannerCategoryIds', () => {
+describe('getSupplyPlannerProductIds', () => {
 	it('returns an empty list when the game is null', () => {
-		expect(getSupplyPlannerCategoryIds(null, 'harbor-city', ['bottled-water'])).toEqual([]);
+		expect(getSupplyPlannerProductIds(null, 'harbor-city', ['bottled-water'])).toEqual([]);
 	});
 
 	it('filters planner categories by the allowed set', () => {
 		const game = baseGame();
-		const ids = getSupplyPlannerCategoryIds(game, 'harbor-city', ['bottled-water']);
+		const ids = getSupplyPlannerProductIds(game, 'harbor-city', ['bottled-water']);
 		expect(ids).toEqual(['bottled-water']);
 	});
 
 	it('excludes categories not in the allowed set', () => {
 		const game = baseGame();
-		const ids = getSupplyPlannerCategoryIds(game, 'harbor-city', ['produce']);
+		const ids = getSupplyPlannerProductIds(game, 'harbor-city', ['produce']);
 		expect(ids).toEqual([]);
 	});
 });
 
-describe('resolveSupplyPlannerCategory', () => {
+describe('resolveSupplyPlannerProductId', () => {
 	it('returns the context category when it is valid', () => {
 		const context: SupplyPlannerUiContext = { productId: 'produce', horizonDays: 30 };
-		expect(resolveSupplyPlannerCategory(context, ['bottled-water', 'produce'])).toBe('produce');
+		expect(resolveSupplyPlannerProductId(context, ['bottled-water', 'produce'])).toBe('produce');
 	});
 
 	it('falls back to the first valid category when the context category is not valid', () => {
 		const context: SupplyPlannerUiContext = { productId: 'snacks', horizonDays: 7 };
-		expect(resolveSupplyPlannerCategory(context, ['bottled-water', 'produce'])).toBe(
+		expect(resolveSupplyPlannerProductId(context, ['bottled-water', 'produce'])).toBe(
 			'bottled-water'
 		);
 	});
 
 	it('returns null when the context category is null and no valid categories exist', () => {
 		const context: SupplyPlannerUiContext = { productId: null, horizonDays: 30 };
-		expect(resolveSupplyPlannerCategory(context, [])).toBeNull();
+		expect(resolveSupplyPlannerProductId(context, [])).toBeNull();
 	});
 
 	it('falls back to the first valid category when context category is null', () => {
 		const context: SupplyPlannerUiContext = { productId: null, horizonDays: 30 };
-		expect(resolveSupplyPlannerCategory(context, ['bottled-water'])).toBe('bottled-water');
+		expect(resolveSupplyPlannerProductId(context, ['bottled-water'])).toBe('bottled-water');
 	});
 });
 

@@ -86,9 +86,22 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 				warehouseValue: 48,
 				importedUnits: 4,
 				importCost: 12,
-				importSpend: 48
+				importSpend: 48,
+				wasteUnits: 0,
+				wasteValue: 0,
+				shrinkUnits: 0,
+				shrinkValue: 0,
+				stockoutLostDemand: 0,
+				averageAgeDays: null,
+				oldestSellableAgeDays: null,
+				trendMultiplier: 1,
+				obsolescenceMultiplier: 1,
+				baseSellingPrice: 5,
+				effectiveSellingPrice: 5,
+				markdownAmount: 0
 			}
 		],
+		inventoryLossExpense: 0,
 		warnings: [],
 		...overrides,
 		replenishment: overrides.replenishment ?? null
@@ -110,6 +123,18 @@ function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyP
 		importedUnits: 4,
 		importCost: 12,
 		importSpend: 48,
+		wasteUnits: 0,
+		wasteValue: 0,
+		shrinkUnits: 0,
+		shrinkValue: 0,
+		stockoutLostDemand: 0,
+		averageAgeDays: null,
+		oldestSellableAgeDays: null,
+		trendMultiplier: 1,
+		obsolescenceMultiplier: 1,
+		baseSellingPrice: 5,
+		effectiveSellingPrice: 5,
+		markdownAmount: 0,
 		...overrides
 	};
 }
@@ -145,6 +170,7 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 				productionReport,
 				logistics: emptyLogisticsReport(),
 				storeReports: [latestStoreReport()],
+				inventoryLossExpense: 0,
 				modifierImpacts: [],
 				modifierLifecycle: [],
 				warnings: []

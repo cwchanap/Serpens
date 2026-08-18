@@ -472,7 +472,19 @@ describe('weekly retail replenishment', () => {
 						warehouseValue: 0,
 						importedUnits: 0,
 						importCost: 99,
-						importSpend: 0
+						importSpend: 0,
+						wasteUnits: 0,
+						wasteValue: 0,
+						shrinkUnits: 0,
+						shrinkValue: 0,
+						stockoutLostDemand: 0,
+						averageAgeDays: null,
+						oldestSellableAgeDays: null,
+						trendMultiplier: 1,
+						obsolescenceMultiplier: 1,
+						baseSellingPrice: 5,
+						effectiveSellingPrice: 5,
+						markdownAmount: 0
 					}
 				]
 			]

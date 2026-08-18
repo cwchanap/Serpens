@@ -22,7 +22,7 @@
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { ReportSummary } from '$lib/game/reports';
-	import type { CompanyPolicy, GameState, LoanTermDays } from '$lib/game/types';
+	import type { CompanyPolicy, GameState, LoanTermDays, ProductId } from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { MutationAvailability } from './gameRouteController';
 
@@ -56,8 +56,8 @@
 		onRepay: (loanId: string, amount: number) => Promise<GameRouteCommitResult>;
 		onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
 		onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
-		onPlanCategory?: (categoryId: string) => void;
-		plannerCategoryIds?: readonly string[];
+		onPlanProduct?: (productId: ProductId) => void;
+		plannerProductIds?: readonly ProductId[];
 		onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
 		onCreateRecurringRoute: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
 		onUpdateRecurringRoute: (
@@ -102,8 +102,8 @@
 		onRepay,
 		onPayoff,
 		onRefinance,
-		onPlanCategory = () => {},
-		plannerCategoryIds = [],
+		onPlanProduct = () => {},
+		plannerProductIds = [],
 		onDispatchManualTransfer,
 		onCreateRecurringRoute,
 		onUpdateRecurringRoute,
@@ -232,7 +232,7 @@
 		{:else if panelId === 'reports'}
 			<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
 		{:else if panelId === 'productChains'}
-			<ProductChainsPanel {i18n} game={panelGame} {onPlanCategory} {plannerCategoryIds} />
+			<ProductChainsPanel {i18n} game={panelGame} {onPlanProduct} {plannerProductIds} />
 		{:else if panelId === 'logistics'}
 			<LogisticsPanel
 				game={panelGame}

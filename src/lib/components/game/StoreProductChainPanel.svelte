@@ -7,7 +7,7 @@
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import { getStoreOrdinal } from '$lib/game/state';
-	import type { GameState, Store } from '$lib/game/types';
+	import type { GameState, ProductId, Store } from '$lib/game/types';
 
 	interface Props {
 		game: GameState;
@@ -18,13 +18,13 @@
 
 	interface StoreChainSelection {
 		storeId: string | null;
-		categoryId: string | null;
+		productId: ProductId | null;
 		nodeId: string | null;
 	}
 
 	let { game, i18n, store, onInteractionFeedback = () => {} }: Props = $props();
 
-	let selection = $state<StoreChainSelection>({ storeId: null, categoryId: null, nodeId: null });
+	let selection = $state<StoreChainSelection>({ storeId: null, productId: null, nodeId: null });
 	let previousStoreId = $state<string | null>(null);
 
 	const selectId = $props.id();
@@ -33,11 +33,11 @@
 		(): StoreChainSelection =>
 			selection.storeId === store.id
 				? selection
-				: { storeId: store.id, categoryId: null, nodeId: null }
+				: { storeId: store.id, productId: null, nodeId: null }
 	);
 	const selectedCategory = $derived.by(
 		() =>
-			supportedCategories.find((category) => category.id === activeSelection.categoryId) ??
+			supportedCategories.find((category) => category.id === activeSelection.productId) ??
 			supportedCategories[0] ??
 			null
 	);
@@ -55,14 +55,17 @@
 	$effect(() => {
 		if (previousStoreId === store.id) return;
 		previousStoreId = store.id;
-		selection = { storeId: store.id, categoryId: null, nodeId: null };
+		selection = { storeId: store.id, productId: null, nodeId: null };
 	});
 
-	function selectCategory(event: Event): void {
+	function selectProduct(event: Event): void {
 		onInteractionFeedback();
+		const value = (event.currentTarget as HTMLSelectElement).value;
+		const productId = supportedCategories.find((category) => category.id === value)?.id;
+		if (!productId) return;
 		selection = {
 			storeId: store.id,
-			categoryId: (event.currentTarget as HTMLSelectElement).value,
+			productId,
 			nodeId: null
 		};
 	}
@@ -70,7 +73,7 @@
 	function selectNode(nodeId: string | null): void {
 		selection = {
 			storeId: store.id,
-			categoryId: selectedCategory?.id ?? activeSelection.categoryId,
+			productId: selectedCategory?.id ?? activeSelection.productId,
 			nodeId
 		};
 	}
@@ -85,7 +88,7 @@
 	{#if supportedCategories.length > 0 && selectedCategory && graph}
 		<div class="chain-controls">
 			<label for={selectId}>{i18n.t('storeProductChainPanel.categoryLabel')}</label>
-			<select id={selectId} value={selectedCategory.id} onchange={selectCategory}>
+			<select id={selectId} value={selectedCategory.id} onchange={selectProduct}>
 				{#each supportedCategories as category (category.id)}
 					<option value={category.id}>{i18n.labels.productCategory(category.id)}</option>
 				{/each}

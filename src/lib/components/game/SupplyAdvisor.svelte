@@ -18,14 +18,15 @@
 		SupplyPlannerSnapshot
 	} from '$lib/game/supplyPlanner';
 	import type { I18nBundle } from '$lib/i18n';
+	import type { ProductId } from '$lib/game/types';
 
 	interface Props {
 		result: SupplyPlannerResult | null;
-		categoryIds: readonly string[];
-		selectedCategoryId: string | null;
+		productIds: readonly ProductId[];
+		selectedProductId: ProductId | null;
 		horizonDays: SupplyPlannerHorizonDays;
 		i18n: I18nBundle;
-		onSelectCategory: (categoryId: string) => void;
+		onSelectProduct: (productId: ProductId) => void;
 		onSelectHorizon: (days: SupplyPlannerHorizonDays) => void;
 		onAction: (action: SupplyPlannerAction) => void;
 		onClose: () => void;
@@ -33,11 +34,11 @@
 
 	let {
 		result,
-		categoryIds,
-		selectedCategoryId,
+		productIds,
+		selectedProductId,
 		horizonDays,
 		i18n,
-		onSelectCategory,
+		onSelectProduct,
 		onSelectHorizon,
 		onAction,
 		onClose
@@ -336,9 +337,10 @@
 		}
 	}
 
-	function selectCategory(event: Event): void {
+	function selectProduct(event: Event): void {
 		const value = (event.currentTarget as HTMLSelectElement).value;
-		if (value) onSelectCategory(value);
+		const productId = productIds.find((candidate) => candidate === value);
+		if (productId) onSelectProduct(productId);
 	}
 
 	function selectHorizon(days: SupplyPlannerHorizonDays): void {
@@ -380,16 +382,16 @@
 
 		{#if result !== null}
 			<div class="planner-controls">
-				{#if categoryIds.length > 0}
+				{#if productIds.length > 0}
 					<label for="supply-advisor-category">{i18n.t('supplyAdvisor.category')}</label>
 					<select
 						id="supply-advisor-category"
 						aria-label={i18n.t('supplyAdvisor.category')}
-						value={selectedCategoryId ?? ''}
-						onchange={selectCategory}
+						value={selectedProductId ?? ''}
+						onchange={selectProduct}
 					>
-						{#each categoryIds as categoryId (categoryId)}
-							<option value={categoryId}>{i18n.labels.productCategory(categoryId)}</option>
+						{#each productIds as productId (productId)}
+							<option value={productId}>{i18n.labels.productCategory(productId)}</option>
 						{/each}
 					</select>
 				{/if}

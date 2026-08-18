@@ -505,6 +505,7 @@ describe('world progression and city opening', () => {
 					},
 					logistics: emptyLogisticsReport(),
 					storeReports: [],
+					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
 					warnings: []
@@ -619,6 +620,7 @@ describe('world progression and city opening', () => {
 					},
 					logistics: emptyLogisticsReport(),
 					storeReports: [],
+					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
 					warnings: []
@@ -722,6 +724,7 @@ describe('world progression and city opening', () => {
 					},
 					logistics: emptyLogisticsReport(),
 					storeReports: [],
+					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
 					warnings: []
@@ -804,6 +807,7 @@ describe('world progression and city opening', () => {
 					},
 					logistics: emptyLogisticsReport(),
 					storeReports: [],
+					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
 					warnings: []
@@ -876,6 +880,7 @@ describe('world progression and city opening', () => {
 					},
 					logistics: emptyLogisticsReport(),
 					storeReports: [],
+					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
 					warnings: []
@@ -942,6 +947,7 @@ describe('world progression and city opening', () => {
 					},
 					logistics: emptyLogisticsReport(),
 					storeReports: [],
+					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
 					warnings: []

@@ -5,19 +5,19 @@ import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import { openWorldCity } from '$lib/game/world';
 import { createI18n, type I18nBundle } from '$lib/i18n';
-import type { GameState, IndustrialBuilding, WorldCityId } from '$lib/game/types';
+import type { GameState, IndustrialBuilding, ProductId, WorldCityId } from '$lib/game/types';
 import ProductChainsPanel from './ProductChainsPanel.svelte';
 
 function renderProductChainsPanel(game: GameState, i18n: I18nBundle = createI18n('en')) {
 	return render(ProductChainsPanel, { game, i18n });
 }
 
-function renderProductChainsPanelWithPlannerCategories(
+function renderProductChainsPanelWithPlannerProducts(
 	game: GameState,
-	plannerCategoryIds: readonly string[],
+	plannerProductIds: readonly ProductId[],
 	i18n: I18nBundle = createI18n('en')
 ) {
-	return render(ProductChainsPanel, { game, i18n, plannerCategoryIds });
+	return render(ProductChainsPanel, { game, i18n, plannerProductIds });
 }
 
 function openCity(game: GameState, cityId: WorldCityId): GameState {
@@ -124,29 +124,29 @@ function withImportedProductChainEdge(game: GameState): GameState {
 }
 
 describe('ProductChainsPanel', () => {
-	it('emits the selected category when the Supply Advisor entry is activated', async () => {
+	it('emits the selected product when the Supply Advisor entry is activated', async () => {
 		expect.assertions(1);
-		const onPlanCategory = vi.fn();
+		const onPlanProduct = vi.fn();
 		const game = createNewGame('convenience', 20260518);
 
 		render(ProductChainsPanel, {
 			game,
 			i18n: createI18n('en'),
-			onPlanCategory,
-			plannerCategoryIds: ['bottled-water']
+			onPlanProduct,
+			plannerProductIds: ['bottled-water']
 		});
 
 		await page.getByRole('button', { name: 'Supply advisor' }).click();
-		expect(onPlanCategory).toHaveBeenCalledWith('bottled-water');
+		expect(onPlanProduct).toHaveBeenCalledWith('bottled-water');
 	});
 
-	it('disables the Supply Advisor button for categories not in plannerCategoryIds', async () => {
+	it('disables the Supply Advisor button for products not in plannerProductIds', async () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260518);
 
-		// Snacks is a supported convenience-store archetype category but is
-		// not in the planner category IDs (e.g. not carried/unlocked).
-		renderProductChainsPanelWithPlannerCategories(game, ['bottled-water']);
+		// Snacks is a supported convenience-store product but is not in the
+		// planner product IDs (e.g. not carried/unlocked).
+		renderProductChainsPanelWithPlannerProducts(game, ['bottled-water']);
 
 		// Select the non-plannable category (snacks).
 		await page.getByTestId('category-stamp-snacks').click();
@@ -157,11 +157,11 @@ describe('ProductChainsPanel', () => {
 		await expect.element(advisorButton).toBeDisabled();
 	});
 
-	it('enables the Supply Advisor button for categories in plannerCategoryIds', async () => {
+	it('enables the Supply Advisor button for products in plannerProductIds', async () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260518);
 
-		renderProductChainsPanelWithPlannerCategories(game, ['bottled-water', 'snacks']);
+		renderProductChainsPanelWithPlannerProducts(game, ['bottled-water', 'snacks']);
 
 		// Select snacks (which is in the planner category IDs).
 		await page.getByTestId('category-stamp-snacks').click();
@@ -405,18 +405,17 @@ describe('ProductChainsPanel', () => {
 			.toBeVisible();
 	});
 
-	it('uses the default onPlanCategory no-op when not provided', async () => {
-		// Exercises the default `onPlanCategory = () => {}` prop (L36)
-		// and the canPlanActiveCategory true branch (L84) by rendering
-		// with plannerCategoryIds that include the active category and
-		// clicking the Supply Advisor button without providing onPlanCategory.
+	it('uses the default onPlanProduct no-op when not provided', async () => {
+		// Exercises the default `onPlanProduct = () => {}` prop
+		// by rendering with plannerProductIds that include the active product
+		// and clicking the Supply Advisor button without providing onPlanProduct.
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260518);
 
 		render(ProductChainsPanel, {
 			game,
 			i18n: createI18n('en'),
-			plannerCategoryIds: ['bottled-water']
+			plannerProductIds: ['bottled-water']
 		});
 
 		const advisorButton = page.getByRole('button', { name: 'Supply advisor' });

@@ -57,9 +57,22 @@ const staleReport: DailyStoreReport = {
 			warehouseValue: 24,
 			importedUnits: 2,
 			importCost: 3,
-			importSpend: 6
+			importSpend: 6,
+			wasteUnits: 0,
+			wasteValue: 0,
+			shrinkUnits: 0,
+			shrinkValue: 0,
+			stockoutLostDemand: 0,
+			averageAgeDays: null,
+			oldestSellableAgeDays: null,
+			trendMultiplier: 1,
+			obsolescenceMultiplier: 1,
+			baseSellingPrice: 6,
+			effectiveSellingPrice: 6,
+			markdownAmount: 0
 		}
 	],
+	inventoryLossExpense: 0,
 	replenishment: null,
 	warnings: []
 };
@@ -196,7 +209,19 @@ describe('StoreOverview', () => {
 					warehouseValue: 0,
 					importedUnits: 5,
 					importCost: 3,
-					importSpend: 15
+					importSpend: 15,
+					wasteUnits: 0,
+					wasteValue: 0,
+					shrinkUnits: 0,
+					shrinkValue: 0,
+					stockoutLostDemand: 0,
+					averageAgeDays: null,
+					oldestSellableAgeDays: null,
+					trendMultiplier: 1,
+					obsolescenceMultiplier: 1,
+					baseSellingPrice: 6,
+					effectiveSellingPrice: 6,
+					markdownAmount: 0
 				}
 			]
 		};

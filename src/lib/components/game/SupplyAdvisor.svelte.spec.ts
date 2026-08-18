@@ -17,6 +17,7 @@ import type {
 	SupplyPlannerRouteCondition,
 	SupplyPlannerSnapshot
 } from '$lib/game/supplyPlanner';
+import type { ProductId } from '$lib/game/types';
 import SupplyAdvisor from './SupplyAdvisor.svelte';
 
 const i18n = createI18n('en');
@@ -240,11 +241,11 @@ function readyResult(
 function renderPlanner(
 	result: SupplyPlannerResult,
 	options: {
-		categoryIds?: readonly string[];
-		selectedCategoryId?: string | null;
+		productIds?: readonly ProductId[];
+		selectedProductId?: ProductId | null;
 		horizonDays?: SupplyPlannerHorizonDays;
 		i18n?: I18nBundle;
-		onSelectCategory?: (categoryId: string) => void;
+		onSelectProduct?: (productId: ProductId) => void;
 		onSelectHorizon?: (days: SupplyPlannerHorizonDays) => void;
 		onAction?: (action: SupplyPlannerAction) => void;
 		onClose?: () => void;
@@ -252,11 +253,11 @@ function renderPlanner(
 ) {
 	return render(SupplyAdvisor, {
 		result,
-		categoryIds: options.categoryIds ?? ['bottled-water', 'produce'],
-		selectedCategoryId: options.selectedCategoryId ?? 'bottled-water',
+		productIds: options.productIds ?? ['bottled-water', 'produce'],
+		selectedProductId: options.selectedProductId ?? 'bottled-water',
 		horizonDays: options.horizonDays ?? 30,
 		i18n: options.i18n ?? i18n,
-		onSelectCategory: options.onSelectCategory ?? vi.fn(),
+		onSelectProduct: options.onSelectProduct ?? vi.fn(),
 		onSelectHorizon: options.onSelectHorizon ?? vi.fn(),
 		onAction: options.onAction ?? vi.fn(),
 		onClose: options.onClose ?? vi.fn()
@@ -471,14 +472,14 @@ describe('SupplyAdvisor', () => {
 
 	it('shows target clamping and forwards category and horizon selections', async () => {
 		expect.assertions(3);
-		const onSelectCategory = vi.fn();
+		const onSelectProduct = vi.fn();
 		const onSelectHorizon = vi.fn();
-		renderPlanner(readyResult(), { horizonDays: 7, onSelectCategory, onSelectHorizon });
+		renderPlanner(readyResult(), { horizonDays: 7, onSelectProduct, onSelectHorizon });
 		await expect
 			.element(page.getByText(/replenishment ceiling limits target demand/i))
 			.toBeVisible();
 		await page.getByRole('combobox', { name: /category/i }).selectOptions('produce');
-		expect(onSelectCategory).toHaveBeenCalledWith('produce');
+		expect(onSelectProduct).toHaveBeenCalledWith('produce');
 		await page.getByRole('button', { name: /30 days/i }).click();
 		expect(onSelectHorizon).toHaveBeenCalledWith(30);
 	});
@@ -1368,20 +1369,20 @@ describe('SupplyAdvisor branch coverage', () => {
 		await expect.element(alternativesRegion.getByText(/forecast outcome/i)).not.toBeInTheDocument();
 	});
 
-	it('renders the category selector with no options when categoryIds is empty', async () => {
-		// Covers the false branch of the categoryIds.length > 0 check (line 291):
-		// when categoryIds is empty, the select element is not rendered.
+	it('renders the product selector with no options when productIds is empty', async () => {
+		// Covers the false branch of the productIds.length > 0 check:
+		// when productIds is empty, the select element is not rendered.
 		expect.assertions(1);
-		renderPlanner(readyResult(), { categoryIds: [], selectedCategoryId: null });
+		renderPlanner(readyResult(), { productIds: [], selectedProductId: null });
 		await expect.element(page.getByRole('combobox', { name: /category/i })).not.toBeInTheDocument();
 	});
 });
 
 describe('SupplyAdvisor selection and action dispatch', () => {
-	it('renders with null selectedCategoryId to exercise the nullish coalescing branch', async () => {
+	it('renders with null selectedProductId to exercise the nullish coalescing branch', async () => {
 		expect.assertions(1);
-		renderPlanner(readyResult(), { selectedCategoryId: null });
-		// The select should render with an empty value due to `selectedCategoryId ?? ''`.
+		renderPlanner(readyResult(), { selectedProductId: null });
+		// The select should render with an empty value due to `selectedProductId ?? ''`.
 		await expect.element(page.getByRole('combobox', { name: /category/i })).toBeInTheDocument();
 	});
 
@@ -1395,19 +1396,18 @@ describe('SupplyAdvisor selection and action dispatch', () => {
 		expect(onAction).toHaveBeenCalledOnce();
 	});
 
-	it('calls onSelectCategory when the category select changes', async () => {
-		// Exercises selectCategory (L247-249): changing the select value
-		// calls onSelectCategory with the new value.
+	it('calls onSelectProduct when the product select changes', async () => {
+		// Changing the product select calls onSelectProduct with the selected ProductId.
 		expect.assertions(1);
-		const onSelectCategory = vi.fn();
+		const onSelectProduct = vi.fn();
 		renderPlanner(readyResult(), {
-			categoryIds: ['bottled-water', 'produce'],
-			selectedCategoryId: 'bottled-water',
-			onSelectCategory
+			productIds: ['bottled-water', 'produce'],
+			selectedProductId: 'bottled-water',
+			onSelectProduct
 		});
 		const select = page.getByRole('combobox', { name: /category/i });
 		await select.selectOptions('produce');
-		expect(onSelectCategory).toHaveBeenCalledWith('produce');
+		expect(onSelectProduct).toHaveBeenCalledWith('produce');
 	});
 
 	it('renders a city-scoped build-warehouse action label', async () => {
