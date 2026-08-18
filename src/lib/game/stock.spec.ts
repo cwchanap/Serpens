@@ -13,7 +13,7 @@ import {
 	summarizeStockTrouble,
 	updateStoreProduct
 } from './stock';
-import type { CompanyPolicy, GameState, StoreProduct } from './types';
+import type { CompanyPolicy, GameState, ProductId, StoreProduct } from './types';
 
 function withOneStoreProducts(products: StoreProduct[]): GameState {
 	const game = createNewGame('convenience', 20260508);
@@ -163,6 +163,29 @@ describe('stock rules', () => {
 		expect(game.stores[0]!.products[0]!.lots[0]!.quantity).toBe(8);
 	});
 
+	test('requires a catalog ProductId for product edits', () => {
+		expect.assertions(2);
+		const game = withOneStoreProducts([
+			{
+				productId: 'snacks',
+				lots: [{ receivedDay: 1, quantity: 8 }],
+				reorderThreshold: 12,
+				targetStock: 30,
+				sellingPrice: 5
+			}
+		]);
+		const productId: ProductId = 'snacks';
+		const updated = updateStoreProduct(game, 'store-1', productId, { sellingPrice: 7 });
+		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(7);
+
+		const arbitraryProductId: string = 'snacks';
+		const invalidProductUpdate = (): GameState => {
+			// @ts-expect-error Product edits must not accept arbitrary strings.
+			return updateStoreProduct(game, 'store-1', arbitraryProductId, {});
+		};
+		expect(invalidProductUpdate).toBeTypeOf('function');
+	});
+
 	test('keeps existing values when product updates receive non-finite numbers', () => {
 		expect.assertions(4);
 		const game = withOneStoreProducts([
@@ -188,7 +211,7 @@ describe('stock rules', () => {
 		expect(updated).not.toBe(game);
 	});
 
-	test('returns the original game for missing store or category updates', () => {
+	test('returns the original game for missing store or product updates', () => {
 		expect.assertions(2);
 		const game = withOneStoreProducts([
 			{
@@ -201,7 +224,7 @@ describe('stock rules', () => {
 		]);
 
 		expect(updateStoreProduct(game, 'missing-store', 'snacks', { sellingPrice: 6 })).toBe(game);
-		expect(updateStoreProduct(game, 'store-1', 'missing-category', { sellingPrice: 6 })).toBe(game);
+		expect(updateStoreProduct(game, 'store-1', 'soft-drinks', { sellingPrice: 6 })).toBe(game);
 	});
 
 	test('describes stock status from current threshold and stock', () => {
