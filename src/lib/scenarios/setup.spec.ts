@@ -10,7 +10,7 @@ import { getTotalDebt } from '$lib/game/finance';
 import { normalizeSeed } from '$lib/game/rng';
 import { upgradeStore } from '$lib/game/state';
 import { calculateStockHealth } from '$lib/game/stock';
-import type { ArchetypeId, GameState } from '$lib/game/types';
+import type { ArchetypeId, GameState, ProductId } from '$lib/game/types';
 import {
 	SaveDataError,
 	type SaveDataErrorCode,
@@ -627,6 +627,56 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 				{ path: 'start.overrides.stores[0].storeRef', code: 'invalid-reference' }
 			])
 		);
+	});
+
+	it('returns a diagnostic for a product override that does not resolve to a store product', () => {
+		const definition = scenarioDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						productId: 'nonexistent-product' as ProductId,
+						stock: 5,
+						reorderThreshold: 2,
+						targetStock: 10,
+						sellingPrice: 1
+					}
+				]
+			}
+		];
+
+		expect(diagnosticCodes(buildScenarioGame(definition, definition.officialSeed))).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].productId',
+			code: 'invalid-reference'
+		});
+	});
+
+	it('creates empty lots for a product override with zero stock', () => {
+		const definition = scenarioDefinition();
+		definition.start.overrides.stores = [
+			{
+				storeRef: 'founder',
+				targetLevel: 1,
+				products: [
+					{
+						productId: 'bottled-water',
+						stock: 0,
+						reorderThreshold: 2,
+						targetStock: 10,
+						sellingPrice: 1
+					}
+				]
+			}
+		];
+
+		const result = buildScenarioGame(definition, definition.officialSeed);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+
+		const store = result.game.stores[0]!;
+		expect(store.products[0]!.lots).toEqual([]);
 	});
 
 	it('returns a diagnostic when a funded building transition does not append', () => {

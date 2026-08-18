@@ -7479,6 +7479,14 @@ describe('saveCodec', () => {
 			[
 				'a negative markdown amount',
 				(product: Record<string, unknown>) => ({ ...product, markdownAmount: -1 })
+			],
+			[
+				'an average age exceeding the oldest sellable age',
+				(product: Record<string, unknown>) => ({
+					...product,
+					averageAgeDays: 10,
+					oldestSellableAgeDays: 5
+				})
 			]
 		] as const)('drops a report with %s', (_name, mutateProduct) => {
 			const game = createCurrentMultiCityGame();

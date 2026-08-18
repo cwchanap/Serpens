@@ -1393,4 +1393,28 @@ describe('ReportsPanel', () => {
 
 		expect(document.querySelector('.product-pressure-evidence')).toBeNull();
 	});
+
+	it('falls back to the store id in pressure rows when the store is not in the stores prop', async () => {
+		expect.assertions(1);
+		const unknownStoreReport: DailyStoreReport = {
+			...pressureStoreReport(),
+			storeId: 'unknown-store'
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [unknownStoreReport],
+					inventoryLossExpense: 0
+				}
+			}
+		});
+
+		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
+		await expect.element(pressure.getByText(/unknown-store/)).toBeVisible();
+	});
 });

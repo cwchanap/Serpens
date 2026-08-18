@@ -6,6 +6,7 @@ import {
 	buildCityDemandPools,
 	calculateStockHealth,
 	consumeStoreProductStock,
+	createStoreProduct,
 	getStoreProductStock,
 	getStoreProductStatus,
 	initializeStoreProducts,
@@ -132,6 +133,14 @@ describe('stock rules', () => {
 
 		expect(products.map((product) => product.productId)).toEqual(['bottled-water']);
 		expect(products[0]!.sellingPrice).toBe(3);
+	});
+
+	test('createStoreProduct defaults receivedDay to 1 when omitted', () => {
+		expect.assertions(2);
+		const product = createStoreProduct('bottled-water');
+
+		expect(product.lots).toEqual([{ receivedDay: 1, quantity: expect.any(Number) }]);
+		expect(product.productId).toBe('bottled-water');
 	});
 
 	test('initializes unlocked categories for a given level', () => {

@@ -1471,4 +1471,35 @@ describe('SupplyAdvisor selection and action dispatch', () => {
 		await expect.element(ddElements.first()).toBeVisible();
 		await expect.element(ddElements.nth(1)).toBeVisible();
 	});
+
+	it('does not call onSelectProduct when the select value does not match any product', async () => {
+		expect.assertions(1);
+		const onSelectProduct = vi.fn();
+		renderPlanner(readyResult(), {
+			productIds: ['bottled-water', 'produce'],
+			selectedProductId: 'bottled-water',
+			onSelectProduct
+		});
+		const selectEl = document.querySelector<HTMLSelectElement>('#supply-advisor-category')!;
+		selectEl.value = 'nonexistent-product';
+		selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+		expect(onSelectProduct).not.toHaveBeenCalled();
+	});
+
+	it('renders the select with an empty value when selectedProductId is null', async () => {
+		expect.assertions(1);
+		renderPlanner(readyResult(), { selectedProductId: null });
+		const selectEl = document.querySelector<HTMLSelectElement>('#supply-advisor-category')!;
+		expect(selectEl.value).toBe('');
+	});
+
+	it('renders an option element for each product ID in the selector', async () => {
+		expect.assertions(1);
+		renderPlanner(readyResult(), {
+			productIds: ['bottled-water', 'produce'],
+			selectedProductId: 'bottled-water'
+		});
+		const selectEl = document.querySelector<HTMLSelectElement>('#supply-advisor-category')!;
+		expect(selectEl.options.length).toBe(2);
+	});
 });

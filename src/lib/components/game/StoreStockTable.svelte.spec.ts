@@ -568,4 +568,40 @@ describe('StoreStockTable', () => {
 			.element(page.getByTestId('product-pressure-produce'))
 			.toHaveTextContent('Freshness: 60%');
 	});
+
+	it('labels markdown pressure when a markdown amount is present without other pressure', async () => {
+		expect.assertions(3);
+		const produce = productWithStock('produce');
+		const report: DailyStoreReport = {
+			...latestReport,
+			productReports: [
+				productReport('produce', {
+					markdownAmount: 5,
+					stockoutLostDemand: 0,
+					wasteUnits: 0,
+					shrinkUnits: 0,
+					obsolescenceMultiplier: 1,
+					averageAgeDays: null,
+					oldestSellableAgeDays: null,
+					endingStock: 10
+				})
+			]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: { ...store, products: [produce] },
+			ordinal: 1,
+			latestReport: report,
+			onUpdate: vi.fn()
+		});
+
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveAttribute('data-pressure-kind', 'markdown');
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveTextContent('Markdown: $5');
+		await expect.element(page.getByText('Markdown: $5').nth(1)).toBeVisible();
+	});
 });
