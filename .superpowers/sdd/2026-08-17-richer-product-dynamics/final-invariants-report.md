@@ -37,13 +37,15 @@ demand/capacity/stock. The coordinator ledger's round-3A finding is recorded in
 
 ## TDD RED evidence
 
-Regression tests were added before production changes. Exact focused command:
+Regression tests were added before the round-3A production changes. The
+following is the historical round-3A focused command, before this final wave
+added its boundary regressions:
 
 ```bash
 bun run test:unit -- --project server --run src/lib/persistence/saveCodec.spec.ts src/lib/scenarios/validation.spec.ts -t "targetStock|stockout unit evidence|product override with (fractional|unsafe) stock"
 ```
 
-Exact RED summary:
+Historical RED summary:
 
 ```text
 ❯ |server| src/lib/scenarios/validation.spec.ts (200 tests | 2 failed | 197 skipped)
@@ -59,38 +61,46 @@ Test Files  2 failed (2)
 error: script "test:unit" exited with code 1
 ```
 
-The three passing focused tests were the valid zero/whole-number controls. The
-five failures were the intended missing validation behaviors, not test setup or
-compile errors.
+The original filter selected eight tests. Its three passes were the valid zero
+`targetStock` acceptance control plus pre-existing negative-value rejection
+tests for scenario `targetStock` and `stockoutLostDemand`; they were not three
+valid quantity controls. The valid whole-number `stockoutLostDemand` acceptance
+test was omitted because its title contains `stockoutLostDemand`, not the
+`stockout unit evidence` phrase in the filter. The five failures were the
+intended missing validation behaviors, not test setup or compile errors.
 
 ## Invariant decision
 
-Retail product inventory quantities and unit evidence are non-negative safe
-integers: `Number.isSafeInteger(value) && value >= 0`. Decimal financial fields
-remain decimal-capable, and valid negative gross margins remain accepted. The
-decoder rejects invalid `targetStock` and `stockoutLostDemand` before malformed
-state is returned; scenario validation rejects invalid authored `stock` before
-setup can construct a FIFO lot.
+FIFO lot quantities, saved `targetStock`, and authored scenario `stock` and
+`targetStock` are non-negative safe integers strictly below
+`Number.MAX_SAFE_INTEGER`, so each accepted quantity can advance safely. The
+schema-17 `stockoutLostDemand` unit evidence remains a non-negative safe
+integer without the lot-exclusive upper bound. Decimal financial fields and
+`reorderThreshold` remain decimal-capable, and valid negative gross margins
+remain accepted. Validation rejects malformed quantities before setup,
+replenishment, or historical-report decoding can consume them.
 
 ## Implementation
 
-- `src/lib/persistence/saveCodec.ts` now uses
-  `requireNonNegativeSafeInteger` for schema-17 `targetStock` and
-  `stockoutLostDemand`. The helper preserves decimal financial validation and
-  rejects negative, fractional, non-finite, and unsafe values.
+- `src/lib/persistence/saveCodec.ts` uses `requireNonNegativeLotQuantity` for
+  schema-17 `targetStock` and retains `requireNonNegativeSafeInteger` for
+  `stockoutLostDemand`. The lot helper preserves the existing negative,
+  fractional, and non-finite diagnostics while adding the exclusive upper bound;
+  financial validation remains decimal-capable.
 - `src/lib/scenarios/validation/shared.ts` adds
-  `nonNegativeSafeInteger`, preserving the existing negative/non-finite
-  diagnostic behavior while rejecting fractional and unsafe values.
-- `src/lib/scenarios/validation/start.ts` applies that helper only to authored
-  product `stock`; `reorderThreshold` and `targetStock` retain their existing
-  non-negative-number control semantics.
+  `nonNegativeLotQuantity` on top of the existing safe-integer validator,
+  preserving the existing diagnostic behavior while rejecting exact max values.
+- `src/lib/scenarios/validation/start.ts` applies the lot helper to authored
+  product `stock` and `targetStock`; `reorderThreshold` retains its existing
+  decimal-capable non-negative-number validation.
 
 No UI, persistence migration/legacy policy, sales/accounting/catalog dynamics,
 or ProductId/`stock.ts` typing behavior was changed.
 
 ## GREEN and verification
 
-The same focused command after the production fix:
+Historical round-3A GREEN output from before this final wave added its boundary
+regressions:
 
 ```bash
 bun run test:unit -- --project server --run src/lib/persistence/saveCodec.spec.ts src/lib/scenarios/validation.spec.ts -t "targetStock|stockout unit evidence|product override with (fractional|unsafe) stock"
@@ -101,6 +111,21 @@ Result:
 ```text
 Test Files  2 passed (2)
      Tests  8 passed | 666 skipped (674)
+```
+
+The corrected boundary-focused command for the final fix wave also includes
+the exact-max and fractional scenario-target regressions and the previously
+omitted valid stockout control:
+
+```bash
+bun run test:unit -- --project server --run src/lib/persistence/saveCodec.spec.ts src/lib/scenarios/validation.spec.ts -t "targetStock|stockoutLostDemand|stockout unit evidence|product override with (fractional|exact max|unsafe) stock"
+```
+
+Exact result:
+
+```text
+Test Files  2 passed (2)
+     Tests  16 passed | 666 skipped (682)
 ```
 
 Broader relevant server coverage:

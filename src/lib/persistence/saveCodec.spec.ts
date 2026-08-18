@@ -7136,12 +7136,67 @@ describe('saveCodec', () => {
 			);
 		});
 
+		test('rejects exact-max targetStock before it can become a FIFO lot', () => {
+			const game = createGame();
+			const store = game.stores[0]!;
+			const product = store.products[0]!;
+			const products = [
+				{ ...product, targetStock: Number.MAX_SAFE_INTEGER },
+				...store.products.slice(1)
+			];
+			const stores = [{ ...store, products, stockHealth: calculateStockHealth(products) }];
+			const record = createManualSaveRecord({
+				game: { stores } as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'Saved game stores[0] products[0] targetStock must be a non-negative safe integer that can advance safely'
+			);
+		});
+
 		test('accepts zero targetStock when reorderThreshold is zero', () => {
 			const game = createGame();
 			const store = game.stores[0]!;
 			const product = store.products[0]!;
 			const products = [
 				{ ...product, reorderThreshold: 0, targetStock: 0 },
+				...store.products.slice(1)
+			];
+			const stores = [{ ...store, products, stockHealth: calculateStockHealth(products) }];
+			const record = createManualSaveRecord({
+				game: { stores } as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).not.toThrow();
+		});
+
+		test('accepts the largest targetStock that can advance safely', () => {
+			const game = createGame();
+			const store = game.stores[0]!;
+			const product = store.products[0]!;
+			const products = [
+				{ ...product, targetStock: Number.MAX_SAFE_INTEGER - 1 },
+				...store.products.slice(1)
+			];
+			const stores = [{ ...store, products, stockHealth: calculateStockHealth(products) }];
+			const record = createManualSaveRecord({
+				game: { stores } as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).not.toThrow();
+		});
+
+		test('keeps decimal reorderThreshold valid with a lot-compatible targetStock', () => {
+			const game = createGame();
+			const store = game.stores[0]!;
+			const product = store.products[0]!;
+			const products = [
+				{
+					...product,
+					reorderThreshold: 2.5,
+					targetStock: Number.MAX_SAFE_INTEGER - 1
+				},
 				...store.products.slice(1)
 			];
 			const stores = [{ ...store, products, stockHealth: calculateStockHealth(products) }];

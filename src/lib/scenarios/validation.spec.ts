@@ -2480,6 +2480,7 @@ describe('validateScenarioDefinition coverage gaps', () => {
 
 	it.each([
 		['fractional', 2.5],
+		['exact max', Number.MAX_SAFE_INTEGER],
 		['unsafe', Number.MAX_SAFE_INTEGER + 1]
 	] as const)('rejects a product override with %s stock', (_name, stock) => {
 		const definition = validDefinition();
@@ -2489,6 +2490,13 @@ describe('validateScenarioDefinition coverage gaps', () => {
 			path: 'start.overrides.stores[0].products[0].stock',
 			code: 'invalid-non-negative-safe-integer'
 		});
+	});
+
+	it('accepts the largest product stock that can advance safely', () => {
+		const definition = validDefinition();
+		definition.start.overrides.stores![0]!.products![0]!.stock = Number.MAX_SAFE_INTEGER - 1;
+
+		expect(codes(definition)).toEqual([]);
 	});
 
 	it('accepts zero product stock as a valid whole-number quantity', () => {
@@ -3438,6 +3446,28 @@ describe('validateScenarioDefinition coverage gaps', () => {
 			path: 'start.overrides.stores[0].products[0].targetStock',
 			code: 'invalid-non-negative-number'
 		});
+	});
+
+	it.each([
+		['fractional', 2.5],
+		['exact max', Number.MAX_SAFE_INTEGER]
+	] as const)('rejects a product override with %s targetStock', (_name, targetStock) => {
+		const definition = validDefinition();
+		definition.start.overrides.stores![0]!.products![0]!.targetStock = targetStock;
+
+		expect(codes(definition)).toContainEqual({
+			path: 'start.overrides.stores[0].products[0].targetStock',
+			code: 'invalid-non-negative-safe-integer'
+		});
+	});
+
+	it('accepts a decimal reorderThreshold with a lot-compatible targetStock', () => {
+		const definition = validDefinition();
+		const product = definition.start.overrides.stores![0]!.products![0]!;
+		product.reorderThreshold = 2.5;
+		product.targetStock = Number.MAX_SAFE_INTEGER - 1;
+
+		expect(codes(definition)).toEqual([]);
 	});
 
 	it('rejects a modifier with an unsupported kind that is not an object', () => {

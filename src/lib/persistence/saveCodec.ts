@@ -3957,7 +3957,7 @@ function validateSavedStoreProduct(value: unknown, label: string, gameDay: numbe
 	const productId = requireString(product.productId, `${label} productId`) as ProductId;
 	const lots = validateSavedProductLots(product.lots, `${label} lots`, gameDay);
 	const reorderThreshold = requireNumber(product.reorderThreshold, `${label} reorderThreshold`);
-	const targetStock = requireNonNegativeSafeInteger(product.targetStock, `${label} targetStock`);
+	const targetStock = requireNonNegativeLotQuantity(product.targetStock, `${label} targetStock`);
 	const sellingPrice = requireNumber(product.sellingPrice, `${label} sellingPrice`);
 
 	if (reorderThreshold < 0) {
@@ -4393,6 +4393,14 @@ function requireNonNegativeSafeInteger(value: unknown, label: string): number {
 	const number = requireNonNegativeFiniteNumber(value, label);
 	if (!Number.isSafeInteger(number)) {
 		throw new SaveDataError(`${label} must be a non-negative safe integer`);
+	}
+	return number;
+}
+
+function requireNonNegativeLotQuantity(value: unknown, label: string): number {
+	const number = requireNonNegativeSafeInteger(value, label);
+	if (number >= Number.MAX_SAFE_INTEGER) {
+		throw new SaveDataError(`${label} must be a non-negative safe integer that can advance safely`);
 	}
 	return number;
 }
