@@ -171,3 +171,84 @@ No full repository unit/e2e run was required for this narrow validation/type/
 documentation wave; all changed test files, check, lint, and whitespace gates
 are green. No tracked source changes remain outside the assigned files after
 the commit, and `progress.md` remains coordinator-owned and untouched.
+
+## Round 1/5 follow-up: live inventory target edits
+
+Date: 2026-08-17
+Starting head: `fa46691c2f827baf8d904dc4da44152c786bbdc4`
+
+### CodeGraph evidence
+
+Before source text exploration, CodeGraph was queried in the assigned worktree
+for the live inventory editor path. It identified `StoreStockTable.svelte` as
+the raw finite-number editor, `GameRouteController.updateStoreInventoryTargets`
+as the route boundary, and `updateStoreProduct` in `src/lib/game/stock.ts` as
+the transition that previously rounded both fields. The route passes the patch
+through unchanged, so the core transition is the narrow validation boundary;
+no UI file needed to change.
+
+### Finding and policy
+
+The live target editor accepted finite fractional, negative, exact-max, and
+unsafe target quantities. Rounding allowed exact-max and unsafe values to enter
+state, after which weekly replenishment could derive an invalid FIFO lot and
+autosave could reject the game. The transition now accepts a target only when
+it is a non-negative safe integer strictly below `Number.MAX_SAFE_INTEGER`;
+invalid values fall back to the existing target under the established
+non-finite-input convention. Zero and `Number.MAX_SAFE_INTEGER - 1` remain
+valid. `reorderThreshold` remains a non-negative finite decimal; only the
+target clamp uses its ceiling so the stored target remains an integer. If the
+resulting target cannot satisfy the lot-compatible bound, the transition
+returns the original game rather than committing invalid state. No UI,
+persistence, scenario, art, dynamics, FIFO, economics, or accounting behavior
+was changed.
+
+### TDD evidence
+
+Focused RED was captured after adding the four invalid-target regressions, the
+zero/MAX-minus-one controls, and the decimal-threshold regression, before the
+production edit:
+
+```bash
+bun run test:unit -- --project server --run src/lib/game/stock.spec.ts -t "targetStock|decimal reorderThreshold"
+```
+
+```text
+❯ |server| src/lib/game/stock.spec.ts (41 tests | 5 failed | 35 skipped) 47ms
+     × keeps the existing targetStock for negative input
+     × keeps the existing targetStock for fractional input
+     × keeps the existing targetStock for exact max input
+     × keeps the existing targetStock for unsafe input
+     × preserves decimal reorderThreshold with an integer targetStock
+
+Test Files  1 failed (1)
+     Tests  5 failed | 1 passed | 35 skipped (41)
+error: script "test:unit" exited with code 1
+```
+
+Focused GREEN:
+
+```bash
+bun run test:unit -- --project server --run src/lib/game/stock.spec.ts
+```
+
+```text
+Test Files  1 passed (1)
+     Tests  41 passed (41)
+```
+
+### Changed files and checks
+
+- `src/lib/game/stock.ts`
+- `src/lib/game/stock.spec.ts`
+- this report
+
+The required `bun run check` completed with `svelte-check found 0 errors and 0
+warnings`. `bun run lint` completed with `All matched files use Prettier code
+style!` and exit 0. `git diff --check` passed with exit 0. No Svelte file was
+changed, so the mandatory Svelte MCP protocol was not applicable.
+
+Commit: `fix(products): validate live inventory targets`.
+
+The coordinator-owned ignored `progress.md` was preserved unchanged and was
+not staged.

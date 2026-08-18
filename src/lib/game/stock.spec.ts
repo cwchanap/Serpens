@@ -163,6 +163,73 @@ describe('stock rules', () => {
 		expect(game.stores[0]!.products[0]!.lots[0]!.quantity).toBe(8);
 	});
 
+	test.each([
+		['negative', -1],
+		['fractional', 12.5],
+		['exact max', Number.MAX_SAFE_INTEGER],
+		['unsafe', Number.MAX_SAFE_INTEGER + 1]
+	] as const)('keeps the existing targetStock for %s input', (_label, targetStock) => {
+		expect.assertions(1);
+		const game = withOneStoreProducts([
+			{
+				productId: 'snacks',
+				lots: [{ receivedDay: 1, quantity: 8 }],
+				reorderThreshold: 12,
+				targetStock: 30,
+				sellingPrice: 5
+			}
+		]);
+
+		const updated = updateStoreProduct(game, 'store-1', 'snacks', { targetStock });
+
+		expect(updated.stores[0]!.products[0]!.targetStock).toBe(30);
+	});
+
+	test('accepts zero and the largest targetStock that can advance safely', () => {
+		expect.assertions(2);
+		const game = withOneStoreProducts([
+			{
+				productId: 'snacks',
+				lots: [{ receivedDay: 1, quantity: 8 }],
+				reorderThreshold: 0,
+				targetStock: 30,
+				sellingPrice: 5
+			}
+		]);
+
+		const zero = updateStoreProduct(game, 'store-1', 'snacks', {
+			targetStock: 0
+		});
+		const largest = updateStoreProduct(game, 'store-1', 'snacks', {
+			targetStock: Number.MAX_SAFE_INTEGER - 1
+		});
+
+		expect(zero.stores[0]!.products[0]!.targetStock).toBe(0);
+		expect(largest.stores[0]!.products[0]!.targetStock).toBe(Number.MAX_SAFE_INTEGER - 1);
+	});
+
+	test('preserves decimal reorderThreshold with an integer targetStock', () => {
+		expect.assertions(2);
+		const game = withOneStoreProducts([
+			{
+				productId: 'snacks',
+				lots: [{ receivedDay: 1, quantity: 8 }],
+				reorderThreshold: 12,
+				targetStock: 30,
+				sellingPrice: 5
+			}
+		]);
+
+		const updated = updateStoreProduct(game, 'store-1', 'snacks', {
+			reorderThreshold: 12.5,
+			targetStock: 30
+		});
+		const product = updated.stores[0]!.products[0]!;
+
+		expect(product.reorderThreshold).toBe(12.5);
+		expect(product.targetStock).toBe(30);
+	});
+
 	test('requires a catalog ProductId for product edits', () => {
 		expect.assertions(2);
 		const game = withOneStoreProducts([
