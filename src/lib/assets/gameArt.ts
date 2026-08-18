@@ -568,7 +568,7 @@ export function getProductArt(productId: ProductId): ProductArt {
 	const productArt = PRODUCT_ART[productId];
 
 	if (!productArt) {
-		throw new Error(`Unknown product art category: ${productId}`);
+		throw new Error(`Unknown product art: ${productId}`);
 	}
 
 	return productArt;

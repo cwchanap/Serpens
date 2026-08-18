@@ -535,14 +535,69 @@ export function aggregateProductReports(
 		shrinkUnits: sumProductReports(productReports, (report) => report.shrinkUnits),
 		shrinkValue: sumProductReports(productReports, (report) => report.shrinkValue),
 		stockoutLostDemand: sumProductReports(productReports, (report) => report.stockoutLostDemand),
-		averageAgeDays: firstReport.averageAgeDays,
-		oldestSellableAgeDays: firstReport.oldestSellableAgeDays,
-		trendMultiplier: firstReport.trendMultiplier,
-		obsolescenceMultiplier: firstReport.obsolescenceMultiplier,
-		baseSellingPrice: firstReport.baseSellingPrice,
-		effectiveSellingPrice: firstReport.effectiveSellingPrice,
+		averageAgeDays: aggregateAverageAgeDays(productReports),
+		oldestSellableAgeDays: aggregateOldestSellableAgeDays(productReports),
+		trendMultiplier: aggregateUnitsSoldWeightedValue(
+			productReports,
+			(report) => report.trendMultiplier
+		),
+		obsolescenceMultiplier: aggregateUnitsSoldWeightedValue(
+			productReports,
+			(report) => report.obsolescenceMultiplier
+		),
+		baseSellingPrice: aggregateUnitsSoldWeightedValue(
+			productReports,
+			(report) => report.baseSellingPrice
+		),
+		effectiveSellingPrice: aggregateUnitsSoldWeightedValue(
+			productReports,
+			(report) => report.effectiveSellingPrice
+		),
 		markdownAmount: sumProductReports(productReports, (report) => report.markdownAmount)
 	};
+}
+
+function aggregateAverageAgeDays(productReports: DailyProductReport[]): number | null {
+	let weightedAge = 0;
+	let totalStock = 0;
+	for (const report of productReports) {
+		if (report.averageAgeDays === null || report.endingStock <= 0) {
+			continue;
+		}
+		weightedAge += report.averageAgeDays * report.endingStock;
+		totalStock += report.endingStock;
+	}
+	return totalStock > 0 ? weightedAge / totalStock : null;
+}
+
+function aggregateOldestSellableAgeDays(productReports: DailyProductReport[]): number | null {
+	let oldestAge: number | null = null;
+	for (const report of productReports) {
+		if (report.oldestSellableAgeDays === null) {
+			continue;
+		}
+		oldestAge =
+			oldestAge === null
+				? report.oldestSellableAgeDays
+				: Math.max(oldestAge, report.oldestSellableAgeDays);
+	}
+	return oldestAge;
+}
+
+function aggregateUnitsSoldWeightedValue(
+	productReports: DailyProductReport[],
+	getValue: (report: DailyProductReport) => number
+): number {
+	let weightedValue = 0;
+	let totalUnitsSold = 0;
+	for (const report of productReports) {
+		if (report.unitsSold <= 0) {
+			continue;
+		}
+		weightedValue += getValue(report) * report.unitsSold;
+		totalUnitsSold += report.unitsSold;
+	}
+	return totalUnitsSold > 0 ? weightedValue / totalUnitsSold : getValue(productReports[0]!);
 }
 
 function aggregateImportCost(productReports: DailyProductReport[]): number {

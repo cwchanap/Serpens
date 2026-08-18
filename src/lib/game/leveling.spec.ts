@@ -5,7 +5,7 @@ import {
 	RETAIL_UPGRADE_BASE_COST,
 	INDUSTRY_UPGRADE_BASE_COST,
 	isMilestoneLevel,
-	getUnlockedCategoryCount,
+	getUnlockedProductCount,
 	getStoreRevenueMultiplier,
 	getStoreStaffCapacityBonus,
 	getStoreUpgradeCost,
@@ -38,11 +38,11 @@ describe('leveling math', () => {
 
 	test('unlocked category count steps at milestones', () => {
 		expect.assertions(5);
-		expect(getUnlockedCategoryCount(1)).toBe(1);
-		expect(getUnlockedCategoryCount(3)).toBe(1);
-		expect(getUnlockedCategoryCount(4)).toBe(2);
-		expect(getUnlockedCategoryCount(7)).toBe(3);
-		expect(getUnlockedCategoryCount(10)).toBe(4);
+		expect(getUnlockedProductCount(1)).toBe(1);
+		expect(getUnlockedProductCount(3)).toBe(1);
+		expect(getUnlockedProductCount(4)).toBe(2);
+		expect(getUnlockedProductCount(7)).toBe(3);
+		expect(getUnlockedProductCount(10)).toBe(4);
 	});
 
 	test('revenue multiplier adds 10% per non-milestone level', () => {

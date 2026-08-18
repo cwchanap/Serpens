@@ -10,7 +10,7 @@
 		storeDisplayName
 	} from '$lib/i18n/gameCopy';
 	import { getCityInventoryStats } from '$lib/game/cityInventory';
-	import { getProductDefinition } from '$lib/game/products';
+	import { getProductFreshnessPercent } from '$lib/game/products';
 	import { getRetailReplenishmentOutcome } from '$lib/game/retailSupply';
 	import type {
 		DailyMaterialMovement,
@@ -77,19 +77,7 @@
 	}
 
 	function getFreshnessPercent(report: DailyProductReport): number | null {
-		const averageAgeDays = report.averageAgeDays;
-		const shelfLifeDays = getProductDefinition(report.productId)?.dynamics.shelfLifeDays;
-		if (
-			averageAgeDays === null ||
-			!Number.isFinite(averageAgeDays) ||
-			shelfLifeDays === undefined ||
-			!Number.isFinite(shelfLifeDays) ||
-			shelfLifeDays <= 0
-		) {
-			return null;
-		}
-
-		return Math.max(0, Math.min(100, Math.round((1 - averageAgeDays / shelfLifeDays) * 100)));
+		return getProductFreshnessPercent(report.productId, report.averageAgeDays);
 	}
 
 	function hasProductPressure(

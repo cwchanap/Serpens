@@ -202,6 +202,7 @@ describe('atomic decision resolution', () => {
 		};
 		const decision = eventDecision({
 			id: 'event-positive-stock',
+			expiresOnDay: 7,
 			options: [
 				{
 					id: 'accept',
@@ -212,7 +213,7 @@ describe('atomic decision resolution', () => {
 				}
 			]
 		});
-		const game = withDecision({ ...base, stores: [firstStore] }, decision);
+		const game = withDecision({ ...base, day: 5, stores: [firstStore] }, decision);
 		const result = resolveDecision(game, decision.id, 'accept');
 
 		expect(result.ok).toBe(true);

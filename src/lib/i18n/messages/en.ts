@@ -345,7 +345,7 @@ export const en = {
 			empty: 'No product pressure evidence recorded.',
 			freshness: 'Freshness: {percent}%',
 			waste: 'Waste: {units} units ({value})',
-			shrink: 'Shrink: {units} unit ({value})',
+			shrink: 'Shrink: {units} units ({value})',
 			stockout: 'Stockout lost demand: {units} units',
 			obsolescence: 'Obsolescence: {percent} demand',
 			markdown: 'Markdown: {amount}',

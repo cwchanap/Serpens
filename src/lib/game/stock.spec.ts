@@ -62,7 +62,7 @@ function equalSellerCapacity(game: GameState): Map<string, number> {
 describe('stock rules', () => {
 	test('derives FIFO stock totals, consumes oldest lots, and removes empty lots', () => {
 		expect.assertions(4);
-		const product = {
+		const product: StoreProduct = {
 			productId: 'snacks',
 			lots: [
 				{ receivedDay: 1, quantity: 5 },
@@ -71,7 +71,7 @@ describe('stock rules', () => {
 			reorderThreshold: 2,
 			targetStock: 20,
 			sellingPrice: 5
-		} as StoreProduct;
+		};
 
 		const consumed = consumeStoreProductStock(product, 6);
 
@@ -86,13 +86,13 @@ describe('stock rules', () => {
 
 	test('adds a lot without sharing the lot array or lot object', () => {
 		expect.assertions(3);
-		const product = {
+		const product: StoreProduct = {
 			productId: 'snacks',
 			lots: [{ receivedDay: 1, quantity: 4 }],
 			reorderThreshold: 2,
 			targetStock: 20,
 			sellingPrice: 5
-		} as StoreProduct;
+		};
 		const added = addStoreProductStockLot(product, { receivedDay: 7, quantity: 8 });
 
 		expect(added.lots).toEqual([
@@ -102,6 +102,28 @@ describe('stock rules', () => {
 		expect(added.lots).not.toBe(product.lots);
 		added.lots[0]!.quantity = 99;
 		expect(product.lots[0]!.quantity).toBe(4);
+	});
+
+	test('merges lots received on the same day into one lot', () => {
+		expect.assertions(3);
+		const product: StoreProduct = {
+			productId: 'snacks',
+			lots: [
+				{ receivedDay: 1, quantity: 4 },
+				{ receivedDay: 7, quantity: 6 }
+			],
+			reorderThreshold: 2,
+			targetStock: 40,
+			sellingPrice: 5
+		};
+		const merged = addStoreProductStockLot(product, { receivedDay: 7, quantity: 8 });
+
+		expect(merged.lots).toEqual([
+			{ receivedDay: 1, quantity: 4 },
+			{ receivedDay: 7, quantity: 14 }
+		]);
+		expect(getStoreProductStock(merged)).toBe(18);
+		expect(product.lots[1]!.quantity).toBe(6);
 	});
 
 	test('initializes a single product at level 1', () => {
@@ -356,6 +378,7 @@ describe('stock rules', () => {
 	});
 
 	test('grocery produce pressure wastes old lots while newer stock remains sellable', () => {
+		expect.assertions(4);
 		const base = createNewGame('grocery', 20260817);
 		const store = {
 			...base.stores[0]!,
@@ -393,6 +416,7 @@ describe('stock rules', () => {
 	});
 
 	test('applies trend to the sales pool once while leaving the baseline demand pool stable', () => {
+		expect.assertions(2);
 		const base = createNewGame('boutique', 20260818);
 		const store = {
 			...base.stores[0]!,
@@ -430,6 +454,7 @@ describe('stock rules', () => {
 	});
 
 	test('electronics devices show obsolescence and markdown without changing configured price or demand', () => {
+		expect.assertions(8);
 		const base = createNewGame('electronics', 20260819);
 		const createStore = (receivedDay: number) => ({
 			...base.stores[0]!,
@@ -482,6 +507,7 @@ describe('stock rules', () => {
 	});
 
 	test('convenience beverage pressure attributes only stock-serviceable demand to stockout', () => {
+		expect.assertions(2);
 		const base = createNewGame('convenience', 20260820);
 		const store = {
 			...base.stores[0]!,
@@ -513,6 +539,7 @@ describe('stock rules', () => {
 	});
 
 	test('boutique reputation sensitivity changes apparel seller share', () => {
+		expect.assertions(2);
 		const base = createNewGame('boutique', 20260823);
 		const createSeller = (id: string, reputation: number) => ({
 			...base.stores[0]!,
@@ -791,8 +818,8 @@ describe('tier 1 store products', () => {
 });
 
 describe('sales loop guards', () => {
-	test('skips a category when the top-scoring seller archetype does not carry it', () => {
-		expect.assertions(4);
+	test('ignores an ineligible top-scoring seller and sells through eligible sellers', () => {
+		expect.assertions(5);
 		const game = createNewGame('convenience', 20260508);
 		const city = game.cities[0]!;
 		const lowScoreStore: GameState['stores'][number] = {
@@ -841,8 +868,9 @@ describe('sales loop guards', () => {
 
 		expect(Object.keys(result.initialDemand)).toEqual(['snacks']);
 		expect(result.initialDemand.snacks).toBeGreaterThan(0);
-		expect(result.productReports.size).toBe(0);
-		expect(result.remainingDemand.snacks).toBe(result.initialDemand.snacks);
+		expect(result.productReports.has(lowScoreStore.id)).toBe(true);
+		expect(result.productReports.has(highScoreStore.id)).toBe(false);
+		expect(result.productReports.get(lowScoreStore.id)?.[0]?.unitsSold).toBeGreaterThan(0);
 	});
 });
 

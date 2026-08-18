@@ -258,6 +258,64 @@ describe('store category chain summaries', () => {
 		expect(noImportAggregate?.importedUnits).toBe(0);
 		expect(noImportAggregate?.importCost).toBe(0);
 	});
+
+	test('aggregates age, price, and multiplier evidence across store reports', () => {
+		expect.assertions(6);
+		const aggregate = aggregateProductReports('snacks', [
+			snackProductReport({
+				unitsSold: 6,
+				endingStock: 30,
+				averageAgeDays: 2,
+				oldestSellableAgeDays: 4,
+				obsolescenceMultiplier: 0.9,
+				baseSellingPrice: 10,
+				effectiveSellingPrice: 9
+			}),
+			snackProductReport({
+				unitsSold: 2,
+				endingStock: 10,
+				averageAgeDays: 5,
+				oldestSellableAgeDays: 9,
+				obsolescenceMultiplier: 0.5,
+				baseSellingPrice: 5,
+				effectiveSellingPrice: 5
+			}),
+			snackProductReport({
+				unitsSold: 0,
+				endingStock: 0,
+				averageAgeDays: null,
+				oldestSellableAgeDays: null,
+				trendMultiplier: 3
+			})
+		]);
+
+		// Ages weight by remaining stock: (2*30 + 5*10) / 40 = 2.75.
+		expect(aggregate?.averageAgeDays).toBeCloseTo(2.75);
+		expect(aggregate?.oldestSellableAgeDays).toBe(9);
+		// Prices and multipliers weight by units sold; the zero-sale report is ignored.
+		expect(aggregate?.obsolescenceMultiplier).toBeCloseTo((0.9 * 6 + 0.5 * 2) / 8);
+		expect(aggregate?.baseSellingPrice).toBeCloseTo((10 * 6 + 5 * 2) / 8);
+		expect(aggregate?.effectiveSellingPrice).toBeCloseTo((9 * 6 + 5 * 2) / 8);
+		expect(aggregate?.trendMultiplier).toBe(1);
+	});
+
+	test('falls back to the first report price when no units were sold', () => {
+		expect.assertions(3);
+		const aggregate = aggregateProductReports('snacks', [
+			snackProductReport({
+				unitsSold: 0,
+				baseSellingPrice: 7,
+				effectiveSellingPrice: 6,
+				endingStock: 0,
+				averageAgeDays: null,
+				oldestSellableAgeDays: null
+			})
+		]);
+
+		expect(aggregate?.baseSellingPrice).toBe(7);
+		expect(aggregate?.effectiveSellingPrice).toBe(6);
+		expect(aggregate?.averageAgeDays).toBeNull();
+	});
 });
 
 describe('warehouse flow graph', () => {

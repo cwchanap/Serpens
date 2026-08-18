@@ -1,6 +1,6 @@
 import { getArchetype } from './archetypes';
 import { getTilePlacementBlockReason } from './city';
-import { getStoreRevenueMultiplier, getUnlockedCategoryCount } from './leveling';
+import { getStoreRevenueMultiplier, getUnlockedProductCount } from './leveling';
 import {
 	applyProductInventoryAging,
 	resolveProductMarketDynamics,
@@ -60,7 +60,7 @@ export function initializeStoreProducts(
 	receivedDay = 1
 ): StoreProduct[] {
 	const archetype = getArchetype(archetypeId);
-	const unlockedCount = getUnlockedCategoryCount(level);
+	const unlockedCount = getUnlockedProductCount(level);
 
 	return archetype.startingProductIds
 		.slice(0, unlockedCount)
@@ -207,10 +207,14 @@ export function consumeStoreProductStock(product: StoreProduct, quantity: number
 }
 
 export function addStoreProductStockLot(product: StoreProduct, lot: ProductStockLot): StoreProduct {
-	return {
-		...product,
-		lots: [...product.lots.map((existingLot) => ({ ...existingLot })), { ...lot }]
-	};
+	const lots = product.lots.map((existingLot) => ({ ...existingLot }));
+	const lastLot = lots.at(-1);
+	if (lastLot && lastLot.receivedDay === lot.receivedDay) {
+		lastLot.quantity += lot.quantity;
+	} else {
+		lots.push({ ...lot });
+	}
+	return { ...product, lots };
 }
 
 export function buildCityDemandPools(
@@ -298,10 +302,17 @@ export function simulateProductSalesForCity(input: {
 	}
 
 	for (const productId of Object.keys(initialDemand).filter(isProductId).sort()) {
+		const productDefinition = getProductDefinition(productId);
+
+		if (!productDefinition) {
+			continue;
+		}
+
 		const sellers = input.game.stores
 			.filter(
 				(store) =>
 					cityStoreIds.has(store.id) &&
+					getArchetype(store.archetypeId).startingProductIds.includes(productId) &&
 					store.products.some((product) => product.productId === productId)
 			)
 			.sort(
@@ -313,9 +324,8 @@ export function simulateProductSalesForCity(input: {
 			(sum, store) => sum + scoreStoreForCategory(store, productId),
 			0
 		);
-		const productDefinition = findStoreProduct(sellers[0], productId);
 
-		if (!productDefinition || totalScore <= 0) {
+		if (totalScore <= 0) {
 			continue;
 		}
 
@@ -326,8 +336,7 @@ export function simulateProductSalesForCity(input: {
 			const marketDynamics = resolveProductMarketDynamics({
 				product,
 				definition: productDefinition,
-				day: input.game.day,
-				storeReputation: store.reputation
+				day: input.game.day
 			});
 			const priceMultiplier = priceDemandMultiplier(productDefinition, product.sellingPrice);
 			const desiredUnits = Math.max(
@@ -497,17 +506,6 @@ function cloneStoreForStock(store: Store): Store {
 			lots: product.lots.map((lot) => ({ ...lot }))
 		}))
 	};
-}
-
-function findStoreProduct(
-	store: Store | undefined,
-	productId: ProductId
-): ProductDefinition | undefined {
-	if (!store?.products.some((product) => product.productId === productId)) return undefined;
-	if (!getArchetype(store.archetypeId).startingProductIds.includes(productId)) {
-		return undefined;
-	}
-	return getProductDefinition(productId);
 }
 
 function scoreStoreForCategory(store: Store, productId: ProductId): number {

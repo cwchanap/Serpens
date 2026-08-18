@@ -200,3 +200,21 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 export function getProductDefinition(id: ProductId): ProductDefinition {
 	return PRODUCTS[id];
 }
+
+export function getProductFreshnessPercent(
+	productId: ProductId,
+	averageAgeDays: number | null
+): number | null {
+	const shelfLifeDays = getProductDefinition(productId)?.dynamics.shelfLifeDays;
+	if (
+		averageAgeDays === null ||
+		!Number.isFinite(averageAgeDays) ||
+		shelfLifeDays === undefined ||
+		!Number.isFinite(shelfLifeDays) ||
+		shelfLifeDays <= 0
+	) {
+		return null;
+	}
+
+	return Math.max(0, Math.min(100, Math.round((1 - averageAgeDays / shelfLifeDays) * 100)));
+}

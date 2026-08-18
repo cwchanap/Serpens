@@ -648,7 +648,7 @@ describe('ReportsPanel', () => {
 
 		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
 		await expect.element(pressure.getByText('Waste: 2 units ($4)')).toBeVisible();
-		await expect.element(pressure.getByText('Shrink: 1 unit ($2)')).toBeVisible();
+		await expect.element(pressure.getByText('Shrink: 1 units ($2)')).toBeVisible();
 		await expect.element(pressure.getByText('Stockout lost demand: 3 units')).toBeVisible();
 		await expect.element(pressure.getByText('Markdown: $6')).toBeVisible();
 		await expect.element(pressure.getByText('Base price: $4')).toBeVisible();
