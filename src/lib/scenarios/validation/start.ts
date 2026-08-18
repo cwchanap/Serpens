@@ -27,6 +27,7 @@ import {
 	nonEmptyString,
 	nonNegativeInteger,
 	nonNegativeNumber,
+	nonNegativeSafeInteger,
 	positiveNumber,
 	validateIncluded,
 	validateKnownReference,
@@ -259,7 +260,8 @@ function validateProductOverrides(
 				);
 			validateIncluded(context, productId, `${path}.productId`, context.content.products);
 		}
-		for (const key of ['stock', 'reorderThreshold', 'targetStock'] as const) {
+		nonNegativeSafeInteger(context, product.stock, `${path}.stock`);
+		for (const key of ['reorderThreshold', 'targetStock'] as const) {
 			nonNegativeNumber(context, product[key], `${path}.${key}`);
 		}
 		positiveNumber(context, product.sellingPrice, `${path}.sellingPrice`);

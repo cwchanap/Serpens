@@ -7116,6 +7116,41 @@ describe('saveCodec', () => {
 
 			expect(() => validateSaveRecord(record)).not.toThrow();
 		});
+
+		test('rejects fractional targetStock before it can become a FIFO lot', () => {
+			const game = createGame();
+			const store = game.stores[0]!;
+			const product = store.products[0]!;
+			const products = [
+				{ ...product, targetStock: product.reorderThreshold + 0.5 },
+				...store.products.slice(1)
+			];
+			const stores = [{ ...store, products, stockHealth: calculateStockHealth(products) }];
+			const record = createManualSaveRecord({
+				game: { stores } as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			expect(() => validateSaveRecord(record)).toThrow(
+				'Saved game stores[0] products[0] targetStock must be a non-negative safe integer'
+			);
+		});
+
+		test('accepts zero targetStock when reorderThreshold is zero', () => {
+			const game = createGame();
+			const store = game.stores[0]!;
+			const product = store.products[0]!;
+			const products = [
+				{ ...product, reorderThreshold: 0, targetStock: 0 },
+				...store.products.slice(1)
+			];
+			const stores = [{ ...store, products, stockHealth: calculateStockHealth(products) }];
+			const record = createManualSaveRecord({
+				game: { stores } as unknown as Partial<GameState>
+			});
+
+			expect(() => validateSaveRecord(record)).not.toThrow();
+		});
 	});
 
 	describe('current city inventory validation defensive paths', () => {
@@ -7269,6 +7304,64 @@ describe('saveCodec', () => {
 			};
 
 			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
+		});
+
+		test.each([
+			[
+				'negative stockoutLostDemand',
+				(product: Record<string, unknown>) => ({ ...product, stockoutLostDemand: -1 })
+			],
+			[
+				'fractional stockoutLostDemand',
+				(product: Record<string, unknown>) => ({ ...product, stockoutLostDemand: 0.5 })
+			],
+			[
+				'unsafe stockoutLostDemand',
+				(product: Record<string, unknown>) => ({
+					...product,
+					stockoutLostDemand: Number.MAX_SAFE_INTEGER + 1
+				})
+			]
+		] as const)(
+			'drops a report with invalid stockout unit evidence: %s',
+			(_name, mutateProduct) => {
+				const game = createCurrentMultiCityGame();
+				const report = createCurrentReport(game);
+				const storeReport = report.storeReports[0]!;
+				const productReport = mutateProduct(
+					storeReport.productReports[0]! as unknown as Record<string, unknown>
+				);
+				const updatedReport: DailyReport = {
+					...report,
+					storeReports: [
+						{
+							...storeReport,
+							productReports: [productReport as unknown as DailyProductReport]
+						}
+					]
+				};
+
+				expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
+			}
+		);
+
+		test('preserves a whole-number stockoutLostDemand unit value', () => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const storeReport = report.storeReports[0]!;
+			const productReport = {
+				...storeReport.productReports[0]!,
+				stockoutLostDemand: 2
+			};
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [{ ...storeReport, productReports: [productReport] }]
+			};
+
+			expect(
+				expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport))
+					.reports[0]
+			).toEqual(updatedReport);
 		});
 
 		test.each([

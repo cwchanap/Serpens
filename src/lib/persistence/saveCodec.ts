@@ -3957,7 +3957,7 @@ function validateSavedStoreProduct(value: unknown, label: string, gameDay: numbe
 	const productId = requireString(product.productId, `${label} productId`) as ProductId;
 	const lots = validateSavedProductLots(product.lots, `${label} lots`, gameDay);
 	const reorderThreshold = requireNumber(product.reorderThreshold, `${label} reorderThreshold`);
-	const targetStock = requireNumber(product.targetStock, `${label} targetStock`);
+	const targetStock = requireNonNegativeSafeInteger(product.targetStock, `${label} targetStock`);
 	const sellingPrice = requireNumber(product.sellingPrice, `${label} sellingPrice`);
 
 	if (reorderThreshold < 0) {
@@ -4064,7 +4064,7 @@ function validateSavedProductReport(
 			`${label} shrinkValue must equal shrinkUnits times product import cost`
 		);
 	}
-	requireNonNegativeFiniteNumber(report.stockoutLostDemand, `${label} stockoutLostDemand`);
+	requireNonNegativeSafeInteger(report.stockoutLostDemand, `${label} stockoutLostDemand`);
 	const averageAgeDays = requireNullableNonNegativeFiniteNumber(
 		report.averageAgeDays,
 		`${label} averageAgeDays`
@@ -4385,6 +4385,14 @@ function requireNonNegativeInteger(value: unknown, label: string): number {
 	const number = requireNumber(value, label);
 	if (!Number.isInteger(number) || number < 0) {
 		throw new SaveDataError(`${label} must be a non-negative integer`);
+	}
+	return number;
+}
+
+function requireNonNegativeSafeInteger(value: unknown, label: string): number {
+	const number = requireNonNegativeFiniteNumber(value, label);
+	if (!Number.isSafeInteger(number)) {
+		throw new SaveDataError(`${label} must be a non-negative safe integer`);
 	}
 	return number;
 }
