@@ -6,7 +6,7 @@ import {
 	resolveProductMarketDynamics,
 	resolveTrendMultiplier
 } from './productDynamics';
-import { getProductDefinition } from './products';
+import { getProductDefinition, PRODUCTS } from './products';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
 import { getRetailCityDemandMultiplier } from './world';
@@ -70,7 +70,7 @@ export function initializeStoreProducts(
 export function updateStoreProduct(
 	game: GameState,
 	storeId: string,
-	productId: string,
+	productId: ProductId,
 	patch: StoreProductPatch
 ): GameState {
 	const storeIndex = game.stores.findIndex((store) => store.id === storeId);
@@ -254,13 +254,16 @@ export function simulateProductSalesForCity(input: {
 	storeCapacity: Map<string, number>;
 }): ProductSalesResult {
 	const baselineDemand = buildCityDemandPools(input.game, input.city, input.game.policy);
-	const initialDemand = Object.fromEntries(
-		Object.entries(baselineDemand).map(([productId, demand]) => {
-			const definition = getProductDefinition(productId as ProductId);
-			const trendMultiplier = resolveTrendMultiplier(definition?.dynamics.trend, input.game.day);
-			return [productId, Math.max(0, Math.round((demand ?? 0) * trendMultiplier))];
-		})
-	) as RetailDemandProfile;
+	const initialDemand: RetailDemandProfile = {};
+	for (const [productId, demand] of Object.entries(baselineDemand)) {
+		if (!isProductId(productId)) {
+			continue;
+		}
+
+		const definition = getProductDefinition(productId);
+		const trendMultiplier = resolveTrendMultiplier(definition.dynamics.trend, input.game.day);
+		initialDemand[productId] = Math.max(0, Math.round((demand ?? 0) * trendMultiplier));
+	}
 	const remainingDemand = { ...initialDemand };
 	const productReports = new Map<string, DailyProductReport[]>();
 	const capacityRemaining = new Map(input.storeCapacity);
@@ -293,7 +296,7 @@ export function simulateProductSalesForCity(input: {
 		productAging.set(storeId, agingByProduct);
 	}
 
-	for (const productId of Object.keys(initialDemand).sort() as ProductId[]) {
+	for (const productId of Object.keys(initialDemand).filter(isProductId).sort()) {
 		const sellers = input.game.stores
 			.filter(
 				(store) =>
@@ -472,23 +475,22 @@ function cloneStoreForStock(store: Store): Store {
 
 function findStoreProduct(
 	store: Store | undefined,
-	productId: string
+	productId: ProductId
 ): ProductDefinition | undefined {
 	if (!store?.products.some((product) => product.productId === productId)) return undefined;
-	if (!getArchetype(store.archetypeId).startingProductIds.includes(productId as ProductId)) {
+	if (!getArchetype(store.archetypeId).startingProductIds.includes(productId)) {
 		return undefined;
 	}
-	return getProductDefinition(productId as ProductId);
+	return getProductDefinition(productId);
 }
 
-function scoreStoreForCategory(store: Store, productId: string): number {
+function scoreStoreForCategory(store: Store, productId: ProductId): number {
 	if (!store.products.some((product) => product.productId === productId)) {
 		return 0;
 	}
 
 	const reputation = Number.isFinite(store.reputation) ? store.reputation : 50;
-	const authoredSensitivity = getProductDefinition(productId as ProductId)?.dynamics
-		.reputationSensitivity;
+	const authoredSensitivity = getProductDefinition(productId).dynamics.reputationSensitivity;
 	const reputationSensitivity =
 		authoredSensitivity === undefined || !Number.isFinite(authoredSensitivity)
 			? 1
@@ -515,4 +517,8 @@ function appendProductReport(
 	report: DailyProductReport
 ): void {
 	reports.set(storeId, [...(reports.get(storeId) ?? []), report]);
+}
+
+function isProductId(value: string): value is ProductId {
+	return Object.hasOwn(PRODUCTS, value);
 }
