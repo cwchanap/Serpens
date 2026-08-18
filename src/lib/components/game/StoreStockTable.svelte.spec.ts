@@ -491,4 +491,81 @@ describe('StoreStockTable', () => {
 			.element(page.getByTestId('product-pressure-snacks'))
 			.not.toHaveTextContent('No current pressure');
 	});
+
+	it('labels shrink pressure and renders the shrink evidence span', async () => {
+		expect.assertions(3);
+		const produce = productWithStock('produce');
+		const report: DailyStoreReport = {
+			...latestReport,
+			productReports: [
+				productReport('produce', { shrinkUnits: 3, shrinkValue: 6, endingStock: 10 })
+			]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: { ...store, products: [produce] },
+			ordinal: 1,
+			latestReport: report,
+			onUpdate: vi.fn()
+		});
+
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveAttribute('data-pressure-kind', 'shrink');
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveTextContent('Shrink: 3 units');
+		await expect.element(page.getByText('Shrink: 3 units').nth(1)).toBeVisible();
+	});
+
+	it('labels obsolescence pressure when demand is reduced without other pressure', async () => {
+		expect.assertions(2);
+		const produce = productWithStock('produce');
+		const report: DailyStoreReport = {
+			...latestReport,
+			productReports: [productReport('produce', { obsolescenceMultiplier: 0.8, endingStock: 10 })]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: { ...store, products: [produce] },
+			ordinal: 1,
+			latestReport: report,
+			onUpdate: vi.fn()
+		});
+
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveAttribute('data-pressure-kind', 'obsolescence');
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveTextContent('Obsolescence: 80% demand');
+	});
+
+	it('labels freshness pressure for an aged perishable product with no other pressure', async () => {
+		expect.assertions(2);
+		const produce = productWithStock('produce');
+		const report: DailyStoreReport = {
+			...latestReport,
+			productReports: [
+				productReport('produce', { averageAgeDays: 4, oldestSellableAgeDays: 6, endingStock: 10 })
+			]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: { ...store, products: [produce] },
+			ordinal: 1,
+			latestReport: report,
+			onUpdate: vi.fn()
+		});
+
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveAttribute('data-pressure-kind', 'freshness');
+		await expect
+			.element(page.getByTestId('product-pressure-produce'))
+			.toHaveTextContent('Freshness: 60%');
+	});
 });

@@ -986,6 +986,53 @@ describe('branch coverage edge cases', () => {
 		expect(report).toBeDefined();
 		expect(report?.unitsSold).toBe(0);
 	});
+
+	test('updateStoreProduct rejects a reorderThreshold that overflows the lot-safe range', () => {
+		expect.assertions(1);
+		const game = withOneStoreProducts([
+			{
+				productId: 'snacks',
+				lots: [{ receivedDay: 1, quantity: 8 }],
+				reorderThreshold: 12,
+				targetStock: 30,
+				sellingPrice: 5
+			}
+		]);
+
+		const updated = updateStoreProduct(game, 'store-1', 'snacks', {
+			reorderThreshold: Number.MAX_SAFE_INTEGER
+		});
+
+		expect(updated).toBe(game);
+	});
+
+	test('simulateProductSalesForCity falls back to neutral reputation for a non-finite store reputation', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260508);
+		const store: GameState['stores'][number] = {
+			...game.stores[0]!,
+			reputation: Number.POSITIVE_INFINITY,
+			products: [
+				{
+					productId: 'bottled-water',
+					lots: [{ receivedDay: 1, quantity: 100 }],
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 3
+				}
+			]
+		};
+		const result = simulateProductSalesForCity({
+			game: { ...game, stores: [store] },
+			city: game.cities[0]!,
+			rng: createRng(3),
+			storeCapacity: new Map([[store.id, 100]])
+		});
+		const report = result.productReports.get(store.id)?.[0];
+
+		expect(report).toBeDefined();
+		expect(report?.unitsSold).toBeGreaterThan(0);
+	});
 });
 
 describe('summarizeStockTrouble', () => {

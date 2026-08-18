@@ -2448,4 +2448,33 @@ describe('daily simulation', () => {
 
 		expect(report.modifierImpacts).toEqual([]);
 	});
+
+	test('synthesizes a zero-sales report with aging evidence for an off-catalog store product', () => {
+		const base = createNewGame('convenience', 280_302);
+		const store: GameState['stores'][number] = {
+			...base.stores[0]!,
+			products: [
+				...base.stores[0]!.products,
+				{
+					productId: 'apparel' as ProductId,
+					lots: [{ receivedDay: 1, quantity: 6 }],
+					reorderThreshold: 1,
+					targetStock: 20,
+					sellingPrice: 38
+				}
+			]
+		};
+
+		const result = simulateDay({ ...base, day: 7, stores: [store] });
+		const report = result.reports.at(-1)!;
+		const apparelReport = report.storeReports[0]?.productReports.find(
+			(product) => product.productId === 'apparel'
+		);
+
+		expect(apparelReport).toBeDefined();
+		expect(apparelReport?.unitsSold).toBe(0);
+		expect(apparelReport?.demandMissed).toBe(0);
+		expect(apparelReport?.averageAgeDays).toBe(6);
+		expect(apparelReport?.trendMultiplier).toBe(1);
+	});
 });

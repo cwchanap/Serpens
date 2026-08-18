@@ -286,4 +286,142 @@ describe('StoreDetailModal', () => {
 		await expect.element(summary).toHaveTextContent(/Devices.*markdown.*\$72/i);
 		await expect.element(summary).toHaveAttribute('role', 'status');
 	});
+
+	it('summarizes waste, shrink, stockout, freshness, and inventory-loss pressure together', async () => {
+		expect.assertions(6);
+		const produceReport: DailyProductReport = {
+			productId: 'produce',
+			name: 'Produce',
+			unitsSold: 4,
+			demandMissed: 2,
+			revenue: 16,
+			costOfGoods: 8,
+			grossMargin: 8,
+			endingStock: 6,
+			warehouseUnits: 0,
+			warehouseValue: 0,
+			importedUnits: 0,
+			importCost: 2,
+			importSpend: 0,
+			wasteUnits: 3,
+			wasteValue: 6,
+			shrinkUnits: 1,
+			shrinkValue: 2,
+			stockoutLostDemand: 2,
+			averageAgeDays: 4,
+			oldestSellableAgeDays: 6,
+			trendMultiplier: 1,
+			obsolescenceMultiplier: 1,
+			baseSellingPrice: 4,
+			effectiveSellingPrice: 4,
+			markdownAmount: 0
+		};
+		const report: DailyStoreReport = {
+			storeId: 'store-1',
+			revenue: 16,
+			costOfGoods: 8,
+			grossMargin: 8,
+			operatingCosts: 10,
+			importSpend: 0,
+			netIncome: -2,
+			customersServed: 4,
+			demandMissed: 2,
+			staffingCoverage: 100,
+			staffingShortage: { manager: 0, general: 0 },
+			stockHealth: 50,
+			staffMorale: 70,
+			reputation: 60,
+			marketPosition: 50,
+			productReports: [produceReport],
+			inventoryLossExpense: 8,
+			warnings: [],
+			replenishment: null
+		};
+		const produceStore: Store = {
+			...store(),
+			products: [
+				{
+					productId: 'produce',
+					lots: [{ receivedDay: 1, quantity: 10 }],
+					reorderThreshold: 3,
+					targetStock: 12,
+					sellingPrice: 4
+				}
+			]
+		};
+		const p = props();
+		render(StoreDetailModal, {
+			...p,
+			store: produceStore,
+			game: { ...p.game, stores: [produceStore] },
+			latestStoreReport: report
+		});
+
+		const summary = page.getByTestId('product-pressure-summary');
+		await expect.element(summary).toBeVisible();
+		await expect.element(summary).toHaveTextContent(/Produce.*3 units of waste/i);
+		await expect.element(summary).toHaveTextContent(/Produce.*1 units of shrink/i);
+		await expect.element(summary).toHaveTextContent(/Produce.*2 units of demand lost to stockout/i);
+		await expect.element(summary).toHaveTextContent(/Produce.*freshness is 60%/i);
+		await expect.element(summary).toHaveTextContent(/Inventory loss expense: \$8/i);
+	});
+
+	it('renders the neutral pressure summary when the latest report has no pressure', async () => {
+		expect.assertions(2);
+		const neutralReport: DailyStoreReport = {
+			storeId: 'store-1',
+			revenue: 0,
+			costOfGoods: 0,
+			grossMargin: 0,
+			operatingCosts: 0,
+			importSpend: 0,
+			netIncome: 0,
+			customersServed: 0,
+			demandMissed: 0,
+			staffingCoverage: 100,
+			staffingShortage: { manager: 0, general: 0 },
+			stockHealth: 100,
+			staffMorale: 70,
+			reputation: 60,
+			marketPosition: 50,
+			productReports: [
+				{
+					productId: 'snacks',
+					name: 'Snacks',
+					unitsSold: 0,
+					demandMissed: 0,
+					revenue: 0,
+					costOfGoods: 0,
+					grossMargin: 0,
+					endingStock: 40,
+					warehouseUnits: 0,
+					warehouseValue: 0,
+					importedUnits: 0,
+					importCost: 2,
+					importSpend: 0,
+					wasteUnits: 0,
+					wasteValue: 0,
+					shrinkUnits: 0,
+					shrinkValue: 0,
+					stockoutLostDemand: 0,
+					averageAgeDays: null,
+					oldestSellableAgeDays: null,
+					trendMultiplier: 1,
+					obsolescenceMultiplier: 1,
+					baseSellingPrice: 5,
+					effectiveSellingPrice: 5,
+					markdownAmount: 0
+				}
+			],
+			inventoryLossExpense: 0,
+			warnings: [],
+			replenishment: null
+		};
+		const p = props();
+		render(StoreDetailModal, { ...p, latestStoreReport: neutralReport });
+
+		const summary = page.getByTestId('product-pressure-summary');
+		await expect.element(summary).toBeVisible();
+		await expect.element(summary).toHaveTextContent(/No product pressure detected/i);
+	});
 });
