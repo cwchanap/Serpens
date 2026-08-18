@@ -298,6 +298,12 @@ describe('daily simulation', () => {
 			      "id": "store-1",
 			      "products": [
 			        {
+			          "lots": [
+			            {
+			              "quantity": 20,
+			              "receivedDay": 7,
+			            },
+			          ],
 			          "productId": "bottled-water",
 			          "stock": 20,
 			        },

@@ -7,7 +7,7 @@
 		STORE_MILESTONE_CAPACITY_BONUS,
 		canUpgradeStore,
 		getStoreUpgradeCost,
-		getUnlockedCategoryCount,
+		getUnlockedProductCount,
 		isMilestoneLevel
 	} from '$lib/game/leveling';
 	import { formatStoreLocation, localizeStockTrouble, storeDisplayName } from '$lib/i18n/gameCopy';
@@ -61,7 +61,7 @@
 		if (!store || !storeCanUpgrade) return i18n.t('tileInspector.maxLevel');
 		return isMilestoneLevel(store.level + 1)
 			? i18n.t('tileInspector.nextBenefit.unlockProductStaff', {
-					productNumber: i18n.format.integer(getUnlockedCategoryCount(store.level + 1)),
+					productNumber: i18n.format.integer(getUnlockedProductCount(store.level + 1)),
 					staffCapacity: i18n.format.integer(STORE_MILESTONE_CAPACITY_BONUS)
 				})
 			: i18n.t('tileInspector.nextBenefit.revenue');

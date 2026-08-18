@@ -104,6 +104,10 @@ export function projectOneCityParity(game: GameState) {
 			id: store.id,
 			products: store.products.map((product) => ({
 				productId: product.productId,
+				lots: product.lots.map((lot) => ({
+					receivedDay: lot.receivedDay,
+					quantity: lot.quantity
+				})),
 				stock: getStoreProductStock(product)
 			}))
 		})),

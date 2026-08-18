@@ -2,7 +2,7 @@
 	import { asset } from '$app/paths';
 	import { getProductArt } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
-	import { getProductDefinition } from '$lib/game/products';
+	import { getProductDefinition, getProductFreshnessPercent } from '$lib/game/products';
 	import { getStoreProductStatus, getStoreProductStock } from '$lib/game/stock';
 	import { localizeStockStatus } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
@@ -63,19 +63,7 @@
 		productId: ProductId,
 		report: DailyProductReport | null
 	): number | null {
-		const averageAgeDays = report ? report.averageAgeDays : null;
-		const shelfLifeDays = getProductDefinition(productId).dynamics.shelfLifeDays;
-		if (
-			averageAgeDays === null ||
-			!Number.isFinite(averageAgeDays) ||
-			shelfLifeDays === undefined ||
-			!Number.isFinite(shelfLifeDays) ||
-			shelfLifeDays <= 0
-		) {
-			return null;
-		}
-
-		return Math.max(0, Math.min(100, Math.round((1 - averageAgeDays / shelfLifeDays) * 100)));
+		return getProductFreshnessPercent(productId, report ? report.averageAgeDays : null);
 	}
 
 	type PressureKind =

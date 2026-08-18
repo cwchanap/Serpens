@@ -3,7 +3,7 @@ import {
 	canUpgradeStore,
 	getStoreUpgradeCost,
 	getStoreStaffCapacityBonus,
-	getUnlockedCategoryCount,
+	getUnlockedProductCount,
 	isMilestoneLevel
 } from './leveling';
 import {
@@ -291,7 +291,7 @@ export function upgradeStore(game: GameState, storeId: string): GameState {
 
 	if (isMilestoneLevel(nextLevel)) {
 		const archetype = getArchetype(store.archetypeId);
-		const unlockedCount = getUnlockedCategoryCount(nextLevel);
+		const unlockedCount = getUnlockedProductCount(nextLevel);
 		const newProductId = archetype.startingProductIds.find(
 			(productId) => !products.some((product) => product.productId === productId)
 		);

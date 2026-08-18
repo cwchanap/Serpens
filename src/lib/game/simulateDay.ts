@@ -881,8 +881,7 @@ function getStoreProductReports(
 		const marketDynamics = resolveProductMarketDynamics({
 			product,
 			definition: productDefinition,
-			day,
-			storeReputation: store.reputation
+			day
 		});
 		const effectiveSellingPrice = product.sellingPrice * marketDynamics.markdownMultiplier;
 

@@ -6,7 +6,7 @@ import {
 	selectRouteOperations,
 	type RouteOperationalSummary
 } from './logisticsReadModels';
-import { getStoreProductStock } from './stock';
+import { getStoreProductStatus } from './stock';
 import type { GameState, LoanInstrument } from './types';
 
 /** Debt-service coverage ratio below which a covenant-risk alert fires. */
@@ -198,13 +198,7 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 	const alerts: GameAlert[] = [];
 
 	for (const store of game.stores) {
-		if (
-			!store.products.some(
-				(product) =>
-					getStoreProductStock(product) <= 0 ||
-					getStoreProductStock(product) < product.reorderThreshold
-			)
-		) {
+		if (!store.products.some((product) => getStoreProductStatus(product) !== 'Healthy')) {
 			continue;
 		}
 

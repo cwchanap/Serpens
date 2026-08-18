@@ -841,7 +841,7 @@ describe('save records', () => {
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'Saved game stores[0] products must have at least one category'
+			'Saved game stores[0] products must have at least one product'
 		);
 	});
 
@@ -1166,6 +1166,14 @@ describe('save records', () => {
 				{ receivedDay: 0, quantity: 1 }
 			],
 			'lots must be ordered by receivedDay'
+		],
+		[
+			'quantities exceeding the safe-integer range',
+			[
+				{ receivedDay: 1, quantity: Number.MAX_SAFE_INTEGER - 1 },
+				{ receivedDay: 1, quantity: 2 }
+			],
+			'lots quantities must not exceed the safe-integer range'
 		]
 	] as const)('rejects saved product lots with %s', (_name, lots, message) => {
 		expect.assertions(1);
@@ -1857,7 +1865,7 @@ describe('save records', () => {
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'products length (4) must equal unlocked category count (1) for level 1'
+			'products length (4) must equal unlocked product count (1) for level 1'
 		);
 	});
 

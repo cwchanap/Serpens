@@ -3,7 +3,7 @@
 	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
-	import { getProductDefinition } from '$lib/game/products';
+	import { getProductFreshnessPercent } from '$lib/game/products';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import { getStoreOrdinal } from '$lib/game/state';
@@ -71,19 +71,7 @@
 	}
 
 	function getFreshnessPercent(report: DailyProductReport): number | null {
-		const averageAgeDays = report.averageAgeDays;
-		const shelfLifeDays = getProductDefinition(report.productId)?.dynamics.shelfLifeDays;
-		if (
-			averageAgeDays === null ||
-			!Number.isFinite(averageAgeDays) ||
-			shelfLifeDays === undefined ||
-			!Number.isFinite(shelfLifeDays) ||
-			shelfLifeDays <= 0
-		) {
-			return null;
-		}
-
-		return Math.max(0, Math.min(100, Math.round((1 - averageAgeDays / shelfLifeDays) * 100)));
+		return getProductFreshnessPercent(report.productId, report.averageAgeDays);
 	}
 
 	function buildPressureMessages(): PressureMessage[] {

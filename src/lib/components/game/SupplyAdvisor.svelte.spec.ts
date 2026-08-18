@@ -254,7 +254,8 @@ function renderPlanner(
 	return render(SupplyAdvisor, {
 		result,
 		productIds: options.productIds ?? ['bottled-water', 'produce'],
-		selectedProductId: options.selectedProductId ?? 'bottled-water',
+		selectedProductId:
+			options.selectedProductId === undefined ? 'bottled-water' : options.selectedProductId,
 		horizonDays: options.horizonDays ?? 30,
 		i18n: options.i18n ?? i18n,
 		onSelectProduct: options.onSelectProduct ?? vi.fn(),

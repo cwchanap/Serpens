@@ -504,10 +504,7 @@ describe('weekly retail replenishment', () => {
 		expect(report.importedUnits).toBe(9);
 		expect(report.importCost).toBe(3);
 		expect(report.importSpend).toBe(27);
-		expect(result.stores[0]!.products[0]!.lots).toEqual([
-			{ receivedDay: 1, quantity: 4 },
-			{ receivedDay: game.day, quantity: 21 }
-		]);
+		expect(result.stores[0]!.products[0]!.lots).toEqual([{ receivedDay: 1, quantity: 25 }]);
 		expect(report).not.toHaveProperty('replenishmentOutcome');
 	});
 

@@ -1,5 +1,5 @@
 import { clampScore } from './reports';
-import { getUnlockedCategoryCount } from './leveling';
+import { getUnlockedProductCount } from './leveling';
 import {
 	canPromoteStaff,
 	getStaffSalaryAfterPromotion,
@@ -57,7 +57,7 @@ const LAST_NAMES = [
 
 export function getStaffingRequirement(archetypeId: ArchetypeId, level = 1): StaffingRequirement {
 	const base = STAFFING_REQUIREMENTS[archetypeId];
-	const milestoneStaff = getUnlockedCategoryCount(level) - 1;
+	const milestoneStaff = getUnlockedProductCount(level) - 1;
 
 	return { manager: base.manager, general: base.general + milestoneStaff };
 }

@@ -7448,6 +7448,10 @@ describe('saveCodec', () => {
 				})
 			],
 			[
+				'a zero trend multiplier',
+				(product: Record<string, unknown>) => ({ ...product, trendMultiplier: 0 })
+			],
+			[
 				'a non-finite obsolescence multiplier',
 				(product: Record<string, unknown>) => ({
 					...product,
@@ -7467,6 +7471,10 @@ describe('saveCodec', () => {
 					...product,
 					effectiveSellingPrice: Number.POSITIVE_INFINITY
 				})
+			],
+			[
+				'a zero effective selling price',
+				(product: Record<string, unknown>) => ({ ...product, effectiveSellingPrice: 0 })
 			],
 			[
 				'a negative markdown amount',
@@ -7494,36 +7502,53 @@ describe('saveCodec', () => {
 
 		test.each([
 			[
-				'waste',
-				(product: Record<string, unknown>, importCost: number) => ({
+				'waste units without waste value',
+				(product: Record<string, unknown>) => ({
 					...product,
-					wasteUnits: 1,
-					wasteValue: importCost + 1,
+					wasteUnits: 2,
+					wasteValue: 0,
 					shrinkUnits: 0,
 					shrinkValue: 0
 				})
 			],
 			[
-				'shrink',
-				(product: Record<string, unknown>, importCost: number) => ({
+				'shrink units without shrink value',
+				(product: Record<string, unknown>) => ({
 					...product,
 					wasteUnits: 0,
 					wasteValue: 0,
-					shrinkUnits: 1,
-					shrinkValue: importCost + 1
+					shrinkUnits: 2,
+					shrinkValue: 0
+				})
+			],
+			[
+				'waste value without waste units',
+				(product: Record<string, unknown>) => ({
+					...product,
+					wasteUnits: 0,
+					wasteValue: 7,
+					shrinkUnits: 0,
+					shrinkValue: 0
+				})
+			],
+			[
+				'shrink value without shrink units',
+				(product: Record<string, unknown>) => ({
+					...product,
+					wasteUnits: 0,
+					wasteValue: 0,
+					shrinkUnits: 0,
+					shrinkValue: 7
 				})
 			]
 		] as const)(
-			'drops a report when %s value disagrees with catalog import cost despite reconciled totals',
+			'drops a report when %s disagree despite reconciled totals',
 			(_name, mutateProduct) => {
 				const game = createCurrentMultiCityGame();
 				const report = createCurrentReport(game);
 				const storeReport = report.storeReports[0]!;
-				const sourceProductReport = storeReport.productReports[0]!;
-				const catalogImportCost = getProductDefinition(sourceProductReport.productId).importCost;
 				const productReport = mutateProduct(
-					sourceProductReport as unknown as Record<string, unknown>,
-					catalogImportCost
+					storeReport.productReports[0]! as unknown as Record<string, unknown>
 				);
 				const reconciledLoss =
 					(productReport.wasteValue as number) + (productReport.shrinkValue as number);
@@ -7542,6 +7567,35 @@ describe('saveCodec', () => {
 				expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 			}
 		);
+
+		test('keeps a report whose waste value differs from the current catalog import cost', () => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const storeReport = report.storeReports[0]!;
+			const sourceProductReport = storeReport.productReports[0]!;
+			const catalogImportCost = getProductDefinition(sourceProductReport.productId).importCost;
+			const productReport = {
+				...sourceProductReport,
+				wasteUnits: 1,
+				wasteValue: catalogImportCost + 1,
+				shrinkUnits: 0,
+				shrinkValue: 0
+			};
+			const reconciledLoss = productReport.wasteValue + productReport.shrinkValue;
+			const updatedReport: DailyReport = {
+				...report,
+				inventoryLossExpense: reconciledLoss,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [productReport],
+						inventoryLossExpense: reconciledLoss
+					}
+				]
+			};
+
+			expectHistoricalReportPreserved(() => decodeHistoricalReport(game, updatedReport));
+		});
 
 		test('drops a report with persisted freshness instead of accepting a derived field', () => {
 			const game = createCurrentMultiCityGame();

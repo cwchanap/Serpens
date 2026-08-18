@@ -14,7 +14,7 @@ import {
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint
 } from '$lib/game/industryFootprint';
-import { getUnlockedCategoryCount, MAX_STORE_LEVEL, MAX_BUILDING_LEVEL } from '$lib/game/leveling';
+import { getUnlockedProductCount, MAX_STORE_LEVEL, MAX_BUILDING_LEVEL } from '$lib/game/leveling';
 import { formatLocation } from '$lib/game/placement';
 import { RAIL_MAX_LEVEL } from '$lib/game/rail';
 import {
@@ -3863,16 +3863,16 @@ function validateSavedStoreReport(
 		report.inventoryLossExpense,
 		`${label} inventoryLossExpense`
 	);
-	const seenCategoryIds = new Set<string>();
+	const seenProductIds = new Set<string>();
 	let attemptedReplenishment = false;
 	let productInventoryLossExpense = 0;
 	requireArray(report.productReports, `${label} productReports`).forEach((productReport, index) => {
 		const productLabel = `${label} productReports[${index}]`;
 		const product = validateSavedProductReport(productReport, productLabel);
-		if (seenCategoryIds.has(product.productId)) {
+		if (seenProductIds.has(product.productId)) {
 			throw new SaveDataError(`${productLabel} productId must be unique within its store report`);
 		}
-		seenCategoryIds.add(product.productId);
+		seenProductIds.add(product.productId);
 		attemptedReplenishment ||= product.warehouseUnits > 0 || product.importedUnits > 0;
 		productInventoryLossExpense += product.wasteValue + product.shrinkValue;
 	});
@@ -3898,12 +3898,12 @@ function validateSavedStoreProducts(
 ): StoreProduct[] {
 	const archetypeId = requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
 	const storeLevel = requireNumber(store.level, `${label} level`);
-	const unlockedCount = getUnlockedCategoryCount(storeLevel);
-	const archetypeProductIds = getArchetype(archetypeId).startingProductIds;
-	const archetypeProducts = new Set(archetypeProductIds);
-	const unlockedProductIds = getArchetype(archetypeId).startingProductIds.slice(0, unlockedCount);
+	const unlockedCount = getUnlockedProductCount(storeLevel);
+	const archetype = getArchetype(archetypeId);
+	const archetypeProducts = new Set(archetype.startingProductIds);
+	const unlockedProductIds = archetype.startingProductIds.slice(0, unlockedCount);
 	const unlockedProducts = new Set(unlockedProductIds);
-	const seenCategories = new Set<string>();
+	const seenProducts = new Set<string>();
 	const products = requireArray(store.products, `${label} products`);
 	const validatedProducts: StoreProduct[] = [];
 
@@ -3917,24 +3917,24 @@ function validateSavedStoreProducts(
 			);
 		}
 
-		if (seenCategories.has(product.productId)) {
+		if (seenProducts.has(product.productId)) {
 			throw new SaveDataError(
 				`${label} products[${index}] productId must be unique for archetype ${archetypeId}`,
 				'invariant-products'
 			);
 		}
 
-		seenCategories.add(product.productId);
+		seenProducts.add(product.productId);
 		validatedProducts.push(product);
 	}
 
 	if (products.length === 0) {
-		throw new SaveDataError(`${label} products must have at least one category`);
+		throw new SaveDataError(`${label} products must have at least one product`);
 	}
 
 	if (products.length !== unlockedCount) {
 		throw new SaveDataError(
-			`${label} products length (${products.length}) must equal unlocked category count (${unlockedCount}) for level ${storeLevel}`,
+			`${label} products length (${products.length}) must equal unlocked product count (${unlockedCount}) for level ${storeLevel}`,
 			'invariant-products'
 		);
 	}
@@ -3984,6 +3984,7 @@ function validateSavedProductLots(
 ): ProductStockLot[] {
 	const lots = requireArray(value, label);
 	let previousReceivedDay = -1;
+	let totalQuantity = 0;
 	const validated: ProductStockLot[] = [];
 
 	for (const [index, lotValue] of lots.entries()) {
@@ -3999,6 +4000,10 @@ function validateSavedProductLots(
 			throw new SaveDataError(`${label} must be ordered by receivedDay`);
 		}
 		const quantity = requirePositiveSafeInteger(lot.quantity, `${label}[${index}] quantity`);
+		if (quantity > Number.MAX_SAFE_INTEGER - totalQuantity) {
+			throw new SaveDataError(`${label} quantities must not exceed the safe-integer range`);
+		}
+		totalQuantity += quantity;
 		validated.push({ receivedDay, quantity });
 		previousReceivedDay = receivedDay;
 	}
@@ -4054,14 +4059,16 @@ function validateSavedProductReport(
 	}
 	const wasteUnits = requireNonNegativeInteger(report.wasteUnits, `${label} wasteUnits`);
 	const wasteValue = requireNonNegativeFiniteNumber(report.wasteValue, `${label} wasteValue`);
-	if (!numbersMatchWithinTolerance(wasteValue, wasteUnits * PRODUCTS[productId].importCost)) {
-		throw new SaveDataError(`${label} wasteValue must equal wasteUnits times product import cost`);
+	if ((wasteUnits === 0) !== (wasteValue === 0)) {
+		throw new SaveDataError(
+			`${label} wasteValue must be zero for zero waste units and positive otherwise`
+		);
 	}
 	const shrinkUnits = requireNonNegativeInteger(report.shrinkUnits, `${label} shrinkUnits`);
 	const shrinkValue = requireNonNegativeFiniteNumber(report.shrinkValue, `${label} shrinkValue`);
-	if (!numbersMatchWithinTolerance(shrinkValue, shrinkUnits * PRODUCTS[productId].importCost)) {
+	if ((shrinkUnits === 0) !== (shrinkValue === 0)) {
 		throw new SaveDataError(
-			`${label} shrinkValue must equal shrinkUnits times product import cost`
+			`${label} shrinkValue must be zero for zero shrink units and positive otherwise`
 		);
 	}
 	requireNonNegativeSafeInteger(report.stockoutLostDemand, `${label} stockoutLostDemand`);
@@ -4080,10 +4087,10 @@ function validateSavedProductReport(
 	) {
 		throw new SaveDataError(`${label} averageAgeDays must not exceed oldestSellableAgeDays`);
 	}
-	requireNonNegativeFiniteNumber(report.trendMultiplier, `${label} trendMultiplier`);
-	requireNonNegativeFiniteNumber(report.obsolescenceMultiplier, `${label} obsolescenceMultiplier`);
-	requireNonNegativeFiniteNumber(report.baseSellingPrice, `${label} baseSellingPrice`);
-	requireNonNegativeFiniteNumber(report.effectiveSellingPrice, `${label} effectiveSellingPrice`);
+	requirePositiveFiniteMultiplier(report.trendMultiplier, `${label} trendMultiplier`);
+	requirePositiveFiniteMultiplier(report.obsolescenceMultiplier, `${label} obsolescenceMultiplier`);
+	requirePositiveFiniteMultiplier(report.baseSellingPrice, `${label} baseSellingPrice`);
+	requirePositiveFiniteMultiplier(report.effectiveSellingPrice, `${label} effectiveSellingPrice`);
 	requireNonNegativeFiniteNumber(report.markdownAmount, `${label} markdownAmount`);
 
 	return { productId, warehouseUnits, importedUnits, wasteValue, shrinkValue };

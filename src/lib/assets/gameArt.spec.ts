@@ -944,10 +944,10 @@ describe('chainNodeArt', () => {
 		});
 	});
 
-	it('throws an error for unknown product art category', () => {
+	it('throws an error for unknown product art', () => {
 		expect.assertions(1);
-		expect(() => gameArt.getProductArt('nonexistent-category' as never)).toThrow(
-			'Unknown product art category: nonexistent-category'
+		expect(() => gameArt.getProductArt('nonexistent-product' as never)).toThrow(
+			'Unknown product art: nonexistent-product'
 		);
 	});
 });

@@ -34,15 +34,15 @@ export function isMilestoneLevel(level: number): boolean {
 }
 
 /**
- * Number of product categories unlocked at the given store level.
+ * Number of products unlocked at the given store level.
  *
  * Derived from {@link STORE_MILESTONE_LEVELS} so that adding or removing a
- * milestone level (and the corresponding capacity / category-unlock rules)
+ * milestone level (and the corresponding capacity / product-unlock rules)
  * stays in lockstep with the rest of the leveling model. Milestones are
  * evaluated in descending order so the highest matching milestone wins
- * (e.g. level 10 unlocks 4 categories, not 2).
+ * (e.g. level 10 unlocks 4 products, not 2).
  */
-export function getUnlockedCategoryCount(level: number): number {
+export function getUnlockedProductCount(level: number): number {
 	for (let index = STORE_MILESTONE_LEVELS.length - 1; index >= 0; index--) {
 		if (level >= STORE_MILESTONE_LEVELS[index]!) {
 			return index + 2;
@@ -62,7 +62,7 @@ export function getStoreRevenueMultiplier(level: number): number {
 }
 
 export function getStoreStaffCapacityBonus(level: number): number {
-	return STORE_MILESTONE_CAPACITY_BONUS * (getUnlockedCategoryCount(level) - 1);
+	return STORE_MILESTONE_CAPACITY_BONUS * (getUnlockedProductCount(level) - 1);
 }
 
 export function getStoreUpgradeCost(level: number): number {

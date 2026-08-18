@@ -118,26 +118,22 @@ describe('product dynamics', () => {
 		const beginning = resolveProductMarketDynamics({
 			product,
 			definition,
-			day: 0,
-			storeReputation: 50
+			day: 0
 		});
 		const peak = resolveProductMarketDynamics({
 			product,
 			definition,
-			day: 2,
-			storeReputation: 50
+			day: 2
 		});
 		const trough = resolveProductMarketDynamics({
 			product,
 			definition,
-			day: 6,
-			storeReputation: 50
+			day: 6
 		});
 		const wrapped = resolveProductMarketDynamics({
 			product,
 			definition,
-			day: 8,
-			storeReputation: 50
+			day: 8
 		});
 
 		expect(beginning.trendMultiplier).toBe(1);
@@ -165,14 +161,12 @@ describe('product dynamics', () => {
 		const result = resolveProductMarketDynamics({
 			product,
 			definition,
-			day: 12,
-			storeReputation: 50
+			day: 12
 		});
 		const floorResult = resolveProductMarketDynamics({
 			product,
 			definition,
-			day: 21,
-			storeReputation: 50
+			day: 21
 		});
 
 		expect(result.obsolescenceMultiplier).toBeCloseTo(0.94);

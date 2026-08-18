@@ -193,7 +193,6 @@ export function resolveProductMarketDynamics(input: {
 	product: StoreProduct;
 	definition: ProductDefinition;
 	day: number;
-	storeReputation: number;
 }): ProductMarketDynamics {
 	const oldestSellableAgeDays = getOldestSellableAgeDays(
 		input.product,
