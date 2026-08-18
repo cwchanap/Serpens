@@ -7463,7 +7463,8 @@ describe('saveCodec', () => {
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
 			// Persisted totals can carry a one-ULP fractional drift from the exact product loss.
-			const persistedTotal = 2 + Number.EPSILON;
+			const persistedTotal = 2.0000000000000004;
+			expect(persistedTotal).not.toBe(2);
 			const productReport = {
 				...storeReport.productReports[0]!,
 				wasteUnits: 1,
