@@ -93,12 +93,13 @@ export function updateStoreProduct(
 	);
 	const reorderThreshold = Math.max(
 		0,
-		roundedFiniteOrFallback(patch.reorderThreshold, product.reorderThreshold)
+		finiteOrFallback(patch.reorderThreshold, product.reorderThreshold)
 	);
-	const targetStock = Math.max(
-		reorderThreshold,
-		roundedFiniteOrFallback(patch.targetStock, product.targetStock)
-	);
+	const requestedTargetStock = lotCompatibleOrFallback(patch.targetStock, product.targetStock);
+	const targetStock = Math.max(Math.ceil(reorderThreshold), requestedTargetStock);
+	if (!isLotCompatibleQuantity(targetStock)) {
+		return game;
+	}
 	const products = store.products.map((candidate, index) =>
 		index === productIndex
 			? {
@@ -404,6 +405,31 @@ function roundedFiniteOrFallback(value: number | undefined, fallback: number): n
 	}
 
 	return Math.round(value);
+}
+
+function finiteOrFallback(value: number | undefined, fallback: number): number {
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		return fallback;
+	}
+
+	return value;
+}
+
+function lotCompatibleOrFallback(value: number | undefined, fallback: number): number {
+	if (!isLotCompatibleQuantity(value)) {
+		return fallback;
+	}
+
+	return value;
+}
+
+function isLotCompatibleQuantity(value: number | undefined): value is number {
+	return (
+		typeof value === 'number' &&
+		Number.isSafeInteger(value) &&
+		value >= 0 &&
+		value < Number.MAX_SAFE_INTEGER
+	);
 }
 
 function roundStockDefault(value: number): number {
