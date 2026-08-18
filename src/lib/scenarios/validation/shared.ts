@@ -359,6 +359,25 @@ export function nonNegativeSafeInteger(
 	return true;
 }
 
+export function nonNegativeLotQuantity(
+	context: ValidationContext,
+	value: unknown,
+	path: string
+): value is number {
+	if (!nonNegativeSafeInteger(context, value, path)) return false;
+	if (value >= Number.MAX_SAFE_INTEGER) {
+		diagnostic(
+			context,
+			path,
+			'invalid-non-negative-safe-integer',
+			value,
+			`${path} must be a non-negative safe integer that can advance safely.`
+		);
+		return false;
+	}
+	return true;
+}
+
 export function positiveNumber(
 	context: ValidationContext,
 	value: unknown,

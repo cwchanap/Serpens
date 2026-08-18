@@ -55,11 +55,12 @@ import type {
 	BuildingTier,
 	IndustrialBuildingTypeId,
 	MaterialId,
+	ProductId,
 	ProductionRecipeId
 } from '$lib/game/types';
 
 const archetypeIds: ArchetypeId[] = ['convenience', 'boutique', 'electronics', 'grocery'];
-const productIds = [
+const productIds: ProductId[] = [
 	...new Set(ARCHETYPES.flatMap((archetype) => archetype.startingProductIds))
 ].sort();
 const industryTerrainPaths = {
@@ -318,6 +319,19 @@ describe('game art asset constants', () => {
 			).toBeGreaterThan(0);
 			expect(opaquePixels, `${art.path} should preserve visible product pixels`).toBeGreaterThan(0);
 		}
+	});
+
+	it('requires a catalog ProductId for product art lookup', () => {
+		expect.assertions(2);
+		const productId: ProductId = 'snacks';
+		expect(getProductArt(productId).productId).toBe(productId);
+
+		const arbitraryProductId: string = 'snacks';
+		const invalidLookup = () => {
+			// @ts-expect-error Product art lookup must not accept arbitrary strings.
+			return getProductArt(arbitraryProductId);
+		};
+		expect(invalidLookup).toBeTypeOf('function');
 	});
 
 	it('defines terrain art for road, river, and tree decoration', () => {

@@ -564,8 +564,8 @@ export function getStoreArt(archetypeId: ArchetypeId): StoreArt {
 	return ARCHETYPE_STORE_ART[archetypeId];
 }
 
-export function getProductArt(productId: string): ProductArt {
-	const productArt = PRODUCT_ART[productId as ProductArtProductId];
+export function getProductArt(productId: ProductId): ProductArt {
+	const productArt = PRODUCT_ART[productId];
 
 	if (!productArt) {
 		throw new Error(`Unknown product art category: ${productId}`);

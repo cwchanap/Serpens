@@ -26,8 +26,8 @@ import {
 	isObject,
 	nonEmptyString,
 	nonNegativeInteger,
+	nonNegativeLotQuantity,
 	nonNegativeNumber,
-	nonNegativeSafeInteger,
 	positiveNumber,
 	validateIncluded,
 	validateKnownReference,
@@ -260,10 +260,9 @@ function validateProductOverrides(
 				);
 			validateIncluded(context, productId, `${path}.productId`, context.content.products);
 		}
-		nonNegativeSafeInteger(context, product.stock, `${path}.stock`);
-		for (const key of ['reorderThreshold', 'targetStock'] as const) {
-			nonNegativeNumber(context, product[key], `${path}.${key}`);
-		}
+		nonNegativeLotQuantity(context, product.stock, `${path}.stock`);
+		nonNegativeNumber(context, product.reorderThreshold, `${path}.reorderThreshold`);
+		nonNegativeLotQuantity(context, product.targetStock, `${path}.targetStock`);
 		positiveNumber(context, product.sellingPrice, `${path}.sellingPrice`);
 		if (
 			typeof product.reorderThreshold === 'number' &&
