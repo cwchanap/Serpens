@@ -1321,4 +1321,76 @@ describe('ReportsPanel', () => {
 		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
 		await expect.element(logistics.getByText('Utilization: 0%')).toBeVisible();
 	});
+
+	it('surfaces obsolescence evidence for a product whose demand was reduced', async () => {
+		expect.assertions(2);
+		const obsolescenceReport: DailyStoreReport = {
+			...pressureStoreReport(),
+			productReports: [
+				{
+					...pressureStoreReport().productReports[0]!,
+					productId: 'games',
+					name: 'Games',
+					wasteUnits: 0,
+					shrinkUnits: 0,
+					stockoutLostDemand: 0,
+					markdownAmount: 0,
+					obsolescenceMultiplier: 0.7,
+					averageAgeDays: null,
+					oldestSellableAgeDays: null
+				}
+			],
+			inventoryLossExpense: 0
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [obsolescenceReport],
+					inventoryLossExpense: 0
+				}
+			}
+		});
+
+		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
+		await expect.element(pressure.getByText('Obsolescence: 70% demand')).toBeVisible();
+		await expect.element(pressure.getByText('Inventory loss expense: $6')).not.toBeInTheDocument();
+	});
+
+	it('renders the empty pressure copy when only inventory loss expense is present', async () => {
+		expect.assertions(2);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [],
+					inventoryLossExpense: 12
+				}
+			}
+		});
+
+		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
+		await expect
+			.element(pressure.getByText('No product pressure evidence recorded.'))
+			.toBeVisible();
+		await expect.element(pressure.getByText('Inventory loss expense: $12')).toBeVisible();
+	});
+
+	it('hides the product pressure section when there is no latest report', async () => {
+		expect.assertions(1);
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			stores: [],
+			summary: { ...summary, latest: undefined }
+		});
+
+		expect(document.querySelector('.product-pressure-evidence')).toBeNull();
+	});
 });

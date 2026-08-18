@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
 	applyProductInventoryAging,
+	getOldestSellableAgeDays,
+	resolveMarkdownMultiplier,
+	resolveObsolescenceMultiplier,
 	resolveProductMarketDynamics,
-	resolveReputationScore
+	resolveReputationScore,
+	resolveTrendMultiplier
 } from './productDynamics';
 import { getProductDefinition } from './products';
 import type { StoreProduct } from './types';
@@ -194,5 +198,76 @@ describe('product dynamics', () => {
 		expect(highSensitive - neutral).toBeGreaterThan(highBaseline - neutral);
 		expect(neutral - lowSensitive).toBeGreaterThan(neutral - lowBaseline);
 		expect(resolveReputationScore({ storeReputation: 50, reputationSensitivity: 2 })).toBe(neutral);
+	});
+
+	it('skips empty lots during aging without counting them as waste or shrink', () => {
+		const product: StoreProduct = {
+			productId: 'produce',
+			lots: [
+				{ receivedDay: 1, quantity: 0 },
+				{ receivedDay: 2, quantity: 4 }
+			],
+			reorderThreshold: 1,
+			targetStock: 20,
+			sellingPrice: 4
+		};
+		const definition = { ...getProductDefinition('produce'), dynamics: { shrinkRate: 0.25 } };
+
+		const result = applyProductInventoryAging({ product, definition, closingDay: 9 });
+
+		expect(result.product.lots).toEqual([{ receivedDay: 2, quantity: 3 }]);
+		expect(result.shrinkUnits).toBe(1);
+		expect(result.wasteUnits).toBe(0);
+	});
+
+	it('getOldestSellableAgeDays ignores empty and expired lots', () => {
+		const product: StoreProduct = {
+			productId: 'produce',
+			lots: [
+				{ receivedDay: 1, quantity: 0 },
+				{ receivedDay: 2, quantity: 5 },
+				{ receivedDay: 0, quantity: 3 }
+			],
+			reorderThreshold: 1,
+			targetStock: 20,
+			sellingPrice: 4
+		};
+
+		expect(getOldestSellableAgeDays(product, 9, 8)).toBe(7);
+		expect(
+			getOldestSellableAgeDays({ ...product, lots: [{ receivedDay: 1, quantity: 0 }] }, 9, 8)
+		).toBeNull();
+		expect(
+			getOldestSellableAgeDays({ ...product, lots: [{ receivedDay: 0, quantity: 3 }] }, 9, 8)
+		).toBeNull();
+	});
+
+	it('resolveTrendMultiplier falls back to defaults for non-finite phase and amplitude', () => {
+		const baseline = resolveTrendMultiplier({ amplitude: 0.5, periodDays: 8, phaseDays: 0 }, 2);
+		const nonFinitePhase = resolveTrendMultiplier(
+			{ amplitude: 0.5, periodDays: 8, phaseDays: Number.NaN },
+			2
+		);
+		const nonFiniteAmplitude = resolveTrendMultiplier(
+			{ amplitude: Number.NaN, periodDays: 8, phaseDays: 0 },
+			2
+		);
+
+		expect(nonFinitePhase).toBe(baseline);
+		expect(nonFiniteAmplitude).toBe(1);
+	});
+
+	it('resolveObsolescenceMultiplier and resolveMarkdownMultiplier return neutral for null age', () => {
+		expect(resolveObsolescenceMultiplier(null, { startsAfterDays: 10, demandFloor: 0.4 })).toBe(1);
+		expect(resolveMarkdownMultiplier(null, { startsAtAgeDays: 10, priceMultiplier: 0.75 })).toBe(1);
+		expect(resolveObsolescenceMultiplier(5, { startsAfterDays: 10, demandFloor: 0.4 })).toBe(1);
+		expect(resolveMarkdownMultiplier(5, { startsAtAgeDays: 10, priceMultiplier: 0.75 })).toBe(1);
+	});
+
+	it('resolveReputationScore falls back to neutral reputation for non-finite store reputation', () => {
+		const neutral = resolveReputationScore({ storeReputation: 50 });
+		const nonFinite = resolveReputationScore({ storeReputation: Number.POSITIVE_INFINITY });
+
+		expect(nonFinite).toBe(neutral);
 	});
 });

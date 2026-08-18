@@ -42,6 +42,31 @@ vi.mock('./productChainGraph', async (importOriginal) => {
 	};
 });
 
+// Patch getProductDefinition to admit a synthetic 'fake-finished' product with no
+// productionMaterialId so the defensive branch in buildProductChainTree (supported
+// finished material with no backing material) can be exercised. All real products
+// delegate to the real catalog.
+vi.mock('./products', async (importOriginal) => {
+	const actual = (await importOriginal()) as typeof import('./products');
+	const fakeFinished = {
+		id: 'fake-finished',
+		familyId: 'convenience-goods',
+		name: 'Fake Finished',
+		demandWeight: 1,
+		importCost: 1,
+		defaultSellingPrice: 2,
+		priceSensitivity: 0.5,
+		productionMaterialId: null,
+		dynamics: {}
+	} as unknown as ReturnType<typeof actual.getProductDefinition>;
+
+	return {
+		...actual,
+		getProductDefinition: (id: string): ReturnType<typeof actual.getProductDefinition> =>
+			id === 'fake-finished' ? fakeFinished : actual.getProductDefinition(id as never)
+	};
+});
+
 function convenienceGame(): GameState {
 	return { ...createNewGame('convenience', 20260611), cash: 1_000_000 };
 }
@@ -1524,6 +1549,20 @@ describe('buildProductChainTree defensive branches', () => {
 		expect(tree.id).toBe('chain:bottled-water');
 		expect(tree.emptyReason).toBe('noLocalChain');
 		expect(tree.title).toBe('Bottled Water');
+	});
+
+	it('returns an empty graph when a supported product has no backing production material', () => {
+		expect.assertions(3);
+		const game = convenienceGame();
+		const tree = buildProductChainTree({
+			game,
+			store: null,
+			productId: 'fake-finished' as never
+		});
+
+		expect(tree.nodes).toEqual([]);
+		expect(tree.id).toBe('chain:fake-finished');
+		expect(tree.emptyReason).toBe('noLocalChain');
 	});
 
 	it('warns when a recipe input material has no producer recipe', () => {
