@@ -1,6 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { flushSync, mount, unmount } from 'svelte';
 import { createNewGame } from '$lib/game/state';
 import { createI18n } from '$lib/i18n';
 import type { GameState, Store } from '$lib/game/types';
@@ -91,5 +92,57 @@ describe('StoreProductChainPanel', () => {
 		view.rerender({ game, i18n: createI18n('en'), store: game.stores[0]! });
 
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+	});
+
+	it('ignores select changes for unsupported category values', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260518);
+
+		renderProductChainPanel(game, game.stores[0]!);
+
+		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+
+		const select = page.getByLabelText('Product category').element() as HTMLSelectElement;
+		select.value = 'nonexistent-category';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+
+		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
+	});
+
+	it('falls back to activeSelection productId when selectedCategory is null', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260518);
+		const electronicsGame = createNewGame('electronics', 20260518);
+
+		const props = $state({
+			game,
+			i18n: createI18n('en'),
+			store: game.stores[0]!
+		});
+
+		const target = document.createElement('div');
+		document.body.appendChild(target);
+		const component = mount(StoreProductChainPanel, { target, props });
+		try {
+			flushSync();
+
+			const graph = target.querySelector('[data-testid="product-chain-graph-chain:bottled-water"]');
+			const nodeButton = graph?.querySelector('button') as HTMLButtonElement;
+			nodeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+			flushSync();
+
+			props.game = electronicsGame;
+			props.store = electronicsGame.stores[0]!;
+
+			nodeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+			flushSync();
+
+			expect(target.textContent).toContain(
+				"No local production chain available for this store's categories yet."
+			);
+		} finally {
+			flushSync(() => unmount(component));
+			target.remove();
+		}
 	});
 });
