@@ -4025,12 +4025,12 @@ function validateSavedProductReport(
 		'product'
 	) as ProductId;
 	requireString(report.name, `${label} name`);
-	requireNumber(report.unitsSold, `${label} unitsSold`);
-	requireNumber(report.demandMissed, `${label} demandMissed`);
+	requireNonNegativeInteger(report.unitsSold, `${label} unitsSold`);
+	requireNonNegativeInteger(report.demandMissed, `${label} demandMissed`);
 	requireNumber(report.revenue, `${label} revenue`);
 	requireNumber(report.costOfGoods, `${label} costOfGoods`);
 	requireNumber(report.grossMargin, `${label} grossMargin`);
-	requireNumber(report.endingStock, `${label} endingStock`);
+	requireNonNegativeInteger(report.endingStock, `${label} endingStock`);
 	const warehouseUnits = requireNonNegativeInteger(
 		report.warehouseUnits,
 		`${label} warehouseUnits`
@@ -4052,10 +4052,18 @@ function validateSavedProductReport(
 	if (Object.hasOwn(report, 'freshnessPercent')) {
 		throw new SaveDataError(`${label} freshnessPercent must not be persisted`);
 	}
-	requireNonNegativeInteger(report.wasteUnits, `${label} wasteUnits`);
+	const wasteUnits = requireNonNegativeInteger(report.wasteUnits, `${label} wasteUnits`);
 	const wasteValue = requireNonNegativeFiniteNumber(report.wasteValue, `${label} wasteValue`);
-	requireNonNegativeInteger(report.shrinkUnits, `${label} shrinkUnits`);
+	if (!numbersMatchWithinTolerance(wasteValue, wasteUnits * PRODUCTS[productId].importCost)) {
+		throw new SaveDataError(`${label} wasteValue must equal wasteUnits times product import cost`);
+	}
+	const shrinkUnits = requireNonNegativeInteger(report.shrinkUnits, `${label} shrinkUnits`);
 	const shrinkValue = requireNonNegativeFiniteNumber(report.shrinkValue, `${label} shrinkValue`);
+	if (!numbersMatchWithinTolerance(shrinkValue, shrinkUnits * PRODUCTS[productId].importCost)) {
+		throw new SaveDataError(
+			`${label} shrinkValue must equal shrinkUnits times product import cost`
+		);
+	}
 	requireNonNegativeFiniteNumber(report.stockoutLostDemand, `${label} stockoutLostDemand`);
 	const averageAgeDays = requireNullableNonNegativeFiniteNumber(
 		report.averageAgeDays,

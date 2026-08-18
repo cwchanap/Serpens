@@ -17,6 +17,7 @@ import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { cloneTimedEffect } from '$lib/game/eventModifiers';
 import { createNewGame, resolveDecision } from '$lib/game/state';
+import { getProductDefinition } from '$lib/game/products';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import {
 	STARTER_STORE_CAP,
@@ -7229,6 +7230,48 @@ describe('saveCodec', () => {
 
 	describe('schema-17 product dynamics report validation', () => {
 		test.each([
+			['negative unitsSold', (product: Record<string, unknown>) => ({ ...product, unitsSold: -1 })],
+			[
+				'fractional unitsSold',
+				(product: Record<string, unknown>) => ({ ...product, unitsSold: 0.5 })
+			],
+			[
+				'negative demandMissed',
+				(product: Record<string, unknown>) => ({ ...product, demandMissed: -1 })
+			],
+			[
+				'fractional demandMissed',
+				(product: Record<string, unknown>) => ({ ...product, demandMissed: 0.5 })
+			],
+			[
+				'negative endingStock',
+				(product: Record<string, unknown>) => ({ ...product, endingStock: -1 })
+			],
+			[
+				'fractional endingStock',
+				(product: Record<string, unknown>) => ({ ...product, endingStock: 0.5 })
+			]
+		] as const)('drops a report with invalid core product evidence: %s', (_name, mutateProduct) => {
+			const game = createCurrentMultiCityGame();
+			const report = createCurrentReport(game);
+			const storeReport = report.storeReports[0]!;
+			const productReport = mutateProduct(
+				storeReport.productReports[0]! as unknown as Record<string, unknown>
+			);
+			const updatedReport: DailyReport = {
+				...report,
+				storeReports: [
+					{
+						...storeReport,
+						productReports: [productReport as unknown as DailyProductReport]
+					}
+				]
+			};
+
+			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
+		});
+
+		test.each([
 			[
 				'an unknown product ID',
 				(product: Record<string, unknown>) => ({ ...product, productId: 'unknown-product' })
@@ -7301,6 +7344,57 @@ describe('saveCodec', () => {
 			expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
 		});
 
+		test.each([
+			[
+				'waste',
+				(product: Record<string, unknown>, importCost: number) => ({
+					...product,
+					wasteUnits: 1,
+					wasteValue: importCost + 1,
+					shrinkUnits: 0,
+					shrinkValue: 0
+				})
+			],
+			[
+				'shrink',
+				(product: Record<string, unknown>, importCost: number) => ({
+					...product,
+					wasteUnits: 0,
+					wasteValue: 0,
+					shrinkUnits: 1,
+					shrinkValue: importCost + 1
+				})
+			]
+		] as const)(
+			'drops a report when %s value disagrees with catalog import cost despite reconciled totals',
+			(_name, mutateProduct) => {
+				const game = createCurrentMultiCityGame();
+				const report = createCurrentReport(game);
+				const storeReport = report.storeReports[0]!;
+				const sourceProductReport = storeReport.productReports[0]!;
+				const catalogImportCost = getProductDefinition(sourceProductReport.productId).importCost;
+				const productReport = mutateProduct(
+					sourceProductReport as unknown as Record<string, unknown>,
+					catalogImportCost
+				);
+				const reconciledLoss =
+					(productReport.wasteValue as number) + (productReport.shrinkValue as number);
+				const updatedReport: DailyReport = {
+					...report,
+					inventoryLossExpense: reconciledLoss,
+					storeReports: [
+						{
+							...storeReport,
+							productReports: [productReport as unknown as DailyProductReport],
+							inventoryLossExpense: reconciledLoss
+						}
+					]
+				};
+
+				expectHistoricalReportDropped(() => decodeHistoricalReport(game, updatedReport));
+			}
+		);
+
 		test('drops a report with persisted freshness instead of accepting a derived field', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
@@ -7368,21 +7462,23 @@ describe('saveCodec', () => {
 			const game = createCurrentMultiCityGame();
 			const report = createCurrentReport(game);
 			const storeReport = report.storeReports[0]!;
+			// Persisted totals can carry a one-ULP fractional drift from the exact product loss.
+			const persistedTotal = 2 + Number.EPSILON;
 			const productReport = {
 				...storeReport.productReports[0]!,
 				wasteUnits: 1,
-				wasteValue: 0.1,
-				shrinkUnits: 1,
-				shrinkValue: 0.2
+				wasteValue: 2,
+				shrinkUnits: 0,
+				shrinkValue: 0
 			};
 			const updatedReport: DailyReport = {
 				...report,
-				inventoryLossExpense: 0.3,
+				inventoryLossExpense: persistedTotal,
 				storeReports: [
 					{
 						...storeReport,
 						productReports: [productReport],
-						inventoryLossExpense: 0.3
+						inventoryLossExpense: persistedTotal
 					}
 				]
 			};
