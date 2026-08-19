@@ -18,6 +18,7 @@ import {
 import { processRecurringRouteDispatches, processTransferArrivals } from './interCityLogistics';
 import { buildRouteModifierRecoveries } from './logisticsRouteModifiers';
 import { simulateIndustryProduction } from './industryProduction';
+import { resolveEffectivePolicy } from './policyInheritance';
 import { resolveProductMarketDynamics } from './productDynamics';
 import { clampScore } from './reports';
 import { getProductDefinition } from './products';
@@ -38,7 +39,12 @@ import {
 	summarizeStoreStaffing
 } from './staffing';
 import { getStaffDailyXp, getStaffXpForLevel, MAX_STAFF_LEVEL } from './staffLeveling';
-import { calculateStockHealth, getStoreProductStock, simulateProductSalesForCity } from './stock';
+import {
+	calculateStockHealth,
+	getStoreProductStock,
+	simulateProductSalesForCity,
+	type EffectivePolicyByStoreId
+} from './stock';
 import { refreshWorldProgress } from './world';
 import type {
 	ActiveEventModifier,
@@ -52,6 +58,7 @@ import type {
 	EventModifierImpact,
 	EventModifierLifecycle,
 	EventTimedEffect,
+	CompanyPolicy,
 	GameState,
 	ProductId,
 	ProductInventoryAgingResult,
@@ -132,8 +139,14 @@ export function simulateDay(
 	const industryResult = simulateIndustryProduction(arrivalGame, mergedRules);
 	const productionGame = industryResult.game;
 	const rng = createRngFromState(productionGame.rngState);
+	const effectivePolicyByStoreId: EffectivePolicyByStoreId = new Map(
+		productionGame.stores.map((store) => [
+			store.id,
+			resolveEffectivePolicy(productionGame, { kind: 'store', storeId: store.id }).values
+		])
+	);
 	const profiles = productionGame.stores.map((store) =>
-		buildStoreOperationProfile(store, productionGame, rng)
+		buildStoreOperationProfile(store, productionGame, rng, effectivePolicyByStoreId.get(store.id)!)
 	);
 	const profileByStoreId = new Map(profiles.map((profile) => [profile.store.id, profile]));
 	const storeCapacity = new Map(
@@ -141,10 +154,7 @@ export function simulateDay(
 	);
 	const pricedSalesGame = {
 		...productionGame,
-		stores: applyPolicyPricingToStores(
-			productionGame.stores,
-			PRICING[productionGame.policy.pricing].price
-		)
+		stores: applyPolicyPricingToStores(productionGame.stores, effectivePolicyByStoreId)
 	};
 	const storeCityIds = new Set(productionGame.stores.map((store) => store.cityId));
 	const citySales = productionGame.cities
@@ -155,7 +165,8 @@ export function simulateDay(
 					game: { ...pricedSalesGame, stores: result.stores },
 					city,
 					rng,
-					storeCapacity
+					storeCapacity,
+					effectivePolicyByStoreId
 				});
 
 				return {
@@ -495,12 +506,13 @@ function getNextLoanPaymentSnapshot(
 function buildStoreOperationProfile(
 	store: Store,
 	game: GameState,
-	rng: ReturnType<typeof createRngFromState>
+	rng: ReturnType<typeof createRngFromState>,
+	policy: CompanyPolicy
 ): StoreOperationProfile {
-	const staffing = STAFFING[game.policy.staffing];
-	const inventory = INVENTORY[game.policy.inventory];
-	const marketing = MARKETING[game.policy.marketing];
-	const service = SERVICE[game.policy.service];
+	const staffing = STAFFING[policy.staffing];
+	const inventory = INVENTORY[policy.inventory];
+	const marketing = MARKETING[policy.marketing];
+	const service = SERVICE[policy.service];
 	const staffingSummary = summarizeStoreStaffing(game, store);
 	const staffingCoverageRatio = Math.max(0.22, staffingSummary.coverage / 100);
 	const skillMultiplier = 0.82 + staffingSummary.averageSkill / 250;
@@ -763,15 +775,21 @@ function average(values: number[]): number {
 	return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
-function applyPolicyPricingToStores(stores: Store[], priceMultiplier: number): Store[] {
-	return stores.map((store) => ({
-		...store,
-		products: store.products.map((product) => ({
-			...product,
-			lots: product.lots.map((lot) => ({ ...lot })),
-			sellingPrice: product.sellingPrice * priceMultiplier
-		}))
-	}));
+function applyPolicyPricingToStores(
+	stores: Store[],
+	effectivePolicyByStoreId: EffectivePolicyByStoreId
+): Store[] {
+	return stores.map((store) => {
+		const priceMultiplier = PRICING[effectivePolicyByStoreId.get(store.id)!.pricing].price;
+		return {
+			...store,
+			products: store.products.map((product) => ({
+				...product,
+				lots: product.lots.map((lot) => ({ ...lot })),
+				sellingPrice: product.sellingPrice * priceMultiplier
+			}))
+		};
+	});
 }
 
 function restoreProductSettings(soldStores: Store[], originalStores: Store[]): Store[] {

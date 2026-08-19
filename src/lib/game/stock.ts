@@ -27,6 +27,7 @@ import type {
 } from './types';
 
 export type StoreProductStatus = 'Out of stock' | 'Needs import' | 'Healthy';
+export type EffectivePolicyByStoreId = ReadonlyMap<string, CompanyPolicy>;
 
 export interface ProductSalesResult {
 	stores: Store[];
@@ -224,9 +225,8 @@ export function addStoreProductStockLot(product: StoreProduct, lot: ProductStock
 }
 
 export function buildCityDemandPools(
-	game: Pick<GameState, 'stores' | 'policy' | 'world'>,
-	city: City,
-	policy: Pick<CompanyPolicy, 'marketing' | 'pricing'> = game.policy
+	game: Pick<GameState, 'stores' | 'world'>,
+	city: City
 ): RetailDemandProfile {
 	const buildableTiles = city.tiles.filter((tile) => getTilePlacementBlockReason(tile) === null);
 	const cityDemand =
@@ -235,27 +235,37 @@ export function buildCityDemandPools(
 			0
 		) / Math.max(1, buildableTiles.length);
 	const products = getCityStoreProducts(game.stores.filter((store) => store.cityId === city.id));
-	const marketingMultiplier = getMarketingDemandMultiplier(policy.marketing);
-	const pricingMultiplier = getPricingDemandMultiplier(policy.pricing);
 
 	return Object.fromEntries(
 		products.map((product) => {
 			const cityMultiplier = getRetailCityDemandMultiplier(game, city.id, product.id);
 			return [
 				product.id,
-				Math.max(
-					0,
-					Math.round(
-						cityDemand *
-							product.demandWeight *
-							marketingMultiplier *
-							pricingMultiplier *
-							cityMultiplier
-					)
-				)
+				Math.max(0, Math.round(cityDemand * product.demandWeight * cityMultiplier))
 			];
 		})
 	);
+}
+
+export function getPolicyAdjustedCityProductDemand(
+	game: GameState,
+	city: City,
+	productId: ProductId,
+	effectivePolicyByStoreId: EffectivePolicyByStoreId
+): number {
+	const rawPool = buildCityDemandPools(game, city)[productId] ?? 0;
+	const sellers = getEligibleProductSellers(game, city.id, productId);
+	const totalScore = sellers.reduce(
+		(sum, store) => sum + scoreStoreForCategory(store, productId),
+		0
+	);
+	if (totalScore <= 0) return 0;
+
+	return sellers.reduce((sum, store) => {
+		const share = scoreStoreForCategory(store, productId) / totalScore;
+		const policy = effectivePolicyByStoreId.get(store.id)!;
+		return sum + sellerPolicyDemand(rawPool, share, policy);
+	}, 0);
 }
 
 export function simulateProductSalesForCity(input: {
@@ -263,8 +273,12 @@ export function simulateProductSalesForCity(input: {
 	city: City;
 	rng: Rng;
 	storeCapacity: Map<string, number>;
+	effectivePolicyByStoreId?: EffectivePolicyByStoreId;
 }): ProductSalesResult {
-	const baselineDemand = buildCityDemandPools(input.game, input.city, input.game.policy);
+	const effectivePolicyByStoreId =
+		input.effectivePolicyByStoreId ??
+		new Map(input.game.stores.map((store) => [store.id, input.game.policy]));
+	const baselineDemand = buildCityDemandPools(input.game, input.city);
 	const initialDemand: RetailDemandProfile = {};
 	for (const [productId, demand] of Object.entries(baselineDemand)) {
 		if (!isProductId(productId)) {
@@ -275,7 +289,7 @@ export function simulateProductSalesForCity(input: {
 		const trendMultiplier = resolveTrendMultiplier(definition.dynamics.trend, input.game.day);
 		initialDemand[productId] = Math.max(0, Math.round((demand ?? 0) * trendMultiplier));
 	}
-	const remainingDemand = { ...initialDemand };
+	const totalUnitsSoldByProduct = new Map<ProductId, number>();
 	const productReports = new Map<string, DailyProductReport[]>();
 	const capacityRemaining = new Map(input.storeCapacity);
 	const cityStoreIds = new Set(
@@ -314,18 +328,7 @@ export function simulateProductSalesForCity(input: {
 			continue;
 		}
 
-		const sellers = input.game.stores
-			.filter(
-				(store) =>
-					cityStoreIds.has(store.id) &&
-					getArchetype(store.archetypeId).startingProductIds.includes(productId) &&
-					store.products.some((product) => product.productId === productId)
-			)
-			.sort(
-				(left, right) =>
-					scoreStoreForCategory(right, productId) - scoreStoreForCategory(left, productId) ||
-					compareCodeUnitStrings(left.id, right.id)
-			);
+		const sellers = getEligibleProductSellers(input.game, input.city.id, productId);
 		const totalScore = sellers.reduce(
 			(sum, store) => sum + scoreStoreForCategory(store, productId),
 			0
@@ -339,6 +342,11 @@ export function simulateProductSalesForCity(input: {
 			const currentStore = storesById.get(store.id)!;
 			const product = currentStore.products.find((candidate) => candidate.productId === productId)!;
 			const demandShare = scoreStoreForCategory(store, productId) / totalScore;
+			const policyDemand = sellerPolicyDemand(
+				initialDemand[productId] ?? 0,
+				demandShare,
+				effectivePolicyByStoreId.get(store.id)!
+			);
 			const marketDynamics = resolveProductMarketDynamics({
 				product,
 				definition: productDefinition,
@@ -348,16 +356,14 @@ export function simulateProductSalesForCity(input: {
 			const desiredUnits = Math.max(
 				0,
 				Math.round(
-					(initialDemand[productId] ?? 0) *
-						demandShare *
+					policyDemand *
 						marketDynamics.obsolescenceMultiplier *
 						priceMultiplier *
 						randomBetween(input.rng, 0.94, 1.06)
 				)
 			);
 			const capacity = Math.max(0, Math.floor(capacityRemaining.get(store.id) ?? 0));
-			const availableDemand = Math.max(0, remainingDemand[productId] ?? 0);
-			const sellableDemand = Math.min(desiredUnits, capacity, availableDemand);
+			const sellableDemand = Math.min(desiredUnits, capacity);
 			const stock = getStoreProductStock(product);
 			const stockoutLostDemand = Math.max(0, sellableDemand - stock);
 			const unitsSold = Math.min(sellableDemand, stock);
@@ -375,7 +381,10 @@ export function simulateProductSalesForCity(input: {
 				candidate.productId === productId ? soldProduct : candidate
 			);
 			capacityRemaining.set(store.id, capacity - unitsSold);
-			remainingDemand[productId] = availableDemand - unitsSold;
+			totalUnitsSoldByProduct.set(
+				productId,
+				(totalUnitsSoldByProduct.get(productId) ?? 0) + unitsSold
+			);
 			appendProductReport(productReports, store.id, {
 				productId,
 				name: productDefinition.name,
@@ -410,6 +419,12 @@ export function simulateProductSalesForCity(input: {
 		...store,
 		stockHealth: calculateStockHealth(store.products)
 	}));
+	const remainingDemand: RetailDemandProfile = Object.fromEntries(
+		Object.entries(initialDemand).map(([productId, demand]) => [
+			productId,
+			Math.max(0, demand - (totalUnitsSoldByProduct.get(productId as ProductId) ?? 0))
+		])
+	);
 
 	return { stores, productReports, initialDemand, remainingDemand, productAging };
 }
@@ -487,6 +502,22 @@ function getPricingDemandMultiplier(pricing: CompanyPolicy['pricing']): number {
 	return 1;
 }
 
+export function getPolicyDemandMultiplier(
+	policy: Pick<CompanyPolicy, 'marketing' | 'pricing'>
+): number {
+	return (
+		getMarketingDemandMultiplier(policy.marketing) * getPricingDemandMultiplier(policy.pricing)
+	);
+}
+
+export function sellerPolicyDemand(
+	rawPool: number,
+	share: number,
+	policy: Pick<CompanyPolicy, 'marketing' | 'pricing'>
+): number {
+	return rawPool * share * getPolicyDemandMultiplier(policy);
+}
+
 function getCityStoreProducts(stores: Store[]): ProductDefinition[] {
 	const products = new Map<ProductId, ProductDefinition>();
 
@@ -512,6 +543,21 @@ function cloneStoreForStock(store: Store): Store {
 			lots: product.lots.map((lot) => ({ ...lot }))
 		}))
 	};
+}
+
+function getEligibleProductSellers(game: GameState, cityId: string, productId: ProductId): Store[] {
+	return game.stores
+		.filter(
+			(store) =>
+				store.cityId === cityId &&
+				getArchetype(store.archetypeId).startingProductIds.includes(productId) &&
+				store.products.some((product) => product.productId === productId)
+		)
+		.sort(
+			(left, right) =>
+				scoreStoreForCategory(right, productId) - scoreStoreForCategory(left, productId) ||
+				compareCodeUnitStrings(left.id, right.id)
+		);
 }
 
 function scoreStoreForCategory(store: Store, productId: ProductId): number {

@@ -11,6 +11,7 @@ import {
 	withWarehouses
 } from './interCityLogistics.testUtils';
 import { createRngFromState } from './rng';
+import { setPolicyOverride } from './policyInheritance';
 import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
 import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
@@ -1554,6 +1555,49 @@ describe('daily simulation', () => {
 		expect(premium.reports[0]?.storeReports[0]?.customersServed).toBeLessThanOrEqual(
 			standard.reports[0]?.storeReports[0]?.customersServed ?? 0
 		);
+	});
+
+	test('applies store policy overrides independently through daily sales and profile costs', () => {
+		expect.assertions(5);
+		const base = createNewGame('convenience', 20260824);
+		const createSeller = (id: string) => ({
+			...base.stores[0]!,
+			id,
+			name: id,
+			tileId: `${base.stores[0]!.tileId}-${id}`,
+			staffCapacity: 1_000,
+			products: [
+				{
+					productId: 'bottled-water' as const,
+					lots: [{ receivedDay: 1, quantity: 10_000 }],
+					reorderThreshold: 10,
+					targetStock: 10_000,
+					sellingPrice: 3
+				}
+			]
+		});
+		const game = { ...base, stores: [createSeller('store-a'), createSeller('store-b')] };
+		const overridden = setPolicyOverride(
+			game,
+			{ kind: 'store', storeId: 'store-a' },
+			{ marketing: 'promotions' }
+		);
+		const baselineReport = simulateDay(game).reports[0]!;
+		const overriddenReport = simulateDay(overridden).reports[0]!;
+		const baselineA = baselineReport.storeReports.find((report) => report.storeId === 'store-a')!;
+		const baselineB = baselineReport.storeReports.find((report) => report.storeId === 'store-b')!;
+		const overriddenA = overriddenReport.storeReports.find(
+			(report) => report.storeId === 'store-a'
+		)!;
+		const overriddenB = overriddenReport.storeReports.find(
+			(report) => report.storeId === 'store-b'
+		)!;
+
+		expect(overriddenA.customersServed).toBeGreaterThan(baselineA.customersServed);
+		expect(overriddenB.customersServed).toBe(baselineB.customersServed);
+		expect(overriddenB.demandMissed).toBe(baselineB.demandMissed);
+		expect(overriddenA.operatingCosts).toBeGreaterThan(baselineA.operatingCosts);
+		expect(overriddenB.operatingCosts).toBe(baselineB.operatingCosts);
 	});
 
 	test('lean inventory can create stock warnings', () => {
