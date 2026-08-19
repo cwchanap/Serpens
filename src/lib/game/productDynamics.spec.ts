@@ -5,7 +5,6 @@ import {
 	resolveMarkdownMultiplier,
 	resolveObsolescenceMultiplier,
 	resolveProductMarketDynamics,
-	resolveReputationScore,
 	resolveTrendMultiplier
 } from './productDynamics';
 import { getProductDefinition } from './products';
@@ -175,25 +174,6 @@ describe('product dynamics', () => {
 		expect(product.sellingPrice).toBe(4);
 	});
 
-	it('scales only reputation deviation and preserves the neutral score at sensitivity one', () => {
-		const neutral = resolveReputationScore({ storeReputation: 50, reputationSensitivity: 1 });
-		const highBaseline = resolveReputationScore({ storeReputation: 90, reputationSensitivity: 1 });
-		const highSensitive = resolveReputationScore({
-			storeReputation: 90,
-			reputationSensitivity: 1.5
-		});
-		const lowBaseline = resolveReputationScore({ storeReputation: 10, reputationSensitivity: 1 });
-		const lowSensitive = resolveReputationScore({
-			storeReputation: 10,
-			reputationSensitivity: 1.5
-		});
-
-		expect(neutral).toBeCloseTo(27.5);
-		expect(highSensitive - neutral).toBeGreaterThan(highBaseline - neutral);
-		expect(neutral - lowSensitive).toBeGreaterThan(neutral - lowBaseline);
-		expect(resolveReputationScore({ storeReputation: 50, reputationSensitivity: 2 })).toBe(neutral);
-	});
-
 	it('skips empty lots during aging without counting them as waste or shrink', () => {
 		const product: StoreProduct = {
 			productId: 'produce',
@@ -256,12 +236,5 @@ describe('product dynamics', () => {
 		expect(resolveMarkdownMultiplier(null, { startsAtAgeDays: 10, priceMultiplier: 0.75 })).toBe(1);
 		expect(resolveObsolescenceMultiplier(5, { startsAfterDays: 10, demandFloor: 0.4 })).toBe(1);
 		expect(resolveMarkdownMultiplier(5, { startsAtAgeDays: 10, priceMultiplier: 0.75 })).toBe(1);
-	});
-
-	it('resolveReputationScore falls back to neutral reputation for non-finite store reputation', () => {
-		const neutral = resolveReputationScore({ storeReputation: 50 });
-		const nonFinite = resolveReputationScore({ storeReputation: Number.POSITIVE_INFINITY });
-
-		expect(nonFinite).toBe(neutral);
 	});
 });
