@@ -103,8 +103,12 @@ describe('StoreProductChainPanel', () => {
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 
 		const select = page.getByLabelText('Product category').element() as HTMLSelectElement;
+		const tempOption = document.createElement('option');
+		tempOption.value = 'nonexistent-category';
+		select.appendChild(tempOption);
 		select.value = 'nonexistent-category';
 		select.dispatchEvent(new Event('change', { bubbles: true }));
+		tempOption.remove();
 
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 	});
@@ -133,8 +137,6 @@ describe('StoreProductChainPanel', () => {
 
 			props.game = electronicsGame;
 			props.store = electronicsGame.stores[0]!;
-
-			nodeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 			flushSync();
 
 			expect(target.textContent).toContain(

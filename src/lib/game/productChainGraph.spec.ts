@@ -309,6 +309,14 @@ describe('store category chain summaries', () => {
 				endingStock: 0,
 				averageAgeDays: null,
 				oldestSellableAgeDays: null
+			}),
+			snackProductReport({
+				unitsSold: 0,
+				baseSellingPrice: 15,
+				effectiveSellingPrice: 12,
+				endingStock: 0,
+				averageAgeDays: null,
+				oldestSellableAgeDays: null
 			})
 		]);
 

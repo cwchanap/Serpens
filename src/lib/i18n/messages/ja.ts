@@ -346,6 +346,7 @@ export const ja = {
 			freshness: '鮮度: {percent}%',
 			waste: '廃棄: {units} 単位（{value}）',
 			shrink: '在庫減耗: {units} 単位（{value}）',
+			shrinkSingular: '在庫減耗: {units} 単位（{value}）',
 			stockout: '在庫切れによる需要損失: {units} 単位',
 			obsolescence: '陳腐化: 需要 {percent}',
 			markdown: '値下げ: {amount}',

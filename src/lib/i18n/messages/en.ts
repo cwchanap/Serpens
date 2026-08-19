@@ -346,6 +346,7 @@ export const en = {
 			freshness: 'Freshness: {percent}%',
 			waste: 'Waste: {units} units ({value})',
 			shrink: 'Shrink: {units} units ({value})',
+			shrinkSingular: 'Shrink: {units} unit ({value})',
 			stockout: 'Stockout lost demand: {units} units',
 			obsolescence: 'Obsolescence: {percent} demand',
 			markdown: 'Markdown: {amount}',
