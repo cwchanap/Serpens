@@ -159,10 +159,8 @@ export function buildProductChainTree(input: {
 		return emptyGraph(`chain:${input.productId}`, 'Product chain', 'noLocalChain');
 	}
 
-	const rootMaterialId = getProductDefinition(input.productId).productionMaterialId;
-	if (!rootMaterialId) {
-		return emptyGraph(`chain:${input.productId}`, 'Product chain', 'noLocalChain');
-	}
+	// isSupportedFinishedMaterial guarantees productionMaterialId is non-null.
+	const rootMaterialId = getProductDefinition(input.productId).productionMaterialId as MaterialId;
 	const rootRecipeId = MATERIAL_PRODUCER_RECIPES.get(rootMaterialId);
 
 	if (!rootRecipeId) {
