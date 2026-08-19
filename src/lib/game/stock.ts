@@ -261,11 +261,13 @@ export function getPolicyAdjustedCityProductDemand(
 	);
 	if (totalScore <= 0) return 0;
 
-	return sellers.reduce((sum, store) => {
-		const share = scoreStoreForCategory(store, productId) / totalScore;
-		const policy = effectivePolicyByStoreId.get(store.id)!;
-		return sum + sellerPolicyDemand(rawPool, share, policy);
-	}, 0);
+	return Math.round(
+		sellers.reduce((sum, store) => {
+			const share = scoreStoreForCategory(store, productId) / totalScore;
+			const policy = effectivePolicyByStoreId.get(store.id)!;
+			return sum + sellerPolicyDemand(rawPool, share, policy);
+		}, 0)
+	);
 }
 
 export function simulateProductSalesForCity(input: {
@@ -273,11 +275,9 @@ export function simulateProductSalesForCity(input: {
 	city: City;
 	rng: Rng;
 	storeCapacity: Map<string, number>;
-	effectivePolicyByStoreId?: EffectivePolicyByStoreId;
+	effectivePolicyByStoreId: EffectivePolicyByStoreId;
 }): ProductSalesResult {
-	const effectivePolicyByStoreId =
-		input.effectivePolicyByStoreId ??
-		new Map(input.game.stores.map((store) => [store.id, input.game.policy]));
+	const effectivePolicyByStoreId = input.effectivePolicyByStoreId;
 	const baselineDemand = buildCityDemandPools(input.game, input.city);
 	const initialDemand: RetailDemandProfile = {};
 	for (const [productId, demand] of Object.entries(baselineDemand)) {
