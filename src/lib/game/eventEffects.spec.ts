@@ -226,6 +226,39 @@ describe('atomic decision resolution', () => {
 		expect(getStoreProductStock(product)).toBe(116);
 	});
 
+	it('caps a positive stock adjustment so the total stays within the safe-integer range', () => {
+		const base = createNewGame('grocery', 56);
+		const firstStore = {
+			...base.stores[0]!,
+			products: base.stores[0]!.products.map((product) => ({
+				...product,
+				lots: [{ receivedDay: 1, quantity: Number.MAX_SAFE_INTEGER - 10 }],
+				targetStock: Number.MAX_SAFE_INTEGER - 1
+			}))
+		};
+		const decision = eventDecision({
+			id: 'event-positive-stock-overflow',
+			expiresOnDay: 7,
+			options: [
+				{
+					id: 'accept',
+					effects: [
+						{ kind: 'store-stock-adjust-by-target-percent', scope: 'all-stores', percent: 6 }
+					],
+					modifiers: []
+				}
+			]
+		});
+		const game = withDecision({ ...base, day: 5, stores: [firstStore] }, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const product = result.game.stores[0]!.products[0]!;
+		expect(getStoreProductStock(product)).toBe(Number.MAX_SAFE_INTEGER);
+		expect(Number.isSafeInteger(getStoreProductStock(product))).toBe(true);
+	});
+
 	it('borrows at the effect position and applies later score effects', () => {
 		const base = createNewGame('grocery', 55);
 		const gameWithoutFoundingLoan = {

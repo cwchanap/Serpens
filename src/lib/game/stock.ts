@@ -208,11 +208,17 @@ export function consumeStoreProductStock(product: StoreProduct, quantity: number
 
 export function addStoreProductStockLot(product: StoreProduct, lot: ProductStockLot): StoreProduct {
 	const lots = product.lots.map((existingLot) => ({ ...existingLot }));
+	const currentStock = getStoreProductStock(product);
+	const headroom = Math.max(0, Number.MAX_SAFE_INTEGER - currentStock);
+	const safeQuantity = Math.min(lot.quantity, headroom);
+	if (safeQuantity <= 0) {
+		return { ...product, lots };
+	}
 	const lastLot = lots.at(-1);
 	if (lastLot && lastLot.receivedDay === lot.receivedDay) {
-		lastLot.quantity += lot.quantity;
+		lastLot.quantity += safeQuantity;
 	} else {
-		lots.push({ ...lot });
+		lots.push({ ...lot, quantity: safeQuantity });
 	}
 	return { ...product, lots };
 }

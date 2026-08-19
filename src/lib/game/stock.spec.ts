@@ -127,6 +127,41 @@ describe('stock rules', () => {
 		expect(product.lots[1]!.quantity).toBe(6);
 	});
 
+	test('caps a lot addition to keep total stock within the safe-integer range', () => {
+		expect.assertions(2);
+		const product: StoreProduct = {
+			productId: 'snacks',
+			lots: [{ receivedDay: 1, quantity: Number.MAX_SAFE_INTEGER - 10 }],
+			reorderThreshold: 2,
+			targetStock: Number.MAX_SAFE_INTEGER - 1,
+			sellingPrice: 5
+		};
+		// Adding 20 units would push the total to MAX_SAFE_INTEGER + 10.
+		// The lot must be capped so the total stays at MAX_SAFE_INTEGER.
+		const capped = addStoreProductStockLot(product, { receivedDay: 7, quantity: 20 });
+
+		expect(getStoreProductStock(capped)).toBe(Number.MAX_SAFE_INTEGER);
+		expect(capped.lots).toEqual([
+			{ receivedDay: 1, quantity: Number.MAX_SAFE_INTEGER - 10 },
+			{ receivedDay: 7, quantity: 10 }
+		]);
+	});
+
+	test('does not add a lot when total stock is already at the safe-integer limit', () => {
+		expect.assertions(2);
+		const product: StoreProduct = {
+			productId: 'snacks',
+			lots: [{ receivedDay: 1, quantity: Number.MAX_SAFE_INTEGER }],
+			reorderThreshold: 2,
+			targetStock: Number.MAX_SAFE_INTEGER - 1,
+			sellingPrice: 5
+		};
+		const capped = addStoreProductStockLot(product, { receivedDay: 7, quantity: 5 });
+
+		expect(getStoreProductStock(capped)).toBe(Number.MAX_SAFE_INTEGER);
+		expect(capped.lots).toEqual([{ receivedDay: 1, quantity: Number.MAX_SAFE_INTEGER }]);
+	});
+
 	test('initializes a single product at level 1', () => {
 		expect.assertions(2);
 		const products = initializeStoreProducts('convenience');
