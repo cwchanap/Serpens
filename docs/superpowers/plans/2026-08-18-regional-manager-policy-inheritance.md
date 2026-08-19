@@ -76,7 +76,11 @@ export interface EffectivePolicy {
   provenance: { [K in keyof CompanyPolicy]: PolicyValueSource };
 }
 
-export function resolveEffectivePolicy(game: GameState, store: Store): EffectivePolicy;
+export function resolveEffectivePolicy(
+  game: GameState,
+  scope: PolicyOverrideScope
+): EffectivePolicy;
+
 export function setPolicyOverride(
   game: GameState,
   scope: PolicyOverrideScope,
@@ -98,19 +102,20 @@ policyOverrides: PolicyOverride[];
 managerDelegations: ManagerDelegation[];
 managerActionHistory: ManagerActionRecord[];
 ```
-  Manager types may be declared in `types.ts` in this task with empty runtime collections; Task 3 implements their behavior.
+  Manager types are declared in `types.ts` in this task with empty runtime collections; Task 3 implements their behavior.
 
 - [ ] **Step 1: Write failing inheritance tests**
 
 Cover:
 
 ```ts
+it('resolves company -> city with per-field provenance', ...)
 it('resolves company -> city -> store with per-field provenance', ...)
 it('keeps an explicit child value explicit when it equals its parent', ...)
 it('clearing one field restores the immediate parent', ...)
 it('resetting a scope removes the complete override record', ...)
 it('keeps override records in canonical scope/id order', ...)
-it('rejects invalid city/store scopes without mutating the game', ...)
+it('returns the original game for an invalid mutation scope', ...)
 ```
 
 Use existing open retail cities/stores; resolve city strings through the existing world-city helpers rather than trusting raw `Store.cityId`.
@@ -133,6 +138,13 @@ delete values[field];
 return Object.keys(values).length === 0
   ? removeOverride(game, scope)
   : replaceOverride(game, { scope, values });
+```
+
+Resolver semantics are explicit:
+
+```text
+city scope  = company -> city
+store scope = company -> store.city -> store
 ```
 
 Do not persist a copied effective policy.
@@ -164,7 +176,7 @@ bun run test:unit -- --run src/lib/game/policyInheritance.spec.ts src/lib/game/s
 bun run check
 ```
 
-Expected: PASS. Do not defer random missing-field errors to later tasks.
+Expected: PASS. Do not defer missing-field failures to later tasks.
 
 - [ ] **Step 6: Commit checkpoint 1**
 
@@ -188,8 +200,11 @@ git commit -m "feat(policy): add scoped policy inheritance"
 - Use: `src/lib/game/policyInheritance.ts`
 
 **Interfaces:**
-- Consumes: `resolveEffectivePolicy(game, store)` from Task 1.
-- Produces small reusable `stock.ts` seams, using the existing multiplier tables:
+- Consumes:
+```ts
+resolveEffectivePolicy(game, { kind: 'store', storeId })
+```
+- Produces small reusable `stock.ts` seams using the existing multiplier tables:
 ```ts
 export function getPolicyDemandMultiplier(
   policy: Pick<CompanyPolicy, 'marketing' | 'pricing'>
@@ -232,7 +247,7 @@ Assert:
 
 - [ ] **Step 3: Make `buildCityDemandPools` raw/policy-free and export the existing seller policy helpers**
 
-Keep the current multiplier numbers in one place:
+Keep current multiplier numbers in one place:
 
 ```ts
 export function getPolicyDemandMultiplier(policy: Pick<CompanyPolicy, 'marketing' | 'pricing'>) {
@@ -251,7 +266,10 @@ Build a map before store operation calculations:
 const effectivePolicyByStoreId = new Map(
   productionGame.stores.map((store) => [
     store.id,
-    resolveEffectivePolicy(productionGame, store).values
+    resolveEffectivePolicy(productionGame, {
+      kind: 'store',
+      storeId: store.id
+    }).values
   ])
 );
 ```
@@ -299,7 +317,10 @@ In `buildDemandContributor`, derive the city product raw pool, sellers, total sc
 ```ts
 const potentialDemandPerDay = sellers.reduce((sum, store) => {
   const demandShare = scoreStoreForCategory(store, productId) / totalScore;
-  const policy = resolveEffectivePolicy(game, store).values;
+  const policy = resolveEffectivePolicy(game, {
+    kind: 'store',
+    storeId: store.id
+  }).values;
   return sum + rawPool * demandShare * getPolicyDemandMultiplier(policy);
 }, 0);
 ```
@@ -335,9 +356,9 @@ git commit -m "feat(policy): apply effective policy per store"
 **Files:**
 - Create: `src/lib/game/managerDelegation.ts`
 - Create: `src/lib/game/managerDelegation.spec.ts`
+- Create: `src/lib/game/eventHistory.spec.ts`
 - Modify: `src/lib/game/types.ts`
 - Modify: `src/lib/game/eventHistory.ts`
-- Modify: `src/lib/game/eventHistory.spec.ts` if present; otherwise add focused history assertions to `managerDelegation.spec.ts`
 - Modify: `src/lib/game/simulateDay.ts`
 - Modify: `src/lib/game/simulateDay.spec.ts`
 - Use: `src/lib/game/policyInheritance.ts`
@@ -367,7 +388,7 @@ export interface ManagerEvaluationResult {
 
 export function applyManagerDelegations(game: GameState): ManagerEvaluationResult;
 ```
-- Extend existing history helper rather than creating a parallel hard-coded pipeline:
+- Extends existing history helper rather than creating a parallel hard-coded pipeline:
 ```ts
 export function appendBoundedHistory<T>(
   history: readonly T[],
@@ -437,7 +458,18 @@ Supply:
 - apply through `setRetailSupplySource`;
 - `ok: false` => rejected.
 
-- [ ] **Step 5: Implement proposal generation from one immutable snapshot**
+- [ ] **Step 5: Generalize the existing bounded-history helper test-first**
+
+In `eventHistory.spec.ts`, pin:
+
+```text
+appendHistory still keeps newest 200 entries
+appendBoundedHistory(..., 100) keeps newest 100 entries
+```
+
+Then implement `appendBoundedHistory` and make current `appendHistory` delegate to it. Do not change existing event-history behavior.
+
+- [ ] **Step 6: Implement proposal generation from one immutable snapshot**
 
 Use deterministic ordering:
 
@@ -450,7 +482,7 @@ candidate supply cities: compareWorldCityIds
 
 Build all triggered proposals before applying any mutation.
 
-- [ ] **Step 6: Implement authority/conflict classification and apply winners**
+- [ ] **Step 7: Implement authority/conflict classification and apply winners**
 
 Conflict keys are exactly:
 
@@ -463,9 +495,7 @@ supply:<retailCityId>
 
 Persist discriminated `ManagerActionChange`, closed outcome/reason unions, and deterministic IDs from day + manager + conflict key.
 
-- [ ] **Step 7: Reuse the existing history slicing convention**
-
-Generalize `eventHistory.ts` with `appendBoundedHistory`; existing event behavior stays at 200.
+- [ ] **Step 8: Append manager history through the generalized existing helper**
 
 Manager records append with:
 
@@ -473,7 +503,7 @@ Manager records append with:
 appendBoundedHistory(history, record, MANAGER_ACTION_HISTORY_LIMIT)
 ```
 
-- [ ] **Step 8: Insert manager evaluation after arrivals**
+- [ ] **Step 9: Insert manager evaluation after arrivals**
 
 Change the beginning of `simulateDay` to the equivalent of:
 
@@ -487,13 +517,13 @@ All subsequent active-modifier/production/store processing starts from `managedG
 
 This is deliberately after arrivals so Prefer Local Supply sees today's delivered inventory.
 
-- [ ] **Step 9: Add empty-delegation daily parity regression**
+- [ ] **Step 10: Add empty-delegation daily parity regression**
 
 Use a fixed seeded current-state fixture with the three arrays empty. Pin report/state/RNG outputs that existed before manager integration, and separately assert `applyManagerDelegations(game).game === game` for the no-op path.
 
 Do not require an enabled manager run to match the no-manager RNG/output state after it changes policy/targets.
 
-- [ ] **Step 10: Run focused gates**
+- [ ] **Step 11: Run focused gates**
 
 ```bash
 bun run test:unit -- --run \
@@ -505,14 +535,13 @@ bun run test:unit -- --run \
 bun run check
 ```
 
-If `eventHistory.spec.ts` does not exist, omit that path after confirming manager tests cover both 100 and existing 200 limits.
-
-- [ ] **Step 11: Commit checkpoint 3**
+- [ ] **Step 12: Commit checkpoint 3**
 
 ```bash
 git add src/lib/game/types.ts src/lib/game/managerDelegation.ts \
   src/lib/game/managerDelegation.spec.ts src/lib/game/eventHistory.ts \
-  src/lib/game/simulateDay.ts src/lib/game/simulateDay.spec.ts
+  src/lib/game/eventHistory.spec.ts src/lib/game/simulateDay.ts \
+  src/lib/game/simulateDay.spec.ts
 git commit -m "feat(managers): add deterministic delegation playbooks"
 ```
 
@@ -527,8 +556,8 @@ git commit -m "feat(managers): add deterministic delegation playbooks"
 - Modify: `src/lib/persistence/saveRepository.spec.ts`
 - Modify: `src/routes/gameRouteController.ts`
 - Modify: `src/routes/gameRouteController.spec.ts`
-- Modify: `src/lib/scenarios/types.ts` only for compile-time regression assertions if necessary; do not add command variants
-- Modify: scenario codec/runtime fixtures only where the now-required `GameState` shape/schema number requires it
+- Modify: current-schema scenario codec/runtime fixtures only where the now-required `GameState` shape/schema number requires it
+- Audit: `src/lib/scenarios/types.ts`; no new command variants
 
 **Interfaces:**
 - Final:
@@ -661,8 +690,8 @@ Policy tests:
 
 ```text
 Company mode edits company policy
-City mode shows parent/effective/provenance
-Store mode shows company/city/store provenance
+City mode resolves company -> city and shows parent/effective/provenance
+Store mode resolves company -> city -> store and shows provenance
 explicit-equal-parent displays as explicit
 Inherit from parent clears one field
 Reset scope clears the scope
@@ -678,11 +707,20 @@ Prefer Local Supply cannot be chosen with store scope
 history renders applied/overridden/rejected/out-of-authority with reason
 ```
 
-- [ ] **Step 2: Evolve `PolicyPanel.svelte` around `resolveEffectivePolicy`**
+- [ ] **Step 2: Evolve `PolicyPanel.svelte` around the scope-based resolver**
 
-Keep the existing five policy field option lists and label helpers.
+For city/store targets call:
 
-Do not duplicate policy-value tables in UI code.
+```ts
+resolveEffectivePolicy(game, selectedScope)
+```
+
+For parent comparison:
+
+- city parent = `game.policy`;
+- store parent = `resolveEffectivePolicy(game, { kind: 'city', cityId: storeCityId }).values`.
+
+Keep the existing five policy field option lists and label helpers. Do not duplicate policy-value tables in UI code.
 
 Inherited/explicit state must have text/icon/copy, not color alone.
 
@@ -703,7 +741,7 @@ Do not create a tenth management launcher/shortcut.
 
 - [ ] **Step 4: Wire route/controller callbacks and sandbox availability**
 
-`+page.svelte` passes the new callbacks through `ManagementPanelHost`; scenario mode renders the controls disabled using the new mutation flags while company policy keeps its existing scenario capability.
+`+page.svelte` passes the new callbacks through `ManagementPanelHost`; scenario mode renders scoped-policy/delegation controls disabled using the new mutation flags while company policy keeps its existing scenario capability.
 
 - [ ] **Step 5: Add localized copy in all three bundles**
 
@@ -809,7 +847,7 @@ Keep finance/decisions/world-route behavior unchanged.
 
 No separate manager notification store.
 
-`localizedTypes.ts` should need no duplicate shape; keep it in the file audit so any attempted divergence is caught in review/type-check.
+`localizedTypes.ts` needs no duplicate shape; keep it in the file audit so any attempted divergence is caught in review/type-check.
 
 - [ ] **Step 4: Add deterministic two-advance Playwright manager lifecycle**
 
@@ -848,6 +886,7 @@ Evaluator correctness for `out-of-authority` remains covered by Task 3 unit test
 bun run test:unit -- --run \
   src/lib/game/policyInheritance.spec.ts \
   src/lib/game/managerDelegation.spec.ts \
+  src/lib/game/eventHistory.spec.ts \
   src/lib/game/stock.spec.ts \
   src/lib/game/supplyPlanner.spec.ts \
   src/lib/game/simulateDay.spec.ts \
@@ -914,6 +953,7 @@ git commit -m "test(managers): complete delegation lifecycle coverage"
 The implementation branch is ready for review only when the single PR contains all six checkpoints and proves:
 
 - deterministic company/city/store policy inheritance and provenance;
+- one scope-based resolver serves both UI scopes and store simulation;
 - raw city demand + per-seller policy scaling without sibling spillover;
 - planner/live policy-demand parity at the seller-share seam;
 - no report-backed manager action before completed report evidence exists;
@@ -921,7 +961,7 @@ The implementation branch is ready for review only when the single PR contains a
 - five closed playbooks with fixed authority bounds;
 - city authority expands to per-store writes except local-supply assignment;
 - existing `updateStoreProduct` and `setRetailSupplySource` validation is authoritative;
-- deterministic conflicts + newest-100 action history;
+- deterministic conflicts + newest-100 action history via the generalized existing history helper;
 - strict schema 18 / schema 17 rejection;
 - Policies + Staff UI only, with manager exceptions navigating to Staff;
 - empty-delegation simulation parity and no manager RNG calls;
