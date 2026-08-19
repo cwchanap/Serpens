@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { resolveEffectivePolicy, setPolicyOverride } from './policyInheritance';
+import { resolveProductMarketDynamics } from './productDynamics';
+import { getProductDefinition } from './products';
 import { createRng, createRngFromState, randomBetween } from './rng';
 import { createNewGame } from './state';
 import {
@@ -14,7 +16,7 @@ import {
 	getStoreProductStatus,
 	initializeStoreProducts,
 	sellerPolicyDemand,
-	simulateProductSalesForCity,
+	simulateProductSalesForCity as simulateProductSalesForCityWithPolicies,
 	summarizeStockTrouble,
 	updateStoreProduct,
 	type EffectivePolicyByStoreId
@@ -72,6 +74,18 @@ function effectivePolicyMap(game: GameState): EffectivePolicyByStoreId {
 			resolveEffectivePolicy(game, { kind: 'store', storeId: store.id }).values
 		])
 	);
+}
+
+type SalesInput = Parameters<typeof simulateProductSalesForCityWithPolicies>[0];
+
+function simulateProductSalesForCity(
+	input: Omit<SalesInput, 'effectivePolicyByStoreId'> &
+		Partial<Pick<SalesInput, 'effectivePolicyByStoreId'>>
+): ReturnType<typeof simulateProductSalesForCityWithPolicies> {
+	return simulateProductSalesForCityWithPolicies({
+		...input,
+		effectivePolicyByStoreId: input.effectivePolicyByStoreId ?? effectivePolicyMap(input.game)
+	});
 }
 
 describe('stock rules', () => {
@@ -750,10 +764,25 @@ describe('stock rules', () => {
 		const rawTrendPool = buildCityDemandPools(ascending.game, ascending.game.cities[0]!)[
 			'bottled-water'
 		]!;
+		const sellerProduct = ascending.game.stores[0]!.products[0]!;
+		const productDefinition = getProductDefinition(sellerProduct.productId);
+		const marketDynamics = resolveProductMarketDynamics({
+			product: sellerProduct,
+			definition: productDefinition,
+			day: ascending.game.day
+		});
+		const priceRatio =
+			sellerProduct.sellingPrice / Math.max(1, productDefinition.defaultSellingPrice);
+		const priceMultiplier = Math.max(
+			0.18,
+			Math.min(1.35, 1 - (priceRatio - 1) * productDefinition.priceSensitivity)
+		);
 		const desiredRng = createRng(5);
 		const desiredUnits = [0, 1].map(() =>
 			Math.round(
 				sellerPolicyDemand(rawTrendPool, 0.5, ascending.game.policy) *
+					marketDynamics.obsolescenceMultiplier *
+					priceMultiplier *
 					randomBetween(desiredRng, 0.94, 1.06)
 			)
 		);
@@ -829,9 +858,13 @@ describe('stock rules', () => {
 		expect(overriddenSales.productReports.get('store-a')?.[0]?.unitsSold).toBeGreaterThan(
 			baseSales.productReports.get('store-a')?.[0]?.unitsSold ?? 0
 		);
-		expect(overriddenPlannerDemand - basePlannerDemand).toBeCloseTo(overriddenA - baseA, 10);
-		expect(basePlannerDemand).toBeCloseTo(baseA + baseB, 10);
-		expect(overriddenPlannerDemand).toBeCloseTo(overriddenA + overriddenB, 10);
+		// The planner rounds the seller sum once, so compare rounded sums rather
+		// than the exact fractional change in store A's contribution.
+		expect(overriddenPlannerDemand - basePlannerDemand).toBe(
+			Math.round(overriddenA + overriddenB) - Math.round(baseA + baseB)
+		);
+		expect(basePlannerDemand).toBe(Math.round(baseA + baseB));
+		expect(overriddenPlannerDemand).toBe(Math.round(overriddenA + overriddenB));
 	});
 
 	test('excludes products unsupported by a seller archetype from live and planner demand', () => {

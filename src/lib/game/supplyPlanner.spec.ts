@@ -350,7 +350,9 @@ describe('supply planner snapshot', () => {
 		});
 		const row = snapshot.demandContributors[0]!;
 
-		expect(row.potentialDemandPerDay).toBeCloseTo(129.32, 10);
+		// The pool is rounded first, policy is applied per seller, and the final
+		// sum is rounded once; uniform policy matches the old round-after-multiply baseline.
+		expect(row.potentialDemandPerDay).toBe(129);
 	});
 
 	it('changes planner potential demand only by the overridden seller contribution', () => {
@@ -375,16 +377,20 @@ describe('supply planner snapshot', () => {
 			productId: 'snacks'
 		});
 		const rawPool = buildCityDemandPools(twoStores, twoStores.cities[0]!).snacks!;
+		const baselineSellerDemand =
+			rawPool * 0.5 * getPolicyDemandMultiplier({ marketing: 'awareness', pricing: 'standard' });
+		const overriddenSellerDemand =
+			rawPool * 0.5 * getPolicyDemandMultiplier({ marketing: 'promotions', pricing: 'standard' });
+		// The planner rounds the seller sum once, so the delta can differ from
+		// store A's exact fractional contribution by one unit of rounding.
 		const expectedDelta =
-			rawPool *
-			0.5 *
-			(getPolicyDemandMultiplier({ marketing: 'promotions', pricing: 'standard' }) -
-				getPolicyDemandMultiplier({ marketing: 'awareness', pricing: 'standard' }));
+			Math.round(overriddenSellerDemand + baselineSellerDemand) -
+			Math.round(baselineSellerDemand + baselineSellerDemand);
 
 		expect(
 			overriddenSnapshot.demandContributors[0]!.potentialDemandPerDay -
 				baselineSnapshot.demandContributors[0]!.potentialDemandPerDay
-		).toBeCloseTo(expectedDelta, 10);
+		).toBe(expectedDelta);
 	});
 
 	it('keeps planner demand from a product unsupported by the seller archetype out of the shared pool', () => {
