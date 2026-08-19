@@ -267,7 +267,7 @@ new total sold <= sum of per-seller desiredUnits
 reordering input stores does not change per-store reports or RNG end state
 ```
 
-The test must explicitly comment that pre-HPA-41 allocation could not sell above `initialDemand[productId]` because `availableDemand` was in `Math.min(...)`. Do **not** write a false "uniform live sales unchanged" assertion.
+The test comments that pre-HPA-41 allocation could not sell above `initialDemand[productId]` because `availableDemand` was in `Math.min(...)`. Do **not** write a false "uniform live sales unchanged" assertion.
 
 Also pin planner uniform-policy potential demand to its existing numeric baseline; planner does not use jitter/residual allocation.
 
@@ -641,7 +641,7 @@ git commit -m "feat(managers): add deterministic delegation playbooks"
 - Modify: `src/lib/persistence/saveCodec.spec.ts`
 - Modify: `src/lib/persistence/saveRepository.spec.ts`
 - Modify: `src/lib/scenarios/validation/shared.ts`
-- Modify: `src/lib/scenarios/validation/shared.spec.ts` if present; otherwise the focused scenario validation spec that currently covers policy values
+- Modify: the focused scenario validation spec that currently covers policy values
 - Modify: `src/routes/gameRouteController.ts`
 - Modify: `src/routes/gameRouteController.spec.ts`
 - Update current-schema scenario/runtime fixtures only as required by schema/state shape
@@ -687,7 +687,7 @@ Keep live reference checks for `policyOverrides` and `managerDelegations`.
 
 - [ ] **Step 2: Derive policy validation from `POLICY_FIELD_OPTIONS`**
 
-Remove the five duplicate policy arrays in `saveCodec.ts`; derive sets/options from the shared table.
+Remove duplicate policy arrays in `saveCodec.ts`; derive sets/options from the shared table.
 
 Update `scenarios/validation/shared.ts` `POLICY_VALUES` from the same table. Do not change scenario command grammar.
 
