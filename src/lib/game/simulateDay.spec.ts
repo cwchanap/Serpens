@@ -315,6 +315,52 @@ describe('daily simulation', () => {
 		`);
 	});
 
+	test('keeps the empty manager phase report and rng parity fixture', () => {
+		const game = createOneCityInventoryFixture();
+		const expected = simulateDay(game);
+		const actual = simulateDay({
+			...game,
+			policyOverrides: [],
+			managerDelegations: [],
+			managerActionHistory: []
+		});
+
+		expect(actual.reports.at(-1)).toEqual(expected.reports.at(-1));
+		expect(actual.rngState).toBe(expected.rngState);
+		expect(actual.cash).toBe(expected.cash);
+	});
+
+	test('runs an enabled manager after report evidence exists', () => {
+		const base = createNewGame('convenience', 292_942);
+		const game: GameState = {
+			...base,
+			managerDelegations: [
+				{
+					managerId: 'staff-store-1-manager-1',
+					scope: { kind: 'store', storeId: 'store-1' },
+					playbook: 'protect-margin',
+					authority: { pricing: true, inventory: false, staffing: false, supply: false },
+					enabled: true
+				}
+			],
+			reports: [
+				{
+					day: 1,
+					operatingCashFlow: 100,
+					storeReports: [{ storeId: 'store-1', revenue: 100, grossMargin: 10 }]
+				} as GameState['reports'][number]
+			]
+		};
+
+		const result = simulateDay(game);
+
+		expect(result.policyOverrides).toContainEqual({
+			scope: { kind: 'store', storeId: 'store-1' },
+			values: { pricing: 'premium' }
+		});
+		expect(result.managerActionHistory.at(-1)?.outcome).toBe('applied');
+	});
+
 	test('makes due transfer arrivals available to same-day industry production', () => {
 		const closingDay = 7;
 		const base = openTwoIndustryCityLogisticsGame(closingDay);

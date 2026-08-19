@@ -1,5 +1,13 @@
 export const EVENT_HISTORY_LIMIT = 200;
 
+export function appendBoundedHistory<T>(
+	history: readonly T[],
+	entries: readonly T[],
+	limit: number
+): T[] {
+	return [...history, ...entries].slice(-limit);
+}
+
 export function appendHistory<T>(history: readonly T[], entry: T): T[] {
-	return [...history, entry].slice(-EVENT_HISTORY_LIMIT);
+	return appendBoundedHistory(history, [entry], EVENT_HISTORY_LIMIT);
 }
