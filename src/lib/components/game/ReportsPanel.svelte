@@ -369,10 +369,15 @@
 									{/if}
 									{#if row.report.shrinkUnits > 0}
 										<li>
-											{i18n.t('reportsPanel.productPressure.shrink', {
-												units: i18n.format.integer(row.report.shrinkUnits),
-												value: i18n.format.currency(row.report.shrinkValue)
-											})}
+											{i18n.t(
+												row.report.shrinkUnits === 1
+													? 'reportsPanel.productPressure.shrinkSingular'
+													: 'reportsPanel.productPressure.shrink',
+												{
+													units: i18n.format.integer(row.report.shrinkUnits),
+													value: i18n.format.currency(row.report.shrinkValue)
+												}
+											)}
 										</li>
 									{/if}
 									{#if row.report.stockoutLostDemand > 0}

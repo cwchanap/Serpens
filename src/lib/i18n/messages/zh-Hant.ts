@@ -346,6 +346,7 @@ export const zhHant = {
 			freshness: '新鮮度：{percent}%',
 			waste: '浪費：{units} 單位（{value}）',
 			shrink: '耗損：{units} 單位（{value}）',
+			shrinkSingular: '耗損：{units} 單位（{value}）',
 			stockout: '缺貨損失需求：{units} 單位',
 			obsolescence: '過時：需求 {percent}',
 			markdown: '降價：{amount}',

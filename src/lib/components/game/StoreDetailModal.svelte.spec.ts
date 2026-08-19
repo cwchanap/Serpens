@@ -323,7 +323,7 @@ describe('StoreDetailModal', () => {
 			grossMargin: 8,
 			operatingCosts: 10,
 			importSpend: 0,
-			netIncome: -2,
+			netIncome: -10,
 			customersServed: 4,
 			demandMissed: 2,
 			staffingCoverage: 100,
