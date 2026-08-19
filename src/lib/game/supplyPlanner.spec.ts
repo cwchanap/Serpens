@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { resolveEffectivePolicy, setPolicyOverride } from './policyInheritance';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { getProductDefinition } from './products';
 import { buildSupplyPlan } from './supplyPlannerActions';
@@ -9,6 +10,11 @@ import {
 } from './interCityLogistics.testUtils';
 import { MATERIAL_PRODUCER_RECIPES } from './productChainGraph';
 import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
+import {
+	buildCityDemandPools,
+	getPolicyAdjustedCityProductDemand,
+	getPolicyDemandMultiplier
+} from './stock';
 import { createNewGame } from './state';
 import {
 	buildRequiredChainReachability,
@@ -334,6 +340,79 @@ describe('supply planner snapshot', () => {
 		expect(row.replenishmentCeilingPerDay).toBeCloseTo(70 / REPLENISHMENT_INTERVAL_DAYS);
 		expect(row.effectiveDemandPerDay).toBe(
 			Math.min(row.potentialDemandPerDay, row.replenishmentCeilingPerDay)
+		);
+	});
+
+	it('keeps uniform-policy planner potential demand at its baseline', () => {
+		const snapshot = readySnapshot(plannerGame([product('snacks', { targetStock: 70 })]), {
+			retailCityId: 'harbor-city',
+			productId: 'snacks'
+		});
+		const row = snapshot.demandContributors[0]!;
+
+		expect(row.potentialDemandPerDay).toBeCloseTo(129.32, 10);
+	});
+
+	it('changes planner potential demand only by the overridden seller contribution', () => {
+		const base = plannerGame([product('snacks')]);
+		const secondStore = {
+			...base.stores[0]!,
+			id: 'store-b',
+			products: [product('snacks')]
+		};
+		const twoStores = { ...base, stores: [...base.stores, secondStore] };
+		const overridden = setPolicyOverride(
+			twoStores,
+			{ kind: 'store', storeId: twoStores.stores[0]!.id },
+			{ marketing: 'promotions' }
+		);
+		const baselineSnapshot = readySnapshot(twoStores, {
+			retailCityId: 'harbor-city',
+			productId: 'snacks'
+		});
+		const overriddenSnapshot = readySnapshot(overridden, {
+			retailCityId: 'harbor-city',
+			productId: 'snacks'
+		});
+		const rawPool = buildCityDemandPools(twoStores, twoStores.cities[0]!).snacks!;
+		const expectedDelta =
+			rawPool *
+			0.5 *
+			(getPolicyDemandMultiplier({ marketing: 'promotions', pricing: 'standard' }) -
+				getPolicyDemandMultiplier({ marketing: 'awareness', pricing: 'standard' }));
+
+		expect(
+			overriddenSnapshot.demandContributors[0]!.potentialDemandPerDay -
+				baselineSnapshot.demandContributors[0]!.potentialDemandPerDay
+		).toBeCloseTo(expectedDelta, 10);
+	});
+
+	it('keeps planner demand from a product unsupported by the seller archetype out of the shared pool', () => {
+		const base = plannerGame([product('snacks')]);
+		const unsupportedStore = {
+			...base.stores[0]!,
+			id: 'store-unsupported',
+			archetypeId: 'electronics' as const,
+			products: [product('snacks')]
+		};
+		const mixed = { ...base, stores: [...base.stores, unsupportedStore] };
+		const validPolicy = new Map([
+			[
+				base.stores[0]!.id,
+				resolveEffectivePolicy(base, { kind: 'store', storeId: base.stores[0]!.id }).values
+			]
+		]);
+		const mixedPolicy = new Map(
+			mixed.stores.map((store) => [
+				store.id,
+				resolveEffectivePolicy(mixed, { kind: 'store', storeId: store.id }).values
+			])
+		);
+
+		// The planner's shared helper must use the same startingProductIds
+		// predicate as live sales, so the unsupported seller adds no demand.
+		expect(getPolicyAdjustedCityProductDemand(base, base.cities[0]!, 'snacks', validPolicy)).toBe(
+			getPolicyAdjustedCityProductDemand(mixed, mixed.cities[0]!, 'snacks', mixedPolicy)
 		);
 	});
 

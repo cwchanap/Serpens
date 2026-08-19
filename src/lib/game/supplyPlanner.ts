@@ -1,4 +1,5 @@
 import { canonicalQuantity, compareWorldCityIds, getCityInventoryStats } from './cityInventory';
+import { resolveEffectivePolicy } from './policyInheritance';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import {
 	buildingTypesForRecipe,
@@ -16,7 +17,7 @@ import {
 	getBuildingAttachCellKeys
 } from './rail';
 import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
-import { buildCityDemandPools } from './stock';
+import { getPolicyAdjustedCityProductDemand, type EffectivePolicyByStoreId } from './stock';
 import { getProductDefinition } from './products';
 import { compareRecurringRoutes } from './interCityLogistics';
 import { getWorldCityDefinition, WORLD_CITY_CATALOG } from './worldCatalog';
@@ -466,9 +467,10 @@ export function buildSupplyPlannerSnapshot(
 	}
 	const inventoryStats = getCityInventoryStats(game, industry.cityId);
 
+	const effectivePolicyByStoreId = buildEffectivePolicyByStoreId(game);
 	const claimantCities = getClaimantCities(game, industry.cityId);
 	const demandContributors = claimantCities
-		.map((city) => buildDemandContributor(game, city, request.productId))
+		.map((city) => buildDemandContributor(game, city, request.productId, effectivePolicyByStoreId))
 		.filter((contributor): contributor is SupplyDemandContributor => contributor !== null);
 	const selectedContributor = demandContributors.find(
 		(contributor) => contributor.retailCityId === retailCity.id
@@ -3010,10 +3012,23 @@ function buildingsForMaterial(
 	return recipeId ? buildingsForRecipe(snapshot.buildings, recipeId) : [];
 }
 
+function buildEffectivePolicyByStoreId(game: GameState): EffectivePolicyByStoreId {
+	// Synthetic non-catalog planner cities cannot be valid policy scopes.
+	return new Map(
+		game.stores.map((store) => [
+			store.id,
+			getWorldCityDefinition(store.cityId)
+				? resolveEffectivePolicy(game, { kind: 'store', storeId: store.id }).values
+				: game.policy
+		])
+	);
+}
+
 function buildDemandContributor(
 	game: GameState,
 	city: City,
-	productId: ProductId
+	productId: ProductId,
+	effectivePolicyByStoreId: EffectivePolicyByStoreId
 ): SupplyDemandContributor | null {
 	const stores = game.stores
 		.filter(
@@ -3024,7 +3039,12 @@ function buildDemandContributor(
 		.sort((left, right) => compareCodeUnitStrings(left.id, right.id));
 	if (stores.length === 0) return null;
 
-	const potentialDemandPerDay = buildCityDemandPools(game, city)[productId] ?? 0;
+	const potentialDemandPerDay = getPolicyAdjustedCityProductDemand(
+		game,
+		city,
+		productId,
+		effectivePolicyByStoreId
+	);
 	let targetUnits = 0;
 	let weightedImportCost = 0;
 	const fallbackImportCosts: number[] = [];

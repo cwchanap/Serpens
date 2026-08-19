@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
-import { createRng, createRngFromState } from './rng';
+import { resolveEffectivePolicy, setPolicyOverride } from './policyInheritance';
+import { createRng, createRngFromState, randomBetween } from './rng';
 import { createNewGame } from './state';
 import {
 	addStoreProductStockLot,
@@ -7,12 +8,16 @@ import {
 	calculateStockHealth,
 	consumeStoreProductStock,
 	createStoreProduct,
+	getPolicyAdjustedCityProductDemand,
+	getPolicyDemandMultiplier,
 	getStoreProductStock,
 	getStoreProductStatus,
 	initializeStoreProducts,
+	sellerPolicyDemand,
 	simulateProductSalesForCity,
 	summarizeStockTrouble,
-	updateStoreProduct
+	updateStoreProduct,
+	type EffectivePolicyByStoreId
 } from './stock';
 import type { CompanyPolicy, GameState, ProductId, StoreProduct } from './types';
 
@@ -58,6 +63,15 @@ function createEqualSellerGame(storeIds: string[]): GameState {
 
 function equalSellerCapacity(game: GameState): Map<string, number> {
 	return new Map(game.stores.map((store) => [store.id, 100]));
+}
+
+function effectivePolicyMap(game: GameState): EffectivePolicyByStoreId {
+	return new Map(
+		game.stores.map((store) => [
+			store.id,
+			resolveEffectivePolicy(game, { kind: 'store', storeId: store.id }).values
+		])
+	);
 }
 
 describe('stock rules', () => {
@@ -412,13 +426,19 @@ describe('stock rules', () => {
 		).toBe(0);
 	});
 
-	test('builds city-wide demand pools from city demand and product weights', () => {
-		expect.assertions(2);
+	test('builds policy-free city-wide demand pools from city demand and product weights', () => {
+		expect.assertions(3);
 		const game = createNewGame('convenience', 20260508);
 		const pools = buildCityDemandPools(game, game.cities[0]!);
+		const changedPolicyGame = {
+			...game,
+			policy: { ...game.policy, marketing: 'promotions', pricing: 'premium' as const }
+		};
+		const changedPolicyPools = buildCityDemandPools(changedPolicyGame, game.cities[0]!);
 
 		expect(pools['bottled-water']!).toBeGreaterThan(0);
 		expect(pools['soft-drinks']).toBeUndefined();
+		expect(changedPolicyPools).toEqual(pools);
 	});
 
 	test('grocery produce pressure wastes old lots while newer stock remains sellable', () => {
@@ -693,8 +713,179 @@ describe('stock rules', () => {
 
 		expect(result.productReports.get(firstStore.id)?.[0]?.unitsSold).toBeGreaterThan(0);
 		expect(result.productReports.get(secondStore.id)?.[0]?.unitsSold).toBeGreaterThan(0);
-		expect(sold).toBeLessThanOrEqual(result.initialDemand.snacks ?? 0);
-		expect(result.remainingDemand.snacks).toBe((result.initialDemand.snacks ?? 0) - sold);
+		expect(sold).toBeGreaterThan(0);
+		expect(result.remainingDemand.snacks).toBe(
+			Math.max(0, (result.initialDemand.snacks ?? 0) - sold)
+		);
+	});
+
+	test('allows independent seller demand above the raw trend pool without changing canonical order', () => {
+		expect.assertions(7);
+		const makeHighStock = (game: GameState): GameState => ({
+			...game,
+			stores: game.stores.map((store) => ({
+				...store,
+				products: store.products.map((product) => ({
+					...product,
+					lots: [{ receivedDay: 1, quantity: 10_000 }],
+					targetStock: 10_000
+				}))
+			}))
+		});
+		const run = (storeIds: string[]) => {
+			const game = makeHighStock(createEqualSellerGame(storeIds));
+			const rng = createRng(5);
+			const result = simulateProductSalesForCity({
+				game,
+				city: game.cities[0]!,
+				rng,
+				storeCapacity: new Map(game.stores.map((store) => [store.id, 10_000])),
+				effectivePolicyByStoreId: effectivePolicyMap(game)
+			});
+			return { game, result, rngState: rng.getState() };
+		};
+
+		const ascending = run(['store-a', 'store-z']);
+		const descending = run(['store-z', 'store-a']);
+		const rawTrendPool = buildCityDemandPools(ascending.game, ascending.game.cities[0]!)[
+			'bottled-water'
+		]!;
+		const desiredRng = createRng(5);
+		const desiredUnits = [0, 1].map(() =>
+			Math.round(
+				sellerPolicyDemand(rawTrendPool, 0.5, ascending.game.policy) *
+					randomBetween(desiredRng, 0.94, 1.06)
+			)
+		);
+		const sold = [...ascending.result.productReports.values()]
+			.flat()
+			.reduce((sum, report) => sum + report.unitsSold, 0);
+		const reportsByStore = (result: typeof ascending.result) =>
+			Object.fromEntries(
+				[...result.productReports.entries()].map(([storeId, reports]) => [storeId, reports])
+			);
+
+		// Pre-HPA-41 could not sell above initialDemand because availableDemand
+		// was included in Math.min(...) for every later seller.
+		expect(rawTrendPool).toBe(147);
+		expect(ascending.result.initialDemand['bottled-water']).toBe(rawTrendPool);
+		expect(sold).toBeGreaterThan(rawTrendPool);
+		expect(sold).toBeLessThanOrEqual(desiredUnits.reduce((sum, units) => sum + units, 0));
+		expect(ascending.result.remainingDemand['bottled-water']).toBe(
+			Math.max(0, rawTrendPool - sold)
+		);
+		expect(reportsByStore(ascending.result)).toEqual(reportsByStore(descending.result));
+		expect(ascending.rngState).toBe(descending.rngState);
+	});
+
+	test('applies a store policy without spilling demand into another seller', () => {
+		expect.assertions(7);
+		const base = createEqualSellerGame(['store-a', 'store-b']);
+		const overridden = setPolicyOverride(
+			base,
+			{ kind: 'store', storeId: 'store-a' },
+			{ marketing: 'promotions' }
+		);
+		const basePolicies = effectivePolicyMap(base);
+		const overriddenPolicies = effectivePolicyMap(overridden);
+		const rawPool = buildCityDemandPools(base, base.cities[0]!)['bottled-water']!;
+		const baseA = sellerPolicyDemand(rawPool, 0.5, basePolicies.get('store-a')!);
+		const overriddenA = sellerPolicyDemand(rawPool, 0.5, overriddenPolicies.get('store-a')!);
+		const baseB = sellerPolicyDemand(rawPool, 0.5, basePolicies.get('store-b')!);
+		const overriddenB = sellerPolicyDemand(rawPool, 0.5, overriddenPolicies.get('store-b')!);
+		const run = (game: GameState, policies: EffectivePolicyByStoreId) =>
+			simulateProductSalesForCity({
+				game,
+				city: game.cities[0]!,
+				rng: createRng(5),
+				storeCapacity: new Map(game.stores.map((store) => [store.id, 10_000])),
+				effectivePolicyByStoreId: policies
+			});
+		const baseSales = run(base, basePolicies);
+		const overriddenSales = run(overridden, overriddenPolicies);
+		const baseBReport = baseSales.productReports.get('store-b')?.[0];
+		const overriddenBReport = overriddenSales.productReports.get('store-b')?.[0];
+		if (!baseBReport || !overriddenBReport) {
+			throw new Error('expected store-b product reports');
+		}
+		const basePlannerDemand = getPolicyAdjustedCityProductDemand(
+			base,
+			base.cities[0]!,
+			'bottled-water',
+			basePolicies
+		);
+		const overriddenPlannerDemand = getPolicyAdjustedCityProductDemand(
+			overridden,
+			overridden.cities[0]!,
+			'bottled-water',
+			overriddenPolicies
+		);
+
+		expect(overriddenA).toBeGreaterThan(baseA);
+		expect(overriddenB).toBe(baseB);
+		expect(overriddenBReport.unitsSold + overriddenBReport.demandMissed).toBe(
+			baseBReport.unitsSold + baseBReport.demandMissed
+		);
+		expect(overriddenSales.productReports.get('store-a')?.[0]?.unitsSold).toBeGreaterThan(
+			baseSales.productReports.get('store-a')?.[0]?.unitsSold ?? 0
+		);
+		expect(overriddenPlannerDemand - basePlannerDemand).toBeCloseTo(overriddenA - baseA, 10);
+		expect(basePlannerDemand).toBeCloseTo(baseA + baseB, 10);
+		expect(overriddenPlannerDemand).toBeCloseTo(overriddenA + overriddenB, 10);
+	});
+
+	test('excludes products unsupported by a seller archetype from live and planner demand', () => {
+		expect.assertions(3);
+		const base = createNewGame('convenience', 20260508);
+		const validStore: GameState['stores'][number] = {
+			...base.stores[0]!,
+			id: 'store-valid',
+			products: [
+				{
+					productId: 'snacks',
+					lots: [{ receivedDay: 1, quantity: 10_000 }],
+					reorderThreshold: 10,
+					targetStock: 10_000,
+					sellingPrice: 5
+				}
+			]
+		};
+		const unsupportedStore: GameState['stores'][number] = {
+			...validStore,
+			id: 'store-unsupported',
+			archetypeId: 'electronics',
+			tileId: 'store-unsupported-tile'
+		};
+		const validGame = { ...base, stores: [validStore] };
+		const mixedGame = { ...base, stores: [validStore, unsupportedStore] };
+		const validPolicies = effectivePolicyMap(validGame);
+		const mixedPolicies = effectivePolicyMap(mixedGame);
+		const validDemand = getPolicyAdjustedCityProductDemand(
+			validGame,
+			validGame.cities[0]!,
+			'snacks',
+			validPolicies
+		);
+		const mixedDemand = getPolicyAdjustedCityProductDemand(
+			mixedGame,
+			mixedGame.cities[0]!,
+			'snacks',
+			mixedPolicies
+		);
+		const sales = simulateProductSalesForCity({
+			game: mixedGame,
+			city: mixedGame.cities[0]!,
+			rng: createRng(7),
+			storeCapacity: new Map([
+				[validStore.id, 10_000],
+				[unsupportedStore.id, 10_000]
+			]),
+			effectivePolicyByStoreId: mixedPolicies
+		});
+
+		expect(mixedDemand).toBe(validDemand);
+		expect(sales.productReports.has(validStore.id)).toBe(true);
+		expect(sales.productReports.has(unsupportedStore.id)).toBe(false);
 	});
 
 	test('uses a code-unit seller tie-break independent of input order', () => {
@@ -933,12 +1124,10 @@ describe('demand multipliers and stock ratios', () => {
 		).toBe(100);
 	});
 
-	test('applies each marketing and pricing multiplier to city demand pools', () => {
+	test('composes each marketing and pricing multiplier for seller demand', () => {
 		expect.assertions(5);
-		const game = createNewGame('convenience', 20260508);
-		const city = game.cities[0]!;
 		const pool = (marketing: CompanyPolicy['marketing'], pricing: CompanyPolicy['pricing']) =>
-			buildCityDemandPools(game, city, { marketing, pricing })['bottled-water']!;
+			getPolicyDemandMultiplier({ marketing, pricing });
 		const standard = pool('awareness', 'standard');
 		const none = pool('none', 'standard');
 		const loyalty = pool('loyalty', 'standard');
