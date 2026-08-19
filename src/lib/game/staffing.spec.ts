@@ -380,6 +380,9 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			marketing: 'awareness',
 			service: 'balanced'
 		},
+		policyOverrides: [],
+		managerDelegations: [],
+		managerActionHistory: [],
 		scorecard: {
 			profit: 50,
 			customerSatisfaction: 50,

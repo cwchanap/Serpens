@@ -282,6 +282,9 @@
 		cash: 0,
 		finance: createEmptyFinanceState(1),
 		policy: { ...DEFAULT_POLICY },
+		policyOverrides: [],
+		managerDelegations: [],
+		managerActionHistory: [],
 		scorecard: {
 			profit: 0,
 			customerSatisfaction: 0,
