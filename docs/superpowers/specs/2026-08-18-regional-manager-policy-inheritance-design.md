@@ -108,15 +108,30 @@ policyOverrides: PolicyOverride[];
 `policyInheritance.ts` owns:
 
 ```ts
-resolveEffectivePolicy(game, store): EffectivePolicy
+resolveEffectivePolicy(game, scope): EffectivePolicy
 setPolicyOverride(game, scope, patch): GameState
 clearPolicyOverrideField(game, scope, field): GameState
 resetPolicyOverrideScope(game, scope): GameState
 ```
 
+with the concrete resolver signature:
+
+```ts
+resolveEffectivePolicy(
+  game: GameState,
+  scope: PolicyOverrideScope
+): EffectivePolicy
+```
+
+This single resolver supports both store simulation and the Policies UI:
+
+- city scope resolves company -> city;
+- store scope resolves company -> store's city -> store.
+
+Company mode uses `game.policy` directly with company provenance and does not need a synthetic company override scope.
+
 Rules:
 
-- resolution is company -> city -> store;
 - city IDs resolve through the existing world-city helpers and must be materialized/open retail cities;
 - store IDs must exist and their city must resolve to an open retail city;
 - at most one override record exists per concrete scope;
@@ -128,11 +143,19 @@ Rules:
 - persisted override records are canonically ordered by scope kind then concrete ID;
 - provenance and parent/effective comparison are derived, never persisted.
 
+Mutators return the original game unchanged for invalid scope IDs. The resolver is for validated current state and may treat an invalid scope as a state invariant failure rather than inventing a fallback policy.
+
 ## Daily simulation policy consumption
 
 ### Resolve once per store
 
-At the start of store operations, build one effective policy per store and reuse it for that store's profile, temporary policy pricing, and seller demand calculation.
+At the start of store operations, build one effective policy per store with:
+
+```ts
+resolveEffectivePolicy(game, { kind: 'store', storeId: store.id })
+```
+
+Reuse it for that store's profile, temporary policy pricing, and seller demand calculation.
 
 `buildStoreOperationProfile` receives the effective policy rather than reading `game.policy` internally.
 
@@ -204,6 +227,12 @@ potentialDemandPerDay = sum(
   * sellerDemandShare
   * sellerPolicyMultiplier
 )
+```
+
+Each seller policy is resolved through:
+
+```ts
+resolveEffectivePolicy(game, { kind: 'store', storeId: store.id }).values
 ```
 
 Then apply the existing replenishment/target-stock ceiling to derive effective planner demand.
@@ -567,6 +596,7 @@ Extend `PolicyPanel.svelte`:
 
 - Company / City / Store scope selector;
 - target selector for city/store modes;
+- each city/store target is resolved with the same `resolveEffectivePolicy(game, scope)` domain function;
 - effective value + provenance for every policy field;
 - `Inherit from parent` clears only that explicit field;
 - `Reset scope to parent` removes the complete override record;
@@ -666,6 +696,7 @@ Scenario persistence naturally carries the same `GameState` through the existing
 ## Definition of done
 
 - company -> city -> store inheritance resolves deterministically with provenance;
+- the same scope-based resolver serves city/store UI and store simulation;
 - clearing/resetting overrides restores parent values immediately;
 - live sales apply policy per seller with no policy-demand spillover;
 - planner potential demand uses the same per-seller policy shares and stays trend-free;
