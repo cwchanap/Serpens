@@ -137,6 +137,9 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 		cash: 1000,
 		finance: createEmptyFinanceState(5),
 		policy: {} as GameState['policy'],
+		policyOverrides: [],
+		managerDelegations: [],
+		managerActionHistory: [],
 		scorecard: {
 			profit: 50,
 			customerSatisfaction: 50,

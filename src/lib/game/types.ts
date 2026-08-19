@@ -607,6 +607,97 @@ export interface CompanyPolicy {
 	service: ServicePriority;
 }
 
+export type PolicyOverrideScope =
+	| { kind: 'city'; cityId: WorldCityId }
+	| { kind: 'store'; storeId: string };
+
+export interface PolicyOverride {
+	scope: PolicyOverrideScope;
+	values: Partial<CompanyPolicy>;
+}
+
+export type ManagerPlaybookId =
+	| 'protect-margin'
+	| 'protect-availability'
+	| 'grow-market-share'
+	| 'stabilize-cash'
+	| 'prefer-local-supply';
+
+export type ManagerDelegationScope =
+	| { kind: 'store'; storeId: string }
+	| { kind: 'city'; cityId: WorldCityId };
+
+export interface ManagerAuthority {
+	pricing: boolean;
+	inventory: boolean;
+	staffing: boolean;
+	supply: boolean;
+}
+
+export interface ManagerDelegation {
+	managerId: string;
+	scope: ManagerDelegationScope;
+	playbook: ManagerPlaybookId;
+	authority: ManagerAuthority;
+	enabled: boolean;
+}
+
+export type ManagerActionOutcome = 'applied' | 'overridden' | 'rejected' | 'out-of-authority';
+
+export type ManagerActionReason =
+	| 'margin-below-threshold'
+	| 'availability-pressure'
+	| 'staff-capacity-pressure'
+	| 'market-position-low'
+	| 'negative-operating-cash-flow'
+	| 'better-local-supply'
+	| 'conflict-lost'
+	| 'authority-disabled'
+	| 'transition-rejected';
+
+export type ManagerActionChange =
+	| {
+			kind: 'pricing-policy';
+			storeId: string;
+			before: PricingPosture;
+			proposed: PricingPosture;
+			applied: PricingPosture | null;
+	  }
+	| {
+			kind: 'inventory-targets';
+			storeId: string;
+			productId: ProductId;
+			before: { reorderThreshold: number; targetStock: number };
+			proposed: { reorderThreshold: number; targetStock: number };
+			applied: { reorderThreshold: number; targetStock: number } | null;
+	  }
+	| {
+			kind: 'staffing-policy';
+			storeId: string;
+			before: StaffingPosture;
+			proposed: StaffingPosture;
+			applied: StaffingPosture | null;
+	  }
+	| {
+			kind: 'supply-source';
+			retailCityId: WorldCityId;
+			before: WorldCityId | null;
+			proposed: WorldCityId;
+			applied: WorldCityId | null;
+	  };
+
+export interface ManagerActionRecord {
+	id: string;
+	day: number;
+	managerId: string;
+	scope: ManagerDelegationScope;
+	playbook: ManagerPlaybookId;
+	conflictKey: string;
+	outcome: ManagerActionOutcome;
+	reason: ManagerActionReason;
+	change: ManagerActionChange;
+}
+
 export interface Scorecard {
 	profit: number;
 	customerSatisfaction: number;
@@ -1042,6 +1133,9 @@ export interface GameState {
 	cash: number;
 	finance: FinanceState;
 	policy: CompanyPolicy;
+	policyOverrides: PolicyOverride[];
+	managerDelegations: ManagerDelegation[];
+	managerActionHistory: ManagerActionRecord[];
 	scorecard: Scorecard;
 	world: WorldProgress;
 	storeCap: number;

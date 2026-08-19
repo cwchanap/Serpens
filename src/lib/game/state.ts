@@ -162,6 +162,9 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		cash: archetype.startingCash,
 		finance: createFoundingFinanceState(1, archetype.startingDebt),
 		policy: { ...DEFAULT_POLICY },
+		policyOverrides: [],
+		managerDelegations: [],
+		managerActionHistory: [],
 		scorecard: {
 			profit: clampScore(
 				50 + Math.round((archetype.startingCash - archetype.startingDebt) / 2_000)
