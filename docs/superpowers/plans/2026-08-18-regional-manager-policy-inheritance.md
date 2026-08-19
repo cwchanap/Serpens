@@ -204,13 +204,17 @@ git commit -m "feat(policy): add scoped policy inheritance"
 ```ts
 resolveEffectivePolicy(game, { kind: 'store', storeId })
 ```
-- Produces small reusable `stock.ts` seams using the existing multiplier tables:
+- Produces one reusable policy helper in `stock.ts`; keep seller scoring private to `stock.ts`:
 ```ts
 export function getPolicyDemandMultiplier(
   policy: Pick<CompanyPolicy, 'marketing' | 'pricing'>
 ): number;
 
-export function scoreStoreForCategory(store: Store, productId: ProductId): number;
+export function getPolicyAdjustedCityProductDemand(
+  game: GameState,
+  city: City,
+  productId: ProductId
+): number;
 ```
 - Changes:
 ```ts
@@ -220,6 +224,8 @@ buildCityDemandPools(
 ): RetailDemandProfile;
 ```
   Remove the policy parameter/default entirely.
+
+`getPolicyAdjustedCityProductDemand` owns the current seller filtering and private `scoreStoreForCategory` weighting, then resolves each seller's effective policy. Supply Planner calls this helper instead of duplicating private seller-score logic.
 
 - [ ] **Step 1: Pin uniform-policy and planner baseline behavior before changing formulas**
 
@@ -245,7 +251,7 @@ Assert:
 - planner potential demand changes only by the overridden store's weighted share.
 ```
 
-- [ ] **Step 3: Make `buildCityDemandPools` raw/policy-free and export the existing seller policy helpers**
+- [ ] **Step 3: Make `buildCityDemandPools` raw/policy-free and compose the existing multiplier tables**
 
 Keep current multiplier numbers in one place:
 
@@ -258,7 +264,31 @@ export function getPolicyDemandMultiplier(policy: Pick<CompanyPolicy, 'marketing
 
 Do not use `simulateDay.ts`'s separate `PRICING.demand` values.
 
-- [ ] **Step 4: Resolve policy once per store in `simulateDay`**
+- [ ] **Step 4: Add `getPolicyAdjustedCityProductDemand` in `stock.ts`**
+
+It uses the same seller eligibility + private `scoreStoreForCategory` that live sales already use:
+
+```ts
+const rawPool = buildCityDemandPools(game, city)[productId] ?? 0;
+const sellers = /* same eligible product sellers as live sales */;
+const totalScore = sellers.reduce(
+  (sum, store) => sum + scoreStoreForCategory(store, productId),
+  0
+);
+
+return sellers.reduce((sum, store) => {
+  const demandShare = scoreStoreForCategory(store, productId) / totalScore;
+  const policy = resolveEffectivePolicy(game, {
+    kind: 'store',
+    storeId: store.id
+  }).values;
+  return sum + rawPool * demandShare * getPolicyDemandMultiplier(policy);
+}, 0);
+```
+
+Return `0` when there are no eligible sellers/positive score. Do not apply product trend in this helper.
+
+- [ ] **Step 5: Resolve policy once per store in `simulateDay`**
 
 Build a map before store operation calculations:
 
@@ -276,7 +306,7 @@ const effectivePolicyByStoreId = new Map(
 
 Pass the resolved policy into `buildStoreOperationProfile`, temporary policy pricing, and sales. Do not have those helpers re-read `game.policy`.
 
-- [ ] **Step 5: Move policy scaling into each seller's desired-unit calculation**
+- [ ] **Step 6: Move policy scaling into each seller's desired-unit calculation**
 
 Inside the existing product/seller loop:
 
@@ -310,24 +340,21 @@ If `ProductSalesResult.remainingDemand` is kept, update it only as diagnostic po
 
 Preserve the exact existing RNG call location/count.
 
-- [ ] **Step 6: Update planner potential demand to sum policy-scaled seller shares**
+- [ ] **Step 7: Update planner potential demand through the shared `stock.ts` helper**
 
-In `buildDemandContributor`, derive the city product raw pool, sellers, total score, and:
+In `buildDemandContributor`:
 
 ```ts
-const potentialDemandPerDay = sellers.reduce((sum, store) => {
-  const demandShare = scoreStoreForCategory(store, productId) / totalScore;
-  const policy = resolveEffectivePolicy(game, {
-    kind: 'store',
-    storeId: store.id
-  }).values;
-  return sum + rawPool * demandShare * getPolicyDemandMultiplier(policy);
-}, 0);
+const potentialDemandPerDay = getPolicyAdjustedCityProductDemand(
+  game,
+  city,
+  productId
+);
 ```
 
 Then retain the existing replenishment/target-stock ceiling logic. Do not apply product trend here.
 
-- [ ] **Step 7: Run focused behavior gates**
+- [ ] **Step 8: Run focused behavior gates**
 
 ```bash
 bun run test:unit -- --run \
@@ -340,7 +367,7 @@ bun run check
 
 Expected: PASS with uniform-policy baseline unchanged and mixed-policy no-spillover assertions green.
 
-- [ ] **Step 8: Commit checkpoint 2**
+- [ ] **Step 9: Commit checkpoint 2**
 
 ```bash
 git add src/lib/game/simulateDay.ts src/lib/game/simulateDay.spec.ts \
@@ -955,7 +982,7 @@ The implementation branch is ready for review only when the single PR contains a
 - deterministic company/city/store policy inheritance and provenance;
 - one scope-based resolver serves both UI scopes and store simulation;
 - raw city demand + per-seller policy scaling without sibling spillover;
-- planner/live policy-demand parity at the seller-share seam;
+- planner/live policy-demand parity through the shared `stock.ts` demand helper;
 - no report-backed manager action before completed report evidence exists;
 - manager phase after transfer arrivals;
 - five closed playbooks with fixed authority bounds;
