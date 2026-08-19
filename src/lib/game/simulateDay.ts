@@ -18,6 +18,7 @@ import {
 import { processRecurringRouteDispatches, processTransferArrivals } from './interCityLogistics';
 import { buildRouteModifierRecoveries } from './logisticsRouteModifiers';
 import { simulateIndustryProduction } from './industryProduction';
+import { applyManagerDelegations } from './managerDelegation';
 import { resolveEffectivePolicy } from './policyInheritance';
 import { resolveProductMarketDynamics } from './productDynamics';
 import { clampScore } from './reports';
@@ -130,13 +131,14 @@ export function simulateDay(
 	assertValidEntityCityOwnership(game);
 	const closingDay = game.day;
 	const arrivalResult = processTransferArrivals(game);
-	const arrivalGame = arrivalResult.game;
-	const activeEventModifiers = arrivalGame.events.activeModifiers.filter((modifier) =>
+	const managerResult = applyManagerDelegations(arrivalResult.game);
+	const managedGame = managerResult.game;
+	const activeEventModifiers = managedGame.events.activeModifiers.filter((modifier) =>
 		isModifierActiveOnDay(modifier, closingDay)
 	);
 	const mergedRules = mergeSimulationRules(rules, compileEventModifierRules(activeEventModifiers));
-	const cashBefore = game.cash - game.finance.currentDayActivity.financingCashFlow;
-	const industryResult = simulateIndustryProduction(arrivalGame, mergedRules);
+	const cashBefore = managedGame.cash - managedGame.finance.currentDayActivity.financingCashFlow;
+	const industryResult = simulateIndustryProduction(managedGame, mergedRules);
 	const productionGame = industryResult.game;
 	const rng = createRngFromState(productionGame.rngState);
 	const effectivePolicyByStoreId: EffectivePolicyByStoreId = new Map(
@@ -257,10 +259,10 @@ export function simulateDay(
 	const operatingCosts = baseOperatingCosts + routeResult.scheduledTransportCost;
 	const operatingCashFlow = baseOperatingCashFlow - routeResult.scheduledTransportCost;
 	const operatingIncome = Math.round(grossMargin - operatingCosts - inventoryLossExpense);
-	const scorecard = buildScorecard(game.scorecard, storeReports, operatingCashFlow);
+	const scorecard = buildScorecard(managedGame.scorecard, storeReports, operatingCashFlow);
 	const preFinanceGame = {
 		...routeResult.game,
-		cash: game.cash + operatingCashFlow,
+		cash: managedGame.cash + operatingCashFlow,
 		scorecard
 	};
 	const serviced = serviceFinanceForDay({
@@ -343,7 +345,7 @@ export function simulateDay(
 		...reconciledGame,
 		day: nextDay,
 		finance: resetFinanceDayActivity(serviced.finance, nextDay),
-		reports: [...game.reports, report]
+		reports: [...managedGame.reports, report]
 	};
 	const cleaned = pruneExpiredDecisions(postDayGame, closingDay);
 	return refreshWorldProgress(generateDecisions(cleaned));
