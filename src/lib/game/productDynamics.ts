@@ -177,18 +177,6 @@ export function resolveMarkdownMultiplier(
 	return clampFraction(markdown.priceMultiplier);
 }
 
-export function resolveReputationScore(input: {
-	storeReputation: number;
-	reputationSensitivity?: number;
-}): number {
-	const reputation = Number.isFinite(input.storeReputation) ? input.storeReputation : 50;
-	const sensitivity =
-		input.reputationSensitivity === undefined || !Number.isFinite(input.reputationSensitivity)
-			? 1
-			: Math.max(0, input.reputationSensitivity);
-	return Math.max(1, 27.5 + (reputation - 50) * 0.55 * sensitivity);
-}
-
 export function resolveProductMarketDynamics(input: {
 	product: StoreProduct;
 	definition: ProductDefinition;
