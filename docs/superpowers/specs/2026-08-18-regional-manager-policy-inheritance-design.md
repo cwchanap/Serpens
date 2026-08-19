@@ -2,50 +2,77 @@
 
 **Date:** 2026-08-18  
 **Linear:** HPA-41 — Regional manager playbooks and policy inheritance  
-**Status:** Normative planning baseline
+**Status:** Normative; revised after codebase review
 
 ## Outcome
 
-Add one small delegation layer to the existing retail simulation:
+Add a small delegation layer on top of the existing retail simulation:
 
 1. `GameState.policy` remains the company default;
-2. optional retail-city overrides inherit from company;
-3. optional store overrides inherit from the effective city policy;
-4. manager-role staff can run one deterministic store/city playbook inside explicit authority;
-5. every manager proposal records its outcome and reason.
+2. retail cities and stores may carry sparse policy overrides with explicit provenance;
+3. simulation and the Supply Planner consume the same effective per-store policy rules;
+4. manager-role staff may run one deterministic playbook over a store or retail-city authority range;
+5. manager proposals are bounded, conflict-resolved deterministically, and persisted as auditable history;
+6. existing Policies, Staff, alert, persistence, and route-controller surfaces expose the feature.
 
-Do not add a generic hierarchy/rules engine, opaque AI, autonomous construction, hiring/firing automation, or a new management dashboard.
+This stays one HPA-41 implementation PR. Do not add a generic hierarchy engine, rules DSL, AI service, automation registry, autonomous construction, autonomous hiring/firing, or a new management dashboard.
 
-## Why HPA-41 is next
+## Review resolution
 
-HPA-38 is implemented on `main`, completing the other Phase-2 vertical slice from HPA-275. HPA-41 has no Linear blockers and no dedicated planning PR. HPA-39 is technically unblocked by HPA-38 but belongs to the later roadmap phase, so HPA-41 is the next roadmap-ordered actionable slice.
+The review is accepted with one precision fix around demand allocation.
 
-## Approaches considered
+Accepted:
 
-### Generic hierarchy + automation framework
+- keep company policy as the root and sparse overrides as the only persisted inheritance state;
+- keep physical staff assignment separate from delegation scope;
+- keep five hard-coded playbooks and closed unions;
+- use completed reports as playbook evidence; no report means no proposal;
+- run manager evaluation after transfer arrivals and before production/sales/replenishment;
+- reuse `productionMaterialId`, city inventory, and `setRetailSupplySource` for local-supply actions;
+- initialize the three new `GameState` arrays at every direct construction site in the first type checkpoint;
+- extend existing alert localization/navigation to the Staff panel;
+- treat city delegation scope as an authority range, not a city-policy write target;
+- route inventory target actions through `updateStoreProduct` and accept its validation/rejection semantics;
+- keep manager history bounded using the existing history-module pattern;
+- add explicit risks for report timing, demand spillover, lot-compatible inventory edits, `GameState` literal blast radius, E2E timing, and city-scope store-override fragmentation.
 
-A scope tree, rule DSL, and generic action registry could model future regions and competitors. Reject it: HPA-41 has exactly three policy levels and five playbooks, so the framework would be speculative infrastructure.
+Refined demand contract:
 
-### Put everything on `City`, `Store`, and `StaffMember`
+- the review correctly rejects averaging seller policy multipliers into one shared city demand cap;
+- `buildCityDemandPools` becomes policy-free and trend-free;
+- seller policy multipliers are applied only to that seller's demand share;
+- the shared `remainingDemand` value must no longer constrain policy-adjusted seller allocation, otherwise a local policy can still alter sibling capacity or uniform positive policy multipliers are clipped back to the raw pool;
+- the planner computes potential demand by summing the same policy-scaled seller shares.
 
-This minimizes new top-level fields but mixes policy resolution, physical staffing, automation configuration, and audit history into core entities. Reject it: the apparent file-count win spreads behavior across more owners.
+## Existing seams
 
-### Focused inheritance + delegation modules
+HPA-41 extends rather than replaces the current architecture:
 
-Choose this. Keep sparse state in `GameState`, put policy resolution in `policyInheritance.ts`, and put deterministic manager behavior in `managerDelegation.ts`. Existing simulation/UI/persistence seams consume those modules.
+- `src/lib/game/state.ts` owns `CompanyPolicy`, `DEFAULT_POLICY`, and company-level `updatePolicy`;
+- `src/lib/game/simulateDay.ts` consumes pricing/inventory/staffing/marketing/service policy;
+- `src/lib/game/stock.ts` owns city demand, seller scoring, product settings, and target validation;
+- `src/lib/game/retailSupply.ts` owns retail supply assignment and product-to-material compatibility;
+- `src/lib/game/staffing.ts` already identifies manager-role staff;
+- `src/lib/game/eventHistory.ts` supplies the existing bounded-history convention;
+- `PolicyPanel.svelte` and the Staff control-tower surface are the existing player-facing homes;
+- `GameRouteController` remains the mutation/autosave boundary.
+
+Phaser and map snapshots are untouched.
 
 ## Scope decisions
 
-- Policy inheritance applies to retail cities/stores because policy is consumed by store simulation.
-- `StaffMember.assignedStoreId` remains physical staffing coverage. Manager delegation scope is separate.
-- Every `StaffMember` with `role === 'manager'` is qualified; no level/skill gate.
+- `GameState.policy` stays named and authoritative as the company root.
+- Inheritance applies only to retail-city/store operations.
+- `StaffMember.assignedStoreId` remains physical staffing coverage only.
+- Every existing `role === 'manager'` staff member is delegation-qualified; no extra skill/level gate.
 - One manager has at most one delegation record.
-- Scoped policy edits and manager configuration are sandbox-only for HPA-41. Existing scenario `updatePolicy` stays company-level; no new scenario command variants.
-- Manager actions run at the start of `simulateDay`, before existing production/sales/replenishment work.
-- Manager logic adds no RNG calls and must not move existing RNG call sites.
-- Schema 17 becomes 18; schema 17 is rejected with no migration, matching the repository's pre-release save policy.
+- Scoped policy edits and manager delegation configuration are sandbox-only in HPA-41.
+- Existing scenario `updatePolicy` remains company-level; do not add scenario commands.
+- Manager evaluation consumes no RNG and does not move existing RNG call sites.
+- With no enabled delegations, the manager phase is a strict no-op and daily simulation preserves current behavior apart from the newly required empty state arrays.
+- Pre-release saves are unsupported: final schema is 18 and schema 17 is rejected without migration.
 
-## Policy inheritance
+## Policy inheritance state
 
 ```ts
 export type PolicyOverrideScope =
@@ -62,9 +89,13 @@ export type PolicyValueSource =
   | { kind: 'city'; cityId: WorldCityId }
   | { kind: 'store'; storeId: string };
 
+export type PolicyProvenance = {
+  [K in keyof CompanyPolicy]: PolicyValueSource;
+};
+
 export interface EffectivePolicy {
   values: CompanyPolicy;
-  provenance: { [K in keyof CompanyPolicy]: PolicyValueSource };
+  provenance: PolicyProvenance;
 }
 ```
 
@@ -73,16 +104,6 @@ export interface EffectivePolicy {
 ```ts
 policyOverrides: PolicyOverride[];
 ```
-
-Rules:
-
-- at most one city record per city and one store record per store;
-- records contain only explicitly overridden fields;
-- an explicit child value equal to its parent remains explicit;
-- clearing one field immediately restores its parent value/source;
-- clearing the final field removes the empty record;
-- reset-to-parent removes the scope record;
-- records use deterministic scope/ID ordering.
 
 `policyInheritance.ts` owns:
 
@@ -93,47 +114,109 @@ clearPolicyOverrideField(game, scope, field): GameState
 resetPolicyOverrideScope(game, scope): GameState
 ```
 
-Resolution is exactly:
+Rules:
 
-```text
-company -> city explicit fields -> store explicit fields
+- resolution is company -> city -> store;
+- city IDs resolve through the existing world-city helpers and must be materialized/open retail cities;
+- store IDs must exist and their city must resolve to an open retail city;
+- at most one override record exists per concrete scope;
+- records contain only explicit fields;
+- an explicit value equal to its parent is still explicit and keeps child provenance;
+- clearing one field restores its parent immediately;
+- clearing the last field removes the empty record;
+- reset removes the complete scope record;
+- persisted override records are canonically ordered by scope kind then concrete ID;
+- provenance and parent/effective comparison are derived, never persisted.
+
+## Daily simulation policy consumption
+
+### Resolve once per store
+
+At the start of store operations, build one effective policy per store and reuse it for that store's profile, temporary policy pricing, and seller demand calculation.
+
+`buildStoreOperationProfile` receives the effective policy rather than reading `game.policy` internally.
+
+Temporary policy pricing is per store. The existing restore path still restores configured product prices after sales.
+
+### Raw city demand stays policy-free
+
+Change `buildCityDemandPools` to:
+
+```ts
+buildCityDemandPools(
+  game: Pick<GameState, 'stores' | 'world'>,
+  city: City
+): RetailDemandProfile
 ```
 
-Resolved values/provenance are derived, never persisted.
-
-## Simulation contract
-
-Today `simulateDay.ts` reads `game.policy` directly. HPA-41 resolves effective policy once per store and threads it through existing pricing and `buildStoreOperationProfile` seams.
-
-### Per-store operations
-
-- pricing posture: temporary sales price multiplier uses the store's effective policy;
-- inventory/staffing/marketing/service: `buildStoreOperationProfile` reads the passed effective policy, not `game.policy`;
-- configured product prices are restored through the existing post-sales path.
-
-### Shared city demand
-
-`buildCityDemandPools` is city-wide, so one store override must not scale demand for all competitors. For each product:
+It computes only:
 
 ```text
-sellerPolicyMultiplier =
-  marketingDemandMultiplier(effectivePolicy.marketing)
-  * pricingDemandMultiplier(effectivePolicy.pricing)
-
-productPolicyMultiplier = average(sellerPolicyMultiplier across sellers carrying the product)
-
-base city product pool =
+raw city product pool =
   city demand
-  * product demandWeight
-  * productPolicyMultiplier
-  * retail city product multiplier
+  * product.demandWeight
+  * retail-city product multiplier
 ```
 
-Uniform policies therefore preserve today's multiplier exactly. A local override contributes only its proportional share to the shared pool.
+It remains trend-free for Supply Planner reuse. Remove the optional/default policy parameter so no caller can accidentally reintroduce company-policy scaling.
 
-`buildCityDemandPools` remains trend-free. `simulateProductSalesForCity` remains the only product-trend application point. The Supply Planner reads effective policy through this baseline pool but does not forecast future manager choices.
+### Seller policy scaling, no upward spillover
 
-## Manager delegation
+Reuse the existing `stock.ts` marketing and pricing demand multipliers; do not introduce a second table or reuse the different `PRICING.demand` values from `simulateDay.ts`.
+
+For each product in `simulateProductSalesForCity`:
+
+```text
+trendPool = rawCityPool * trendMultiplier(product, day)
+demandShare = scoreStoreForCategory(store, product) / totalSellerScore
+sellerPolicyMultiplier =
+  getMarketingDemandMultiplier(effectivePolicy.marketing)
+  * getPricingDemandMultiplier(effectivePolicy.pricing)
+
+sellerPolicyDemand = trendPool * demandShare * sellerPolicyMultiplier
+
+desiredUnits = sellerPolicyDemand
+  * obsolescenceMultiplier
+  * configuredPriceDemandMultiplier
+  * existing jitter
+```
+
+A seller's allocation is then bounded by its own `desiredUnits`, sales capacity, and stock. Do not use one policy-scaled shared `remainingDemand` cap as an input to `sellableDemand`.
+
+This has two required properties:
+
+1. when all sellers inherit one policy, the sum of pre-product-dynamics seller policy demand equals today's policy-scaled city pool, subject only to existing rounding;
+2. changing one store's override changes only that store's policy-scaled share, never a sibling's `desiredUnits` or available-demand cap.
+
+If `ProductSalesResult.remainingDemand` is retained as diagnostic output, derive it after sales from raw/trend city demand and do not feed it back into seller allocation.
+
+No RNG call is added or moved.
+
+## Supply Planner demand
+
+The planner continues to consume raw `buildCityDemandPools` output, then calculates policy-aware potential demand from the same seller scoring and policy multipliers used by live sales.
+
+For each claimant city/product:
+
+```text
+potentialDemandPerDay = sum(
+  rawCityProductPool
+  * sellerDemandShare
+  * sellerPolicyMultiplier
+)
+```
+
+Then apply the existing replenishment/target-stock ceiling to derive effective planner demand.
+
+The planner does not apply product trend and does not forecast future manager decisions. It sees manager changes only after they have actually changed policy/targets/supply state.
+
+Tests must cover:
+
+- uniform policy parity with the current baseline;
+- one store override changes only its weighted contribution;
+- no trend leakage into planner potential demand.
+
+## Manager delegation state
 
 ```ts
 export type ManagerPlaybookId =
@@ -172,88 +255,185 @@ managerActionHistory: ManagerActionRecord[];
 
 Configuration rules:
 
-- `managerId` references an existing manager-role staff member;
+- manager IDs reference existing manager-role staff;
 - store scope references an existing store;
-- city scope references an open/materialized retail city;
-- `prefer-local-supply` requires city scope because the existing retail supply assignment is city-wide;
-- disabling/removing delegation never rolls back state already changed on prior days.
+- city scope references a materialized/open retail city;
+- `prefer-local-supply` requires city scope;
+- delegation scope does not alter `assignedStoreId` or staffing coverage;
+- disabling/removing a delegation does not roll back already-applied settings.
 
-A manager may remain physically assigned to a home store while holding city delegation authority. HPA-41 deliberately does not change staffing coverage semantics.
+## Manager phase order and evidence
 
-## Authority limits
+Daily order becomes:
 
-Player-controlled authority is domain-level, while actions are additionally bounded in code:
+```text
+1. processTransferArrivals
+2. evaluate/apply manager delegations
+3. existing modifier/rule resolution
+4. industry production
+5. retail sales
+6. weekly replenishment
+7. recurring-route dispatch
+8. finance/report/event close
+```
 
-- **pricing:** one existing pricing-posture step per day/store; never raw price;
-- **inventory:** at most a 10% reorder/target adjustment for one product per day/store, preserving `reorderThreshold <= targetStock`;
-- **staffing:** one staffing-posture step per day/store; never hire/fire/promote/reassign;
-- **supply:** switch only to an already-open/materialized inventory city; never open cities, build factories, or create routes.
+Running after arrivals is required so `prefer-local-supply` can see inventory delivered today.
 
-These are fixed constants/enum steps, not persisted tuning rules.
+Report-backed playbooks read only the latest already-completed `DailyReport`:
+
+- per-store triggers read the matching latest `DailyStoreReport`;
+- Stabilize Cash reads latest company `operatingCashFlow`;
+- Grow Market Share reads `DailyStoreReport.marketPosition`, never company `scorecard.marketPosition`.
+
+On day 1, `reports` is empty. Missing report evidence is equivalent to a false trigger: no proposal and no history row.
+
+Therefore a normal founding lifecycle needs two day advances before a report-backed manager can act: first advance creates report evidence; second advance consumes it.
+
+## City scope is an authority range
+
+Store-oriented playbooks expand city scope into deterministic per-store proposals. They do **not** write a city-wide policy override.
+
+Examples:
+
+- city-scope Protect Margin may produce `pricing:<store-1>` and `pricing:<store-2>` proposals;
+- each winning pricing/staffing proposal writes a **store** policy override;
+- each winning inventory proposal edits that store's product targets;
+- `prefer-local-supply` is the only playbook whose write target is city-level, through the existing retail supply assignment.
+
+This can create store overrides under a city delegation. That is expected inheritance state, not a synchronization problem.
+
+## Fixed authority bounds
+
+Authority is domain-level and player-controlled:
+
+- **pricing:** one existing pricing-posture step per target store per day; write via store policy override;
+- **inventory:** one product target/reorder proposal per target store per day, nominally +/-10%; apply only through `updateStoreProduct`;
+- **staffing:** one existing staffing-posture step per target store per day; write via store policy override;
+- **supply:** switch one retail city's configured source only through `setRetailSupplySource`.
+
+Managers never:
+
+- write raw product selling prices;
+- bypass `updateStoreProduct` quantity/lot compatibility checks;
+- hire, fire, promote, or physically reassign staff;
+- open cities;
+- construct buildings;
+- create/edit logistics routes.
+
+A nominal inventory step rejected by `updateStoreProduct` is recorded as `rejected` / `transition-rejected`; do not introduce a parallel target patch that bypasses its validation.
 
 ## Playbooks
 
-All playbooks are deterministic over current state plus the latest completed report. A false trigger produces no proposal/history entry.
+All playbooks are deterministic over the immutable post-arrival start-of-manager-phase snapshot.
 
 ### Protect Margin
 
-For each target store:
+For each target store with a latest store report:
 
 ```text
-trigger: revenue > 0 and grossMargin / revenue < 0.30
+marginRate = grossMargin / revenue
+trigger: revenue > 0 && marginRate < 0.30
 proposal: pricing one step toward premium
-order: discount -> competitive -> standard -> premium
 ```
 
-Requires pricing authority.
+Order:
+
+```text
+discount -> competitive -> standard -> premium
+```
+
+Required authority: pricing.
 
 ### Protect Availability
 
-For each target store:
+For each target store with a latest store report:
 
-1. when a product has `stockoutLostDemand > 0` or `demandMissed > 0`, choose highest `stockoutLostDemand`, then highest `demandMissed`, then `productId` ascending;
-2. increase reorder/target by 10%, rounded upward with a minimum one-unit step;
-3. otherwise, if warnings contain `nearStaffCapacity`, move staffing one step toward `service` (`minimal -> efficient -> service`).
+1. choose a pressured product by highest `stockoutLostDemand`, then highest `demandMissed`, then `productId` ascending;
+2. if either pressure value is positive, propose +10% reorder/target values, rounded upward with minimum one-unit movement;
+3. otherwise, if latest warnings include `nearStaffCapacity`, propose staffing one step toward `service`.
 
-Requires inventory or staffing authority for the chosen action.
+Order:
+
+```text
+minimal -> efficient -> service
+```
+
+Inventory applies through `updateStoreProduct`; staffing applies through a store policy override.
 
 ### Grow Market Share
 
+For each target store with a latest store report:
+
 ```text
-trigger: marketPosition < 60 and stockHealth >= 40
+trigger: storeReport.marketPosition < 60 && storeReport.stockHealth >= 40
 proposal: pricing one step toward discount
-order: premium -> standard -> competitive -> discount
 ```
 
-Requires pricing authority.
+Order:
+
+```text
+premium -> standard -> competitive -> discount
+```
+
+Required authority: pricing.
 
 ### Stabilize Cash
 
-Trigger when the latest company report has negative `operatingCashFlow`.
+Requires a latest company report with:
 
-For each target store, choose the product with fewest `unitsSold`, then `productId` ascending:
+```text
+operatingCashFlow < 0
+```
+
+For each target store, use its latest store report and choose the product with fewest `unitsSold`, then `productId` ascending.
+
+Propose:
 
 ```text
 nextTarget = max(1, floor(targetStock * 0.90))
 nextThreshold = min(nextTarget, max(0, floor(reorderThreshold * 0.90)))
 ```
 
-Requires inventory authority. This reduces replenishment exposure without pretending a staffing posture changes payroll headcount.
+Apply only through `updateStoreProduct`.
+
+Required authority: inventory.
 
 ### Prefer Local Supply
 
-City scope only. For products sold in the retail city, sum compatible finished-material inventory in each open/materialized candidate supply city.
+City-scope only.
 
-Choose highest compatible units, then `WorldCityId` ascending. If the best positive-stock source differs from the current assignment, apply it through existing `setRetailSupplySource`. If no positive compatible source exists, do nothing.
+Reuse the exact compatibility already used by replenishment:
 
-Requires supply authority.
+```text
+StoreProduct.productId
+-> getProductDefinition(productId).productionMaterialId
+-> candidate city inventory material quantity
+```
 
-## Proposal, conflict, and audit contract
+For products currently sold in the target retail city, sum compatible finished-material inventory in each opened/materialized inventory-supporting candidate city.
 
-Manager decisions are two-phase:
+Choose:
 
-1. build every proposal from one immutable start-of-day snapshot;
-2. resolve conflicts and apply winners to a working state.
+```text
+highest compatible units -> WorldCityId ascending tie-break
+```
+
+Rules:
+
+- no positive compatible stock => no proposal;
+- current source already equals the best source => no proposal;
+- apply only with `setRetailSupplySource`;
+- `ok: false` => rejected / transition-rejected;
+- `changed: false` is treated as no-op rather than a fake applied record.
+
+Required authority: supply.
+
+## Proposal, authority, conflict, and apply phases
+
+Manager evaluation is explicitly two-phase:
+
+1. build all triggered proposals from the immutable post-arrival snapshot;
+2. classify authority/conflicts, then apply winners to a working game state.
 
 Canonical conflict keys:
 
@@ -264,34 +444,17 @@ staffing:<storeId>
 supply:<retailCityId>
 ```
 
-Precedence:
+Classification order:
 
-1. store scope beats city scope for the same key;
-2. equal specificity uses `managerId` ascending.
+1. triggered proposal with required authority disabled -> `out-of-authority`;
+2. among authorized proposals sharing a key, store scope beats city scope;
+3. equal specificity uses `managerId` ascending;
+4. losing authorized proposal -> `overridden`;
+5. winner applies through the existing domain transition; unchanged/invalid winner follows the per-action rules above.
 
-A proposal lacking required authority is `out-of-authority` before conflict resolution. Valid losers are `overridden`. A winning proposal rejected by its existing domain transition is `rejected`.
+## Audit history
 
-```ts
-export type ManagerActionOutcome =
-  | 'applied'
-  | 'overridden'
-  | 'rejected'
-  | 'out-of-authority';
-
-export type ManagerActionReason =
-  | 'margin-pressure'
-  | 'availability-pressure'
-  | 'staff-capacity-pressure'
-  | 'market-position-pressure'
-  | 'negative-operating-cash-flow'
-  | 'local-supply-preferred'
-  | 'authority-disabled'
-  | 'more-specific-manager'
-  | 'manager-id-tiebreak'
-  | 'transition-rejected';
-```
-
-Use a discriminated change union, not generic JSON:
+Use discriminated changes, not generic JSON:
 
 ```ts
 export type ManagerActionChange =
@@ -325,6 +488,23 @@ export type ManagerActionChange =
       applied: WorldCityId | null;
     };
 
+export type ManagerActionOutcome =
+  | 'applied'
+  | 'overridden'
+  | 'rejected'
+  | 'out-of-authority';
+
+export type ManagerActionReason =
+  | 'margin-below-threshold'
+  | 'availability-pressure'
+  | 'staff-capacity-pressure'
+  | 'market-position-low'
+  | 'negative-operating-cash-flow'
+  | 'better-local-supply'
+  | 'conflict-lost'
+  | 'authority-disabled'
+  | 'transition-rejected';
+
 export interface ManagerActionRecord {
   id: string;
   day: number;
@@ -337,50 +517,85 @@ export interface ManagerActionRecord {
 }
 ```
 
-Every record is a proposal; `change.applied` is non-null only for an applied winner. IDs derive deterministically from `day + managerId + conflictKey`. Keep the newest 100 records only.
+`applied` changes keep their trigger reason. Non-applied classification replaces it with `conflict-lost`, `authority-disabled`, or `transition-rejected` as appropriate.
+
+IDs are deterministic from day + manager ID + conflict key. One manager cannot emit two proposals for the same key on one day.
+
+Keep the newest 100 records:
+
+```ts
+MANAGER_ACTION_HISTORY_LIMIT = 100
+```
+
+Extend the existing `eventHistory.ts` bounded-slice pattern so manager history does not introduce another ad-hoc history pipeline. Existing event history remains capped at 200.
 
 ## Manual control
 
-Existing product, policy, staffing, and supply controls stay usable. Manual intervention is explicit:
+Existing manual policy/product/supply controls remain available while delegation is enabled.
 
-- disable the delegation, or
-- revoke one authority domain, then make the manual edit.
+Manual intervention is explicit:
 
-Future triggered proposals against a revoked domain are recorded `out-of-authority`. Do not add hidden cooldowns, temporary holds, or inferred user intent.
+- disable/remove the delegation, or
+- revoke the relevant authority, then edit manually.
+
+Do not add temporary holds, edit ownership, or inferred intent.
 
 ## Exception alerts
 
-Extend the existing alert model with `manager-exception`, `managerId`, and routing to `staff`.
+Extend the current alert system:
 
-For the newest manager-action day, emit at most one alert per manager with any non-applied record (`overridden`, `rejected`, `out-of-authority`). Applied actions remain visible in history without alerts. Do not persist a second notification store.
+```ts
+GameAlertKind += 'manager-exception'
+GameAlert.managerId?: string
+GameAlert.managementPanelId?: 'finance' | 'decisions' | 'staff'
+```
+
+For the newest manager-action day, emit at most one alert per manager that has any non-applied action.
+
+- applied-only activity => no exception alert;
+- overridden/rejected/out-of-authority => manager exception;
+- alert navigates to the existing Staff panel;
+- no second notification store.
+
+Update `gameCopy.ts`, localization bundles, `alertNavigation.ts`, and their focused specs. `LocalizedGameAlert` continues to structurally extend `GameAlert`; do not duplicate manager IDs in a separate localized model.
 
 ## UI
 
-### Policies
+### Policies surface
 
-Evolve `PolicyPanel.svelte`:
+Extend `PolicyPanel.svelte`:
 
-- scope selector: Company / City / Store;
-- target selector for City/Store;
-- each field shows effective value plus textual provenance;
-- `Inherit from parent` clears one field;
-- `Reset scope to parent` clears the scope record;
-- parent value is visible beside effective value for comparison;
-- equal explicit values still render as explicit overrides.
+- Company / City / Store scope selector;
+- target selector for city/store modes;
+- effective value + provenance for every policy field;
+- `Inherit from parent` clears only that explicit field;
+- `Reset scope to parent` removes the complete override record;
+- parent value displayed beside effective value;
+- explicit-equal-parent values remain visibly explicit;
+- inherited/explicit state is not color-only.
 
-Company mode preserves existing policy editing.
+Company mode keeps current `updatePolicy` behavior.
 
-### Staff
+### Staff surface
 
-Keep `StaffPanel.svelte` focused on hiring, physical assignment, coverage, and promotion. Add `ManagerDelegationPanel.svelte` beside it inside the existing `staff` control-tower surface.
+Keep `StaffPanel.svelte` responsible for hiring, physical assignment, coverage, and promotion.
 
-The new panel shows manager identity/home assignment, enabled state, delegation scope/target, playbook, four authority toggles, and recent action history. Do not add a new `ManagementPanelId`.
+Add sibling `ManagerDelegationPanel.svelte` in a `staff-surfaces` wrapper inside the existing Staff branch of `ManagementPanelHost.svelte`, mirroring the current multi-surface composition style used by Stores.
 
-New copy uses the existing English/Japanese/Traditional-Chinese bundles. Inherited/explicit and action outcomes must not rely on color alone.
+It shows:
 
-## Route/controller boundary
+- qualified manager identity + physical assignment context;
+- enabled state;
+- delegation scope/target;
+- playbook;
+- pricing/inventory/staffing/supply authority toggles;
+- recent manager action history and localized outcome/reason/change.
 
-Keep company `updatePolicy` and its scenario command unchanged.
+No new `ManagementPanelId`.
+
+## Controller boundary
+
+Keep existing company `updatePolicy` and its scenario command unchanged.
 
 Add sandbox-only controller mutations:
 
@@ -388,88 +603,79 @@ Add sandbox-only controller mutations:
 setScopedPolicyOverride(scope, patch)
 clearScopedPolicyOverrideField(scope, field)
 resetScopedPolicyOverride(scope)
-setManagerDelegation(delegation)
+setManagerDelegation(input)
 removeManagerDelegation(managerId)
 ```
 
-Add separate mutation-availability flags for scoped policy and delegation. They are false in scenario mode.
+`MutationAvailability` gets separate scoped-policy and manager-delegation flags. They are false in scenario mode.
+
+All successful sandbox mutations continue through `commitMutation`/autosave.
+
+## GameState construction blast radius
+
+The three arrays are required `GameState` fields from the first type checkpoint:
+
+```ts
+policyOverrides: []
+managerDelegations: []
+managerActionHistory: []
+```
+
+Update every direct `GameState` construction/factory/fixture in that same checkpoint, including:
+
+- `createNewGame`;
+- route `starterMapState`;
+- focused game-core test fixtures such as alerts;
+- scenario/persistence/test helpers that construct a complete `GameState` literal.
+
+Do not defer these fixes to later tasks. `bun run check` must pass immediately after the type checkpoint.
 
 ## Persistence
 
-Set:
+Final write schema:
 
 ```ts
 SAVE_SCHEMA_VERSION = 18
 ```
 
-Reject 17; no migration.
+Schema 17 is rejected; no migration or aliases.
 
 Validate:
 
-- unique, non-empty policy override records with valid scope/value enums;
-- manager-role delegation IDs, unique managers, valid scopes, booleans, and city-only `prefer-local-supply`;
-- action history length <= 100, known outcome/reason/change variants, finite inventory quantities, and referenced manager/store/city/product IDs;
-- deterministic ordering after decode.
+- required presence of all three new arrays;
+- override scope IDs, unique scopes, known policy values, non-empty partial values, canonical ordering;
+- delegation manager role, unique manager ID, scope target, playbook/scope constraint, booleans, authority shape, canonical ordering;
+- action history length <= 100;
+- known outcomes/reasons/change discriminants;
+- finite/safe inventory target values;
+- referenced manager/store/city/product IDs;
+- action IDs unique and deterministic-format-compatible.
 
-`createNewGame` initializes all three collections empty. Scenario setup inherits those empty collections from normal game creation; no scenario content schema is added.
+Scenario persistence naturally carries the same `GameState` through the existing codec; scenario content cannot mutate scoped overrides/delegations because no scenario commands are added.
 
-## Testing
+## Verification risks
 
-Unit coverage:
-
-- all three inheritance levels/provenance, clear/reset, explicit-equal-parent;
-- per-store use of all five policy dimensions;
-- mixed-policy city demand average and uniform-policy baseline;
-- Supply Planner effective-policy + trend-free behavior;
-- every playbook trigger/no-trigger path;
-- authority rejection and deterministic conflict precedence;
-- deterministic action IDs/history cap/no RNG drift;
-- manager exception alert dedupe.
-
-Persistence coverage:
-
-- schema-18 round trip for overrides/delegation/history;
-- malformed/duplicate scopes, invalid manager/scope/playbook, malformed history;
-- schema 17 rejected.
-
-Component coverage:
-
-- inherited/explicit/provenance/reset policy controls;
-- manager scope/playbook/authority/history controls;
-- scenario-mode scoped/delegation controls disabled while company policy remains available.
-
-One E2E workflow:
-
-1. start fixed-seed sandbox;
-2. create a store policy override and verify provenance;
-3. configure a manager with store-scope `grow-market-share` + pricing authority;
-4. advance until its deterministic trigger applies;
-5. verify activity history and resulting store pricing override;
-6. reload auto-save and verify override/delegation/history persist.
-
-Do not add a per-playbook E2E matrix.
-
-## Non-goals
-
-- autonomous store/factory/city construction;
-- manager hiring/firing/promotion/reassignment;
-- generic rule/condition/action DSL;
-- LLM/AI manager logic;
-- hierarchy above city;
-- per-field cooldown/hold timers;
-- scenario-authorable delegations;
-- event modifier policy changes;
-- a new dashboard/panel ID.
+1. **Empty report timing:** day 1 has no completed report; report-backed playbooks must no-op and E2E must use two advances or injected evidence.
+2. **Demand spillover:** a local policy must not increase a sibling seller's demand quota; test mixed policies and uniform parity.
+3. **Inventory target compatibility:** +/-10% proposals may be rejected by `updateStoreProduct`; record rejection rather than bypassing the transition.
+4. **GameState literal blast radius:** all direct constructors must gain the required arrays before the first `bun run check`.
+5. **E2E threshold timing:** deterministic fixtures must cross playbook thresholds on a known report day; never loop "until trigger".
+6. **City-scope fragmentation:** store-oriented city delegation intentionally creates per-store overrides; UI/provenance tests must treat that as correct.
+7. **RNG behavior:** manager evaluation itself adds no RNG. Do not require enabled-delegation runs to retain the same RNG/output as a different policy/target state; require the empty-delegation path to preserve existing daily behavior.
 
 ## Definition of done
 
-- company -> city -> store inheritance is deterministic and provenance-aware;
-- clear/reset restores parent behavior immediately;
-- simulation and baseline supply planning consume effective policy consistently;
-- manager-role staff can run all five bounded deterministic playbooks;
-- authority/conflicts/rejections are explicit and audited;
-- manual controls remain available and authority can be revoked;
-- manager exceptions reuse existing alerts;
-- schema 18 strictly persists/validates the feature with no migration;
-- existing Policies/Staff surfaces expose it accessibly;
-- focused unit/component/E2E and full repository verification pass.
+- company -> city -> store inheritance resolves deterministically with provenance;
+- clearing/resetting overrides restores parent values immediately;
+- live sales apply policy per seller with no policy-demand spillover;
+- planner potential demand uses the same per-seller policy shares and stays trend-free;
+- manager actions run after arrivals, use latest completed reports, and no-op without evidence;
+- city delegation expands store-oriented playbooks into store writes;
+- five playbooks remain bounded, deterministic, and authority-limited;
+- inventory edits reuse `updateStoreProduct`; supply edits reuse `setRetailSupplySource`;
+- conflict resolution and 100-row audit history are deterministic;
+- player manual controls remain available;
+- exception alerts localize and navigate to Staff;
+- Policies + Staff surfaces expose inheritance/delegation without a new management panel;
+- schema 18 validates and schema 17 is rejected;
+- empty-delegation simulation parity, focused unit/component tests, and deterministic two-advance E2E pass.
