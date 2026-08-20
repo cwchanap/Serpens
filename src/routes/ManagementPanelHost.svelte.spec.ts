@@ -13,7 +13,14 @@ import { getFinanceMetrics, type FinanceMetrics } from '$lib/game/financeMetrics
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
 import { summarizeReports, type ReportSummary } from '$lib/game/reports';
 import { createNewGame } from '$lib/game/state';
-import type { DecisionItem, GameState, LoanTermDays } from '$lib/game/types';
+import type {
+	CompanyPolicy,
+	DecisionItem,
+	GameState,
+	LoanTermDays,
+	ManagerDelegation,
+	PolicyOverrideScope
+} from '$lib/game/types';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import type {
 	ManualTransferInput,
@@ -45,7 +52,12 @@ interface ManagementPanelHostProps {
 	disabledReason: string | null;
 
 	onClose: () => void;
-	onChangePolicy: (patch: Partial<GameState['policy']>) => void;
+	onChangePolicy: (patch: Partial<CompanyPolicy>) => void;
+	onSetPolicyOverride: (scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>) => void;
+	onClearPolicyOverrideField: (scope: PolicyOverrideScope, field: keyof CompanyPolicy) => void;
+	onResetPolicyOverrideScope: (scope: PolicyOverrideScope) => void;
+	onSetManagerDelegation: (delegation: ManagerDelegation) => void;
+	onRemoveManagerDelegation: (managerId: string) => void;
 	onHireStaff: (candidateId: string) => void;
 	onAssignStaff: (staffId: string, storeId: string) => void;
 	onUnassignStaff: (staffId: string) => void;
@@ -147,6 +159,11 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		logisticsRoutePreset: null,
 		onClose: vi.fn(),
 		onChangePolicy: vi.fn(),
+		onSetPolicyOverride: vi.fn(),
+		onClearPolicyOverrideField: vi.fn(),
+		onResetPolicyOverrideScope: vi.fn(),
+		onSetManagerDelegation: vi.fn(),
+		onRemoveManagerDelegation: vi.fn(),
 		onHireStaff: vi.fn(),
 		onAssignStaff: vi.fn(),
 		onUnassignStaff: vi.fn(),
@@ -296,6 +313,48 @@ describe('ManagementPanelHost', () => {
 		render(ManagementPanelHost, props);
 
 		await expect.element(page.getByRole('combobox', { name: 'Pricing' })).toBeDisabled();
+	});
+
+	it('keeps company policy editable while scoped policy controls are unavailable', async () => {
+		expect.assertions(3);
+		const props = hostProps({
+			panelId: 'policies',
+			panelLabel: 'Policies',
+			mutations: mutationAvailability({ scopedPolicy: false })
+		});
+		render(ManagementPanelHost, props);
+
+		await expect.element(page.getByLabelText('Pricing')).toBeEnabled();
+		await page.getByLabelText('Policy scope').selectOptions('city');
+		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
+	});
+
+	it('renders manager delegations inside the existing Staff branch and forwards changes', async () => {
+		expect.assertions(3);
+		const onSetManagerDelegation = vi.fn();
+		const props = hostProps({
+			panelId: 'staff',
+			panelLabel: 'Staff',
+			onSetManagerDelegation
+		});
+		render(ManagementPanelHost, props);
+
+		await expect
+			.element(page.getByRole('heading', { name: props.i18n.t('managerDelegationPanel.title') }))
+			.toBeVisible();
+		const manager = props.panelGame.staff.find((member) => member.role === 'manager')!;
+		await page.getByLabelText(`Enable delegation for ${manager.name}`).click();
+		expect(onSetManagerDelegation).toHaveBeenCalledWith(
+			expect.objectContaining({ managerId: manager.id, enabled: true })
+		);
+		await expect
+			.element(
+				page
+					.getByRole('region', { name: props.i18n.t('managerDelegationPanel.title') })
+					.getByRole('heading', { name: manager.name, exact: true })
+			)
+			.toBeVisible();
 	});
 
 	it('maps staff mutation availability to representative staff controls', async () => {

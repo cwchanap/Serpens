@@ -291,7 +291,25 @@ export const ja = {
 		}
 	},
 	policyPanel: {
-		title: 'ポリシー'
+		title: 'ポリシー',
+		scopeLabel: 'ポリシーの範囲',
+		targetLabel: 'ポリシーの対象',
+		scopes: {
+			company: '会社',
+			city: '都市',
+			store: '店舗'
+		},
+		selectedScope: '{scope}: {target}',
+		parent: '親: {value}',
+		provenance: {
+			company: '会社ポリシー',
+			city: '都市の上書き',
+			store: '店舗の上書き',
+			explicit: '明示的な上書き（{source}）',
+			inherited: '{source}から継承'
+		},
+		inheritField: '{field}を継承',
+		resetScope: '範囲をリセット'
 	},
 	reportsPanel: {
 		title: 'レポート',
@@ -404,6 +422,70 @@ export const ja = {
 	},
 	scorecard: {
 		title: 'スコアカード'
+	},
+	managerDelegationPanel: {
+		title: 'マネージャー委任',
+		description: 'マネージャー役のスタッフに限定的なプレイブックを設定します。',
+		empty: 'マネージャー役のスタッフはいません。',
+		assignment: '物理配置: {store}',
+		unassigned: '未割当',
+		enabled: '有効',
+		disabled: '無効',
+		enabledFor: '{name}の委任を有効化',
+		scope: '範囲',
+		scopeFor: '{name}の委任範囲',
+		target: '対象',
+		targetFor: '{name}の委任対象',
+		playbook: 'プレイブック',
+		playbookFor: '{name}のプレイブック',
+		scopes: {
+			city: '都市',
+			store: '店舗'
+		},
+		playbooks: {
+			'protect-margin': '利益率を守る',
+			'protect-availability': '供給可能性を守る',
+			'grow-market-share': '市場シェアを伸ばす',
+			'stabilize-cash': '資金を安定させる',
+			'prefer-local-supply': '地域供給を優先'
+		},
+		authority: '権限',
+		authorityFor: '{name}の{domain}権限',
+		authorities: {
+			pricing: '価格',
+			inventory: '在庫',
+			staffing: '人員配置',
+			supply: '供給'
+		},
+		remove: '委任を削除',
+		history: {
+			title: '最近のアクション履歴',
+			empty: 'マネージャーのアクション履歴はありません。',
+			notApplied: '未適用',
+			none: 'なし',
+			outcomes: {
+				applied: '適用済み',
+				overridden: '上書き',
+				rejected: '却下',
+				'out-of-authority': '権限外'
+			},
+			reasons: {
+				'margin-below-threshold': '利益率がしきい値未満',
+				'availability-pressure': '供給不足の圧力',
+				'staff-capacity-pressure': '人員上限の圧力',
+				'market-position-low': '市場での位置が低い',
+				'negative-operating-cash-flow': '営業キャッシュフローがマイナス',
+				'better-local-supply': 'より良い地域供給',
+				'conflict-lost': '競合に敗北',
+				'authority-disabled': '権限が無効',
+				'transition-rejected': '遷移が却下'
+			},
+			changes: {
+				policy: '{field}: {before} → {proposed}（適用: {applied}）',
+				inventory: '{product}: {before} → {proposed}（適用: {applied}）',
+				supply: '供給: {before} → {proposed}（適用: {applied}）'
+			}
+		}
 	},
 	staffPanel: {
 		title: 'スタッフ',

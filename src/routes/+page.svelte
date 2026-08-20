@@ -147,7 +147,9 @@
 		GameState,
 		IndustrialBuildingTypeId,
 		LoanTermDays,
+		ManagerDelegation,
 		MaterialId,
+		PolicyOverrideScope,
 		ProductId,
 		StoreProductPatch,
 		WorldCityId
@@ -2079,6 +2081,36 @@
 		}
 	}
 
+	function setPolicyOverride(scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>): void {
+		if (game && mutationAvailability.scopedPolicy) {
+			void gameRouteController.setPolicyOverride(scope, patch);
+		}
+	}
+
+	function clearPolicyOverrideField(scope: PolicyOverrideScope, field: keyof CompanyPolicy): void {
+		if (game && mutationAvailability.scopedPolicy) {
+			void gameRouteController.clearPolicyOverrideField(scope, field);
+		}
+	}
+
+	function resetPolicyOverrideScope(scope: PolicyOverrideScope): void {
+		if (game && mutationAvailability.scopedPolicy) {
+			void gameRouteController.resetPolicyOverrideScope(scope);
+		}
+	}
+
+	function setManagerDelegation(delegation: ManagerDelegation): void {
+		if (game && mutationAvailability.delegation) {
+			void gameRouteController.setManagerDelegation(delegation);
+		}
+	}
+
+	function removeManagerDelegation(managerId: string): void {
+		if (game && mutationAvailability.delegation) {
+			void gameRouteController.removeManagerDelegation(managerId);
+		}
+	}
+
 	function chooseDecision(decisionId: string, optionId: string) {
 		if (game && mutationAvailability.resolveDecision) {
 			void gameRouteController.resolveDecision(decisionId, optionId);
@@ -2987,6 +3019,11 @@
 				disabledReason={mutationDisabledReason}
 				onClose={closeManagementPanel}
 				onChangePolicy={changePolicy}
+				onSetPolicyOverride={setPolicyOverride}
+				onClearPolicyOverrideField={clearPolicyOverrideField}
+				onResetPolicyOverrideScope={resetPolicyOverrideScope}
+				onSetManagerDelegation={setManagerDelegation}
+				onRemoveManagerDelegation={removeManagerDelegation}
 				onHireStaff={hireStaff}
 				onAssignStaff={assignStaff}
 				onUnassignStaff={unassignStoreStaff}

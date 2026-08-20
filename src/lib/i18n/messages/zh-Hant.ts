@@ -291,7 +291,25 @@ export const zhHant = {
 		}
 	},
 	policyPanel: {
-		title: '政策'
+		title: '政策',
+		scopeLabel: '政策範圍',
+		targetLabel: '政策目標',
+		scopes: {
+			company: '公司',
+			city: '城市',
+			store: '店鋪'
+		},
+		selectedScope: '{scope}：{target}',
+		parent: '上層：{value}',
+		provenance: {
+			company: '公司政策',
+			city: '城市覆寫',
+			store: '店鋪覆寫',
+			explicit: '明確覆寫（{source}）',
+			inherited: '繼承自 {source}'
+		},
+		inheritField: '繼承{field}',
+		resetScope: '重設範圍'
 	},
 	reportsPanel: {
 		title: '報表',
@@ -404,6 +422,70 @@ export const zhHant = {
 	},
 	scorecard: {
 		title: '評分卡'
+	},
+	managerDelegationPanel: {
+		title: '經理委任',
+		description: '為經理角色員工設定有限的工作手冊。',
+		empty: '沒有經理角色員工。',
+		assignment: '實體分派：{store}',
+		unassigned: '未分派',
+		enabled: '已啟用',
+		disabled: '已停用',
+		enabledFor: '啟用 {name} 的委任',
+		scope: '範圍',
+		scopeFor: '{name} 的委任範圍',
+		target: '目標',
+		targetFor: '{name} 的委任目標',
+		playbook: '工作手冊',
+		playbookFor: '{name} 的工作手冊',
+		scopes: {
+			city: '城市',
+			store: '店鋪'
+		},
+		playbooks: {
+			'protect-margin': '守住利潤率',
+			'protect-availability': '守住供應率',
+			'grow-market-share': '擴大市場份額',
+			'stabilize-cash': '穩定現金流',
+			'prefer-local-supply': '優先本地供應'
+		},
+		authority: '權限',
+		authorityFor: '{name} 的{domain}權限',
+		authorities: {
+			pricing: '定價',
+			inventory: '庫存',
+			staffing: '人力配置',
+			supply: '供應'
+		},
+		remove: '移除委任',
+		history: {
+			title: '最近的行動歷史',
+			empty: '沒有經理行動記錄。',
+			notApplied: '未套用',
+			none: '無',
+			outcomes: {
+				applied: '已套用',
+				overridden: '已覆寫',
+				rejected: '已拒絕',
+				'out-of-authority': '超出權限'
+			},
+			reasons: {
+				'margin-below-threshold': '利潤率低於門檻',
+				'availability-pressure': '供應壓力',
+				'staff-capacity-pressure': '人力容量壓力',
+				'market-position-low': '市場地位偏低',
+				'negative-operating-cash-flow': '營業現金流為負',
+				'better-local-supply': '更好的本地供應',
+				'conflict-lost': '衝突中落敗',
+				'authority-disabled': '權限已停用',
+				'transition-rejected': '轉換已拒絕'
+			},
+			changes: {
+				policy: '{field}：{before} → {proposed}（套用：{applied}）',
+				inventory: '{product}：{before} → {proposed}（套用：{applied}）',
+				supply: '供應：{before} → {proposed}（套用：{applied}）'
+			}
+		}
 	},
 	staffPanel: {
 		title: '員工',
