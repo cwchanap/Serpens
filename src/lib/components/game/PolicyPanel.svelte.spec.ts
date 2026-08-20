@@ -363,4 +363,40 @@ describe('PolicyPanel', () => {
 		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
 		await expect.element(page.getByText('Scenario mode')).toBeVisible();
 	});
+
+	it('disables clear and reset actions when canUpdateScoped is false', async () => {
+		expect.assertions(3);
+		const onClearPolicyOverrideField = vi.fn();
+		const onResetPolicyOverrideScope = vi.fn();
+		const base = createNewGame('convenience', 20260818);
+		const game = setPolicyOverride(
+			base,
+			{ kind: 'city', cityId: 'harbor-city' },
+			{ pricing: 'premium' }
+		);
+		renderPolicyPanel({
+			game,
+			onClearPolicyOverrideField,
+			onResetPolicyOverrideScope,
+			canUpdateScoped: false
+		});
+		await page.getByLabelText('Policy scope').selectOptions('city');
+
+		await expect.element(page.getByRole('button', { name: 'Inherit Pricing' })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: 'Reset scope' })).toBeDisabled();
+		expect(onClearPolicyOverrideField).not.toHaveBeenCalled();
+	});
+
+	it('disables city and store scope options when no retail cities are open', async () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260818);
+		const game: GameState = { ...base, cities: [], stores: [] };
+		renderPolicyPanel({ game });
+
+		const scopeSelect = await page.getByLabelText('Policy scope').element();
+		const cityOption = scopeSelect.querySelector('option[value="city"]') as HTMLOptionElement;
+		const storeOption = scopeSelect.querySelector('option[value="store"]') as HTMLOptionElement;
+		expect(cityOption.disabled).toBe(true);
+		expect(storeOption.disabled).toBe(true);
+	});
 });
