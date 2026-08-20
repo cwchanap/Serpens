@@ -86,6 +86,40 @@ function findFixtureStoreTile(city: GameState['cities'][number]) {
 	return tile;
 }
 
+function findSecondFixtureStoreTile(
+	city: GameState['cities'][number],
+	firstTile: GameState['cities'][number]['tiles'][number]
+): GameState['cities'][number]['tiles'][number] {
+	const firstFootprint = new Set(
+		city.tiles
+			.filter(
+				(other) =>
+					other.x >= firstTile.x &&
+					other.x < firstTile.x + 2 &&
+					other.y >= firstTile.y &&
+					other.y < firstTile.y + 2
+			)
+			.map((tile) => tile.id)
+	);
+	const tile = city.tiles.find((candidate) => {
+		if (!isTileBuildable(candidate)) return false;
+		const footprint = city.tiles.filter(
+			(other) =>
+				other.x >= candidate.x &&
+				other.x < candidate.x + 2 &&
+				other.y >= candidate.y &&
+				other.y < candidate.y + 2
+		);
+		return (
+			footprint.length === 4 &&
+			footprint.every(isTileBuildable) &&
+			footprint.every((tile) => !firstFootprint.has(tile.id))
+		);
+	});
+	if (!tile) throw new Error(`Expected a second buildable fixture tile in ${city.id}.`);
+	return tile;
+}
+
 function createFixtureIndustryCity(): GameState['industryCities'][number] {
 	return {
 		id: 'industry-city',
@@ -198,6 +232,41 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		reports: [],
 		...overrides
 	};
+}
+
+function createGameWithTwoStores(overrides: Partial<GameState> = {}): GameState {
+	const city = createFixtureRetailCity();
+	const firstTile = findFixtureStoreTile(city);
+	const secondTile = findSecondFixtureStoreTile(city, firstTile);
+	const secondProducts = initializeStoreProducts('convenience');
+
+	const base = createGame(overrides);
+	return refreshWorldProgress({
+		...base,
+		stores: [
+			...base.stores,
+			{
+				id: 'store-2',
+				level: 1,
+				name: 'Second Store',
+				archetypeId: 'convenience',
+				location: formatLocation(secondTile),
+				cityId: 'harbor-city',
+				tileId: secondTile.id,
+				mapX: secondTile.x,
+				mapY: secondTile.y,
+				daysOpen: 1,
+				reputation: 50,
+				stockHealth: calculateStockHealth(secondProducts),
+				products: secondProducts,
+				staffMorale: 60,
+				staffCapacity: 60,
+				localDemand: computeStoreLocalDemand(secondTile),
+				competition: 35,
+				managerQuality: 50
+			}
+		]
+	});
 }
 
 function createFixtureManager(id = 'manager-1'): GameState['staff'][number] {
@@ -1546,6 +1615,69 @@ describe('saveCodec', () => {
 				{ kind: 'city', cityId: 'harbor-city' },
 				{ kind: 'store', storeId: 'store-1' }
 			]);
+		});
+
+		test('sorts two city-scope policy overrides by world city id', () => {
+			const base = createCurrentMultiCityGame();
+			const game: GameState = {
+				...base,
+				policyOverrides: [
+					{
+						scope: { kind: 'city', cityId: 'campus-junction' },
+						values: { pricing: 'premium' }
+					},
+					{
+						scope: { kind: 'city', cityId: 'harbor-city' },
+						values: { pricing: 'discount' }
+					}
+				]
+			};
+
+			const decoded = validateSaveRecord(createManualSaveRecord({ game }));
+
+			expect(decoded.game.policyOverrides.map((entry) => entry.scope)).toEqual([
+				{ kind: 'city', cityId: 'harbor-city' },
+				{ kind: 'city', cityId: 'campus-junction' }
+			]);
+		});
+
+		test('sorts two store-scope policy overrides by store id', () => {
+			const game = createGameWithTwoStores({
+				policyOverrides: [
+					{ scope: { kind: 'store', storeId: 'store-2' }, values: { pricing: 'premium' } },
+					{ scope: { kind: 'store', storeId: 'store-1' }, values: { pricing: 'discount' } }
+				]
+			});
+
+			const decoded = validateSaveRecord(createManualSaveRecord({ game }));
+
+			expect(decoded.game.policyOverrides.map((entry) => entry.scope)).toEqual([
+				{ kind: 'store', storeId: 'store-1' },
+				{ kind: 'store', storeId: 'store-2' }
+			]);
+		});
+
+		test('rejects inventory-targets with an unsafe reorderThreshold', () => {
+			const history = createFixtureHistory({
+				outcome: 'rejected',
+				change: {
+					kind: 'inventory-targets',
+					storeId: 'store-1',
+					productId: 'bottled-water' as ProductId,
+					before: {
+						reorderThreshold: Number.MAX_SAFE_INTEGER + 1,
+						targetStock: Number.MAX_SAFE_INTEGER + 2
+					},
+					proposed: { reorderThreshold: 2, targetStock: 5 },
+					applied: null
+				}
+			});
+
+			expect(() =>
+				validateSaveRecord(
+					createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+				)
+			).toThrow(SaveDataError);
 		});
 	});
 

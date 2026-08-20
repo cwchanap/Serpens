@@ -249,4 +249,54 @@ describe('policy inheritance edge cases', () => {
 		expect(isValidPolicyScope(game, scope)).toBe(false);
 		expect(setPolicyOverride(game, scope, { pricing: 'premium' })).toBe(game);
 	});
+
+	test('setPolicyOverride replaces an existing field value while other overrides remain', () => {
+		const gameWithCampus = openCampusCity(createNewGame('convenience', 209));
+		const game = openStore(
+			{ ...gameWithCampus, cash: 100_000 },
+			{
+				archetypeId: 'convenience',
+				location: { neighborhoodId: 'downtown', x: 0, y: 0 }
+			}
+		);
+		const harbor = { kind: 'city', cityId: 'harbor-city' } as const;
+		const storeOne = { kind: 'store', storeId: 'store-1' } as const;
+		const withOverrides = setPolicyOverride(
+			setPolicyOverride(game, harbor, { pricing: 'premium' }),
+			storeOne,
+			{ pricing: 'discount' }
+		);
+
+		const updated = setPolicyOverride(withOverrides, storeOne, { pricing: 'standard' });
+
+		expect(updated.policyOverrides).toEqual([
+			{ scope: harbor, values: { pricing: 'premium' } },
+			{ scope: storeOne, values: { pricing: 'standard' } }
+		]);
+	});
+
+	test('clearPolicyOverrideField keeps other overrides when clearing one field', () => {
+		const gameWithCampus = openCampusCity(createNewGame('convenience', 210));
+		const game = openStore(
+			{ ...gameWithCampus, cash: 100_000 },
+			{
+				archetypeId: 'convenience',
+				location: { neighborhoodId: 'downtown', x: 0, y: 0 }
+			}
+		);
+		const harbor = { kind: 'city', cityId: 'harbor-city' } as const;
+		const storeOne = { kind: 'store', storeId: 'store-1' } as const;
+		const withOverrides = setPolicyOverride(
+			setPolicyOverride(game, harbor, { pricing: 'premium' }),
+			storeOne,
+			{ pricing: 'discount', service: 'highTouch' }
+		);
+
+		const cleared = clearPolicyOverrideField(withOverrides, storeOne, 'pricing');
+
+		expect(cleared.policyOverrides).toEqual([
+			{ scope: harbor, values: { pricing: 'premium' } },
+			{ scope: storeOne, values: { service: 'highTouch' } }
+		]);
+	});
 });

@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createNewGame } from '$lib/game/state';
+import { openWorldCity } from '$lib/game/world';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import type {
 	GameState,
@@ -355,5 +356,68 @@ describe('ManagerDelegationPanel', () => {
 		renderManagerPanel();
 
 		await expect.element(page.getByText('No manager actions recorded.')).toBeVisible();
+	});
+
+	it('emits a city scope target change when selecting a different city', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		const opened = openWorldCity(
+			{
+				...baseGame,
+				cash: 100_000,
+				world: {
+					...baseGame.world,
+					revealedCityIds: [...baseGame.world.revealedCityIds, 'campus-junction']
+				}
+			},
+			'campus-junction'
+		);
+		const cityDelegation: ManagerDelegation = {
+			...defaultDelegation,
+			scope: { kind: 'city', cityId: 'harbor-city' }
+		};
+		renderManagerPanel({
+			game: { ...opened, staff: [manager, general], managerDelegations: [cityDelegation] },
+			onChange
+		});
+
+		await page.getByLabelText('Delegation target for Alex Chen').selectOptions('campus-junction');
+
+		expect(onChange).toHaveBeenLastCalledWith(
+			expect.objectContaining({ scope: { kind: 'city', cityId: 'campus-junction' } })
+		);
+	});
+
+	it('does not emit when disabled and the remove button is clicked', async () => {
+		expect.assertions(2);
+		const onRemove = vi.fn();
+		renderManagerPanel({
+			onRemove,
+			canUpdate: false,
+			disabledReason: 'Unavailable in this challenge.'
+		});
+
+		await expect.element(page.getByRole('button', { name: 'Remove delegation' })).toBeDisabled();
+		expect(onRemove).not.toHaveBeenCalled();
+	});
+
+	it('renders a manager with no assigned store and no retail cities', async () => {
+		expect.assertions(1);
+		const unassignedManager: StaffMember = {
+			...manager,
+			id: 'manager-no-city',
+			name: 'No City Manager',
+			assignedStoreId: null
+		};
+		const gameWithoutCities: GameState = {
+			...baseGame,
+			cities: [],
+			staff: [unassignedManager, general],
+			managerDelegations: []
+		};
+
+		renderManagerPanel({ game: gameWithoutCities });
+
+		await expect.element(page.getByText('No manager-role staff available.')).toBeVisible();
 	});
 });

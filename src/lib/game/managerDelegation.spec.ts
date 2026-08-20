@@ -897,6 +897,47 @@ describe('manager delegation edge cases', () => {
 		});
 	});
 
+	test('findBestSupplyCity ignores non-starting products when collecting material demand', () => {
+		const base = createTwoIndustryCityGame({ seed: 112, materials: false });
+		const game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) =>
+					store.id === 'store-1'
+						? {
+								...store,
+								products: [
+									...store.products,
+									product('produce' as ProductId, {
+										reorderThreshold: 5,
+										targetStock: 10
+									})
+								]
+							}
+						: store
+				),
+				cityInventories: [
+					{ cityId: 'industry-city', materials: { produce: 20 } },
+					{ cityId: 'breadbasket-basin', materials: { produce: 20 } }
+				],
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }],
+				managerDelegations: [
+					delegation({
+						scope: { kind: 'city', cityId: 'harbor-city' },
+						playbook: 'prefer-local-supply'
+					})
+				]
+			},
+			[],
+			0
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
 	test('selectAvailabilityProduct sorts by lost demand then product id', () => {
 		const game = withLatestReport(
 			{
