@@ -1,7 +1,7 @@
 # Regional Manager Playbooks and Policy Inheritance Design
 
-**Date:** 2026-08-18  
-**Linear:** HPA-41 — Regional manager playbooks and policy inheritance  
+**Date:** 2026-08-18
+**Linear:** HPA-41 — Regional manager playbooks and policy inheritance
 **Status:** Normative; revised after two codebase-review passes
 
 ## Outcome

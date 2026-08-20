@@ -1,7 +1,8 @@
 import type { GameAlert } from '$lib/game/alerts';
+import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 
 export interface AlertPanelNavigation {
-	panelId: 'finance' | 'decisions';
+	panelId: ManagementPanelId;
 	focusedFinanceLoanId: string | null;
 }
 

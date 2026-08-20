@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { resolveAlertNavigation } from './alertNavigation';
 
 describe('alert navigation', () => {
+	it('navigates manager exceptions to Staff', () => {
+		expect(
+			resolveAlertNavigation({
+				id: 'manager-exception:manager-1',
+				kind: 'manager-exception',
+				managerId: 'manager-1',
+				managementPanelId: 'staff'
+			})
+		).toEqual({ panelId: 'staff', focusedFinanceLoanId: null });
+	});
+
 	it('honors explicit Decisions and finance routes while retaining the decision fallback', () => {
 		expect(
 			resolveAlertNavigation({

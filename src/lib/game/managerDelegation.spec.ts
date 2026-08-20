@@ -140,6 +140,22 @@ function lastRecord(game: GameState) {
 }
 
 describe('manager delegation configuration', () => {
+	test('copies reactive delegation values into a cloneable persisted record', () => {
+		const game = createNewGame('convenience', 41);
+		const scope = new Proxy({ kind: 'store', storeId: 'store-1' } as const, {});
+		const delegationAuthority = new Proxy(authority(), {});
+		const updated = setManagerDelegation(game, {
+			...delegation(),
+			managerId: game.staff.find((member) => member.role === 'manager')!.id,
+			scope,
+			authority: delegationAuthority
+		});
+
+		expect(updated.managerDelegations[0]?.scope).not.toBe(scope);
+		expect(updated.managerDelegations[0]?.authority).not.toBe(delegationAuthority);
+		expect(() => structuredClone(updated)).not.toThrow();
+	});
+
 	test('upserts one delegation per manager and removes it', () => {
 		const game = createNewGame('convenience', 41);
 		const first = setManagerDelegation(game, delegation());

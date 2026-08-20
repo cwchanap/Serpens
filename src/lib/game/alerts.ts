@@ -7,7 +7,8 @@ import {
 	type RouteOperationalSummary
 } from './logisticsReadModels';
 import { getStoreProductStatus } from './stock';
-import type { GameState, LoanInstrument } from './types';
+import type { ManagementPanelId } from './keyboardShortcuts';
+import type { GameState, LoanInstrument, ManagerActionRecord } from './types';
 
 /** Debt-service coverage ratio below which a covenant-risk alert fires. */
 export const COVENANT_THRESHOLD = 1.25;
@@ -26,7 +27,8 @@ export type GameAlertKind =
 	| 'covenantRisk'
 	| 'lowCashRunway'
 	| 'logistics-origin-stock'
-	| 'logistics-route-capacity';
+	| 'logistics-route-capacity'
+	| 'manager-exception';
 
 export interface GameAlert {
 	id: string;
@@ -40,7 +42,8 @@ export interface GameAlert {
 	modifierId?: string;
 	loanId?: string;
 	routeId?: string;
-	managementPanelId?: 'finance' | 'decisions';
+	managerId?: string;
+	managementPanelId?: ManagementPanelId;
 }
 
 function compareByNumberThenId(
@@ -53,6 +56,37 @@ function compareByNumberThenId(
 		(leftValue ?? Number.MAX_SAFE_INTEGER) - (rightValue ?? Number.MAX_SAFE_INTEGER) ||
 		(left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
 	);
+}
+
+const MANAGER_EXCEPTION_OUTCOMES = new Set<ManagerActionRecord['outcome']>([
+	'overridden',
+	'rejected',
+	'out-of-authority'
+]);
+
+function collectManagerExceptionAlerts(game: GameState): GameAlert[] {
+	const newestDay = game.managerActionHistory.reduce(
+		(latest, record) => Math.max(latest, record.day),
+		-Infinity
+	);
+	if (!Number.isFinite(newestDay)) return [];
+
+	const managerIds = [
+		...new Set(
+			game.managerActionHistory
+				.filter(
+					(record) => record.day === newestDay && MANAGER_EXCEPTION_OUTCOMES.has(record.outcome)
+				)
+				.map((record) => record.managerId)
+		)
+	].sort();
+
+	return managerIds.map((managerId) => ({
+		id: `manager-exception:${managerId}`,
+		kind: 'manager-exception' as const,
+		managerId,
+		managementPanelId: 'staff' as const
+	}));
 }
 
 function collectFinanceAlerts(game: GameState): GameAlert[] {
@@ -267,6 +301,7 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 
 	alerts.push(...collectLogisticsAlerts(game));
 	alerts.push(...collectFinanceAlerts(game));
+	alerts.push(...collectManagerExceptionAlerts(game));
 
 	return alerts;
 }

@@ -230,6 +230,60 @@ function productionSupplierLifecycleGame(): GameState {
 	return selectProductionSupplierEvent(prepared, 3);
 }
 
+function managerLifecycleGame(): GameState {
+	const base = createNewGame('convenience', 41);
+	const manager = base.staff.find((member) => member.role === 'manager');
+	if (!manager) throw new Error('Manager lifecycle fixture requires a manager.');
+
+	return {
+		...base,
+		stores: base.stores.map((store) => ({
+			...store,
+			products: store.products.map((product) => ({ ...product, sellingPrice: 2 }))
+		})),
+		managerDelegations: [
+			{
+				managerId: manager.id,
+				scope: { kind: 'store', storeId: 'store-1' },
+				playbook: 'protect-margin',
+				authority: { pricing: true, inventory: true, staffing: true, supply: true },
+				enabled: true
+			}
+		],
+		managerActionHistory: [],
+		reports: []
+	};
+}
+
+function managerExceptionGame(): GameState {
+	const game = managerLifecycleGame();
+	const manager = game.staff.find((member) => member.role === 'manager');
+	if (!manager) throw new Error('Manager exception fixture requires a manager.');
+
+	return {
+		...game,
+		managerActionHistory: [
+			{
+				id: `manager-action:${game.day}:${manager.id}:pricing:store-1`,
+				day: game.day,
+				managerId: manager.id,
+				scope: { kind: 'store', storeId: 'store-1' },
+				playbook: 'protect-margin',
+				conflictKey: 'pricing:store-1',
+				outcome: 'overridden',
+				reason: 'conflict-lost',
+				change: {
+					kind: 'pricing-policy',
+					storeId: 'store-1',
+					before: 'standard',
+					proposed: 'premium',
+					applied: null
+				}
+			}
+		]
+	};
+}
+
 function groceryProductPressureGame(): GameState {
 	const closingDay = 11;
 	let base = createNewGame('grocery', 280_381);
@@ -747,6 +801,8 @@ interface SavedDailyReport {
 	logistics: DailyLogisticsReport;
 	storeReports: Array<{
 		storeId: string;
+		revenue: number;
+		grossMargin: number;
 		importSpend: number;
 		productReports: SavedProductReport[];
 	}>;
@@ -791,6 +847,10 @@ interface SavedGame {
 		revealedCityIds: string[];
 		openedCityIds: string[];
 	};
+	policy: GameState['policy'];
+	policyOverrides: GameState['policyOverrides'];
+	managerDelegations: GameState['managerDelegations'];
+	managerActionHistory: GameState['managerActionHistory'];
 	stores: Array<{
 		id: string;
 		cityId: string;
@@ -1581,6 +1641,114 @@ test('production supplier bulk discount stays active through its final import an
 			.getByRole('group', { name: 'Alerts list' })
 			.getByRole('button', { name: 'Active modifier: Supplier terms', exact: true })
 	).toHaveCount(0);
+});
+
+test('manager lifecycle preserves manual policy control and records authority exceptions', async ({
+	page
+}) => {
+	const seededGame = managerLifecycleGame();
+	const manager = seededGame.staff.find((member) => member.role === 'manager');
+	if (!manager) throw new Error('Manager lifecycle fixture has no manager.');
+
+	await installSandboxAutoSave(page, seededGame);
+
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	const afterFirstAdvance = await waitForAutoSaveDay(page, 2);
+	expect(afterFirstAdvance.managerActionHistory).toEqual([]);
+	const firstStoreReport = getLatestReport(afterFirstAdvance).storeReports.find(
+		(report) => report.storeId === 'store-1'
+	);
+	if (!firstStoreReport) throw new Error('Manager lifecycle fixture has no first store report.');
+	expect(firstStoreReport.revenue).toBeGreaterThan(0);
+	expect(firstStoreReport.grossMargin / firstStoreReport.revenue).toBeLessThan(0.3);
+
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	const afterSecondAdvance = await waitForAutoSaveDay(page, 3);
+	expect(afterSecondAdvance.managerActionHistory).toHaveLength(1);
+	expect(afterSecondAdvance.managerActionHistory[0]).toMatchObject({
+		managerId: manager.id,
+		day: 2,
+		outcome: 'applied',
+		change: { kind: 'pricing-policy', applied: 'premium' }
+	});
+	expect(afterSecondAdvance.policyOverrides).toContainEqual({
+		scope: { kind: 'store', storeId: 'store-1' },
+		values: { pricing: 'premium' }
+	});
+
+	const policies = await openManagementPanel(page, 'Policies');
+	await policies.getByLabel('Scope').selectOption('store');
+	await expect(policies.locator('[data-provenance="store"]')).toHaveCount(1);
+	await expect(policies.getByLabel('Pricing')).toHaveValue('premium');
+	await policies.getByRole('button', { name: 'Close Policies', exact: true }).click();
+
+	const staff = await openManagementPanel(page, 'Staff');
+	const managerCard = staff.locator('.manager-card').filter({ hasText: manager.name });
+	await expect(managerCard.locator('li[data-outcome="applied"]')).toHaveCount(1);
+	const pricingAuthority = managerCard.getByRole('checkbox', {
+		name: `Pricing authority for ${manager.name}`
+	});
+	await expect(pricingAuthority).toBeChecked();
+	await pricingAuthority.uncheck();
+	await expect(pricingAuthority).not.toBeChecked();
+	await staff.getByRole('button', { name: 'Close Staff', exact: true }).click();
+
+	const manualPolicies = await openManagementPanel(page, 'Policies');
+	await manualPolicies.getByLabel('Scope').selectOption('store');
+	const pricing = manualPolicies.getByLabel('Pricing');
+	await expect(pricing).toBeEnabled();
+	await pricing.selectOption('competitive');
+	await expect(pricing).toHaveValue('competitive');
+	await expect
+		.poll(async () => {
+			const saved = await readAutoSaveGame(page);
+			return saved.policyOverrides.find(
+				(override) => override.scope.kind === 'store' && override.scope.storeId === 'store-1'
+			)?.values.pricing;
+		})
+		.toBe('competitive');
+	await manualPolicies.getByRole('button', { name: 'Close Policies', exact: true }).click();
+
+	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	const afterThirdAdvance = await waitForAutoSaveDay(page, 4);
+	expect(afterThirdAdvance.managerActionHistory.map((record) => record.outcome)).toEqual([
+		'applied',
+		'out-of-authority'
+	]);
+	expect(afterThirdAdvance.managerActionHistory.at(-1)).toMatchObject({
+		managerId: manager.id,
+		day: 3,
+		outcome: 'out-of-authority',
+		reason: 'authority-disabled'
+	});
+	expect(afterThirdAdvance.policyOverrides).toContainEqual({
+		scope: { kind: 'store', storeId: 'store-1' },
+		values: { pricing: 'competitive' }
+	});
+
+	const finalStaff = await openManagementPanel(page, 'Staff');
+	const finalManagerCard = finalStaff.locator('.manager-card').filter({ hasText: manager.name });
+	await expect(finalManagerCard.locator('li[data-outcome="out-of-authority"]')).toHaveCount(1);
+});
+
+test('manager exception alert opens the Staff history surface', async ({ page }) => {
+	const seededGame = managerExceptionGame();
+	const manager = seededGame.staff.find((member) => member.role === 'manager');
+	if (!manager) throw new Error('Manager exception fixture has no manager.');
+
+	await installSandboxAutoSave(page, seededGame);
+	await page.getByRole('button', { name: /^\d+ alerts?$/i }).click();
+	const alerts = page.getByRole('group', { name: 'Alerts list' });
+	const managerAlert = alerts.getByRole('button', {
+		name: new RegExp(`${escapeRegExp(manager.name)}.*needs review`, 'i')
+	});
+	await expect(managerAlert).toBeVisible();
+	await managerAlert.click();
+
+	const staff = page.getByRole('dialog', { name: 'Staff' });
+	await expect(staff).toBeVisible();
+	const managerCard = staff.locator('.manager-card').filter({ hasText: manager.name });
+	await expect(managerCard.locator('li[data-outcome="overridden"]')).toHaveCount(1);
 });
 
 test('challenge starts First Profit on the official ranked seed', async ({ page }) => {
