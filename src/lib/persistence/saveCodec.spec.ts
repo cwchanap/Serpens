@@ -199,6 +199,57 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 	};
 }
 
+function createFixtureManager(id = 'manager-1'): GameState['staff'][number] {
+	return {
+		id,
+		name: id,
+		role: 'manager',
+		monthlySalary: 1200,
+		skill: 80,
+		morale: 80,
+		assignedStoreId: 'store-1',
+		hiredOnDay: 1,
+		level: 1,
+		xp: 0
+	};
+}
+
+function createFixtureDelegation(
+	overrides: Partial<GameState['managerDelegations'][number]> = {}
+): GameState['managerDelegations'][number] {
+	return {
+		managerId: 'manager-1',
+		scope: { kind: 'store', storeId: 'store-1' },
+		playbook: 'protect-margin',
+		authority: { pricing: true, inventory: false, staffing: false, supply: false },
+		enabled: true,
+		...overrides
+	};
+}
+
+function createFixtureHistory(
+	overrides: Partial<GameState['managerActionHistory'][number]> = {}
+): GameState['managerActionHistory'][number] {
+	return {
+		id: 'opaque-history-id',
+		day: 3,
+		managerId: 'manager-1',
+		scope: { kind: 'store', storeId: 'store-1' },
+		playbook: 'protect-margin',
+		conflictKey: 'pricing:store-1',
+		outcome: 'applied',
+		reason: 'margin-below-threshold',
+		change: {
+			kind: 'pricing-policy',
+			storeId: 'store-1',
+			before: 'standard',
+			proposed: 'premium',
+			applied: 'premium'
+		},
+		...overrides
+	};
+}
+
 type SaveRecordOverrides = Partial<Omit<SaveRecord, 'game' | 'metadata'>> & {
 	game?: Partial<GameState>;
 	metadata?: Partial<SaveRecord['metadata']>;
@@ -1138,6 +1189,205 @@ function createCompleteRouteEventGame(): GameState {
 }
 
 describe('saveCodec', () => {
+	describe('schema 18 policy and manager state validation', () => {
+		test('rejects schema 17 without migration', () => {
+			const record = { ...createManualSaveRecord(), schemaVersion: 17 };
+
+			expect(() => validateSaveRecord(record)).toThrow('Unsupported save schema version: 17');
+		});
+
+		test.each(['policyOverrides', 'managerDelegations', 'managerActionHistory'])(
+			'rejects a game missing %s',
+			(field) => {
+				const game = { ...createGame() } as Record<string, unknown>;
+				delete game[field];
+
+				const record = createManualSaveRecord();
+				record.game = game as unknown as GameState;
+				expect(() => validateSaveRecord(record)).toThrow(SaveDataError);
+			}
+		);
+
+		test('rejects duplicate and invalid live policy override scopes', () => {
+			const duplicate = createGame({
+				policyOverrides: [
+					{ scope: { kind: 'city', cityId: 'harbor-city' }, values: { pricing: 'premium' } },
+					{ scope: { kind: 'city', cityId: 'harbor-city' }, values: { service: 'highTouch' } }
+				]
+			});
+			const invalid = createGame({
+				policyOverrides: [
+					{ scope: { kind: 'store', storeId: 'missing-store' }, values: { pricing: 'premium' } }
+				]
+			});
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: duplicate }))).toThrow(
+				SaveDataError
+			);
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: invalid }))).toThrow(
+				SaveDataError
+			);
+		});
+
+		test.each([{}, { pricing: 'surge' }, { pricing: 'standard', unknown: 'value' }])(
+			'rejects empty or invalid policy override values: %j',
+			(values) => {
+				const game = createGame({
+					policyOverrides: [
+						{
+							scope: { kind: 'city', cityId: 'harbor-city' },
+							values
+						} as GameState['policyOverrides'][number]
+					]
+				});
+
+				expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(SaveDataError);
+			}
+		);
+
+		test('rejects invalid manager roles, scopes, and playbook constraints', () => {
+			const base = createGame({ staff: [createFixtureManager()] });
+			const invalidRole = createGame({
+				staff: [{ ...createFixtureManager(), role: 'general' }],
+				managerDelegations: [createFixtureDelegation()]
+			});
+			const invalidScope = {
+				...base,
+				managerDelegations: [
+					createFixtureDelegation({
+						scope: { kind: 'city', cityId: 'missing-city' as WorldCityId }
+					})
+				]
+			};
+			const invalidPlaybookScope = {
+				...base,
+				managerDelegations: [createFixtureDelegation({ playbook: 'prefer-local-supply' })]
+			};
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: invalidRole }))).toThrow(
+				SaveDataError
+			);
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: invalidScope }))).toThrow(
+				SaveDataError
+			);
+			expect(() =>
+				validateSaveRecord(createManualSaveRecord({ game: invalidPlaybookScope }))
+			).toThrow(SaveDataError);
+		});
+
+		test('rejects duplicate live manager delegations', () => {
+			const game = createGame({
+				staff: [createFixtureManager()],
+				managerDelegations: [createFixtureDelegation(), createFixtureDelegation()]
+			});
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(SaveDataError);
+		});
+
+		test('rejects malformed or oversized manager history', () => {
+			const oversized = createGame({
+				managerActionHistory: Array.from({ length: 101 }, (_, index) =>
+					createFixtureHistory({ id: `history-${index}` })
+				)
+			});
+			const invalidOutcome = createGame({
+				managerActionHistory: [{ ...createFixtureHistory(), outcome: 'unknown' as never }]
+			});
+			const invalidChange = createGame({
+				managerActionHistory: [
+					{
+						...createFixtureHistory(),
+						change: { ...createFixtureHistory().change, kind: 'unknown' as never }
+					}
+				]
+			});
+			const unsafeNumeric = createGame({
+				managerActionHistory: [createFixtureHistory({ day: Number.MAX_SAFE_INTEGER + 1 })]
+			});
+			const duplicateIds = createGame({
+				managerActionHistory: [createFixtureHistory(), createFixtureHistory()]
+			});
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: oversized }))).toThrow(
+				SaveDataError
+			);
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: invalidOutcome }))).toThrow(
+				SaveDataError
+			);
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: invalidChange }))).toThrow(
+				SaveDataError
+			);
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: unsafeNumeric }))).toThrow(
+				SaveDataError
+			);
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: duplicateIds }))).toThrow(
+				SaveDataError
+			);
+		});
+
+		test('normalizes valid persisted arrays without rejecting their input order', () => {
+			const game = createGame({
+				staff: [createFixtureManager('manager-z'), createFixtureManager('manager-a')],
+				policyOverrides: [
+					{ scope: { kind: 'store', storeId: 'store-1' }, values: { pricing: 'premium' } },
+					{ scope: { kind: 'city', cityId: 'harbor-city' }, values: { service: 'highTouch' } }
+				],
+				managerDelegations: [
+					createFixtureDelegation({ managerId: 'manager-z' }),
+					createFixtureDelegation({ managerId: 'manager-a' })
+				],
+				managerActionHistory: [
+					createFixtureHistory({ id: 'history-z', day: 5 }),
+					createFixtureHistory({ id: 'history-b', day: 2 }),
+					createFixtureHistory({ id: 'history-a', day: 2 })
+				]
+			});
+
+			const decoded = validateSaveRecord(createManualSaveRecord({ game }));
+
+			expect(decoded.game.policyOverrides.map((entry) => entry.scope)).toEqual([
+				{ kind: 'city', cityId: 'harbor-city' },
+				{ kind: 'store', storeId: 'store-1' }
+			]);
+			expect(decoded.game.managerDelegations.map((entry) => entry.managerId)).toEqual([
+				'manager-a',
+				'manager-z'
+			]);
+			expect(decoded.game.managerActionHistory.map((entry) => [entry.day, entry.id])).toEqual([
+				[2, 'history-a'],
+				[2, 'history-b'],
+				[5, 'history-z']
+			]);
+		});
+
+		test('accepts historical references and opaque unique action IDs', () => {
+			const history = createFixtureHistory({
+				id: 'legacy-row-from-an-old-client',
+				managerId: 'deleted-manager',
+				scope: { kind: 'store', storeId: 'deleted-store' },
+				change: {
+					kind: 'inventory-targets',
+					storeId: 'deleted-store',
+					productId: 'deleted-product' as ProductId,
+					before: { reorderThreshold: 2, targetStock: 5 },
+					proposed: { reorderThreshold: 3, targetStock: 6 },
+					applied: null
+				}
+			});
+
+			const decoded = validateSaveRecord(
+				createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+			);
+
+			expect(decoded.game.managerActionHistory[0]).toMatchObject({
+				id: 'legacy-row-from-an-old-client',
+				managerId: 'deleted-manager',
+				scope: { kind: 'store', storeId: 'deleted-store' },
+				change: { productId: 'deleted-product' }
+			});
+		});
+	});
+
 	test('round-trips a current v15 multi-city save with city-scoped inventory and replenishment evidence', () => {
 		expect.assertions(8);
 		const baseGame = createCurrentMultiCityGame();
@@ -1149,8 +1399,8 @@ describe('saveCodec', () => {
 		const validated = validateSaveRecord(structuredClone(record));
 		const report = validated.game.reports[0]!;
 
-		expect(SAVE_SCHEMA_VERSION).toBe(17);
-		expect(validated.schemaVersion).toBe(17);
+		expect(SAVE_SCHEMA_VERSION).toBe(18);
+		expect(validated.schemaVersion).toBe(18);
 		expect(validated.game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
@@ -2866,17 +3116,17 @@ describe('saveCodec', () => {
 			createManualSaveRecord({ game: withCurrentReports(game, [noAttemptReport]) })
 		);
 
-		expect(SAVE_SCHEMA_VERSION).toBe(17);
+		expect(SAVE_SCHEMA_VERSION).toBe(18);
 		expect(validated.game.reports[0]!.storeReports[0]!.replenishment).toBeNull();
 	});
 
-	test('round-trips the complete event schema v17 without dropping materialized evidence', () => {
+	test('round-trips the complete event schema v18 without dropping materialized evidence', () => {
 		expect.assertions(3);
 		const record = createManualSaveRecord({ game: createCompleteEventGame() });
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(17);
+		expect(SAVE_SCHEMA_VERSION).toBe(18);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
 	});
@@ -2887,7 +3137,7 @@ describe('saveCodec', () => {
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(17);
+		expect(SAVE_SCHEMA_VERSION).toBe(18);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
 	});

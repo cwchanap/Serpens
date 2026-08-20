@@ -563,6 +563,26 @@ describe('save records', () => {
 		).toThrow('Unsupported save schema version: 99');
 	});
 
+	test('rejects schema 17 snapshots without migration', () => {
+		expect.assertions(2);
+
+		expect(() =>
+			validateSaveStoreSnapshot({
+				schemaVersion: 17,
+				autoSave: null,
+				manualSlots: []
+			})
+		).toThrow(SaveDataError);
+
+		expect(() =>
+			validateSaveStoreSnapshot({
+				schemaVersion: 17,
+				autoSave: null,
+				manualSlots: []
+			})
+		).toThrow('Unsupported save schema version: 17');
+	});
+
 	test('rejects a pre-release snapshot schema', () => {
 		expect.assertions(2);
 
