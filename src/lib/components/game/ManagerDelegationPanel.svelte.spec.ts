@@ -8,12 +8,14 @@ import type {
 	GameState,
 	ManagerActionRecord,
 	ManagerDelegation,
-	StaffMember
+	StaffMember,
+	Store
 } from '$lib/game/types';
 import ManagerDelegationPanel from './ManagerDelegationPanel.svelte';
 
 const baseGame = createNewGame('convenience', 20260818);
 const baseStore = baseGame.stores[0]!;
+const secondStore: Store = { ...baseStore, id: 'store-2', name: 'Second Store' };
 const manager: StaffMember = {
 	...baseGame.staff.find((member) => member.role === 'manager')!,
 	id: 'manager-1',
@@ -293,12 +295,15 @@ describe('ManagerDelegationPanel', () => {
 	it('emits a scope target change for a store-scoped delegation', async () => {
 		expect.assertions(1);
 		const onChange = vi.fn();
-		renderManagerPanel({ game: managerGame({}, defaultDelegation), onChange });
+		renderManagerPanel({
+			game: managerGame({ stores: [baseStore, secondStore] }, defaultDelegation),
+			onChange
+		});
 
-		await page.getByLabelText('Delegation target for Alex Chen').selectOptions(baseStore.id);
+		await page.getByLabelText('Delegation target for Alex Chen').selectOptions(secondStore.id);
 
 		expect(onChange).toHaveBeenLastCalledWith(
-			expect.objectContaining({ scope: { kind: 'store', storeId: baseStore.id } })
+			expect.objectContaining({ scope: { kind: 'store', storeId: secondStore.id } })
 		);
 	});
 
