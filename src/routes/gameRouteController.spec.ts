@@ -274,6 +274,8 @@ describe('createMutationAvailability', () => {
 			buildRail: true,
 			upgradeRail: true,
 			demolishRail: true,
+			scopedPolicy: true,
+			delegation: true,
 			manageLogistics: true
 		});
 	});
@@ -289,6 +291,8 @@ describe('createMutationAvailability', () => {
 		expect(availability.advanceDay).toBe(true);
 		expect(availability.updatePolicy).toBe(true);
 		expect(availability.setRetailSupplySource).toBe(false);
+		expect(availability.scopedPolicy).toBe(false);
+		expect(availability.delegation).toBe(false);
 		expect(availability.manageLogistics).toBe(false);
 		expect(availability.openStore).toBe(false);
 		expect(availability.financeRetailStore).toBe(false);
@@ -323,6 +327,8 @@ describe('createMutationAvailability', () => {
 		expect(availability.pending).toBe(true);
 		expect(availability.advanceDay).toBe(false);
 		expect(availability.setRetailSupplySource).toBe(false);
+		expect(availability.scopedPolicy).toBe(false);
+		expect(availability.delegation).toBe(false);
 		expect(availability.manageLogistics).toBe(false);
 	});
 
@@ -1811,6 +1817,55 @@ describe('GameRouteController', () => {
 			expect(harness.onAutoSave).not.toHaveBeenCalled();
 		});
 
+		it('commits scoped policy and delegation mutations through sandbox autosave', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 3);
+			const manager = game.staff.find((member) => member.role === 'manager');
+			if (!manager) throw new Error('Expected a starter manager');
+			harness.controller.loadSandboxGame(game);
+
+			expect(
+				await harness.controller.setPolicyOverride(
+					{ kind: 'store', storeId: 'store-1' },
+					{ pricing: 'premium' }
+				)
+			).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(
+				await harness.controller.clearPolicyOverrideField(
+					{ kind: 'store', storeId: 'store-1' },
+					'pricing'
+				)
+			).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(
+				await harness.controller.setPolicyOverride(
+					{ kind: 'store', storeId: 'store-1' },
+					{ pricing: 'premium', service: 'highTouch' }
+				)
+			).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(
+				await harness.controller.resetPolicyOverrideScope({ kind: 'store', storeId: 'store-1' })
+			).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(
+				await harness.controller.setManagerDelegation({
+					managerId: manager.id,
+					scope: { kind: 'store', storeId: 'store-1' },
+					playbook: 'protect-margin',
+					authority: { pricing: true, inventory: false, staffing: false, supply: false },
+					enabled: true
+				})
+			).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(await harness.controller.removeManagerDelegation(manager.id)).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+
+			expect(harness.controller.state.sandboxGame?.policyOverrides).toEqual([]);
+			expect(harness.controller.state.sandboxGame?.managerDelegations).toEqual([]);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).toHaveBeenCalledTimes(6);
+		});
+
 		it('foundStore allows a missing sandbox game', async () => {
 			const harness = createHarness();
 			const game = createNewGame('convenience', 1);
@@ -1826,6 +1881,41 @@ describe('GameRouteController', () => {
 	});
 
 	describe('commitMutation scenario paths', () => {
+		it('keeps scoped policy and delegation writes unavailable in scenario mode', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller);
+			const manager = run.game.staff.find((member) => member.role === 'manager');
+			if (!manager) throw new Error('Expected a scenario manager');
+			const before = harness.controller.state.activeScenarioRun;
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+			const scope = { kind: 'store' as const, storeId: 'store-1' };
+
+			expect(await harness.controller.setPolicyOverride(scope, { pricing: 'premium' })).toEqual({
+				status: 'unavailable'
+			});
+			expect(await harness.controller.clearPolicyOverrideField(scope, 'pricing')).toEqual({
+				status: 'unavailable'
+			});
+			expect(await harness.controller.resetPolicyOverrideScope(scope)).toEqual({
+				status: 'unavailable'
+			});
+			expect(
+				await harness.controller.setManagerDelegation({
+					managerId: manager.id,
+					scope,
+					playbook: 'protect-margin',
+					authority: { pricing: true, inventory: false, staffing: false, supply: false },
+					enabled: true
+				})
+			).toEqual({ status: 'unavailable' });
+			expect(await harness.controller.removeManagerDelegation(manager.id)).toEqual({
+				status: 'unavailable'
+			});
+			expect(harness.controller.state.activeScenarioRun).toBe(before);
+			expect(saveSpy).not.toHaveBeenCalled();
+		});
+
 		it('keeps all logistics writes unavailable in scenario mode without a ScenarioCommand', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();

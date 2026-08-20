@@ -15,6 +15,8 @@ import {
 	getIndustryBuildingFootprint
 } from '$lib/game/industryFootprint';
 import { getUnlockedProductCount, MAX_STORE_LEVEL, MAX_BUILDING_LEVEL } from '$lib/game/leveling';
+import { MANAGER_ACTION_HISTORY_LIMIT } from '$lib/game/managerDelegation';
+import { POLICY_FIELD_OPTIONS } from '$lib/game/policyInheritance';
 import { formatLocation } from '$lib/game/placement';
 import { RAIL_MAX_LEVEL } from '$lib/game/rail';
 import {
@@ -36,10 +38,17 @@ import { calculateStockHealth } from '$lib/game/stock';
 import type {
 	City,
 	CityTile,
+	CompanyPolicy,
 	GameState,
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
 	IndustryCity,
+	ManagerActionChange,
+	ManagerActionRecord,
+	ManagerDelegation,
+	ManagerDelegationScope,
+	PolicyOverride,
+	PolicyOverrideScope,
 	ProductId,
 	ProductStockLot,
 	StoreProduct,
@@ -92,12 +101,28 @@ function withSaveDataBoundary<T>(context: string, operation: () => T): T {
 	}
 }
 
-const PRICING_POSTURES = ['discount', 'competitive', 'standard', 'premium'] as const;
-const INVENTORY_BUFFERS = ['lean', 'balanced', 'generous'] as const;
-const STAFFING_POSTURES = ['minimal', 'efficient', 'service'] as const;
+const POLICY_FIELDS = Object.keys(POLICY_FIELD_OPTIONS) as Array<keyof CompanyPolicy>;
 const STAFF_ROLES = ['manager', 'general'] as const;
-const MARKETING_FOCUSES = ['none', 'awareness', 'promotions', 'loyalty'] as const;
-const SERVICE_PRIORITIES = ['speed', 'balanced', 'highTouch'] as const;
+const MANAGER_PLAYBOOK_IDS = [
+	'protect-margin',
+	'protect-availability',
+	'grow-market-share',
+	'stabilize-cash',
+	'prefer-local-supply'
+] as const;
+const MANAGER_ACTION_OUTCOMES = ['applied', 'overridden', 'rejected', 'out-of-authority'] as const;
+const MANAGER_ACTION_REASONS = [
+	'margin-below-threshold',
+	'availability-pressure',
+	'staff-capacity-pressure',
+	'market-position-low',
+	'negative-operating-cash-flow',
+	'better-local-supply',
+	'conflict-lost',
+	'authority-disabled',
+	'transition-rejected'
+] as const;
+const MANAGER_AUTHORITY_FIELDS = ['pricing', 'inventory', 'staffing', 'supply'] as const;
 const ARCHETYPE_IDS = ['convenience', 'boutique', 'electronics', 'grocery'] as const;
 const NEIGHBORHOOD_IDS = [
 	'downtown',
@@ -314,6 +339,12 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	const policy = requireRecord(game.policy, 'Saved game policy');
 	const scorecard = requireRecord(game.scorecard, 'Saved game scorecard');
 	const cities = requireArray(game.cities, 'Saved game cities');
+	const policyOverrides = requireArray(game.policyOverrides, 'Saved game policyOverrides');
+	const managerDelegations = requireArray(game.managerDelegations, 'Saved game managerDelegations');
+	const managerActionHistory = requireArray(
+		game.managerActionHistory,
+		'Saved game managerActionHistory'
+	);
 	const industryCities = requireArray(game.industryCities, 'Saved game industryCities');
 	const industrialBuildings = requireArray(
 		game.industrialBuildings,
@@ -331,11 +362,9 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	requireNumber(game.cash, 'Saved game cash');
 	validateSavedFinance(game.finance, gameDay, 'Saved game finance');
 	const world = validateSavedWorld(game.world, 'Saved game world');
-	requireOneOf(policy.pricing, 'Saved game policy pricing', PRICING_POSTURES);
-	requireOneOf(policy.inventory, 'Saved game policy inventory', INVENTORY_BUFFERS);
-	requireOneOf(policy.staffing, 'Saved game policy staffing', STAFFING_POSTURES);
-	requireOneOf(policy.marketing, 'Saved game policy marketing', MARKETING_FOCUSES);
-	requireOneOf(policy.service, 'Saved game policy service', SERVICE_PRIORITIES);
+	for (const field of POLICY_FIELDS) {
+		validatePolicyValue(policy[field], `Saved game policy ${field}`, field);
+	}
 	requireNumber(scorecard.profit, 'Saved game scorecard profit');
 	requireNumber(scorecard.customerSatisfaction, 'Saved game scorecard customerSatisfaction');
 	requireNumber(scorecard.staffMorale, 'Saved game scorecard staffMorale');
@@ -385,6 +414,9 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	validateCurrentIndustrialBuildingPlacements(industrialBuildings, industryCities);
 	validateCurrentRetailStorePlacements(stores, cities);
 	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
+	validateCurrentPolicyOverrides(currentGame, policyOverrides);
+	validateCurrentManagerDelegations(currentGame, managerDelegations);
+	validateManagerActionHistory(currentGame, managerActionHistory);
 	hiringCandidates.forEach((candidate, index) =>
 		validateSavedHiringCandidate(candidate, `Saved game hiringCandidates[${index}]`)
 	);
@@ -1092,6 +1124,285 @@ function resolveCurrentInventoryCityId(
 		return cityInventoryInvariant(`${label} must reference a materialized industry city`);
 	}
 	return definition.id;
+}
+
+type PersistedRetailScope = { kind: 'city'; cityId: string } | { kind: 'store'; storeId: string };
+
+function validatePolicyValue(value: unknown, label: string, field: keyof CompanyPolicy): void {
+	requireOneOf(value, label, POLICY_FIELD_OPTIONS[field] as readonly string[]);
+}
+
+function validatePolicyOverrideValues(value: unknown, label: string): void {
+	const values = requireRecord(value, label);
+	requireExactKeys(values, POLICY_FIELDS, label);
+	if (Object.keys(values).length === 0) {
+		throw new SaveDataError(`${label} must contain at least one policy value`);
+	}
+
+	for (const [field, policyValue] of Object.entries(values)) {
+		validatePolicyValue(policyValue, `${label}.${field}`, field as keyof CompanyPolicy);
+	}
+}
+
+function validatePersistedRetailScope(value: unknown, label: string): PersistedRetailScope {
+	const scope = requireRecord(value, label);
+	const kind = requireOneOf(scope.kind, `${label} kind`, ['city', 'store'] as const);
+	if (kind === 'city') {
+		requireExactKeys(scope, ['kind', 'cityId'], label);
+		return { kind, cityId: requireString(scope.cityId, `${label} cityId`) };
+	}
+
+	requireExactKeys(scope, ['kind', 'storeId'], label);
+	return { kind, storeId: requireString(scope.storeId, `${label} storeId`) };
+}
+
+function isCurrentRetailCity(game: GameState, cityId: string): cityId is WorldCityId {
+	const definition = getWorldCityDefinition(cityId);
+	return Boolean(
+		definition?.kind === 'retail' &&
+		game.world.openedCityIds.includes(cityId as WorldCityId) &&
+		game.cities.some((city) => city.id === cityId)
+	);
+}
+
+function validateCurrentRetailScope(
+	game: GameState,
+	value: unknown,
+	label: string
+): PolicyOverrideScope {
+	const scope = validatePersistedRetailScope(value, label);
+	if (scope.kind === 'city') {
+		if (!isCurrentRetailCity(game, scope.cityId)) {
+			throw new SaveDataError(`${label} must reference a current retail city`);
+		}
+		return { kind: 'city', cityId: scope.cityId };
+	}
+
+	const store = game.stores.find((candidate) => candidate.id === scope.storeId);
+	if (!store || !isCurrentRetailCity(game, store.cityId)) {
+		throw new SaveDataError(`${label} must reference a current retail store`);
+	}
+	return { kind: 'store', storeId: scope.storeId };
+}
+
+function policyOverrideScopeKey(scope: PolicyOverrideScope): string {
+	return scope.kind === 'city' ? `city:${scope.cityId}` : `store:${scope.storeId}`;
+}
+
+function compareStrings(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function comparePolicyOverrideScopes(
+	left: PolicyOverrideScope,
+	right: PolicyOverrideScope
+): number {
+	if (left.kind !== right.kind) return left.kind === 'city' ? -1 : 1;
+	if (left.kind === 'city' && right.kind === 'city') {
+		return compareWorldCityIds(left.cityId, right.cityId);
+	}
+	if (left.kind === 'store' && right.kind === 'store') {
+		return compareStrings(left.storeId, right.storeId);
+	}
+	return 0;
+}
+
+function validateCurrentPolicyOverrides(game: GameState, values: unknown[]): void {
+	const seenScopes = new Set<string>();
+	const overrides: PolicyOverride[] = values.map((value, index) => {
+		const label = `Saved game policyOverrides[${index}]`;
+		const override = requireRecord(value, label);
+		requireExactKeys(override, ['scope', 'values'], label);
+		const scope = validateCurrentRetailScope(game, override.scope, `${label} scope`);
+		const scopeKey = policyOverrideScopeKey(scope);
+		if (seenScopes.has(scopeKey)) {
+			throw new SaveDataError(`${label} scope must be unique: ${scopeKey}`);
+		}
+		seenScopes.add(scopeKey);
+		validatePolicyOverrideValues(override.values, `${label} values`);
+		return { scope, values: override.values as Partial<CompanyPolicy> };
+	});
+
+	game.policyOverrides = overrides.sort((left, right) =>
+		comparePolicyOverrideScopes(left.scope, right.scope)
+	);
+}
+
+function validateManagerAuthority(value: unknown, label: string): void {
+	const authority = requireRecord(value, label);
+	requireExactKeys(authority, MANAGER_AUTHORITY_FIELDS, label);
+	for (const field of MANAGER_AUTHORITY_FIELDS) {
+		requireBoolean(authority[field], `${label} ${field}`);
+	}
+}
+
+function validateCurrentManagerDelegations(game: GameState, values: unknown[]): void {
+	const seenManagers = new Set<string>();
+	const delegations: ManagerDelegation[] = values.map((value, index) => {
+		const label = `Saved game managerDelegations[${index}]`;
+		const delegation = requireRecord(value, label);
+		requireExactKeys(delegation, ['managerId', 'scope', 'playbook', 'authority', 'enabled'], label);
+		const managerId = requireString(delegation.managerId, `${label} managerId`);
+		if (seenManagers.has(managerId)) {
+			throw new SaveDataError(`${label} managerId must be unique: ${managerId}`);
+		}
+		seenManagers.add(managerId);
+		const manager = game.staff.find((member) => member.id === managerId);
+		if (!manager || manager.role !== 'manager') {
+			throw new SaveDataError(`${label} managerId must reference a current manager`);
+		}
+		const scope = validateCurrentRetailScope(game, delegation.scope, `${label} scope`);
+		const playbook = requireOneOf(delegation.playbook, `${label} playbook`, MANAGER_PLAYBOOK_IDS);
+		if (playbook === 'prefer-local-supply' && scope.kind !== 'city') {
+			throw new SaveDataError(`${label} prefer-local-supply requires a city scope`);
+		}
+		validateManagerAuthority(delegation.authority, `${label} authority`);
+		const enabled = requireBoolean(delegation.enabled, `${label} enabled`);
+		return {
+			managerId,
+			scope: scope as ManagerDelegationScope,
+			playbook,
+			authority: delegation.authority as ManagerDelegation['authority'],
+			enabled
+		};
+	});
+
+	game.managerDelegations = delegations.sort((left, right) =>
+		compareStrings(left.managerId, right.managerId)
+	);
+}
+
+function validateHistoricalScope(value: unknown, label: string): ManagerDelegationScope {
+	const scope = validatePersistedRetailScope(value, label);
+	return scope.kind === 'city'
+		? { kind: 'city', cityId: scope.cityId as WorldCityId }
+		: { kind: 'store', storeId: scope.storeId };
+}
+
+function validateHistoryInventoryTargets(value: unknown, label: string): void {
+	const targets = requireRecord(value, label);
+	requireExactKeys(targets, ['reorderThreshold', 'targetStock'], label);
+	const reorderThreshold = requireSafeFiniteNumber(
+		targets.reorderThreshold,
+		`${label} reorderThreshold`
+	);
+	const targetStock = requireNonNegativeSafeInteger(targets.targetStock, `${label} targetStock`);
+	if (reorderThreshold < 0) {
+		throw new SaveDataError(`${label} reorderThreshold must be non-negative`);
+	}
+	if (targetStock < Math.ceil(reorderThreshold)) {
+		throw new SaveDataError(`${label} targetStock must cover reorderThreshold`);
+	}
+}
+
+function validateManagerActionChange(value: unknown, label: string): void {
+	const change = requireRecord(value, label) as Record<string, unknown>;
+	const kind = requireOneOf(change.kind, `${label} kind`, [
+		'pricing-policy',
+		'inventory-targets',
+		'staffing-policy',
+		'supply-source'
+	] as const);
+
+	switch (kind) {
+		case 'pricing-policy':
+			requireExactKeys(change, ['kind', 'storeId', 'before', 'proposed', 'applied'], label);
+			requireString(change.storeId, `${label} storeId`);
+			validatePolicyValue(change.before, `${label} before`, 'pricing');
+			validatePolicyValue(change.proposed, `${label} proposed`, 'pricing');
+			if (change.applied !== null) {
+				validatePolicyValue(change.applied, `${label} applied`, 'pricing');
+			}
+			return;
+		case 'inventory-targets':
+			requireExactKeys(
+				change,
+				['kind', 'storeId', 'productId', 'before', 'proposed', 'applied'],
+				label
+			);
+			requireString(change.storeId, `${label} storeId`);
+			requireString(change.productId, `${label} productId`);
+			validateHistoryInventoryTargets(change.before, `${label} before`);
+			validateHistoryInventoryTargets(change.proposed, `${label} proposed`);
+			if (change.applied !== null) {
+				validateHistoryInventoryTargets(change.applied, `${label} applied`);
+			}
+			return;
+		case 'staffing-policy':
+			requireExactKeys(change, ['kind', 'storeId', 'before', 'proposed', 'applied'], label);
+			requireString(change.storeId, `${label} storeId`);
+			validatePolicyValue(change.before, `${label} before`, 'staffing');
+			validatePolicyValue(change.proposed, `${label} proposed`, 'staffing');
+			if (change.applied !== null) {
+				validatePolicyValue(change.applied, `${label} applied`, 'staffing');
+			}
+			return;
+		case 'supply-source':
+			requireExactKeys(change, ['kind', 'retailCityId', 'before', 'proposed', 'applied'], label);
+			requireString(change.retailCityId, `${label} retailCityId`);
+			if (change.before !== null) requireString(change.before, `${label} before`);
+			requireString(change.proposed, `${label} proposed`);
+			if (change.applied !== null) requireString(change.applied, `${label} applied`);
+	}
+}
+
+function validateManagerActionHistory(game: GameState, values: unknown[]): void {
+	if (values.length > MANAGER_ACTION_HISTORY_LIMIT) {
+		throw new SaveDataError(
+			`Saved game managerActionHistory must contain at most ${MANAGER_ACTION_HISTORY_LIMIT} records`
+		);
+	}
+
+	const seenIds = new Set<string>();
+	const history: ManagerActionRecord[] = values.map((value, index) => {
+		const label = `Saved game managerActionHistory[${index}]`;
+		const record = requireRecord(value, label);
+		requireExactKeys(
+			record,
+			['id', 'day', 'managerId', 'scope', 'playbook', 'conflictKey', 'outcome', 'reason', 'change'],
+			label
+		);
+		const id = requireString(record.id, `${label} id`);
+		if (seenIds.has(id)) {
+			throw new SaveDataError(`${label} id must be unique: ${id}`);
+		}
+		seenIds.add(id);
+		const day = requireNonNegativeSafeInteger(record.day, `${label} day`);
+		const managerId = requireString(record.managerId, `${label} managerId`);
+		const scope = validateHistoricalScope(record.scope, `${label} scope`);
+		const playbook = requireOneOf(record.playbook, `${label} playbook`, MANAGER_PLAYBOOK_IDS);
+		const conflictKey = requireString(record.conflictKey, `${label} conflictKey`);
+		const outcome = requireOneOf(record.outcome, `${label} outcome`, MANAGER_ACTION_OUTCOMES);
+		const reason = requireOneOf(record.reason, `${label} reason`, MANAGER_ACTION_REASONS);
+		validateManagerActionChange(record.change, `${label} change`);
+		return {
+			id,
+			day,
+			managerId,
+			scope,
+			playbook,
+			conflictKey,
+			outcome,
+			reason,
+			change: record.change as ManagerActionChange
+		};
+	});
+
+	game.managerActionHistory = history.sort(
+		(left, right) => compareNumbers(left.day, right.day) || compareStrings(left.id, right.id)
+	);
+}
+
+function compareNumbers(left: number, right: number): number {
+	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function requireSafeFiniteNumber(value: unknown, label: string): number {
+	const number = requireNumber(value, label);
+	if (Math.abs(number) > Number.MAX_SAFE_INTEGER) {
+		throw new SaveDataError(`${label} must remain within the safe numeric range`);
+	}
+	return number;
 }
 
 function validateCurrentCityInventories(game: GameState): void {

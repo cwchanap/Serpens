@@ -35,6 +35,15 @@ import {
 	setRetailSupplySource as setRetailSupplySourceTransition,
 	type RetailSupplyAssignmentFailure
 } from '$lib/game/retailSupply';
+import {
+	clearPolicyOverrideField as clearPolicyOverrideFieldTransition,
+	resetPolicyOverrideScope as resetPolicyOverrideScopeTransition,
+	setPolicyOverride as setPolicyOverrideTransition
+} from '$lib/game/policyInheritance';
+import {
+	removeManagerDelegation as removeManagerDelegationTransition,
+	setManagerDelegation as setManagerDelegationTransition
+} from '$lib/game/managerDelegation';
 import { simulateDay } from '$lib/game/simulateDay';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
 import {
@@ -51,6 +60,8 @@ import type {
 	GameState,
 	IndustrialBuildingTypeId,
 	LoanTermDays,
+	ManagerDelegation,
+	PolicyOverrideScope,
 	ProductId,
 	WorldCityId
 } from '$lib/game/types';
@@ -120,6 +131,8 @@ export interface MutationAvailability {
 	advanceDay: boolean;
 	resolveDecision: boolean;
 	updatePolicy: boolean;
+	scopedPolicy: boolean;
+	delegation: boolean;
 	openWorldCity: boolean;
 	setRetailSupplySource: boolean;
 	manageLogistics: boolean;
@@ -160,6 +173,8 @@ export function createMutationAvailability(input: {
 		advanceDay: available('advanceDay'),
 		resolveDecision: available('resolveDecision'),
 		updatePolicy: available('updatePolicy'),
+		scopedPolicy: input.playMode === 'sandbox',
+		delegation: input.playMode === 'sandbox',
 		openWorldCity: available('openWorldCity'),
 		setRetailSupplySource: available('setRetailSupplySource'),
 		manageLogistics: input.playMode === 'sandbox',
@@ -1131,6 +1146,42 @@ export class GameRouteController {
 			transition: (game) => updatePolicy(game!, patch),
 			scenarioCommand: { kind: 'updatePolicy', patch },
 			cueId: 'sfx.policy.change'
+		});
+	}
+
+	setPolicyOverride(
+		scope: PolicyOverrideScope,
+		patch: Partial<CompanyPolicy>
+	): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => setPolicyOverrideTransition(game!, scope, patch)
+		});
+	}
+
+	clearPolicyOverrideField(
+		scope: PolicyOverrideScope,
+		field: keyof CompanyPolicy
+	): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => clearPolicyOverrideFieldTransition(game!, scope, field)
+		});
+	}
+
+	resetPolicyOverrideScope(scope: PolicyOverrideScope): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => resetPolicyOverrideScopeTransition(game!, scope)
+		});
+	}
+
+	setManagerDelegation(delegation: ManagerDelegation): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => setManagerDelegationTransition(game!, delegation)
+		});
+	}
+
+	removeManagerDelegation(managerId: string): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => removeManagerDelegationTransition(game!, managerId)
 		});
 	}
 

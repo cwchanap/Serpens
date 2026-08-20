@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDefinition } from './types';
 import type { ProductId } from '$lib/game/types';
+import { POLICY_FIELD_OPTIONS } from '$lib/game/policyInheritance';
 import {
 	assertValidScenarioDefinition,
 	sortScenarioDiagnostics,
@@ -1702,6 +1703,34 @@ describe('validateScenarioDefinition coverage gaps', () => {
 			path: 'start.overrides.policy.pricing',
 			code: 'invalid-policy'
 		});
+	});
+
+	it('accepts every policy option from the shared policy table', () => {
+		const invalidPolicyDiagnostics: Array<{ field: string; value: string }> = [];
+
+		for (const [field, values] of Object.entries(POLICY_FIELD_OPTIONS)) {
+			for (const value of values) {
+				const definition = validDefinition();
+				definition.start.overrides.policy = {
+					pricing: 'standard',
+					inventory: 'balanced',
+					staffing: 'efficient',
+					marketing: 'awareness',
+					service: 'balanced'
+				};
+				Object.assign(definition.start.overrides.policy, { [field]: value });
+				for (const diagnostic of validateScenarioDefinition(definition)) {
+					if (
+						diagnostic.path === `start.overrides.policy.${field}` &&
+						diagnostic.code === 'invalid-policy'
+					) {
+						invalidPolicyDiagnostics.push({ field, value });
+					}
+				}
+			}
+		}
+
+		expect(invalidPolicyDiagnostics).toEqual([]);
 	});
 
 	it('rejects a duplicate product in store overrides', () => {

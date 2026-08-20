@@ -12,6 +12,7 @@ import {
 	generateIndustryCity
 } from '$lib/game/industry';
 import type { City, IndustryCity, ProductId, RailCell } from '$lib/game/types';
+import { POLICY_FIELD_OPTIONS } from '$lib/game/policyInheritance';
 import { WORLD_CITY_CATALOG, getWorldCityDefinition } from '$lib/game/world';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDiagnostic } from '../types';
 import { citySeed } from '../setup';
@@ -105,13 +106,9 @@ const KNOWN_COMMANDS = new Set<string>(SCENARIO_COMMAND_KINDS);
 const COMPARATORS = new Set(['lt', 'lte', 'eq', 'gte', 'gt']);
 const SCORE_KEYS = new Set(['profit', 'customerSatisfaction', 'staffMorale', 'marketPosition']);
 
-const POLICY_VALUES: Readonly<Record<(typeof POLICY_KEYS)[number], ReadonlySet<string>>> = {
-	pricing: new Set(['discount', 'competitive', 'standard', 'premium']),
-	inventory: new Set(['lean', 'balanced', 'generous']),
-	staffing: new Set(['minimal', 'efficient', 'service']),
-	marketing: new Set(['none', 'awareness', 'promotions', 'loyalty']),
-	service: new Set(['speed', 'balanced', 'highTouch'])
-};
+const POLICY_VALUES = Object.fromEntries(
+	Object.entries(POLICY_FIELD_OPTIONS).map(([field, options]) => [field, new Set(options)])
+) as unknown as Readonly<Record<(typeof POLICY_KEYS)[number], ReadonlySet<string>>>;
 
 type WindowKind = 'current' | 'run-to-date' | 'trailing-reports' | 'fixed-report-days';
 
