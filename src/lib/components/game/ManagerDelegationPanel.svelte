@@ -41,6 +41,15 @@
 	let { game, i18n, onChange, onRemove, canUpdate = true, disabledReason = null }: Props = $props();
 
 	let drafts = $state<Record<string, ManagerDelegation>>({});
+
+	// Clear all drafts whenever committed delegations change so stale drafts
+	// cannot override the committed state. Committed delegations take
+	// precedence in delegationFor; this effect cleans up after successful
+	// commits so drafts do not accumulate.
+	$effect(() => {
+		void game.managerDelegations;
+		drafts = {};
+	});
 	const retailCities = $derived(
 		game.cities.filter(
 			(city): city is typeof city & { id: WorldCityId } =>
@@ -84,8 +93,8 @@
 
 	function delegationFor(member: StaffMember): ManagerDelegation | null {
 		return (
-			drafts[member.id] ??
 			game.managerDelegations.find((delegation) => delegation.managerId === member.id) ??
+			drafts[member.id] ??
 			defaultDelegation(member)
 		);
 	}

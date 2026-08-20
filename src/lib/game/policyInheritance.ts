@@ -67,6 +67,10 @@ function isValidScope(game: GameState, scope: PolicyOverrideScope): boolean {
 	return resolveStoreCityId(game, scope.storeId) !== null;
 }
 
+export function isValidPolicyScope(game: GameState, scope: PolicyOverrideScope): boolean {
+	return isValidScope(game, scope);
+}
+
 function assertValidScope(game: GameState, scope: PolicyOverrideScope): void {
 	if (!isValidScope(game, scope)) {
 		throw new Error(`Policy inheritance invariant: invalid ${scope.kind} scope`);
@@ -94,7 +98,8 @@ function applyOverride(
 ): void {
 	if (!override) return;
 
-	Object.assign(values, override.values);
+	const definedEntries = Object.entries(override.values).filter(([, value]) => value !== undefined);
+	Object.assign(values, Object.fromEntries(definedEntries));
 	for (const field of POLICY_FIELDS) {
 		if (override.values[field] !== undefined) provenance[field] = source;
 	}
@@ -153,7 +158,10 @@ export function setPolicyOverride(
 		sameScope(override.scope, persistedScope)
 	);
 	const existing = index === -1 ? undefined : game.policyOverrides[index];
-	const values = { ...(existing?.values ?? {}), ...patch };
+	const definedPatch = Object.fromEntries(
+		Object.entries(patch).filter(([, value]) => value !== undefined)
+	);
+	const values = { ...(existing?.values ?? {}), ...definedPatch };
 	if (Object.keys(values).length === 0) return game;
 
 	const nextOverride: PolicyOverride = { scope: persistedScope, values };

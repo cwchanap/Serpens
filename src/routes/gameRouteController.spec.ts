@@ -1831,6 +1831,10 @@ describe('GameRouteController', () => {
 					{ pricing: 'premium' }
 				)
 			).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(harness.controller.state.sandboxGame?.policyOverrides).toContainEqual({
+				scope: { kind: 'store', storeId: 'store-1' },
+				values: { pricing: 'premium' }
+			});
 			expect(
 				await harness.controller.clearPolicyOverrideField(
 					{ kind: 'store', storeId: 'store-1' },
@@ -1855,6 +1859,13 @@ describe('GameRouteController', () => {
 					enabled: true
 				})
 			).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(harness.controller.state.sandboxGame?.managerDelegations).toContainEqual({
+				managerId: manager.id,
+				scope: { kind: 'store', storeId: 'store-1' },
+				playbook: 'protect-margin',
+				authority: { pricing: true, inventory: false, staffing: false, supply: false },
+				enabled: true
+			});
 			expect(await harness.controller.removeManagerDelegation(manager.id)).toEqual({
 				status: 'sandbox-committed',
 				changed: true

@@ -33,7 +33,7 @@
 		disabledReason = null
 	}: Props = $props();
 
-	const fields = ['pricing', 'inventory', 'staffing', 'marketing', 'service'] as const;
+	const fields = Object.keys(POLICY_FIELD_OPTIONS) as (keyof CompanyPolicy)[];
 	let selectedScopeKind = $state<'company' | 'city' | 'store'>('company');
 	let selectedCityId = $state<WorldCityId | null>(null);
 	let selectedStoreId = $state<string | null>(null);

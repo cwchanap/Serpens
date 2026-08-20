@@ -1273,6 +1273,8 @@ function validateCurrentManagerDelegations(game: GameState, values: unknown[]): 
 }
 
 function validateHistoricalScope(value: unknown, label: string): ManagerDelegationScope {
+	// Historical records may reference deleted cities or stores, so cityId is
+	// intentionally not checked against the current world-city catalog here.
 	const scope = validatePersistedRetailScope(value, label);
 	return scope.kind === 'city'
 		? { kind: 'city', cityId: scope.cityId as WorldCityId }
@@ -1368,6 +1370,9 @@ function validateManagerActionHistory(game: GameState, values: unknown[]): void 
 		}
 		seenIds.add(id);
 		const day = requireNonNegativeSafeInteger(record.day, `${label} day`);
+		if (day > game.day) {
+			throw new SaveDataError(`${label} day must not exceed game day ${game.day}: ${day}`);
+		}
 		const managerId = requireString(record.managerId, `${label} managerId`);
 		const scope = validateHistoricalScope(record.scope, `${label} scope`);
 		const playbook = requireOneOf(record.playbook, `${label} playbook`, MANAGER_PLAYBOOK_IDS);

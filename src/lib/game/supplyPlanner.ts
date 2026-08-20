@@ -1,5 +1,5 @@
 import { canonicalQuantity, compareWorldCityIds, getCityInventoryStats } from './cityInventory';
-import { resolveEffectivePolicy } from './policyInheritance';
+import { resolveEffectivePolicy, isValidPolicyScope } from './policyInheritance';
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import {
 	buildingTypesForRecipe,
@@ -3013,11 +3013,14 @@ function buildingsForMaterial(
 }
 
 function buildEffectivePolicyByStoreId(game: GameState): EffectivePolicyByStoreId {
-	// Synthetic non-catalog planner cities cannot be valid policy scopes.
+	// Synthetic non-catalog planner cities and other invalid scopes cannot be
+	// valid policy scopes — use the same predicate as resolveEffectivePolicy
+	// so closed, unmaterialized, industrial, or orphaned stores fall back to
+	// the company policy instead of throwing.
 	return new Map(
 		game.stores.map((store) => [
 			store.id,
-			getWorldCityDefinition(store.cityId)
+			isValidPolicyScope(game, { kind: 'store', storeId: store.id })
 				? resolveEffectivePolicy(game, { kind: 'store', storeId: store.id }).values
 				: game.policy
 		])

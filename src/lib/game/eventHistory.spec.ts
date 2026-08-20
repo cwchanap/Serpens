@@ -17,4 +17,12 @@ describe('event history bounds', () => {
 			Array.from({ length: 100 }, (_, index) => index + 2)
 		);
 	});
+
+	test('appendBoundedHistory returns an empty array when limit is zero', () => {
+		expect(appendBoundedHistory([1, 2, 3], [4], 0)).toEqual([]);
+	});
+
+	test('appendBoundedHistory returns an empty array when limit is negative', () => {
+		expect(appendBoundedHistory([1, 2, 3], [4], -5)).toEqual([]);
+	});
 });

@@ -144,7 +144,7 @@ describe('ManagerDelegationPanel', () => {
 	it('forces Prefer Local Supply to use a city scope', async () => {
 		expect.assertions(2);
 		const onChange = vi.fn();
-		renderManagerPanel({ onChange });
+		renderManagerPanel({ game: managerGame({}, null), onChange });
 
 		await page.getByLabelText('Playbook for Alex Chen').selectOptions('prefer-local-supply');
 		expect(onChange).toHaveBeenLastCalledWith(

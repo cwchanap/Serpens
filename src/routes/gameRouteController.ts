@@ -1154,7 +1154,8 @@ export class GameRouteController {
 		patch: Partial<CompanyPolicy>
 	): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
-			transition: (game) => setPolicyOverrideTransition(game!, scope, patch)
+			transition: (game) => setPolicyOverrideTransition(game!, scope, patch),
+			cueId: 'sfx.policy.change'
 		});
 	}
 
@@ -1163,13 +1164,15 @@ export class GameRouteController {
 		field: keyof CompanyPolicy
 	): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
-			transition: (game) => clearPolicyOverrideFieldTransition(game!, scope, field)
+			transition: (game) => clearPolicyOverrideFieldTransition(game!, scope, field),
+			cueId: 'sfx.policy.change'
 		});
 	}
 
 	resetPolicyOverrideScope(scope: PolicyOverrideScope): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
-			transition: (game) => resetPolicyOverrideScopeTransition(game!, scope)
+			transition: (game) => resetPolicyOverrideScopeTransition(game!, scope),
+			cueId: 'sfx.policy.change'
 		});
 	}
 
