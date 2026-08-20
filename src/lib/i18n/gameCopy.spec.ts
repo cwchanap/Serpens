@@ -456,6 +456,24 @@ describe('game copy builders', () => {
 		}
 	});
 
+	it('falls back to the retained message for a manager-exception alert with an unknown manager', () => {
+		const game = createNewGame('convenience', 20260708);
+
+		const localized = localizeGameAlert(
+			game,
+			{
+				id: 'manager-exception:deleted-manager',
+				kind: 'manager-exception',
+				managerId: 'deleted-manager',
+				message: 'Retained fallback message',
+				managementPanelId: 'staff'
+			},
+			createI18n('en')
+		);
+
+		expect(localized.message).toBe('Retained fallback message');
+	});
+
 	it('localizes logistics alert copy in every supported locale', () => {
 		const base = createNewGame('convenience', 20260708);
 		const game = {

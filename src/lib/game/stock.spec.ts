@@ -1327,6 +1327,57 @@ describe('branch coverage edge cases', () => {
 		expect(report).toBeDefined();
 		expect(report?.unitsSold).toBeGreaterThan(0);
 	});
+
+	test('getPolicyAdjustedCityProductDemand returns 0 when no eligible sellers carry the product', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260508);
+		const store: GameState['stores'][number] = {
+			...game.stores[0]!,
+			products: [
+				{
+					productId: 'snacks',
+					lots: [{ receivedDay: 1, quantity: 100 }],
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			]
+		};
+		const demand = getPolicyAdjustedCityProductDemand(
+			{ ...game, stores: [store] },
+			game.cities[0]!,
+			'bottled-water',
+			effectivePolicyMap({ ...game, stores: [store] })
+		);
+
+		expect(demand).toBe(0);
+	});
+
+	test('simulateProductSalesForCity skips a product when no sellers carry it', () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260508);
+		const store: GameState['stores'][number] = {
+			...game.stores[0]!,
+			products: [
+				{
+					productId: 'snacks',
+					lots: [{ receivedDay: 1, quantity: 100 }],
+					reorderThreshold: 10,
+					targetStock: 100,
+					sellingPrice: 5
+				}
+			]
+		};
+		const result = simulateProductSalesForCity({
+			game: { ...game, stores: [store] },
+			city: game.cities[0]!,
+			rng: createRng(3),
+			storeCapacity: new Map([[store.id, 100]])
+		});
+
+		expect(result.productReports.get(store.id)?.length).toBe(1);
+		expect(result.productReports.get(store.id)?.[0]?.productId).toBe('snacks');
+	});
 });
 
 describe('summarizeStockTrouble', () => {

@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import PolicyPanel from './PolicyPanel.svelte';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import { createNewGame } from '$lib/game/state';
+import { openWorldCity } from '$lib/game/world';
 import { POLICY_FIELD_OPTIONS, setPolicyOverride } from '$lib/game/policyInheritance';
 import type { CompanyPolicy, GameState, PolicyOverrideScope } from '$lib/game/types';
 
@@ -269,5 +270,97 @@ describe('PolicyPanel', () => {
 			).map((option) => option.value);
 			expect(options).toEqual([...POLICY_FIELD_OPTIONS[field]]);
 		}
+	});
+
+	it('fires onSetPolicyOverride when changing a policy field in a city scope', async () => {
+		expect.assertions(1);
+		const onSetPolicyOverride = vi.fn();
+		const base = createNewGame('convenience', 20260818);
+		const game = setPolicyOverride(
+			base,
+			{ kind: 'city', cityId: 'harbor-city' },
+			{
+				pricing: 'premium'
+			}
+		);
+		renderPolicyPanel({ game, onSetPolicyOverride });
+		await page.getByLabelText('Policy scope').selectOptions('city');
+
+		await page.getByLabelText('Pricing').selectOptions('discount');
+
+		expect(onSetPolicyOverride).toHaveBeenCalledWith(
+			{ kind: 'city', cityId: 'harbor-city' },
+			{ pricing: 'discount' }
+		);
+	});
+
+	it('updates the city target when selecting a different city', async () => {
+		expect.assertions(1);
+		const base = createNewGame('convenience', 20260818);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 100_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+				}
+			},
+			'campus-junction'
+		);
+		renderPolicyPanel({ game: opened });
+		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByLabelText('Target').selectOptions('campus-junction');
+
+		await expect.element(page.getByText('City: Campus Junction')).toBeVisible();
+	});
+
+	it('updates the store target when selecting a different store', async () => {
+		expect.assertions(1);
+		const onSetPolicyOverride = vi.fn();
+		const base = createNewGame('convenience', 20260818);
+		const opened = openWorldCity(
+			{
+				...base,
+				cash: 100_000,
+				world: {
+					...base.world,
+					revealedCityIds: [...base.world.revealedCityIds, 'campus-junction']
+				}
+			},
+			'campus-junction'
+		);
+		renderPolicyPanel({ game: opened, onSetPolicyOverride });
+		await page.getByLabelText('Policy scope').selectOptions('store');
+		await page.getByLabelText('Target').selectOptions(opened.stores[0]!.id);
+		await page.getByLabelText('Pricing').selectOptions('discount');
+
+		expect(onSetPolicyOverride).toHaveBeenCalledWith(
+			{ kind: 'store', storeId: opened.stores[0]!.id },
+			{ pricing: 'discount' }
+		);
+	});
+
+	it('disables scoped controls when canUpdateScoped is false', async () => {
+		expect.assertions(2);
+		const onSetPolicyOverride = vi.fn();
+		const base = createNewGame('convenience', 20260818);
+		const game = setPolicyOverride(
+			base,
+			{ kind: 'city', cityId: 'harbor-city' },
+			{
+				pricing: 'premium'
+			}
+		);
+		renderPolicyPanel({
+			game,
+			onSetPolicyOverride,
+			canUpdateScoped: false,
+			disabledReason: 'Scenario mode'
+		});
+		await page.getByLabelText('Policy scope').selectOptions('city');
+
+		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		await expect.element(page.getByText('Scenario mode')).toBeVisible();
 	});
 });

@@ -712,3 +712,246 @@ describe('truthful manager application', () => {
 		expect(result.game).toBe(game);
 	});
 });
+
+describe('manager delegation edge cases', () => {
+	test('removeManagerDelegation is a no-op when the manager has no delegation', () => {
+		const game = createNewGame('convenience', 100);
+		const result = removeManagerDelegation(game, 'missing-manager');
+
+		expect(result).toBe(game);
+	});
+
+	test('skips stores that have no matching report in the latest DailyReport', () => {
+		let game = addStore(createNewGame('convenience', 101), 'store-2');
+		game = withLatestReport(
+			{
+				...game,
+				managerDelegations: [delegation({ scope: { kind: 'city', cityId: 'harbor-city' } })]
+			},
+			[storeReport('store-1', { revenue: 100, grossMargin: 10 })]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records.map((record) => record.conflictKey)).toEqual(['pricing:store-1']);
+	});
+
+	test('Protect Margin produces no proposal when revenue is zero', () => {
+		const game = withLatestReport(
+			{ ...createNewGame('convenience', 102), managerDelegations: [delegation()] },
+			[storeReport('store-1', { revenue: 0, grossMargin: 0 })]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
+	test('Protect Availability produces no proposal when the product is missing from the store', () => {
+		const game = withLatestReport(
+			{
+				...withProducts(createNewGame('convenience', 103), [product('bottled-water')]),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[storeReport('store-1', {}, [productReport('snacks', { stockoutLostDemand: 2 })])]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
+	test('Protect Availability falls back to no proposal when there is no staff-capacity pressure', () => {
+		const game = withLatestReport(
+			{
+				...withProducts(createNewGame('convenience', 104), [product()]),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[storeReport('store-1', {}, [productReport('bottled-water')])]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
+	test('Grow Market Share produces no proposal when pricing is already at the floor', () => {
+		const base = createNewGame('convenience', 105);
+		const game = withLatestReport(
+			{
+				...base,
+				policy: { ...base.policy, pricing: 'discount' },
+				managerDelegations: [delegation({ playbook: 'grow-market-share' })]
+			},
+			[storeReport('store-1', { marketPosition: 20, stockHealth: 80 })]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
+	test('Stabilize Cash produces no proposal when productReports is empty or the product is missing', () => {
+		const emptyReports = withLatestReport(
+			{
+				...createNewGame('convenience', 106),
+				managerDelegations: [delegation({ playbook: 'stabilize-cash' })]
+			},
+			[storeReport('store-1', {}, [])],
+			-1
+		);
+		const missingProduct = withLatestReport(
+			{
+				...withProducts(createNewGame('convenience', 107), [product('bottled-water')]),
+				managerDelegations: [delegation({ playbook: 'stabilize-cash' })]
+			},
+			[storeReport('store-1', {}, [productReport('snacks', { unitsSold: 0 })])],
+			-1
+		);
+
+		expect(applyManagerDelegations(emptyReports).records).toEqual([]);
+		expect(applyManagerDelegations(missingProduct).records).toEqual([]);
+	});
+
+	test('Prefer Local Supply with a store scope produces no proposal', () => {
+		const game = withLatestReport(
+			{
+				...createTwoIndustryCityGame({ seed: 108, materials: false }),
+				cityInventories: [{ cityId: 'industry-city', materials: { 'bottled-water': 20 } }],
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }],
+				managerDelegations: [
+					{
+						...delegation({ playbook: 'prefer-local-supply' }),
+						scope: { kind: 'store', storeId: 'store-1' }
+					}
+				]
+			},
+			[],
+			0
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
+	test('Prefer Local Supply produces no proposal when no supply city has compatible materials', () => {
+		const game = withLatestReport(
+			{
+				...createTwoIndustryCityGame({ seed: 109, materials: false }),
+				cityInventories: [
+					{ cityId: 'industry-city', materials: {} },
+					{ cityId: 'breadbasket-basin', materials: {} }
+				],
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }],
+				managerDelegations: [
+					delegation({
+						scope: { kind: 'city', cityId: 'harbor-city' },
+						playbook: 'prefer-local-supply'
+					})
+				]
+			},
+			[],
+			0
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
+	test('findBestSupplyCity skips inaccessible city inventories and tiebreaks by world city id', () => {
+		const game = withLatestReport(
+			{
+				...createTwoIndustryCityGame({ seed: 110, materials: false }),
+				cityInventories: [
+					{ cityId: 'harbor-city', materials: { 'bottled-water': 99 } },
+					{ cityId: 'industry-city', materials: { 'bottled-water': 20 } },
+					{ cityId: 'breadbasket-basin', materials: { 'bottled-water': 20 } }
+				],
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }],
+				managerDelegations: [
+					delegation({
+						scope: { kind: 'city', cityId: 'harbor-city' },
+						playbook: 'prefer-local-supply'
+					})
+				]
+			},
+			[],
+			0
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records[0]?.outcome).toBe('applied');
+		expect(result.records[0]?.change.kind).toBe('supply-source');
+		expect(result.game.retailSupplyAssignments).toContainEqual({
+			retailCityId: 'harbor-city',
+			supplyCityId: 'industry-city'
+		});
+	});
+
+	test('selectAvailabilityProduct sorts by lost demand then product id', () => {
+		const game = withLatestReport(
+			{
+				...withProducts(createNewGame('convenience', 111), [
+					product('bottled-water', { reorderThreshold: 5, targetStock: 10 }),
+					product('snacks', { reorderThreshold: 5, targetStock: 10 })
+				]),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { stockoutLostDemand: 1 }),
+					productReport('snacks', { stockoutLostDemand: 5 })
+				])
+			]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records[0]?.change.kind).toBe('inventory-targets');
+		const change = result.records[0]?.change;
+		expect(change?.kind === 'inventory-targets' && change.productId).toBe('snacks');
+	});
+
+	test('selectLowestUnitsSoldProduct sorts by units sold then product id', () => {
+		const game = withLatestReport(
+			{
+				...withProducts(createNewGame('convenience', 112), [
+					product('bottled-water', { reorderThreshold: 10, targetStock: 20 }),
+					product('snacks', { reorderThreshold: 10, targetStock: 20 })
+				]),
+				managerDelegations: [delegation({ playbook: 'stabilize-cash' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 10 }),
+					productReport('snacks', { unitsSold: 1 })
+				])
+			],
+			-1
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records[0]?.change.kind).toBe('inventory-targets');
+		const change = result.records[0]?.change;
+		expect(change?.kind === 'inventory-targets' && change.productId).toBe('snacks');
+	});
+
+	test('setManagerDelegation sorts multiple delegations by managerId', () => {
+		let game = addManager(createNewGame('convenience', 113), 'manager-z');
+		game = addManager(game, 'manager-a');
+		const first = setManagerDelegation(game, delegation({ managerId: 'manager-z' }));
+		const updated = setManagerDelegation(first, delegation({ managerId: 'manager-a' }));
+
+		expect(updated.managerDelegations.map((d) => d.managerId)).toEqual(['manager-a', 'manager-z']);
+	});
+});

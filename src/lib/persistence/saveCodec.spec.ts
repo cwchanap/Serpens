@@ -1414,6 +1414,139 @@ describe('saveCodec', () => {
 				change: { productId: 'deleted-product' }
 			});
 		});
+
+		test('accepts an applied inventory-targets change with valid applied targets', () => {
+			const history = createFixtureHistory({
+				outcome: 'applied',
+				change: {
+					kind: 'inventory-targets',
+					storeId: 'store-1',
+					productId: 'bottled-water' as ProductId,
+					before: { reorderThreshold: 2, targetStock: 5 },
+					proposed: { reorderThreshold: 3, targetStock: 6 },
+					applied: { reorderThreshold: 3, targetStock: 6 }
+				}
+			});
+
+			const decoded = validateSaveRecord(
+				createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+			);
+
+			expect(decoded.game.managerActionHistory[0]?.change.kind).toBe('inventory-targets');
+		});
+
+		test('accepts an applied staffing-policy change', () => {
+			const history = createFixtureHistory({
+				outcome: 'applied',
+				change: {
+					kind: 'staffing-policy',
+					storeId: 'store-1',
+					before: 'efficient',
+					proposed: 'service',
+					applied: 'service'
+				}
+			});
+
+			const decoded = validateSaveRecord(
+				createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+			);
+
+			expect(decoded.game.managerActionHistory[0]?.change.kind).toBe('staffing-policy');
+		});
+
+		test('accepts an applied supply-source change', () => {
+			const history = createFixtureHistory({
+				outcome: 'applied',
+				change: {
+					kind: 'supply-source',
+					retailCityId: 'harbor-city',
+					before: 'industry-city',
+					proposed: 'breadbasket-basin',
+					applied: 'breadbasket-basin'
+				}
+			});
+
+			const decoded = validateSaveRecord(
+				createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+			);
+
+			expect(decoded.game.managerActionHistory[0]?.change.kind).toBe('supply-source');
+		});
+
+		test('accepts a supply-source change with null before and applied', () => {
+			const history = createFixtureHistory({
+				outcome: 'rejected',
+				change: {
+					kind: 'supply-source',
+					retailCityId: 'harbor-city',
+					before: null,
+					proposed: 'industry-city',
+					applied: null
+				}
+			});
+
+			const decoded = validateSaveRecord(
+				createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+			);
+
+			expect(decoded.game.managerActionHistory[0]?.change.kind).toBe('supply-source');
+		});
+
+		test('rejects inventory-targets with a negative reorderThreshold', () => {
+			const history = createFixtureHistory({
+				outcome: 'rejected',
+				change: {
+					kind: 'inventory-targets',
+					storeId: 'store-1',
+					productId: 'bottled-water' as ProductId,
+					before: { reorderThreshold: -1, targetStock: 5 },
+					proposed: { reorderThreshold: 2, targetStock: 5 },
+					applied: null
+				}
+			});
+
+			expect(() =>
+				validateSaveRecord(
+					createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+				)
+			).toThrow(SaveDataError);
+		});
+
+		test('rejects inventory-targets where targetStock does not cover reorderThreshold', () => {
+			const history = createFixtureHistory({
+				outcome: 'rejected',
+				change: {
+					kind: 'inventory-targets',
+					storeId: 'store-1',
+					productId: 'bottled-water' as ProductId,
+					before: { reorderThreshold: 5, targetStock: 3 },
+					proposed: { reorderThreshold: 2, targetStock: 5 },
+					applied: null
+				}
+			});
+
+			expect(() =>
+				validateSaveRecord(
+					createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+				)
+			).toThrow(SaveDataError);
+		});
+
+		test('normalizes policy overrides sorted by city before store', () => {
+			const game = createGame({
+				policyOverrides: [
+					{ scope: { kind: 'store', storeId: 'store-1' }, values: { pricing: 'premium' } },
+					{ scope: { kind: 'city', cityId: 'harbor-city' }, values: { pricing: 'premium' } }
+				]
+			});
+
+			const decoded = validateSaveRecord(createManualSaveRecord({ game }));
+
+			expect(decoded.game.policyOverrides.map((entry) => entry.scope)).toEqual([
+				{ kind: 'city', cityId: 'harbor-city' },
+				{ kind: 'store', storeId: 'store-1' }
+			]);
+		});
 	});
 
 	test('round-trips a current v15 multi-city save with city-scoped inventory and replenishment evidence', () => {
