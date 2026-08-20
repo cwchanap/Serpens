@@ -17,6 +17,7 @@ import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { cloneTimedEffect } from '$lib/game/eventModifiers';
 import { createNewGame, resolveDecision } from '$lib/game/state';
+import { MANAGER_ACTION_HISTORY_LIMIT } from '$lib/game/managerDelegation';
 import { getProductDefinition } from '$lib/game/products';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import {
@@ -1286,7 +1287,7 @@ describe('saveCodec', () => {
 
 		test('rejects malformed or oversized manager history', () => {
 			const oversized = createGame({
-				managerActionHistory: Array.from({ length: 101 }, (_, index) =>
+				managerActionHistory: Array.from({ length: MANAGER_ACTION_HISTORY_LIMIT + 1 }, (_, index) =>
 					createFixtureHistory({ id: `history-${index}` })
 				)
 			});
@@ -1307,6 +1308,9 @@ describe('saveCodec', () => {
 			const duplicateIds = createGame({
 				managerActionHistory: [createFixtureHistory(), createFixtureHistory()]
 			});
+			const futureDay = createGame({
+				managerActionHistory: [createFixtureHistory({ day: 4 })]
+			});
 
 			expect(() => validateSaveRecord(createManualSaveRecord({ game: oversized }))).toThrow(
 				SaveDataError
@@ -1321,6 +1325,9 @@ describe('saveCodec', () => {
 				SaveDataError
 			);
 			expect(() => validateSaveRecord(createManualSaveRecord({ game: duplicateIds }))).toThrow(
+				SaveDataError
+			);
+			expect(() => validateSaveRecord(createManualSaveRecord({ game: futureDay }))).toThrow(
 				SaveDataError
 			);
 		});
@@ -1357,7 +1364,7 @@ describe('saveCodec', () => {
 					createFixtureDelegation({ managerId: 'manager-a' })
 				],
 				managerActionHistory: [
-					createFixtureHistory({ id: 'history-z', day: 5 }),
+					createFixtureHistory({ id: 'history-z', day: 3 }),
 					createFixtureHistory({ id: 'history-b', day: 2 }),
 					createFixtureHistory({ id: 'history-a', day: 2 })
 				]
@@ -1376,7 +1383,7 @@ describe('saveCodec', () => {
 			expect(decoded.game.managerActionHistory.map((entry) => [entry.day, entry.id])).toEqual([
 				[2, 'history-a'],
 				[2, 'history-b'],
-				[5, 'history-z']
+				[3, 'history-z']
 			]);
 		});
 

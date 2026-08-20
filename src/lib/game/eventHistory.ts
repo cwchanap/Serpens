@@ -5,6 +5,7 @@ export function appendBoundedHistory<T>(
 	entries: readonly T[],
 	limit: number
 ): T[] {
+	if (limit <= 0) return [];
 	return [...history, ...entries].slice(-limit);
 }
 

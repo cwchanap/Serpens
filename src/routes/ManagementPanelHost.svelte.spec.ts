@@ -112,6 +112,7 @@ function compositionGame(): GameState {
 				...sourceStaff,
 				id: 'host-assigned-staff',
 				name: 'Assigned Host Staff',
+				role: 'manager',
 				assignedStoreId: store.id,
 				level: 1,
 				xp: promotionXp
@@ -120,6 +121,7 @@ function compositionGame(): GameState {
 				...sourceStaff,
 				id: 'host-unassigned-staff',
 				name: 'Unassigned Host Staff',
+				role: 'manager',
 				assignedStoreId: null,
 				level: 1,
 				xp: promotionXp

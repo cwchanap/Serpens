@@ -377,10 +377,9 @@ describe('supply planner snapshot', () => {
 			productId: 'snacks'
 		});
 		const rawPool = buildCityDemandPools(twoStores, twoStores.cities[0]!).snacks!;
-		const baselineSellerDemand =
-			rawPool * 0.5 * getPolicyDemandMultiplier({ marketing: 'awareness', pricing: 'standard' });
+		const baselineSellerDemand = rawPool * 0.5 * getPolicyDemandMultiplier(twoStores.policy);
 		const overriddenSellerDemand =
-			rawPool * 0.5 * getPolicyDemandMultiplier({ marketing: 'promotions', pricing: 'standard' });
+			rawPool * 0.5 * getPolicyDemandMultiplier({ ...twoStores.policy, marketing: 'promotions' });
 		// The planner rounds the seller sum once, so the delta can differ from
 		// store A's exact fractional contribution by one unit of rounding.
 		const expectedDelta =
