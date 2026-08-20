@@ -12,6 +12,7 @@ import type {
 	DailyReport,
 	DailyRouteDispatchAttempt,
 	GameState,
+	StaffMember,
 	Store,
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
@@ -152,6 +153,21 @@ function managerAction(
 	};
 }
 
+function managerStaff(id: string): StaffMember {
+	return {
+		id,
+		name: id,
+		role: 'manager',
+		monthlySalary: 100,
+		skill: 50,
+		morale: 50,
+		assignedStoreId: null,
+		hiredOnDay: 1,
+		level: 1,
+		xp: 0
+	};
+}
+
 function baseGame(overrides: Partial<GameState> = {}): GameState {
 	return {
 		seed: 1,
@@ -287,6 +303,7 @@ describe('collectGameAlerts', () => {
 		expect(
 			collectGameAlerts(
 				baseGame({
+					staff: [managerStaff('manager-1')],
 					managerActionHistory: [managerAction({ outcome: 'applied' })]
 				})
 			)
@@ -297,6 +314,7 @@ describe('collectGameAlerts', () => {
 		expect(
 			collectGameAlerts(
 				baseGame({
+					staff: [managerStaff('manager-1')],
 					managerActionHistory: [
 						managerAction({ outcome: 'overridden' }),
 						managerAction({
@@ -326,6 +344,7 @@ describe('collectGameAlerts', () => {
 		expect(
 			collectGameAlerts(
 				baseGame({
+					staff: [managerStaff('manager-a'), managerStaff('manager-b')],
 					managerActionHistory: [
 						managerAction({
 							id: 'manager-action:6:manager-b:pricing:store-1',
@@ -362,6 +381,7 @@ describe('collectGameAlerts', () => {
 		expect(
 			collectGameAlerts(
 				baseGame({
+					staff: [managerStaff('manager-1')],
 					managerActionHistory: [
 						managerAction({
 							id: 'manager-action:5:manager-1:pricing:store-1',
@@ -377,6 +397,56 @@ describe('collectGameAlerts', () => {
 				})
 			)
 		).toEqual([]);
+	});
+
+	it('does not emit a manager exception alert for a deleted manager with historical rows', () => {
+		// saveCodec.validateManagerActionHistory deliberately accepts historical
+		// rows referencing managers that no longer exist. Such an alert would
+		// deep-link to the Staff panel with no corresponding manager and
+		// localize to an empty message, so it must be suppressed.
+		expect(
+			collectGameAlerts(
+				baseGame({
+					staff: [],
+					managerActionHistory: [
+						managerAction({
+							id: 'manager-action:5:deleted-manager:pricing:store-1',
+							managerId: 'deleted-manager',
+							outcome: 'rejected'
+						})
+					]
+				})
+			)
+		).toEqual([]);
+	});
+
+	it('still alerts for a current manager alongside a deleted manager on the newest day', () => {
+		expect(
+			collectGameAlerts(
+				baseGame({
+					staff: [managerStaff('manager-current')],
+					managerActionHistory: [
+						managerAction({
+							id: 'manager-action:5:deleted-manager:pricing:store-1',
+							managerId: 'deleted-manager',
+							outcome: 'overridden'
+						}),
+						managerAction({
+							id: 'manager-action:5:manager-current:pricing:store-1',
+							managerId: 'manager-current',
+							outcome: 'rejected'
+						})
+					]
+				})
+			)
+		).toEqual([
+			{
+				id: 'manager-exception:manager-current',
+				kind: 'manager-exception',
+				managerId: 'manager-current',
+				managementPanelId: 'staff'
+			}
+		]);
 	});
 
 	it('flags a store with out-of-stock products and deep-links to its tile', () => {
