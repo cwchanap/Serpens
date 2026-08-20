@@ -233,4 +233,127 @@ describe('ManagerDelegationPanel', () => {
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 		expect(onChange).not.toHaveBeenCalled();
 	});
+
+	it('renders the empty state when there are no manager-role staff', async () => {
+		expect.assertions(1);
+		renderManagerPanel({ game: { ...baseGame, staff: [general] } });
+
+		await expect.element(page.getByText('No manager-role staff available.')).toBeVisible();
+	});
+
+	it('defaults to a city scope when a manager has no assigned store', async () => {
+		expect.assertions(2);
+		const unassignedManager: StaffMember = {
+			...manager,
+			id: 'manager-unassigned',
+			name: 'Unassigned Manager',
+			assignedStoreId: null
+		};
+		renderManagerPanel({
+			game: {
+				...baseGame,
+				staff: [unassignedManager, general],
+				managerDelegations: []
+			}
+		});
+
+		await expect.element(page.getByRole('heading', { name: 'Unassigned Manager' })).toBeVisible();
+		await expect
+			.element(page.getByLabelText('Delegation scope for Unassigned Manager'))
+			.toHaveValue('city');
+	});
+
+	it('emits a removal when the remove button is clicked', async () => {
+		expect.assertions(1);
+		const onRemove = vi.fn();
+		renderManagerPanel({ onRemove });
+
+		await page.getByRole('button', { name: 'Remove delegation' }).click();
+
+		expect(onRemove).toHaveBeenCalledWith(manager.id);
+	});
+
+	it('emits a store scope change when switching from city to store', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		const cityDelegation: ManagerDelegation = {
+			...defaultDelegation,
+			scope: { kind: 'city', cityId: 'harbor-city' }
+		};
+		renderManagerPanel({ game: managerGame({}, cityDelegation), onChange });
+
+		await page.getByLabelText('Delegation scope for Alex Chen').selectOptions('store');
+
+		expect(onChange).toHaveBeenLastCalledWith(
+			expect.objectContaining({ scope: { kind: 'store', storeId: baseStore.id } })
+		);
+	});
+
+	it('emits a scope target change for a store-scoped delegation', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		renderManagerPanel({ game: managerGame({}, defaultDelegation), onChange });
+
+		await page.getByLabelText('Delegation target for Alex Chen').selectOptions(baseStore.id);
+
+		expect(onChange).toHaveBeenLastCalledWith(
+			expect.objectContaining({ scope: { kind: 'store', storeId: baseStore.id } })
+		);
+	});
+
+	it('renders applied change summaries for staffing, inventory, and supply changes', async () => {
+		expect.assertions(3);
+		const game = managerGame({
+			managerActionHistory: [
+				actionRecord({
+					outcome: 'applied',
+					reason: 'margin-below-threshold',
+					change: {
+						kind: 'staffing-policy',
+						storeId: baseStore.id,
+						before: 'efficient',
+						proposed: 'service',
+						applied: 'service'
+					}
+				}),
+				actionRecord({
+					id: 'action-inv-applied',
+					outcome: 'applied',
+					reason: 'margin-below-threshold',
+					change: {
+						kind: 'inventory-targets',
+						storeId: baseStore.id,
+						productId: 'bottled-water',
+						before: { reorderThreshold: 2, targetStock: 4 },
+						proposed: { reorderThreshold: 3, targetStock: 5 },
+						applied: { reorderThreshold: 3, targetStock: 5 }
+					}
+				}),
+				actionRecord({
+					id: 'action-sup-applied',
+					outcome: 'applied',
+					reason: 'margin-below-threshold',
+					change: {
+						kind: 'supply-source',
+						retailCityId: 'harbor-city',
+						before: 'industry-city',
+						proposed: 'industry-city',
+						applied: 'industry-city'
+					}
+				})
+			]
+		});
+		renderManagerPanel({ game });
+
+		await expect.element(page.getByText('Efficient → Service')).toBeVisible();
+		await expect.element(page.getByText('2/4 → 3/5')).toBeVisible();
+		await expect.element(page.getByText('Industry City → Industry City')).toBeVisible();
+	});
+
+	it('renders the empty history state when a manager has no action records', async () => {
+		expect.assertions(1);
+		renderManagerPanel();
+
+		await expect.element(page.getByText('No manager actions recorded.')).toBeVisible();
+	});
 });

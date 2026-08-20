@@ -3,6 +3,7 @@ import { createNewGame, openStore } from './state';
 import { openWorldCity } from './world';
 import {
 	clearPolicyOverrideField,
+	isValidPolicyScope,
 	POLICY_FIELD_OPTIONS,
 	resetPolicyOverrideScope,
 	resolveEffectivePolicy,
@@ -161,5 +162,91 @@ describe('policy inheritance', () => {
 		);
 		expect(stepPolicyValue('inventory', 'balanced', -1)).toBe('lean');
 		expect(stepPolicyValue('inventory', 'balanced', 1)).toBe('generous');
+	});
+});
+
+describe('policy inheritance edge cases', () => {
+	test('isValidPolicyScope distinguishes valid and invalid store scopes', () => {
+		const game = createNewGame('convenience', 200);
+		const validStore = { kind: 'store' as const, storeId: game.stores[0]!.id };
+		const missingStore = { kind: 'store' as const, storeId: 'missing-store' };
+		const validCity = { kind: 'city' as const, cityId: 'harbor-city' as const };
+		const invalidCity = { kind: 'city' as const, cityId: 'campus-junction' as const };
+
+		expect(isValidPolicyScope(game, validStore)).toBe(true);
+		expect(isValidPolicyScope(game, missingStore)).toBe(false);
+		expect(isValidPolicyScope(game, validCity)).toBe(true);
+		expect(isValidPolicyScope(game, invalidCity)).toBe(false);
+	});
+
+	test('setPolicyOverride returns the original game for a missing store scope', () => {
+		const game = createNewGame('convenience', 201);
+		const missingStore = { kind: 'store' as const, storeId: 'missing-store' };
+
+		expect(setPolicyOverride(game, missingStore, { pricing: 'premium' })).toBe(game);
+	});
+
+	test('setPolicyOverride returns the original game when the patch has no defined values', () => {
+		const game = createNewGame('convenience', 202);
+		const scope = { kind: 'city', cityId: 'harbor-city' } as const;
+
+		expect(setPolicyOverride(game, scope, { pricing: undefined })).toBe(game);
+	});
+
+	test('setPolicyOverride merges a new field into an existing override', () => {
+		const game = createNewGame('convenience', 203);
+		const scope = { kind: 'city', cityId: 'harbor-city' } as const;
+		const first = setPolicyOverride(game, scope, { pricing: 'premium' });
+		const updated = setPolicyOverride(first, scope, { service: 'highTouch' });
+
+		expect(updated.policyOverrides).toEqual([
+			{ scope, values: { pricing: 'premium', service: 'highTouch' } }
+		]);
+	});
+
+	test('clearPolicyOverrideField is a no-op when no override exists for the scope', () => {
+		const game = createNewGame('convenience', 204);
+		const scope = { kind: 'city', cityId: 'harbor-city' } as const;
+
+		expect(clearPolicyOverrideField(game, scope, 'pricing')).toBe(game);
+	});
+
+	test('clearPolicyOverrideField is a no-op when the field is not in the override', () => {
+		const game = createNewGame('convenience', 205);
+		const scope = { kind: 'city', cityId: 'harbor-city' } as const;
+		const withOverride = setPolicyOverride(game, scope, { pricing: 'premium' });
+
+		expect(clearPolicyOverrideField(withOverride, scope, 'service')).toBe(withOverride);
+	});
+
+	test('clearPolicyOverrideField removes the whole override when the last field is cleared', () => {
+		const game = createNewGame('convenience', 206);
+		const scope = { kind: 'city', cityId: 'harbor-city' } as const;
+		const withOverride = setPolicyOverride(game, scope, { pricing: 'premium' });
+		const cleared = clearPolicyOverrideField(withOverride, scope, 'pricing');
+
+		expect(cleared.policyOverrides).toEqual([]);
+	});
+
+	test('resetPolicyOverrideScope is a no-op when no override exists for the scope', () => {
+		const game = createNewGame('convenience', 207);
+		const scope = { kind: 'city', cityId: 'harbor-city' } as const;
+
+		expect(resetPolicyOverrideScope(game, scope)).toBe(game);
+	});
+
+	test('resolveStoreCityId returns null for a store in an unopened city', () => {
+		const base = createNewGame('convenience', 208);
+		const game: GameState = {
+			...base,
+			stores: [
+				...base.stores,
+				{ ...base.stores[0]!, id: 'store-campus', cityId: 'campus-junction', name: 'Campus' }
+			]
+		};
+		const scope = { kind: 'store' as const, storeId: 'store-campus' };
+
+		expect(isValidPolicyScope(game, scope)).toBe(false);
+		expect(setPolicyOverride(game, scope, { pricing: 'premium' })).toBe(game);
 	});
 });
