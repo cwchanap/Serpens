@@ -638,6 +638,13 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 		}
 	}
 
+	if (alert.kind === 'manager-exception' && alert.managerId) {
+		const manager = game.staff.find((candidate) => candidate.id === alert.managerId);
+		if (manager) {
+			return i18n.t('copy.alerts.managerException', { managerName: manager.name });
+		}
+	}
+
 	if (
 		(alert.kind === 'logistics-origin-stock' || alert.kind === 'logistics-route-capacity') &&
 		alert.routeId

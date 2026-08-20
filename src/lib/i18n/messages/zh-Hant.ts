@@ -1511,7 +1511,8 @@ export const zhHant = {
 			upcomingLoanPayment: '{purpose}的 {amount} 付款將於第 {day} 天到期。',
 			missedLoanPayment: '{purpose}有 {amount} 的逾期付款。',
 			covenantRisk: '債務償付覆蓋率為 {coverage}，低於 {threshold}。',
-			lowCashRunway: '現金續航只剩 {days} 天。'
+			lowCashRunway: '現金續航只剩 {days} 天。',
+			managerException: '{managerName} 有一項委任動作需要檢查。'
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} 有庫存壓力',

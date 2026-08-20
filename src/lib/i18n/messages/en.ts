@@ -1552,7 +1552,8 @@ export const en = {
 			upcomingLoanPayment: '{purpose} payment of {amount} is due on day {day}.',
 			missedLoanPayment: '{purpose} has a missed payment of {amount}.',
 			covenantRisk: 'Debt-service coverage is {coverage}, below {threshold}.',
-			lowCashRunway: 'Cash runway is {days} days.'
+			lowCashRunway: 'Cash runway is {days} days.',
+			managerException: '{managerName} has a delegated action that needs review.'
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} has stock pressure',

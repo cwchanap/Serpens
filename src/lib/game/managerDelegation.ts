@@ -45,20 +45,36 @@ export interface ManagerEvaluationResult {
 }
 
 export function setManagerDelegation(game: GameState, delegation: ManagerDelegation): GameState {
+	const persistedDelegation: ManagerDelegation = {
+		...delegation,
+		scope:
+			delegation.scope.kind === 'city'
+				? { kind: 'city', cityId: delegation.scope.cityId }
+				: { kind: 'store', storeId: delegation.scope.storeId },
+		authority: { ...delegation.authority }
+	};
+
 	if (
-		!game.staff.some((member) => member.id === delegation.managerId && member.role === 'manager')
+		!game.staff.some(
+			(member) => member.id === persistedDelegation.managerId && member.role === 'manager'
+		)
 	) {
 		return game;
 	}
 
-	if (!isValidDelegationScope(game, delegation.scope)) return game;
-	if (delegation.playbook === 'prefer-local-supply' && delegation.scope.kind !== 'city') {
+	if (!isValidDelegationScope(game, persistedDelegation.scope)) return game;
+	if (
+		persistedDelegation.playbook === 'prefer-local-supply' &&
+		persistedDelegation.scope.kind !== 'city'
+	) {
 		return game;
 	}
 
 	const managerDelegations = [
-		...game.managerDelegations.filter((candidate) => candidate.managerId !== delegation.managerId),
-		delegation
+		...game.managerDelegations.filter(
+			(candidate) => candidate.managerId !== persistedDelegation.managerId
+		),
+		persistedDelegation
 	].sort((left, right) => compareIds(left.managerId, right.managerId));
 
 	return { ...game, managerDelegations };

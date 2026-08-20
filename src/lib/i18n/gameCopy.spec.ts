@@ -431,6 +431,31 @@ describe('game copy builders', () => {
 		).toBe('Keep original message');
 	});
 
+	it('localizes manager exception alerts with the manager identity and no raw outcome enums', () => {
+		const game = createNewGame('convenience', 20260708);
+		const manager = game.staff.find((member) => member.role === 'manager');
+		if (!manager) throw new Error('Expected the founding game to include a manager.');
+
+		for (const locale of Object.keys(messagesByLocale) as Array<keyof typeof messagesByLocale>) {
+			const localized = localizeGameAlert(
+				game,
+				{
+					id: `manager-exception:${manager.id}`,
+					kind: 'manager-exception',
+					managerId: manager.id,
+					managementPanelId: 'staff'
+				},
+				createI18n(locale)
+			);
+
+			expect(localized.message, `${locale} message`).toContain(manager.name);
+			expect(localized.message, `${locale} message`).not.toBe('');
+			expect(localized.message, `${locale} message`).not.toMatch(
+				/manager-exception|overridden|rejected|out-of-authority/
+			);
+		}
+	});
+
 	it('localizes logistics alert copy in every supported locale', () => {
 		const base = createNewGame('convenience', 20260708);
 		const game = {

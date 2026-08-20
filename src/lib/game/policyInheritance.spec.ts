@@ -133,6 +133,15 @@ describe('policy inheritance', () => {
 		]);
 	});
 
+	test('copies reactive scope objects into a cloneable persisted override', () => {
+		const game = createNewGame('convenience', 107);
+		const scope = new Proxy({ kind: 'store', storeId: game.stores[0]!.id } as const, {});
+		const updated = setPolicyOverride(game, scope, { pricing: 'premium' });
+
+		expect(updated.policyOverrides[0]?.scope).not.toBe(scope);
+		expect(() => structuredClone(updated)).not.toThrow();
+	});
+
 	test('returns the original game for invalid mutation scopes', () => {
 		const game = createNewGame('convenience', 107);
 		const invalidScope = { kind: 'city', cityId: 'campus-junction' } as const;

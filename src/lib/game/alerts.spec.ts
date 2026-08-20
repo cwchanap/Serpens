@@ -129,6 +129,29 @@ function building(overrides: Partial<IndustrialBuilding> = {}): IndustrialBuildi
 	};
 }
 
+function managerAction(
+	overrides: Partial<GameState['managerActionHistory'][number]> = {}
+): GameState['managerActionHistory'][number] {
+	return {
+		id: 'manager-action:5:manager-1:pricing:store-1',
+		day: 5,
+		managerId: 'manager-1',
+		scope: { kind: 'store', storeId: 'store-1' },
+		playbook: 'protect-margin',
+		conflictKey: 'pricing:store-1',
+		outcome: 'applied',
+		reason: 'margin-below-threshold',
+		change: {
+			kind: 'pricing-policy',
+			storeId: 'store-1',
+			before: 'standard',
+			proposed: 'premium',
+			applied: 'premium'
+		},
+		...overrides
+	};
+}
+
 function baseGame(overrides: Partial<GameState> = {}): GameState {
 	return {
 		seed: 1,
@@ -258,6 +281,102 @@ describe('collectGameAlerts', () => {
 	it('returns no alerts for a healthy game', () => {
 		expect.assertions(1);
 		expect(collectGameAlerts(baseGame({ stores: [store()] }))).toEqual([]);
+	});
+
+	it('does not alert for applied-only manager activity', () => {
+		expect(
+			collectGameAlerts(
+				baseGame({
+					managerActionHistory: [managerAction({ outcome: 'applied' })]
+				})
+			)
+		).toEqual([]);
+	});
+
+	it('emits one manager exception alert for multiple non-applied rows by one manager', () => {
+		expect(
+			collectGameAlerts(
+				baseGame({
+					managerActionHistory: [
+						managerAction({ outcome: 'overridden' }),
+						managerAction({
+							id: 'manager-action:5:manager-1:pricing:store-2',
+							conflictKey: 'pricing:store-2',
+							outcome: 'rejected'
+						}),
+						managerAction({
+							id: 'manager-action:5:manager-1:pricing:store-3',
+							conflictKey: 'pricing:store-3',
+							outcome: 'out-of-authority'
+						})
+					]
+				})
+			)
+		).toEqual([
+			{
+				id: 'manager-exception:manager-1',
+				kind: 'manager-exception',
+				managerId: 'manager-1',
+				managementPanelId: 'staff'
+			}
+		]);
+	});
+
+	it('emits one manager exception alert per affected manager on the newest action day', () => {
+		expect(
+			collectGameAlerts(
+				baseGame({
+					managerActionHistory: [
+						managerAction({
+							id: 'manager-action:6:manager-b:pricing:store-1',
+							day: 6,
+							managerId: 'manager-b',
+							outcome: 'rejected'
+						}),
+						managerAction({
+							id: 'manager-action:6:manager-a:pricing:store-1',
+							day: 6,
+							managerId: 'manager-a',
+							outcome: 'overridden'
+						})
+					]
+				})
+			)
+		).toEqual([
+			{
+				id: 'manager-exception:manager-a',
+				kind: 'manager-exception',
+				managerId: 'manager-a',
+				managementPanelId: 'staff'
+			},
+			{
+				id: 'manager-exception:manager-b',
+				kind: 'manager-exception',
+				managerId: 'manager-b',
+				managementPanelId: 'staff'
+			}
+		]);
+	});
+
+	it('does not surface an older manager exception after a newer applied-only day', () => {
+		expect(
+			collectGameAlerts(
+				baseGame({
+					managerActionHistory: [
+						managerAction({
+							id: 'manager-action:5:manager-1:pricing:store-1',
+							day: 5,
+							outcome: 'overridden'
+						}),
+						managerAction({
+							id: 'manager-action:6:manager-1:pricing:store-1',
+							day: 6,
+							outcome: 'applied'
+						})
+					]
+				})
+			)
+		).toEqual([]);
 	});
 
 	it('flags a store with out-of-stock products and deep-links to its tile', () => {

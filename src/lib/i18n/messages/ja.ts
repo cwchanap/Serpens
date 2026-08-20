@@ -1526,7 +1526,8 @@ export const ja = {
 			upcomingLoanPayment: '{purpose}の支払額 {amount} は{day}日目が期限です。',
 			missedLoanPayment: '{purpose}に未払い {amount} があります。',
 			covenantRisk: '債務返済カバレッジは {coverage} で、{threshold}を下回っています。',
-			lowCashRunway: '資金余力はあと{days}日です。'
+			lowCashRunway: '資金余力はあと{days}日です。',
+			managerException: '{managerName} の委任アクションを確認してください。'
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} に在庫圧力があります',

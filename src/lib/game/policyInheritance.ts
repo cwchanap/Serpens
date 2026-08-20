@@ -135,19 +135,28 @@ function sortedOverrides(overrides: PolicyOverride[]): PolicyOverride[] {
 	return [...overrides].sort((left, right) => compareScopes(left.scope, right.scope));
 }
 
+function copyPolicyOverrideScope(scope: PolicyOverrideScope): PolicyOverrideScope {
+	return scope.kind === 'city'
+		? { kind: 'city', cityId: scope.cityId }
+		: { kind: 'store', storeId: scope.storeId };
+}
+
 export function setPolicyOverride(
 	game: GameState,
 	scope: PolicyOverrideScope,
 	patch: Partial<CompanyPolicy>
 ): GameState {
-	if (!isValidScope(game, scope)) return game;
+	const persistedScope = copyPolicyOverrideScope(scope);
+	if (!isValidScope(game, persistedScope)) return game;
 
-	const index = game.policyOverrides.findIndex((override) => sameScope(override.scope, scope));
+	const index = game.policyOverrides.findIndex((override) =>
+		sameScope(override.scope, persistedScope)
+	);
 	const existing = index === -1 ? undefined : game.policyOverrides[index];
 	const values = { ...(existing?.values ?? {}), ...patch };
 	if (Object.keys(values).length === 0) return game;
 
-	const nextOverride: PolicyOverride = { scope, values };
+	const nextOverride: PolicyOverride = { scope: persistedScope, values };
 	const policyOverrides =
 		index === -1
 			? sortedOverrides([...game.policyOverrides, nextOverride])
@@ -165,9 +174,12 @@ export function clearPolicyOverrideField(
 	scope: PolicyOverrideScope,
 	field: keyof CompanyPolicy
 ): GameState {
-	if (!isValidScope(game, scope)) return game;
+	const persistedScope = copyPolicyOverrideScope(scope);
+	if (!isValidScope(game, persistedScope)) return game;
 
-	const index = game.policyOverrides.findIndex((override) => sameScope(override.scope, scope));
+	const index = game.policyOverrides.findIndex((override) =>
+		sameScope(override.scope, persistedScope)
+	);
 	if (index === -1) return game;
 
 	const existing = game.policyOverrides[index]!;
@@ -188,7 +200,7 @@ export function clearPolicyOverrideField(
 		...game,
 		policyOverrides: sortedOverrides(
 			game.policyOverrides.map((override, overrideIndex) =>
-				overrideIndex === index ? { scope, values } : override
+				overrideIndex === index ? { scope: persistedScope, values } : override
 			)
 		)
 	};
