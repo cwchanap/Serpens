@@ -330,13 +330,15 @@ describe('PolicyPanel', () => {
 			},
 			'campus-junction'
 		);
-		renderPolicyPanel({ game: opened, onSetPolicyOverride });
+		const secondStore = { ...opened.stores[0]!, id: 'store-2', name: 'Second Store' };
+		const game = { ...opened, stores: [...opened.stores, secondStore] };
+		renderPolicyPanel({ game, onSetPolicyOverride });
 		await page.getByLabelText('Policy scope').selectOptions('store');
-		await page.getByLabelText('Target').selectOptions(opened.stores[0]!.id);
+		await page.getByLabelText('Target').selectOptions(secondStore.id);
 		await page.getByLabelText('Pricing').selectOptions('discount');
 
 		expect(onSetPolicyOverride).toHaveBeenCalledWith(
-			{ kind: 'store', storeId: opened.stores[0]!.id },
+			{ kind: 'store', storeId: secondStore.id },
 			{ pricing: 'discount' }
 		);
 	});
