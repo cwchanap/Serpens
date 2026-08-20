@@ -291,7 +291,25 @@ export const en = {
 		}
 	},
 	policyPanel: {
-		title: 'Policies'
+		title: 'Policies',
+		scopeLabel: 'Policy scope',
+		targetLabel: 'Policy target',
+		scopes: {
+			company: 'Company',
+			city: 'City',
+			store: 'Store'
+		},
+		selectedScope: '{scope}: {target}',
+		parent: 'Parent: {value}',
+		provenance: {
+			company: 'Company policy',
+			city: 'City override',
+			store: 'Store override',
+			explicit: 'Explicit override ({source})',
+			inherited: 'Inherited from {source}'
+		},
+		inheritField: 'Inherit {field}',
+		resetScope: 'Reset scope'
 	},
 	reportsPanel: {
 		title: 'Reports',
@@ -405,6 +423,70 @@ export const en = {
 	},
 	scorecard: {
 		title: 'Scorecard'
+	},
+	managerDelegationPanel: {
+		title: 'Manager delegations',
+		description: 'Configure bounded playbooks for manager-role staff.',
+		empty: 'No manager-role staff available.',
+		assignment: 'Physical assignment: {store}',
+		unassigned: 'Unassigned',
+		enabled: 'Enabled',
+		disabled: 'Disabled',
+		enabledFor: 'Enable delegation for {name}',
+		scope: 'Scope',
+		scopeFor: 'Delegation scope for {name}',
+		target: 'Target',
+		targetFor: 'Delegation target for {name}',
+		playbook: 'Playbook',
+		playbookFor: 'Playbook for {name}',
+		scopes: {
+			city: 'City',
+			store: 'Store'
+		},
+		playbooks: {
+			'protect-margin': 'Protect Margin',
+			'protect-availability': 'Protect Availability',
+			'grow-market-share': 'Grow Market Share',
+			'stabilize-cash': 'Stabilize Cash',
+			'prefer-local-supply': 'Prefer Local Supply'
+		},
+		authority: 'Authority',
+		authorityFor: '{domain} authority for {name}',
+		authorities: {
+			pricing: 'Pricing',
+			inventory: 'Inventory',
+			staffing: 'Staffing',
+			supply: 'Supply'
+		},
+		remove: 'Remove delegation',
+		history: {
+			title: 'Recent action history',
+			empty: 'No manager actions recorded.',
+			notApplied: 'not applied',
+			none: 'None',
+			outcomes: {
+				applied: 'Applied',
+				overridden: 'Overridden',
+				rejected: 'Rejected',
+				'out-of-authority': 'Out of authority'
+			},
+			reasons: {
+				'margin-below-threshold': 'Margin below threshold',
+				'availability-pressure': 'Availability pressure',
+				'staff-capacity-pressure': 'Staff capacity pressure',
+				'market-position-low': 'Market position low',
+				'negative-operating-cash-flow': 'Negative operating cash flow',
+				'better-local-supply': 'Better local supply',
+				'conflict-lost': 'Conflict lost',
+				'authority-disabled': 'Authority disabled',
+				'transition-rejected': 'Transition rejected'
+			},
+			changes: {
+				policy: '{field}: {before} → {proposed} (applied: {applied})',
+				inventory: '{product}: {before} → {proposed} (applied: {applied})',
+				supply: 'Supply: {before} → {proposed} (applied: {applied})'
+			}
+		}
 	},
 	staffPanel: {
 		title: 'Staff',

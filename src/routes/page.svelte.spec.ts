@@ -613,6 +613,26 @@ describe('GameRouteController sandbox handlers', () => {
 		expect(pending.pending && !pending.advanceDay && !pending.openStore).toBe(true);
 	});
 
+	it('keeps company policy available while scoped policy and delegation stay sandbox-only', () => {
+		expect.assertions(4);
+		const definition = scenarioDefinition({ allowedCommands: ['updatePolicy'] });
+		const sandbox = createMutationAvailability({
+			playMode: 'sandbox',
+			pending: false,
+			definition: null
+		});
+		const scenario = createMutationAvailability({
+			playMode: 'scenario',
+			pending: false,
+			definition
+		});
+
+		expect(sandbox.updatePolicy).toBe(true);
+		expect(sandbox.scopedPolicy).toBe(true);
+		expect(scenario.updatePolicy).toBe(true);
+		expect(scenario.scopedPolicy || scenario.delegation).toBe(false);
+	});
+
 	it('runs every sandbox handler through real domain transitions with immediate publish/autosave/SFX ordering', async () => {
 		const events: string[] = [];
 		const save = createSaveRepositoryHarness({ events });

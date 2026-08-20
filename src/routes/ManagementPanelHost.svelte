@@ -11,6 +11,7 @@
 	import RetailSupplySources from '$lib/components/game/RetailSupplySources.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
+	import ManagerDelegationPanel from '$lib/components/game/ManagerDelegationPanel.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
 	import type { RetailCitySupplyView } from '$lib/components/game/retailSupplySources';
 	import type { GameRouteCommitResult } from '$lib/game/commandResult';
@@ -22,7 +23,14 @@
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { ReportSummary } from '$lib/game/reports';
-	import type { CompanyPolicy, GameState, LoanTermDays, ProductId } from '$lib/game/types';
+	import type {
+		CompanyPolicy,
+		GameState,
+		LoanTermDays,
+		ManagerDelegation,
+		PolicyOverrideScope,
+		ProductId
+	} from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { MutationAvailability } from './gameRouteController';
 
@@ -46,6 +54,11 @@
 
 		onClose: () => void;
 		onChangePolicy: (patch: Partial<CompanyPolicy>) => void;
+		onSetPolicyOverride: (scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>) => void;
+		onClearPolicyOverrideField: (scope: PolicyOverrideScope, field: keyof CompanyPolicy) => void;
+		onResetPolicyOverrideScope: (scope: PolicyOverrideScope) => void;
+		onSetManagerDelegation: (delegation: ManagerDelegation) => void;
+		onRemoveManagerDelegation: (managerId: string) => void;
 		onHireStaff: (candidateId: string) => void;
 		onAssignStaff: (staffId: string, storeId: string) => void;
 		onUnassignStaff: (staffId: string) => void;
@@ -92,6 +105,11 @@
 		disabledReason,
 		onClose,
 		onChangePolicy,
+		onSetPolicyOverride,
+		onClearPolicyOverrideField,
+		onResetPolicyOverrideScope,
+		onSetManagerDelegation,
+		onRemoveManagerDelegation,
 		onHireStaff,
 		onAssignStaff,
 		onUnassignStaff,
@@ -175,28 +193,42 @@
 		{:else if panelId === 'policies'}
 			<PolicyPanel
 				{i18n}
-				policy={panelGame.policy}
+				game={panelGame}
 				onChange={onChangePolicy}
+				{onSetPolicyOverride}
+				{onClearPolicyOverrideField}
+				{onResetPolicyOverrideScope}
 				canUpdate={mutations.updatePolicy}
+				canUpdateScoped={mutations.scopedPolicy}
 				{disabledReason}
 			/>
 		{:else if panelId === 'staff'}
-			<StaffPanel
-				{i18n}
-				stores={panelGame.stores}
-				staff={panelGame.staff}
-				hiringCandidates={panelGame.hiringCandidates}
-				cash={panelGame.cash}
-				onHire={onHireStaff}
-				onAssign={onAssignStaff}
-				onUnassign={onUnassignStaff}
-				onPromote={onPromoteStaff}
-				canHire={mutations.hireStaff}
-				canAssign={mutations.assignStaff}
-				canUnassign={mutations.unassignStaff}
-				canPromote={mutations.promoteStaff}
-				{disabledReason}
-			/>
+			<div class="staff-surfaces">
+				<StaffPanel
+					{i18n}
+					stores={panelGame.stores}
+					staff={panelGame.staff}
+					hiringCandidates={panelGame.hiringCandidates}
+					cash={panelGame.cash}
+					onHire={onHireStaff}
+					onAssign={onAssignStaff}
+					onUnassign={onUnassignStaff}
+					onPromote={onPromoteStaff}
+					canHire={mutations.hireStaff}
+					canAssign={mutations.assignStaff}
+					canUnassign={mutations.unassignStaff}
+					canPromote={mutations.promoteStaff}
+					{disabledReason}
+				/>
+				<ManagerDelegationPanel
+					{i18n}
+					game={panelGame}
+					onChange={onSetManagerDelegation}
+					onRemove={onRemoveManagerDelegation}
+					canUpdate={mutations.delegation}
+					{disabledReason}
+				/>
+			</div>
 		{:else if panelId === 'stores'}
 			<div class="stores-surfaces">
 				<RetailSupplySources
@@ -314,7 +346,8 @@
 	}
 
 	.decisions-surfaces,
-	.stores-surfaces {
+	.stores-surfaces,
+	.staff-surfaces {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		align-items: start;
@@ -359,7 +392,8 @@
 		}
 
 		.decisions-surfaces,
-		.stores-surfaces {
+		.stores-surfaces,
+		.staff-surfaces {
 			grid-template-columns: 1fr;
 		}
 

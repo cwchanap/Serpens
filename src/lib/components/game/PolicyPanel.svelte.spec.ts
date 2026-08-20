@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import PolicyPanel from './PolicyPanel.svelte';
 import { createI18n, type I18nBundle } from '$lib/i18n';
-import type { CompanyPolicy } from '$lib/game/types';
+import { createNewGame } from '$lib/game/state';
+import { POLICY_FIELD_OPTIONS, setPolicyOverride } from '$lib/game/policyInheritance';
+import type { CompanyPolicy, GameState, PolicyOverrideScope } from '$lib/game/types';
 
 const defaultPolicy: CompanyPolicy = {
 	pricing: 'competitive',
@@ -15,17 +17,26 @@ const defaultPolicy: CompanyPolicy = {
 
 function renderPolicyPanel(
 	overrides: Partial<{
-		policy: CompanyPolicy;
+		game: GameState;
 		i18n: I18nBundle;
 		onChange: (patch: Partial<CompanyPolicy>) => void;
+		onSetPolicyOverride: (scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>) => void;
+		onClearPolicyOverrideField: (scope: PolicyOverrideScope, field: keyof CompanyPolicy) => void;
+		onResetPolicyOverrideScope: (scope: PolicyOverrideScope) => void;
 		canUpdate: boolean;
+		canUpdateScoped: boolean;
 		disabledReason: string;
 	}> = {}
 ) {
 	const props = {
-		policy: defaultPolicy,
+		game: { ...createNewGame('convenience', 20260818), policy: defaultPolicy },
 		i18n: createI18n('en'),
 		onChange: vi.fn(),
+		onSetPolicyOverride: vi.fn(),
+		onClearPolicyOverrideField: vi.fn(),
+		onResetPolicyOverrideScope: vi.fn(),
+		canUpdate: true,
+		canUpdateScoped: true,
 		...overrides
 	};
 
@@ -56,13 +67,11 @@ describe('PolicyPanel', () => {
 
 		renderPolicyPanel();
 
-		const selects = page.getByRole('combobox');
-
-		await expect.element(selects.nth(0)).toHaveValue('competitive');
-		await expect.element(selects.nth(1)).toHaveValue('balanced');
-		await expect.element(selects.nth(2)).toHaveValue('efficient');
-		await expect.element(selects.nth(3)).toHaveValue('awareness');
-		await expect.element(selects.nth(4)).toHaveValue('balanced');
+		await expect.element(page.getByLabelText('Pricing')).toHaveValue('competitive');
+		await expect.element(page.getByLabelText('Inventory')).toHaveValue('balanced');
+		await expect.element(page.getByLabelText('Staffing')).toHaveValue('efficient');
+		await expect.element(page.getByLabelText('Marketing')).toHaveValue('awareness');
+		await expect.element(page.getByLabelText('Service')).toHaveValue('balanced');
 	});
 
 	it('fires onChange with { pricing: "premium" } when the pricing select changes', async () => {
@@ -156,5 +165,109 @@ describe('PolicyPanel', () => {
 		const select = await page.getByLabelText('Pricing').element();
 		select.dispatchEvent(new Event('change', { bubbles: true }));
 		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it('renders effective, parent, and provenance values through company, city, and store scopes', async () => {
+		expect.assertions(7);
+		const base = createNewGame('convenience', 20260818);
+		const cityOverride = setPolicyOverride(
+			base,
+			{ kind: 'city', cityId: 'harbor-city' },
+			{
+				pricing: 'premium'
+			}
+		);
+		const game = setPolicyOverride(
+			cityOverride,
+			{ kind: 'store', storeId: 'store-1' },
+			{
+				pricing: 'discount'
+			}
+		);
+		renderPolicyPanel({ game });
+
+		await expect.element(page.getByText('Company policy').first()).toBeVisible();
+		await page.getByLabelText('Policy scope').selectOptions('city');
+		await expect.element(page.getByLabelText('Pricing')).toHaveValue('premium');
+		await expect.element(page.getByText('Parent: Standard')).toBeVisible();
+		await expect.element(page.getByText('Explicit override (City override)')).toBeVisible();
+
+		await page.getByLabelText('Policy scope').selectOptions('store');
+		await expect.element(page.getByLabelText('Pricing')).toHaveValue('discount');
+		await expect.element(page.getByText('Parent: Premium')).toBeVisible();
+		await expect.element(page.getByText('Explicit override (Store override)')).toBeVisible();
+	});
+
+	it('keeps an explicit value equal to its parent visibly explicit', async () => {
+		expect.assertions(2);
+		const base = createNewGame('convenience', 20260818);
+		const game = setPolicyOverride(
+			base,
+			{ kind: 'city', cityId: 'harbor-city' },
+			{
+				pricing: base.policy.pricing
+			}
+		);
+		renderPolicyPanel({ game });
+		await page.getByLabelText('Policy scope').selectOptions('city');
+
+		await expect.element(page.getByText('Explicit override (City override)')).toBeVisible();
+		expect(document.querySelectorAll('small.provenance[data-provenance="city"]')).toHaveLength(1);
+	});
+
+	it('clears one scoped field when its Inherit action is selected', async () => {
+		expect.assertions(1);
+		const onClearPolicyOverrideField = vi.fn();
+		const base = createNewGame('convenience', 20260818);
+		const game = setPolicyOverride(
+			base,
+			{ kind: 'city', cityId: 'harbor-city' },
+			{
+				pricing: 'premium'
+			}
+		);
+		renderPolicyPanel({ game, onClearPolicyOverrideField });
+		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('button', { name: 'Inherit Pricing' }).click();
+
+		expect(onClearPolicyOverrideField).toHaveBeenCalledWith(
+			{ kind: 'city', cityId: 'harbor-city' },
+			'pricing'
+		);
+	});
+
+	it('resets the selected scoped override', async () => {
+		expect.assertions(1);
+		const onResetPolicyOverrideScope = vi.fn();
+		const base = createNewGame('convenience', 20260818);
+		const game = setPolicyOverride(
+			base,
+			{ kind: 'city', cityId: 'harbor-city' },
+			{
+				pricing: 'premium'
+			}
+		);
+		renderPolicyPanel({ game, onResetPolicyOverrideScope });
+		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('button', { name: 'Reset scope' }).click();
+
+		expect(onResetPolicyOverrideScope).toHaveBeenCalledWith({
+			kind: 'city',
+			cityId: 'harbor-city'
+		});
+	});
+
+	it('renders each policy select option in POLICY_FIELD_OPTIONS order', async () => {
+		expect.assertions(5);
+		renderPolicyPanel();
+
+		for (const field of Object.keys(POLICY_FIELD_OPTIONS) as (keyof CompanyPolicy)[]) {
+			const options = Array.from(
+				(
+					await page.getByLabelText(field[0]!.toUpperCase() + field.slice(1)).element()
+				).querySelectorAll('option')
+			).map((option) => option.value);
+			expect(options).toEqual([...POLICY_FIELD_OPTIONS[field]]);
+		}
 	});
 });
