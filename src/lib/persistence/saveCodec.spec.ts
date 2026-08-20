@@ -1325,6 +1325,26 @@ describe('saveCodec', () => {
 			);
 		});
 
+		test('rejects applied manager history without an applied change', () => {
+			const game = createGame({
+				managerActionHistory: [
+					createFixtureHistory({
+						change: { ...createFixtureHistory().change, applied: null }
+					})
+				]
+			});
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(SaveDataError);
+		});
+
+		test('rejects non-applied manager history with an applied change', () => {
+			const game = createGame({
+				managerActionHistory: [createFixtureHistory({ outcome: 'overridden' })]
+			});
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(SaveDataError);
+		});
+
 		test('normalizes valid persisted arrays without rejecting their input order', () => {
 			const game = createGame({
 				staff: [createFixtureManager('manager-z'), createFixtureManager('manager-a')],
@@ -1365,6 +1385,7 @@ describe('saveCodec', () => {
 				id: 'legacy-row-from-an-old-client',
 				managerId: 'deleted-manager',
 				scope: { kind: 'store', storeId: 'deleted-store' },
+				outcome: 'rejected',
 				change: {
 					kind: 'inventory-targets',
 					storeId: 'deleted-store',

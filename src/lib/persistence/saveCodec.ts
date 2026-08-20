@@ -1375,6 +1375,10 @@ function validateManagerActionHistory(game: GameState, values: unknown[]): void 
 		const outcome = requireOneOf(record.outcome, `${label} outcome`, MANAGER_ACTION_OUTCOMES);
 		const reason = requireOneOf(record.reason, `${label} reason`, MANAGER_ACTION_REASONS);
 		validateManagerActionChange(record.change, `${label} change`);
+		const change = record.change as ManagerActionChange;
+		if ((outcome === 'applied') !== (change.applied !== null)) {
+			throw new SaveDataError(`${label} outcome must match change.applied`);
+		}
 		return {
 			id,
 			day,
@@ -1384,7 +1388,7 @@ function validateManagerActionHistory(game: GameState, values: unknown[]): void 
 			conflictKey,
 			outcome,
 			reason,
-			change: record.change as ManagerActionChange
+			change
 		};
 	});
 
