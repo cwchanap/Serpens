@@ -71,6 +71,12 @@ function collectManagerExceptionAlerts(game: GameState): GameAlert[] {
 	);
 	if (!Number.isFinite(newestDay)) return [];
 
+	// Historical manager-action rows are allowed to reference managers that no
+	// longer exist (see saveCodec.validateManagerActionHistory). An exception
+	// alert deep-links to the Staff panel, so it is only actionable when the
+	// manager is still employed. Orphaned historical rows are retained as
+	// evidence but produce no alert — matching how event-modifier alerts skip
+	// modifiers whose route has been removed.
 	const managerIds = [
 		...new Set(
 			game.managerActionHistory
@@ -79,7 +85,9 @@ function collectManagerExceptionAlerts(game: GameState): GameAlert[] {
 				)
 				.map((record) => record.managerId)
 		)
-	].sort();
+	]
+		.filter((managerId) => game.staff.some((member) => member.id === managerId))
+		.sort();
 
 	return managerIds.map((managerId) => ({
 		id: `manager-exception:${managerId}`,
