@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { pauseRecurringRoute, removeRecurringRoute } from './interCityLogistics';
 import { createTwoIndustryCityGame, withRecurringRoutes } from './interCityLogistics.testUtils';
+import { validateCurrentGameState } from '$lib/persistence/saveCodec';
 import { calculateStockHealth, getStoreProductStock } from './stock';
 import { createNewGame, getDecisionOptionAvailability, resolveDecision } from './state';
 import type {
@@ -824,6 +825,31 @@ describe('atomic decision resolution', () => {
 		expect(updated.status).toBe('closed');
 		expect(updated.pricePosture).toBe('premium');
 		expect(updated.productFocus).toEqual(['beverages', 'grocery-food']);
+	});
+
+	it('rejects a focus incompatible with a specialist brand and keeps the game save-valid', () => {
+		const base = createNewGame('grocery', 55);
+		const specialist: (typeof base.competitors)[number] = {
+			...base.competitors[0]!,
+			productFocus: ['grocery-food'],
+			brandIds: ['fresh-field']
+		};
+		const rivalGame = {
+			...base,
+			competitors: [specialist, ...base.competitors.slice(1)],
+			events: { ...base.events, nextInstanceSequence: 2 }
+		};
+		const decision = competitorDecision(rivalGame, [
+			{ kind: 'competitor-product-focus-set', productFocus: ['beverages'] }
+		]);
+		const game = withDecision(rivalGame, decision);
+
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+		expect(result.game).toBe(game);
+		expect(result.game.competitors[0]).toEqual(specialist);
+		expect(() => validateCurrentGameState(result.game)).not.toThrow();
 	});
 
 	it('rejects competitor effects when the event target is not a competitor without mutation', () => {

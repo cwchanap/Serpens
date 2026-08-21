@@ -112,6 +112,10 @@ export function resolveEffectiveRecurringRoute(
 				// filtered out above, and definitions reject route targets with
 				// import-cost effects.
 				continue;
+			case 'competitor-attraction-multiplier':
+				// Unreachable for route-targeted modifiers: competitor modifiers
+				// are scoped to concrete competitor targets.
+				continue;
 		}
 	}
 
@@ -208,6 +212,10 @@ export function buildRouteModifierRecoveries(input: {
 			case 'import-cost-multiplier':
 				// Route modifiers never carry import-cost effects; skip for
 				// type exhaustiveness.
+				continue;
+			case 'competitor-attraction-multiplier':
+				// Competitor modifiers never target routes; skip for type
+				// exhaustiveness.
 				continue;
 		}
 	}

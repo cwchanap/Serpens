@@ -4,6 +4,7 @@ import {
 	type CreditAssessmentReason,
 	type FinanceFailureCode
 } from './finance';
+import { BRANDS } from './brands';
 import { appendHistory } from './eventHistory';
 import { activateEventModifiers } from './eventModifiers';
 import { isEventTargetResolvable } from './eventTargets';
@@ -297,10 +298,10 @@ function applyEffect(
 				decision,
 				optionId,
 				effectIndex,
-				(competitor) => ({
-					...competitor,
-					productFocus
-				})
+				(competitor) =>
+					competitorBrandsSupportFocus(competitor, productFocus)
+						? { ...competitor, productFocus }
+						: null
 			);
 		}
 		default:
@@ -314,7 +315,7 @@ function updateCompetitor(
 	decision: EventDecisionItem,
 	optionId: string,
 	effectIndex: number,
-	update: (competitor: MarketCompetitor) => MarketCompetitor
+	update: (competitor: MarketCompetitor) => MarketCompetitor | null
 ): PreparedResolution {
 	const target = decision.target;
 	if (target.kind !== 'competitor') {
@@ -336,15 +337,37 @@ function updateCompetitor(
 			payload: 'target'
 		});
 	}
+	const updatedCompetitor = update(tentativeGame.competitors[competitorIndex]!);
+	if (updatedCompetitor === null) {
+		return failure(originalGame, 'effect-rejected', {
+			decisionId: decision.id,
+			optionId,
+			effectIndex,
+			payload: 'effect'
+		});
+	}
 	return {
 		ok: true,
 		game: {
 			...tentativeGame,
 			competitors: tentativeGame.competitors.map((competitor, index) =>
-				index === competitorIndex ? update(competitor) : competitor
+				index === competitorIndex ? updatedCompetitor : competitor
 			)
 		}
 	};
+}
+
+function competitorBrandsSupportFocus(
+	competitor: MarketCompetitor,
+	productFocus: readonly ProductFamilyId[]
+): boolean {
+	return competitor.brandIds.every((brandId) => {
+		const brand = BRANDS[brandId];
+		return (
+			brand !== undefined &&
+			brand.supportedFamilyIds.some((familyId) => productFocus.includes(familyId))
+		);
+	});
 }
 
 function normalizeProductFocus(value: unknown): ProductFamilyId[] | null {

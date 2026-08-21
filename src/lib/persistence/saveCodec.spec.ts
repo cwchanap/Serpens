@@ -36,6 +36,7 @@ import type {
 	DailyReportWarning,
 	DailyStoreReport,
 	EventImmediateEffect,
+	EventModifierTemplate,
 	GameState,
 	IndustryTile,
 	MaterialId,
@@ -1241,7 +1242,35 @@ function createCompleteRouteEventGame(): GameState {
 			)
 		},
 		decisions: base.decisions.map((decision) =>
-			decision.kind === 'event' ? { ...decision, target: routeTarget } : decision
+			decision.kind === 'event'
+				? {
+						...decision,
+						target: routeTarget,
+						options: decision.options.map((option, index) =>
+							index === 0
+								? {
+										...option,
+										modifiers: [
+											{
+												durationDays: 3,
+												stackingKey: 'freight-capacity:route-1',
+												stackingRule: 'replace',
+												effect: {
+													kind: 'route-capacity-multiplier',
+													multiplier: 0.75
+												},
+												explanation: {
+													key: 'events.freightDisruption.acceptDelay.capacity',
+													params: {}
+												},
+												importance: 'important'
+											} satisfies EventModifierTemplate
+										]
+									}
+								: option
+						)
+					}
+				: decision
 		),
 		reports: [
 			{
@@ -1362,6 +1391,19 @@ function createCompleteCompetitorEventGame(): GameState {
 												kind: 'competitor-product-focus-set',
 												productFocus: ['beverages', 'grocery-food']
 											} satisfies EventImmediateEffect
+										],
+										modifiers: [
+											{
+												durationDays: 3,
+												stackingKey: 'rival-promotion:market-attraction',
+												stackingRule: 'replace',
+												effect: {
+													kind: 'competitor-attraction-multiplier',
+													multiplier: 1.18
+												},
+												explanation: { key: 'events.rivalPromotion.modifier', params: {} },
+												importance: 'important'
+											} satisfies EventModifierTemplate
 										]
 									}
 								: option
@@ -3839,6 +3881,40 @@ describe('saveCodec', () => {
 
 		expect(() => validateCurrentGameState(malformed)).toThrow(
 			'Saved game decisions[0] target competitorId must reference a persisted competitor'
+		);
+	});
+
+	test('rejects pending competitor immediate effects on a non-competitor target', () => {
+		const game = createCompleteCompetitorEventGame();
+		const malformed = {
+			...game,
+			decisions: game.decisions.map((decision) =>
+				decision.kind === 'event' ? { ...decision, target: { kind: 'company' as const } } : decision
+			)
+		} as GameState;
+
+		expect(() => validateCurrentGameState(malformed)).toThrow('must target a competitor');
+	});
+
+	test('rejects pending competitor timed effects on a non-competitor target', () => {
+		const game = createCompleteCompetitorEventGame();
+		const malformed = {
+			...game,
+			decisions: game.decisions.map((decision) =>
+				decision.kind === 'event'
+					? {
+							...decision,
+							target: { kind: 'company' as const },
+							options: decision.options.map((option, index) =>
+								index === 0 ? { ...option, effects: [{ kind: 'cash-adjust', amount: 0 }] } : option
+							)
+						}
+					: decision
+			)
+		} as GameState;
+
+		expect(() => validateCurrentGameState(malformed)).toThrow(
+			'must be import-cost-multiplier for a company target'
 		);
 	});
 
