@@ -1342,6 +1342,100 @@ describe('saveCodec', () => {
 		});
 
 		test.each([
+			['non-materialized retail city', 'campus-junction'],
+			['non-retail city', 'industry-city']
+		] as const)('drops historical market evidence for a %s', (_label, cityId) => {
+			const game = createGame();
+			const report = createDailyReport({
+				marketReports: [
+					{
+						cityId,
+						productId: 'bottled-water',
+						cityDemandPool: 120,
+						playerDemandPool: 80,
+						playerShare: 1,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: []
+					}
+				]
+			});
+
+			expectHistoricalReportDropped(() => decodeHistoricalReport({ ...game, reports: [] }, report));
+		});
+
+		test('drops historical market evidence when a rival belongs to another city', () => {
+			const game = createCurrentMultiCityGame();
+			const campusCompetitor = game.competitors.find(
+				(competitor) => competitor.cityId === 'campus-junction'
+			);
+			expect(campusCompetitor).toBeDefined();
+
+			const report = createDailyReport({
+				day: game.day,
+				marketReports: [
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 120,
+						playerDemandPool: 80,
+						playerShare: 2 / 3,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: [
+							{
+								competitorId: campusCompetitor!.id,
+								share: 1 / 3,
+								attractionScore: 50,
+								eventMultiplier: 1
+							}
+						]
+					}
+				]
+			});
+
+			expectHistoricalReportDropped(() => decodeHistoricalReport({ ...game, reports: [] }, report));
+		});
+
+		test('preserves historical market evidence for a closed rival in its own city', () => {
+			const game = ensureCompetitorsForRetailCity(createGame(), 'harbor-city');
+			const closedCompetitor = game.competitors[0]!;
+			const closedGame = {
+				...game,
+				competitors: game.competitors.map((competitor) =>
+					competitor.id === closedCompetitor.id
+						? { ...competitor, status: 'closed' as const }
+						: competitor
+				)
+			};
+			const report = createDailyReport({
+				marketReports: [
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 120,
+						playerDemandPool: 80,
+						playerShare: 2 / 3,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: [
+							{
+								competitorId: closedCompetitor.id,
+								share: 1 / 3,
+								attractionScore: 50,
+								eventMultiplier: 1
+							}
+						]
+					}
+				]
+			});
+
+			expectHistoricalReportPreserved(() =>
+				decodeHistoricalReport({ ...closedGame, reports: [] }, report)
+			);
+		});
+
+		test.each([
 			['missing', undefined],
 			['unknown', 'not-a-brand'],
 			['unsupported', 'fresh-field']

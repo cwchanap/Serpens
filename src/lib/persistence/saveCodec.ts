@@ -453,7 +453,15 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	const decodedReports = decodeHistoricalReports(
 		reports,
 		currentGame.logistics.nextRouteSequence,
-		new Set(currentGame.competitors.map((competitor) => competitor.id))
+		new Set(currentGame.competitors.map((competitor) => competitor.id)),
+		new Set(
+			currentGame.cities
+				.filter((city) => isCurrentRetailCity(currentGame, city.id))
+				.map((city) => city.id)
+		),
+		new Map(
+			currentGame.competitors.map((competitor) => [competitor.id, competitor.cityId] as const)
+		)
 	);
 	currentGame.reports = decodedReports;
 	validateSavedEventRuntime(
@@ -3520,7 +3528,9 @@ function withEventInvariant<T>(operation: () => T): T {
 function decodeHistoricalReports(
 	reports: unknown[],
 	nextRouteSequence: number,
-	knownCompetitorIds: ReadonlySet<string>
+	knownCompetitorIds: ReadonlySet<string>,
+	materializedRetailCityIds: ReadonlySet<string>,
+	competitorCityById: ReadonlyMap<string, WorldCityId>
 ): GameState['reports'] {
 	const decoded: GameState['reports'] = [];
 
@@ -3530,7 +3540,9 @@ function decodeHistoricalReports(
 				report,
 				`Saved game reports[${index}]`,
 				nextRouteSequence,
-				knownCompetitorIds
+				knownCompetitorIds,
+				materializedRetailCityIds,
+				competitorCityById
 			);
 			decoded.push(report as GameState['reports'][number]);
 		} catch (error) {
@@ -3546,7 +3558,9 @@ function validateSavedReport(
 	value: unknown,
 	label: string,
 	nextRouteSequence: number,
-	knownCompetitorIds: ReadonlySet<string>
+	knownCompetitorIds: ReadonlySet<string>,
+	materializedRetailCityIds: ReadonlySet<string>,
+	competitorCityById: ReadonlyMap<string, WorldCityId>
 ): void {
 	const report = requireRecord(value, label);
 
@@ -3585,7 +3599,13 @@ function validateSavedReport(
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
 	validateSavedProductionReport(report.productionReport, `${label} productionReport`);
 	validateSavedDailyLogisticsReport(report.logistics, `${label} logistics`);
-	validateSavedMarketReports(report.marketReports, `${label} marketReports`, knownCompetitorIds);
+	validateSavedMarketReports(
+		report.marketReports,
+		`${label} marketReports`,
+		knownCompetitorIds,
+		materializedRetailCityIds,
+		competitorCityById
+	);
 	const seenStoreIds = new Set<string>();
 	let storeInventoryLossExpense = 0;
 	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) => {
@@ -3625,7 +3645,9 @@ function validateSavedReport(
 function validateSavedMarketReports(
 	value: unknown,
 	label: string,
-	knownCompetitorIds: ReadonlySet<string>
+	knownCompetitorIds: ReadonlySet<string>,
+	materializedRetailCityIds: ReadonlySet<string>,
+	competitorCityById: ReadonlyMap<string, WorldCityId>
 ): void {
 	let previousKey: string | undefined;
 	const seenKeys = new Set<string>();
@@ -3647,6 +3669,9 @@ function validateSavedMarketReports(
 			marketLabel
 		);
 		const cityId = requireOneOf(market.cityId, `${marketLabel} cityId`, WORLD_CITY_IDS);
+		if (!materializedRetailCityIds.has(cityId)) {
+			throw new SaveDataError(`${marketLabel} cityId must reference a materialized retail city`);
+		}
 		const productId = requireKnownId(
 			market.productId,
 			`${marketLabel} productId`,
@@ -3714,6 +3739,11 @@ function validateSavedMarketReports(
 				if (!knownCompetitorIds.has(competitorId)) {
 					throw new SaveDataError(
 						`${competitorLabel} competitorId must reference a persisted competitor`
+					);
+				}
+				if (competitorCityById.get(competitorId) !== cityId) {
+					throw new SaveDataError(
+						`${competitorLabel} competitorId must reference a competitor in ${cityId}`
 					);
 				}
 				if (previousCompetitorId !== undefined && competitorId <= previousCompetitorId) {
