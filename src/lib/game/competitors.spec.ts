@@ -40,6 +40,18 @@ describe('sandbox competitor generation', () => {
 		expect(first.competitors.every((competitor) => competitor.cityId === 'harbor-city')).toBe(true);
 	});
 
+	test('does not mutate the current RNG state while generating deterministic competitors', () => {
+		const current = { ...createNewGame('convenience', 20260820), competitors: [] };
+		const initialRngState = current.rngState;
+		const first = ensureCompetitorsForRetailCity(current, 'harbor-city');
+		const second = ensureCompetitorsForRetailCity({ ...current, competitors: [] }, 'harbor-city');
+
+		expect(current.rngState).toBe(initialRngState);
+		expect(first.rngState).toBe(initialRngState);
+		expect(second.rngState).toBe(initialRngState);
+		expect(first.competitors).toEqual(second.competitors);
+	});
+
 	test('uses compatible family focuses and brands at unowned buildable locations', () => {
 		const game = createNewGame('grocery', 20260821);
 		const ownedTileIds = new Set(

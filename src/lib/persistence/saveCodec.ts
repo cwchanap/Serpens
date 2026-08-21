@@ -21,7 +21,6 @@ import { formatLocation } from '$lib/game/placement';
 import { RAIL_MAX_LEVEL } from '$lib/game/rail';
 import {
 	createCityTileLookup,
-	getOccupiedStoreTileIds,
 	getRetailStoreFootprint,
 	type CityTileLookup
 } from '$lib/game/storeFootprint';
@@ -883,15 +882,6 @@ function validateCurrentCompetitors(game: GameState): void {
 			throw new SaveDataError(`${label} location neighborhood must match its city tile`);
 		}
 
-		const lookup = createCityTileLookup(city);
-		const occupiedTileIds = getOccupiedStoreTileIds(
-			city,
-			game.stores.filter((store) => store.cityId === city.id),
-			lookup
-		);
-		if (occupiedTileIds.has(tile.id)) {
-			throw new SaveDataError(`${label} location must not overlap a player store footprint`);
-		}
 		const markerKeys = markerKeysByCity.get(city.id) ?? new Set<string>();
 		const markerKey = `${tile.x},${tile.y}`;
 		if (markerKeys.has(markerKey)) {

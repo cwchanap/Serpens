@@ -10,11 +10,16 @@ import {
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
-import { formatLocation } from '$lib/game/placement';
+import { createNewGame } from '$lib/game/state';
+import { formatLocation, openStoreAtTile } from '$lib/game/placement';
 import { simulateDay } from '$lib/game/simulateDay';
 import { setRetailSupplySource } from '$lib/game/retailSupply';
-import { createNewGame } from '$lib/game/state';
 import { emptyLogisticsReport } from '$lib/game/logisticsReport.testUtils';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getRetailStoreFootprint
+} from '$lib/game/storeFootprint';
 import {
 	STARTER_STORE_CAP,
 	WORLD_CITY_CATALOG,
@@ -49,6 +54,37 @@ import {
 	type StorageLike
 } from './browserSaveRepository';
 import { SaveRepositoryFromDriver, type SaveStoreDriver } from './saveStoreRepository';
+
+function findBuildableAnchorContainingCompetitorMarker(game: GameState) {
+	const city = game.cities.find((candidate) => candidate.id === game.activeCityId);
+	if (!city) throw new Error(`Expected active retail city ${game.activeCityId}.`);
+
+	const cityLookup = createCityTileLookup(city);
+	const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores, cityLookup);
+
+	const anchor = city.tiles.find((candidate) => {
+		if (!isTileBuildable(candidate) || occupiedTileIds.has(candidate.id)) return false;
+		const footprint = getRetailStoreFootprint(cityLookup, candidate);
+		return (
+			footprint.missingCoordinates.length === 0 &&
+			footprint.tiles.length === 4 &&
+			footprint.tiles.every(isTileBuildable) &&
+			footprint.tiles.every((tile) => !occupiedTileIds.has(tile.id)) &&
+			game.competitors.some(
+				(competitor) =>
+					competitor.cityId === city.id &&
+					competitor.location.x >= candidate.x &&
+					competitor.location.x < candidate.x + 2 &&
+					competitor.location.y >= candidate.y &&
+					competitor.location.y < candidate.y + 2
+			)
+		);
+	});
+
+	if (!anchor)
+		throw new Error(`Expected a buildable anchor containing a rival marker in ${city.id}.`);
+	return anchor;
+}
 
 class FakeStorage implements StorageLike {
 	private values = new Map<string, string>();
@@ -1930,6 +1966,41 @@ describe('save records', () => {
 
 		const validated = validateSaveStoreSnapshot(snapshot);
 		expect(validated.manualSlots[0]!.game.industrialBuildings[0]!.level).toBe(5);
+	});
+});
+
+describe('repository competitor marker compatibility', () => {
+	test('round-trips a store whose footprint contains a rival marker', async () => {
+		const base = createNewGame('convenience', 20260820);
+		const anchor = findBuildableAnchorContainingCompetitorMarker(base);
+		const opened = openStoreAtTile(
+			{ ...base, cash: 100_000 },
+			{ tileId: anchor.id, archetypeId: 'convenience' }
+		);
+		const openedStore = opened.stores[opened.stores.length - 1]!;
+
+		expect(opened.stores).toHaveLength(base.stores.length + 1);
+		expect(
+			opened.competitors.some(
+				(competitor) =>
+					competitor.cityId === openedStore.cityId &&
+					competitor.location.x >= openedStore.mapX &&
+					competitor.location.x < openedStore.mapX + 2 &&
+					competitor.location.y >= openedStore.mapY &&
+					competitor.location.y < openedStore.mapY + 2
+			)
+		).toBe(true);
+
+		const repository = new SaveRepositoryFromDriver(
+			new MemorySaveStoreDriver(),
+			() => new Date('2026-08-20T12:00:00.000Z')
+		);
+
+		await repository.saveAuto(opened);
+		const reloaded = await repository.getAutoSave();
+
+		expect(reloaded?.game.stores).toEqual(opened.stores);
+		expect(reloaded?.game.competitors).toEqual(opened.competitors);
 	});
 });
 

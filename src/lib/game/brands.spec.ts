@@ -106,7 +106,7 @@ describe('brand catalog', () => {
 	});
 
 	test('all brand multipliers are finite and positive and quality is bounded', () => {
-		expect.assertions(BRAND_IDS.length * 8);
+		expect.assertions(BRAND_IDS.length * 12);
 
 		for (const brandId of BRAND_IDS) {
 			const brand = getBrandDefinition(brandId);
@@ -116,6 +116,10 @@ describe('brand catalog', () => {
 			expect(brand.availabilityMultiplier).toBeGreaterThan(0);
 			expect(Number.isFinite(brand.priceMultiplier)).toBe(true);
 			expect(brand.priceMultiplier).toBeGreaterThan(0);
+			expect(Number.isFinite(brand.demandMultiplier)).toBe(true);
+			expect(brand.demandMultiplier).toBeGreaterThan(0);
+			expect(Number.isFinite(brand.unitCostMultiplier)).toBe(true);
+			expect(brand.unitCostMultiplier).toBeGreaterThan(0);
 			expect(brand.quality).toBeGreaterThanOrEqual(0);
 			expect(brand.quality).toBeLessThanOrEqual(100);
 		}
