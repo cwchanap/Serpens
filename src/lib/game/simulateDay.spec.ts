@@ -434,6 +434,7 @@ describe('daily simulation', () => {
 					products: [
 						{
 							productId: 'bottled-water',
+							brandId: 'common-ground',
 							lots: [],
 							reorderThreshold: 1,
 							targetStock: 10,
@@ -978,6 +979,7 @@ describe('daily simulation', () => {
 		const products: StoreProduct[] = [
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [],
 				reorderThreshold: 1,
 				targetStock: 10,
@@ -985,6 +987,7 @@ describe('daily simulation', () => {
 			},
 			{
 				productId: 'bottled-water',
+				brandId: 'common-ground',
 				lots: [],
 				reorderThreshold: 1,
 				targetStock: 10,
@@ -1068,6 +1071,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [],
 					reorderThreshold: 1,
 					targetStock: 1,
@@ -1169,6 +1173,7 @@ describe('daily simulation', () => {
 				products: [
 					{
 						productId: 'produce',
+						brandId: 'common-ground',
 						lots: [
 							{ receivedDay: 1, quantity: 4 },
 							{ receivedDay: 2, quantity: 1_000 }
@@ -1606,7 +1611,7 @@ describe('daily simulation', () => {
 	test('applies store policy overrides independently through daily sales and profile costs', () => {
 		expect.assertions(5);
 		const base = createNewGame('convenience', 20260824);
-		const createSeller = (id: string) => ({
+		const createSeller = (id: string): GameState['stores'][number] => ({
 			...base.stores[0]!,
 			id,
 			name: id,
@@ -1615,6 +1620,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'bottled-water' as const,
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 10_000 }],
 					reorderThreshold: 10,
 					targetStock: 10_000,
@@ -1979,6 +1985,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [],
 					reorderThreshold: 5,
 					targetStock: 20,
@@ -2027,6 +2034,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [],
 					reorderThreshold: 5,
 					targetStock: 20,
@@ -2034,6 +2042,7 @@ describe('daily simulation', () => {
 				},
 				{
 					productId: 'bottled-water',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 5,
 					targetStock: 100,
@@ -2121,6 +2130,7 @@ describe('daily simulation', () => {
 					products: [
 						{
 							productId: 'snacks',
+							brandId: 'common-ground',
 							lots: [],
 							reorderThreshold: 1,
 							targetStock: 20,
@@ -2163,6 +2173,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [],
 					reorderThreshold: 5,
 					targetStock: 20,
@@ -2266,12 +2277,13 @@ describe('daily simulation', () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260508);
 		const store = game.stores[0]!;
-		const storeWithExtraProduct = {
+		const storeWithExtraProduct: GameState['stores'][number] = {
 			...store,
 			products: [
 				...store.products,
 				{
 					productId: 'unknown-category' as ProductId,
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 5,
 					targetStock: 20,
@@ -2386,6 +2398,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'unknown-category' as ProductId,
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 5,
 					targetStock: 100,
@@ -2415,6 +2428,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'apparel',
+					brandId: 'common-ground',
 					lots: [],
 					reorderThreshold: 5,
 					targetStock: 20,
@@ -2515,6 +2529,7 @@ describe('daily simulation', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [],
 					reorderThreshold: 1,
 					targetStock: 10,
@@ -2553,6 +2568,7 @@ describe('daily simulation', () => {
 				...base.stores[0]!.products,
 				{
 					productId: 'apparel' as ProductId,
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 6 }],
 					reorderThreshold: 1,
 					targetStock: 20,

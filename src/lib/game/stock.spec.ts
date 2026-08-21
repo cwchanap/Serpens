@@ -23,7 +23,9 @@ import {
 } from './stock';
 import type { CompanyPolicy, GameState, ProductId, StoreProduct } from './types';
 
-function withOneStoreProducts(products: StoreProduct[]): GameState {
+function withOneStoreProducts(
+	products: Array<Omit<StoreProduct, 'brandId'> & Partial<Pick<StoreProduct, 'brandId'>>>
+): GameState {
 	const game = createNewGame('convenience', 20260508);
 
 	return {
@@ -31,7 +33,7 @@ function withOneStoreProducts(products: StoreProduct[]): GameState {
 		stores: [
 			{
 				...game.stores[0]!,
-				products
+				products: products.map((product) => ({ brandId: 'common-ground', ...product }))
 			}
 		]
 	};
@@ -44,6 +46,7 @@ function createEqualSellerGame(storeIds: string[]): GameState {
 		products: [
 			{
 				productId: 'bottled-water',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 100 }],
 				reorderThreshold: 10,
 				targetStock: 100,
@@ -93,6 +96,7 @@ describe('stock rules', () => {
 		expect.assertions(4);
 		const product: StoreProduct = {
 			productId: 'snacks',
+			brandId: 'common-ground',
 			lots: [
 				{ receivedDay: 1, quantity: 5 },
 				{ receivedDay: 3, quantity: 7 }
@@ -117,6 +121,7 @@ describe('stock rules', () => {
 		expect.assertions(3);
 		const product: StoreProduct = {
 			productId: 'snacks',
+			brandId: 'common-ground',
 			lots: [{ receivedDay: 1, quantity: 4 }],
 			reorderThreshold: 2,
 			targetStock: 20,
@@ -137,6 +142,7 @@ describe('stock rules', () => {
 		expect.assertions(3);
 		const product: StoreProduct = {
 			productId: 'snacks',
+			brandId: 'common-ground',
 			lots: [
 				{ receivedDay: 1, quantity: 4 },
 				{ receivedDay: 7, quantity: 6 }
@@ -159,6 +165,7 @@ describe('stock rules', () => {
 		expect.assertions(2);
 		const product: StoreProduct = {
 			productId: 'snacks',
+			brandId: 'common-ground',
 			lots: [{ receivedDay: 1, quantity: Number.MAX_SAFE_INTEGER - 10 }],
 			reorderThreshold: 2,
 			targetStock: Number.MAX_SAFE_INTEGER - 1,
@@ -179,6 +186,7 @@ describe('stock rules', () => {
 		expect.assertions(2);
 		const product: StoreProduct = {
 			productId: 'snacks',
+			brandId: 'common-ground',
 			lots: [{ receivedDay: 1, quantity: Number.MAX_SAFE_INTEGER }],
 			reorderThreshold: 2,
 			targetStock: Number.MAX_SAFE_INTEGER - 1,
@@ -191,19 +199,61 @@ describe('stock rules', () => {
 	});
 
 	test('initializes a single product at level 1', () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const products = initializeStoreProducts('convenience');
 
 		expect(products.map((product) => product.productId)).toEqual(['bottled-water']);
+		expect(products[0]!.brandId).toBe('common-ground');
 		expect(products[0]!.sellingPrice).toBe(3);
 	});
 
 	test('createStoreProduct defaults receivedDay to 1 when omitted', () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const product = createStoreProduct('bottled-water');
 
 		expect(product.lots).toEqual([{ receivedDay: 1, quantity: expect.any(Number) }]);
 		expect(product.productId).toBe('bottled-water');
+		expect(product.brandId).toBe('common-ground');
+	});
+
+	test('changes a supported brand and writes its default price only when price is omitted', () => {
+		expect.assertions(7);
+		const game = withOneStoreProducts([createStoreProduct('apparel')]);
+
+		const branded = updateStoreProduct(game, 'store-1', 'apparel', {
+			brandId: 'northstar-select'
+		});
+		const brandedProduct = branded.stores[0]!.products[0]!;
+		expect(brandedProduct.brandId).toBe('northstar-select');
+		expect(brandedProduct.sellingPrice).toBe(45);
+
+		const explicitlyPriced = updateStoreProduct(branded, 'store-1', 'apparel', {
+			brandId: 'common-ground',
+			sellingPrice: 51
+		});
+		const explicitlyPricedProduct = explicitlyPriced.stores[0]!.products[0]!;
+		expect(explicitlyPricedProduct.brandId).toBe('common-ground');
+		expect(explicitlyPricedProduct.sellingPrice).toBe(51);
+
+		const priceEdited = updateStoreProduct(explicitlyPriced, 'store-1', 'apparel', {
+			sellingPrice: 39
+		});
+		expect(priceEdited.stores[0]!.products[0]!.brandId).toBe('common-ground');
+		expect(priceEdited.stores[0]!.products[0]!.sellingPrice).toBe(39);
+		expect(priceEdited.stores[0]!.products[0]!.sellingPrice).not.toBe(39 * 1.18);
+	});
+
+	test('rejects a brand that does not support the product family without changing the game', () => {
+		expect.assertions(3);
+		const game = withOneStoreProducts([createStoreProduct('bottled-water')]);
+
+		const updated = updateStoreProduct(game, 'store-1', 'bottled-water', {
+			brandId: 'northstar-select'
+		});
+
+		expect(updated).toBe(game);
+		expect(updated.stores[0]!.products[0]!.brandId).toBe('common-ground');
+		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(3);
 	});
 
 	test('initializes unlocked categories for a given level', () => {
@@ -230,6 +280,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -408,6 +459,7 @@ describe('stock rules', () => {
 			calculateStockHealth([
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 50 }],
 					reorderThreshold: 20,
 					targetStock: 100,
@@ -415,6 +467,7 @@ describe('stock rules', () => {
 				},
 				{
 					productId: 'soft-drinks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 20,
 					targetStock: 100,
@@ -426,6 +479,7 @@ describe('stock rules', () => {
 			calculateStockHealth([
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 125 }],
 					reorderThreshold: 20,
 					targetStock: 100,
@@ -435,7 +489,14 @@ describe('stock rules', () => {
 		).toBe(100);
 		expect(
 			calculateStockHealth([
-				{ productId: 'snacks', lots: [], reorderThreshold: 20, targetStock: 100, sellingPrice: 5 }
+				{
+					productId: 'snacks',
+					brandId: 'common-ground',
+					lots: [],
+					reorderThreshold: 20,
+					targetStock: 100,
+					sellingPrice: 5
+				}
 			])
 		).toBe(0);
 	});
@@ -458,11 +519,12 @@ describe('stock rules', () => {
 	test('grocery produce pressure wastes old lots while newer stock remains sellable', () => {
 		expect.assertions(4);
 		const base = createNewGame('grocery', 20260817);
-		const store = {
+		const store: GameState['stores'][number] = {
 			...base.stores[0]!,
 			products: [
 				{
 					productId: 'produce' as const,
+					brandId: 'common-ground',
 					lots: [
 						{ receivedDay: 1, quantity: 4 },
 						{ receivedDay: 2, quantity: 1_000 }
@@ -496,11 +558,12 @@ describe('stock rules', () => {
 	test('applies trend to the sales pool once while leaving the baseline demand pool stable', () => {
 		expect.assertions(2);
 		const base = createNewGame('boutique', 20260818);
-		const store = {
+		const store: GameState['stores'][number] = {
 			...base.stores[0]!,
 			products: [
 				{
 					productId: 'apparel' as const,
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 500 }],
 					reorderThreshold: 1,
 					targetStock: 500,
@@ -534,11 +597,12 @@ describe('stock rules', () => {
 	test('electronics devices show obsolescence and markdown without changing configured price or demand', () => {
 		expect.assertions(8);
 		const base = createNewGame('electronics', 20260819);
-		const createStore = (receivedDay: number) => ({
+		const createStore = (receivedDay: number): GameState['stores'][number] => ({
 			...base.stores[0]!,
 			products: [
 				{
 					productId: 'devices' as const,
+					brandId: 'common-ground',
 					lots: [{ receivedDay, quantity: 500 }],
 					reorderThreshold: 1,
 					targetStock: 500,
@@ -587,11 +651,12 @@ describe('stock rules', () => {
 	test('convenience beverage pressure attributes only stock-serviceable demand to stockout', () => {
 		expect.assertions(2);
 		const base = createNewGame('convenience', 20260820);
-		const store = {
+		const store: GameState['stores'][number] = {
 			...base.stores[0]!,
 			products: [
 				{
 					productId: 'bottled-water' as const,
+					brandId: 'common-ground',
 					lots: [],
 					reorderThreshold: 1,
 					targetStock: 100,
@@ -619,7 +684,7 @@ describe('stock rules', () => {
 	test('boutique reputation sensitivity changes apparel seller share', () => {
 		expect.assertions(2);
 		const base = createNewGame('boutique', 20260823);
-		const createSeller = (id: string, reputation: number) => ({
+		const createSeller = (id: string, reputation: number): GameState['stores'][number] => ({
 			...base.stores[0]!,
 			id,
 			name: id,
@@ -627,6 +692,7 @@ describe('stock rules', () => {
 			products: [
 				{
 					productId: 'apparel' as const,
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 500 }],
 					reorderThreshold: 1,
 					targetStock: 500,
@@ -699,6 +765,7 @@ describe('stock rules', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -876,6 +943,7 @@ describe('stock rules', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 10_000 }],
 					reorderThreshold: 10,
 					targetStock: 10_000,
@@ -962,6 +1030,7 @@ describe('stock rules', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -1095,6 +1164,7 @@ describe('sales loop guards', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -1117,6 +1187,7 @@ describe('sales loop guards', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -1147,12 +1218,26 @@ describe('demand multipliers and stock ratios', () => {
 		expect.assertions(2);
 		expect(
 			calculateStockHealth([
-				{ productId: 'snacks', lots: [], reorderThreshold: 0, targetStock: 0, sellingPrice: 5 }
+				{
+					productId: 'snacks',
+					brandId: 'common-ground',
+					lots: [],
+					reorderThreshold: 0,
+					targetStock: 0,
+					sellingPrice: 5
+				}
 			])
 		).toBe(100);
 		expect(
 			calculateStockHealth([
-				{ productId: 'snacks', lots: [], reorderThreshold: 0, targetStock: -5, sellingPrice: 5 }
+				{
+					productId: 'snacks',
+					brandId: 'common-ground',
+					lots: [],
+					reorderThreshold: 0,
+					targetStock: -5,
+					sellingPrice: 5
+				}
 			])
 		).toBe(100);
 	});
@@ -1189,6 +1274,7 @@ describe('branch coverage edge cases', () => {
 			},
 			{
 				productId: 'soft-drinks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 10 }],
 				reorderThreshold: 5,
 				targetStock: 40,
@@ -1220,6 +1306,7 @@ describe('branch coverage edge cases', () => {
 					products: [
 						{
 							productId: 'snacks',
+							brandId: 'common-ground',
 							lots: [{ receivedDay: 1, quantity: 8 }],
 							reorderThreshold: 12,
 							targetStock: 30,
@@ -1235,6 +1322,7 @@ describe('branch coverage edge cases', () => {
 					products: [
 						{
 							productId: 'snacks',
+							brandId: 'common-ground',
 							lots: [{ receivedDay: 1, quantity: 8 }],
 							reorderThreshold: 12,
 							targetStock: 30,
@@ -1262,6 +1350,7 @@ describe('branch coverage edge cases', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -1309,6 +1398,7 @@ describe('branch coverage edge cases', () => {
 			products: [
 				{
 					productId: 'bottled-water',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -1336,6 +1426,7 @@ describe('branch coverage edge cases', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,
@@ -1361,6 +1452,7 @@ describe('branch coverage edge cases', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 100 }],
 					reorderThreshold: 10,
 					targetStock: 100,

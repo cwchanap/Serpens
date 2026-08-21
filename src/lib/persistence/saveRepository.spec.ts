@@ -309,6 +309,7 @@ function createDaySevenReplenishmentFromIndustryCity(): GameState {
 				products: [
 					{
 						productId: 'bottled-water' as const,
+						brandId: 'common-ground',
 						lots: [],
 						reorderThreshold: 1,
 						targetStock: 20,
@@ -373,9 +374,15 @@ function expectSnapshotHistoricalReportDropped(snapshot: unknown): void {
 	}
 }
 
-function createSaveRecordWithProducts(products: StoreProduct[]): SaveRecord {
+function createSaveRecordWithProducts(
+	products: Array<Omit<StoreProduct, 'brandId'> & Partial<Pick<StoreProduct, 'brandId'>>>
+): SaveRecord {
 	const game = createNewGame('convenience', 20260508);
 	const [store] = game.stores;
+	const materializedProducts: StoreProduct[] = products.map((product) => ({
+		brandId: 'common-ground',
+		...product
+	}));
 
 	return createSaveRecord(
 		{
@@ -383,7 +390,7 @@ function createSaveRecordWithProducts(products: StoreProduct[]): SaveRecord {
 			stores: [
 				{
 					...store!,
-					products
+					products: materializedProducts
 				}
 			]
 		},
@@ -826,6 +833,7 @@ describe('save records', () => {
 					products: [
 						{
 							productId: 'apparel' as const,
+							brandId: 'common-ground',
 							lots: [{ receivedDay: 1, quantity: 10 }],
 							targetStock: 20,
 							sellingPrice: 38,
@@ -833,6 +841,7 @@ describe('save records', () => {
 						},
 						{
 							productId: 'apparel' as const,
+							brandId: 'common-ground',
 							lots: [{ receivedDay: 1, quantity: 15 }],
 							targetStock: 25,
 							sellingPrice: 40,
@@ -1202,6 +1211,7 @@ describe('save records', () => {
 		expect.assertions(1);
 		const product: StoreProduct = {
 			productId: 'bottled-water',
+			brandId: 'common-ground',
 			lots: [...lots],
 			reorderThreshold: 1,
 			targetStock: 2,

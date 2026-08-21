@@ -4,6 +4,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	'bottled-water': {
 		id: 'bottled-water',
 		familyId: 'beverages',
+		defaultBrandId: 'common-ground',
 		name: 'Bottled Water',
 		demandWeight: 1.2,
 		importCost: 2,
@@ -15,6 +16,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	'soft-drinks': {
 		id: 'soft-drinks',
 		familyId: 'beverages',
+		defaultBrandId: 'common-ground',
 		name: 'Soft Drinks',
 		demandWeight: 1.15,
 		importCost: 2,
@@ -26,6 +28,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	snacks: {
 		id: 'snacks',
 		familyId: 'convenience-goods',
+		defaultBrandId: 'common-ground',
 		name: 'Snacks',
 		demandWeight: 1,
 		importCost: 3,
@@ -37,6 +40,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	essentials: {
 		id: 'essentials',
 		familyId: 'convenience-goods',
+		defaultBrandId: 'common-ground',
 		name: 'Essentials',
 		demandWeight: 0.8,
 		importCost: 6,
@@ -48,6 +52,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	household: {
 		id: 'household',
 		familyId: 'convenience-goods',
+		defaultBrandId: 'common-ground',
 		name: 'Household',
 		demandWeight: 0.7,
 		importCost: 7,
@@ -59,6 +64,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	apparel: {
 		id: 'apparel',
 		familyId: 'fashion',
+		defaultBrandId: 'common-ground',
 		name: 'Apparel',
 		demandWeight: 1,
 		importCost: 18,
@@ -73,6 +79,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	'home-goods': {
 		id: 'home-goods',
 		familyId: 'fashion',
+		defaultBrandId: 'common-ground',
 		name: 'Home Goods',
 		demandWeight: 0.85,
 		importCost: 14,
@@ -84,6 +91,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	gifts: {
 		id: 'gifts',
 		familyId: 'fashion',
+		defaultBrandId: 'common-ground',
 		name: 'Gifts',
 		demandWeight: 0.75,
 		importCost: 9,
@@ -95,6 +103,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	'fashion-accessories': {
 		id: 'fashion-accessories',
 		familyId: 'fashion',
+		defaultBrandId: 'common-ground',
 		name: 'Fashion Accessories',
 		demandWeight: 0.7,
 		importCost: 12,
@@ -106,6 +115,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	games: {
 		id: 'games',
 		familyId: 'electronics',
+		defaultBrandId: 'common-ground',
 		name: 'Games',
 		demandWeight: 1,
 		importCost: 32,
@@ -117,6 +127,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	accessories: {
 		id: 'accessories',
 		familyId: 'electronics',
+		defaultBrandId: 'common-ground',
 		name: 'Accessories',
 		demandWeight: 0.9,
 		importCost: 11,
@@ -128,6 +139,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	devices: {
 		id: 'devices',
 		familyId: 'electronics',
+		defaultBrandId: 'common-ground',
 		name: 'Devices',
 		demandWeight: 0.55,
 		importCost: 180,
@@ -143,6 +155,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	peripherals: {
 		id: 'peripherals',
 		familyId: 'electronics',
+		defaultBrandId: 'common-ground',
 		name: 'Peripherals',
 		demandWeight: 0.7,
 		importCost: 24,
@@ -154,6 +167,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	produce: {
 		id: 'produce',
 		familyId: 'grocery-food',
+		defaultBrandId: 'common-ground',
 		name: 'Produce',
 		demandWeight: 1,
 		importCost: 2,
@@ -165,6 +179,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	pantry: {
 		id: 'pantry',
 		familyId: 'grocery-food',
+		defaultBrandId: 'common-ground',
 		name: 'Pantry',
 		demandWeight: 1.1,
 		importCost: 3,
@@ -176,6 +191,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	prepared: {
 		id: 'prepared',
 		familyId: 'grocery-food',
+		defaultBrandId: 'common-ground',
 		name: 'Prepared Food',
 		demandWeight: 0.75,
 		importCost: 5,
@@ -187,6 +203,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 	bakery: {
 		id: 'bakery',
 		familyId: 'grocery-food',
+		defaultBrandId: 'common-ground',
 		name: 'Bakery',
 		demandWeight: 0.7,
 		importCost: 3,

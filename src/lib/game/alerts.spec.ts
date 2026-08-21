@@ -79,6 +79,7 @@ function product(
 	const { initialQuantity = 50, ...productOverrides } = overrides;
 	return {
 		productId: 'snacks',
+		brandId: 'common-ground',
 		lots: initialQuantity > 0 ? [{ receivedDay: 1, quantity: initialQuantity }] : [],
 		reorderThreshold: 10,
 		targetStock: 60,

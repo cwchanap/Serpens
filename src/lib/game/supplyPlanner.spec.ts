@@ -44,6 +44,7 @@ function product(
 	const { initialQuantity = 0, ...productOptions } = options;
 	return {
 		productId,
+		brandId: 'common-ground',
 		lots: initialQuantity > 0 ? [{ receivedDay: 1, quantity: initialQuantity }] : [],
 		reorderThreshold: 0,
 		targetStock: 70,

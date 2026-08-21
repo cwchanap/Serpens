@@ -94,6 +94,7 @@ function productWithStock(
 	const definition = getProductDefinition(productId);
 	return {
 		productId,
+		brandId: 'common-ground',
 		lots: [{ receivedDay, quantity }],
 		reorderThreshold: 4,
 		targetStock: 16,
@@ -217,6 +218,7 @@ describe('StoreStockTable', () => {
 				...store.products,
 				{
 					productId: 'apparel',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 4,
 					targetStock: 16,
@@ -351,6 +353,7 @@ describe('StoreStockTable', () => {
 				...store.products,
 				{
 					productId: 'apparel',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 4,
 					targetStock: 16,

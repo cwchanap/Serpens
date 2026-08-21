@@ -33,6 +33,7 @@ import { MAX_STAFF_LEVEL } from '$lib/game/staffLeveling';
 import { FINANCE_TRANSACTION_LIMIT, getInstallmentCount } from '$lib/game/finance';
 import { EVENT_SELECTION_SCHEMA_VERSION } from '$lib/game/eventSelection';
 import { EVENT_HISTORY_LIMIT } from '$lib/game/eventHistory';
+import { BRANDS, isBrandSupported } from '$lib/game/brands';
 import { PRODUCTS } from '$lib/game/products';
 import { calculateStockHealth } from '$lib/game/stock';
 import type {
@@ -155,6 +156,7 @@ const MATERIAL_MOVEMENT_SOURCES = ['local', 'import', 'warehouse', 'overflow', '
 const RAIL_SHIPMENT_KINDS = ['pull-producer', 'pull-warehouse', 'push-warehouse'] as const;
 const MATERIAL_ID_SET = new Set<string>(Object.keys(MATERIALS));
 const PRODUCT_ID_SET = new Set<string>(Object.keys(PRODUCTS));
+const BRAND_ID_SET = new Set<string>(Object.keys(BRANDS));
 const INDUSTRIAL_BUILDING_TYPE_ID_SET = new Set<string>(Object.keys(INDUSTRIAL_BUILDING_TYPES));
 const INDUSTRY_RESOURCE_ID_SET = new Set<string>(
 	Object.values(INDUSTRIAL_BUILDING_TYPES).flatMap((buildingType) =>
@@ -4276,6 +4278,18 @@ function validateSavedStoreProduct(value: unknown, label: string, gameDay: numbe
 	const product = requireRecord(value, label);
 
 	const productId = requireString(product.productId, `${label} productId`) as ProductId;
+	const brandId = requireKnownId(
+		product.brandId,
+		`${label} brandId`,
+		BRAND_ID_SET,
+		'brand'
+	) as StoreProduct['brandId'];
+	if (PRODUCT_ID_SET.has(productId) && !isBrandSupported(productId, brandId)) {
+		throw new SaveDataError(
+			`${label} brandId ${brandId} does not support product family ${PRODUCTS[productId]?.familyId ?? 'unknown'}`,
+			'invariant-products'
+		);
+	}
 	const lots = validateSavedProductLots(product.lots, `${label} lots`, gameDay);
 	const reorderThreshold = requireNumber(product.reorderThreshold, `${label} reorderThreshold`);
 	const targetStock = requireNonNegativeLotQuantity(product.targetStock, `${label} targetStock`);
@@ -4295,7 +4309,7 @@ function validateSavedStoreProduct(value: unknown, label: string, gameDay: numbe
 		throw new SaveDataError(`${label} sellingPrice must be greater than 0`);
 	}
 
-	return { productId, lots, reorderThreshold, targetStock, sellingPrice };
+	return { productId, brandId, lots, reorderThreshold, targetStock, sellingPrice };
 }
 
 function validateSavedProductLots(

@@ -7,6 +7,21 @@ export type ProductFamilyId =
 	| 'fashion'
 	| 'electronics'
 	| 'grocery-food';
+export type BrandId = 'common-ground' | 'budget-bay' | 'northstar-select' | 'fresh-field';
+
+export interface BrandDefinition {
+	id: BrandId;
+	name: string;
+	positioning: 'value' | 'mainstream' | 'premium';
+	supportedFamilyIds: readonly ProductFamilyId[];
+	quality: number;
+	loyaltyMultiplier: number;
+	availabilityMultiplier: number;
+	priceMultiplier: number;
+	demandMultiplier: number;
+	unitCostMultiplier: number;
+}
+
 export type ProductId =
 	| 'bottled-water'
 	| 'soft-drinks'
@@ -723,6 +738,7 @@ export interface ProductMarketDynamics {
 export interface ProductDefinition {
 	id: ProductId;
 	familyId: ProductFamilyId;
+	defaultBrandId: BrandId;
 	name: string;
 	demandWeight: number;
 	importCost: number;
@@ -739,6 +755,7 @@ export interface ProductStockLot {
 
 export interface StoreProduct {
 	productId: ProductId;
+	brandId: BrandId;
 	lots: ProductStockLot[];
 	reorderThreshold: number;
 	targetStock: number;
@@ -757,6 +774,7 @@ export interface ProductInventoryAgingResult {
 }
 
 export interface StoreProductPatch {
+	brandId?: BrandId;
 	sellingPrice?: number;
 	reorderThreshold?: number;
 	targetStock?: number;

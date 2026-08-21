@@ -25,6 +25,7 @@ function store(): Store {
 		products: [
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 40 }],
 				reorderThreshold: 10,
 				targetStock: 50,
@@ -265,6 +266,7 @@ describe('StoreDetailModal', () => {
 			products: [
 				{
 					productId: 'devices',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 3,
 					targetStock: 12,
@@ -342,6 +344,7 @@ describe('StoreDetailModal', () => {
 			products: [
 				{
 					productId: 'produce',
+					brandId: 'common-ground',
 					lots: [{ receivedDay: 1, quantity: 10 }],
 					reorderThreshold: 3,
 					targetStock: 12,

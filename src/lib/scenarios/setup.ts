@@ -318,7 +318,7 @@ function applyAuthoredOverrides(
 			const patch = productPatches.get(product.productId);
 			return patch
 				? {
-						productId: patch.productId,
+						...product,
 						lots: patch.stock > 0 ? [{ receivedDay: upgradedGame.day, quantity: patch.stock }] : [],
 						reorderThreshold: patch.reorderThreshold,
 						targetStock: patch.targetStock,

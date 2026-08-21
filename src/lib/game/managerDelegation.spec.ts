@@ -101,6 +101,7 @@ function product(
 ): StoreProduct {
 	return {
 		productId,
+		brandId: 'common-ground',
 		lots: [{ receivedDay: 1, quantity: 0 }],
 		reorderThreshold: 10,
 		targetStock: 20,
