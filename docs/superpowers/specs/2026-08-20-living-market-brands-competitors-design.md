@@ -44,6 +44,7 @@ Two findings in the latest review describe an older revision and require no furt
 - **Split HPA-39 into two PRs.** Project workflow is one PR per ticket unless explicitly approved otherwise. Brands also feed rival compatibility and player attraction directly, so a split would add a temporary schema/integration boundary without reducing implementation work. The six checkpoints below remain review gates inside one PR.
 - **Put `canUpdateBrand` in scenario capabilities.** Brand mutation deliberately has no `ScenarioCommand`; its capability belongs in route `MutationAvailability` as a sandbox-only boolean, beside scoped policy/delegation controls. `src/lib/scenarios/capabilities.ts` therefore does not gain a fake command capability.
 - **Add authored scenario brand fields.** Scenario product overrides should spread the materialized `StoreProduct` and replace stock/targets/price, preserving its default `brandId`. `ScenarioStartBlueprint` and catalog rows do not need another brand dimension.
+- **Change `scenarioCodec.ts` production logic just because schema increments.** It already imports `SAVE_SCHEMA_VERSION` and delegates embedded game validation to `validateCurrentGameState`; update tests/fixtures, and only touch production code if implementation finds a concrete compile/validation need.
 
 ## Existing seams
 
