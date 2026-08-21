@@ -4,10 +4,17 @@ import type {
 	BrandId,
 	ProductDefinition,
 	ProductFamilyId,
-	ProductId
+	ProductId,
+	Store
 } from './types';
 
 export type { BrandDefinition, BrandId } from './types';
+
+export interface BrandEconomics {
+	unitCost: number;
+	demandMultiplier: number;
+	marketAttractionMultiplier: number;
+}
 
 const ALL_PRODUCT_FAMILIES: readonly ProductFamilyId[] = [
 	'beverages',
@@ -89,4 +96,38 @@ export function isBrandSupported(productId: ProductId, brandId: BrandId): boolea
 export function getBrandDefaultSellingPrice(product: ProductDefinition, brandId: BrandId): number {
 	const brand = getBrandDefinition(brandId);
 	return Math.max(1, Math.round(product.defaultSellingPrice * brand.priceMultiplier));
+}
+
+export function resolveBrandEconomics(
+	product: ProductDefinition,
+	brandId: BrandId
+): BrandEconomics {
+	const brand = getBrandDefinition(brandId);
+	return {
+		unitCost: product.importCost * brand.unitCostMultiplier,
+		demandMultiplier: brand.demandMultiplier,
+		marketAttractionMultiplier: brand.loyaltyMultiplier * brand.availabilityMultiplier
+	};
+}
+
+export function brandedSellerScore(store: Store, productId: ProductId): number {
+	const storeProduct = store.products.find((product) => product.productId === productId);
+	if (!storeProduct) return 0;
+
+	const product = getProductDefinition(productId);
+	const reputation = Number.isFinite(store.reputation) ? store.reputation : 50;
+	const authoredSensitivity = product.dynamics.reputationSensitivity;
+	const reputationSensitivity =
+		authoredSensitivity === undefined || !Number.isFinite(authoredSensitivity)
+			? 1
+			: Math.max(0, authoredSensitivity);
+	const reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * reputationSensitivity;
+	const existingScore = Math.max(
+		1,
+		reputationTerm + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2
+	);
+
+	return (
+		existingScore * resolveBrandEconomics(product, storeProduct.brandId).marketAttractionMultiplier
+	);
 }

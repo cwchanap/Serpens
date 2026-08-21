@@ -892,6 +892,7 @@ export interface OpeningOption {
 
 export interface DailyProductReport {
 	productId: ProductId;
+	brandId: BrandId;
 	name: string;
 	unitsSold: number;
 	demandMissed: number;
@@ -943,6 +944,7 @@ export interface DailyStoreReport {
 	stockHealth: number;
 	staffMorale: number;
 	reputation: number;
+	brandReputationAdjustment: number;
 	marketPosition: number;
 	productReports: DailyProductReport[];
 	/** Sum of product waste and shrink valued at import cost. */

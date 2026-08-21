@@ -463,6 +463,7 @@ describe('weekly retail replenishment', () => {
 				[
 					{
 						productId: 'snacks',
+						brandId: 'common-ground',
 						name: 'Snacks',
 						unitsSold: 2,
 						demandMissed: 1,
@@ -554,6 +555,60 @@ describe('weekly retail replenishment', () => {
 				]
 			}
 		]);
+	});
+
+	test('composes a branded import cost once with the active supplier modifier', () => {
+		expect.assertions(8);
+		const base = withIndustrySnacks(
+			withOneReplenishmentProduct(createNewGame('convenience', 292_516)),
+			12
+		);
+		const game: GameState = {
+			...base,
+			stores: [
+				{
+					...base.stores[0]!,
+					products: [
+						{
+							...base.stores[0]!.products[0]!,
+							brandId: 'budget-bay',
+							lots: [{ receivedDay: 1, quantity: 4 }],
+							reorderThreshold: 10,
+							targetStock: 25,
+							sellingPrice: 5
+						}
+					]
+				}
+			]
+		};
+		const rules: SimulationRules = {
+			importCostMultipliers: [
+				{
+					source: scenarioSource,
+					scope: 'retail-product',
+					target: { kind: 'ids', ids: ['snacks'] },
+					multiplier: 2
+				},
+				{
+					source: eventSource,
+					scope: 'retail-product',
+					target: { kind: 'all' },
+					multiplier: 0.9
+				}
+			]
+		};
+
+		const result = applyWeeklyReplenishment({ game, storeReports: new Map(), rules });
+		const report = result.productReports.get(game.stores[0]!.id)![0]!;
+
+		expect(report.brandId).toBe('budget-bay');
+		expect(report.importCost).toBe(2.52);
+		expect(report.warehouseUnits).toBe(12);
+		expect(report.warehouseValue).toBe(96);
+		expect(report.importedUnits).toBe(9);
+		expect(report.importSpend).toBe(41);
+		expect(result.importCostApplications[0]!.baselineCost).toBe(22.68);
+		expect(result.importCostApplications[0]!.actualCost).toBe(41);
 	});
 
 	test('keeps omitted and explicit default modifiers deeply equal', () => {

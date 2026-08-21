@@ -356,6 +356,21 @@ describe('supply planner snapshot', () => {
 		expect(row.potentialDemandPerDay).toBe(129);
 	});
 
+	it('includes the selected brand demand multiplier in planner seller contribution', () => {
+		expect.assertions(4);
+		const common = readySnapshot(plannerGame([product('snacks')]), {
+			retailCityId: 'harbor-city',
+			productId: 'snacks'
+		});
+		const budget = readySnapshot(plannerGame([product('snacks', { brandId: 'budget-bay' })]), {
+			retailCityId: 'harbor-city',
+			productId: 'snacks'
+		});
+
+		expect(common.demandContributors[0]!.potentialDemandPerDay).toBe(129);
+		expect(budget.demandContributors[0]!.potentialDemandPerDay).toBe(142);
+	});
+
 	it('changes planner potential demand only by the overridden seller contribution', () => {
 		const base = plannerGame([product('snacks')]);
 		const secondStore = {

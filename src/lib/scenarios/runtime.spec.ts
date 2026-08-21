@@ -1184,7 +1184,7 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	it('keeps the first-profit calibration stable after instance-id resolution cutover', () => {
 		const run = replayLaunchCalibration('first-profit', FIRST_PROFIT_REFERENCE_OPENING, true);
 
-		expect(run.result).toMatchObject({ outcome: 'completed', completionDay: 4, score: 880 });
+		expect(run.result).toMatchObject({ outcome: 'completed', completionDay: 4, score: 856 });
 	});
 
 	it.each([
@@ -1204,7 +1204,7 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	);
 
 	it.each([
-		['first-profit', FIRST_PROFIT_REFERENCE_OPENING, 4, 880, 'gold'],
+		['first-profit', FIRST_PROFIT_REFERENCE_OPENING, 4, 856, 'gold'],
 		['import-squeeze', IMPORT_SQUEEZE_REFERENCE_OPENING, 15, 841, 'silver'],
 		['local-lifeline', LOCAL_LIFELINE_REFERENCE_OPENING, 15, 877, 'gold']
 	] as const)(

@@ -112,6 +112,7 @@ function emptyProductionReport(
 function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
 	return {
 		productId: 'snacks',
+		brandId: 'common-ground',
 		name: 'Snacks',
 		unitsSold: 8,
 		demandMissed: 2,
@@ -156,10 +157,12 @@ function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStor
 		stockHealth: 82,
 		staffMorale: 75,
 		reputation: 55,
+		brandReputationAdjustment: 0,
 		marketPosition: 48,
 		productReports: [
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				name: 'Snacks',
 				unitsSold: 8,
 				demandMissed: 2,

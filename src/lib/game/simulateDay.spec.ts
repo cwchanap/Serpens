@@ -127,6 +127,34 @@ function createTransferOrder(overrides: Partial<TransferOrder> = {}): TransferOr
 	};
 }
 
+function brandReputationGame(
+	brandId: StoreProduct['brandId'],
+	reputation: number,
+	quantity = 500
+): GameState {
+	const base = createNewGame('boutique', 20260820);
+	return {
+		...base,
+		policy: { ...base.policy, marketing: 'none' },
+		stores: [
+			{
+				...base.stores[0]!,
+				reputation,
+				products: [
+					{
+						productId: 'apparel',
+						brandId,
+						lots: quantity > 0 ? [{ receivedDay: 1, quantity }] : [],
+						reorderThreshold: 1,
+						targetStock: quantity,
+						sellingPrice: 38
+					}
+				]
+			}
+		]
+	};
+}
+
 function createDueRoute(overrides: Partial<RecurringRoute> = {}): RecurringRoute {
 	return {
 		id: 'route-1',
@@ -2298,6 +2326,46 @@ describe('daily simulation', () => {
 
 		expect(productReport).toBeDefined();
 		expect(productReport?.name).toBe('unknown-category');
+	});
+
+	test('adds a small positive reputation adjustment for a premium brand above current reputation', () => {
+		expect.assertions(3);
+		const result = simulateDay(brandReputationGame('northstar-select', 70));
+		const report = result.reports[0]!.storeReports[0]!;
+
+		expect(report.brandReputationAdjustment).toBe(1);
+		expect(report.reputation).toBe(71);
+		expect(result.stores[0]!.reputation).toBe(71);
+	});
+
+	test('applies a negative reputation adjustment for a brand below current reputation', () => {
+		expect.assertions(2);
+		const result = simulateDay(brandReputationGame('common-ground', 70));
+		const report = result.reports[0]!.storeReports[0]!;
+
+		expect(report.brandReputationAdjustment).toBe(-2);
+		expect(report.reputation).toBe(68);
+	});
+
+	test('does not change reputation from brand quality when the store sells zero units', () => {
+		expect.assertions(2);
+		const result = simulateDay(brandReputationGame('northstar-select', 70, 0));
+		const report = result.reports[0]!.storeReports[0]!;
+
+		expect(report.customersServed).toBe(0);
+		expect(report.brandReputationAdjustment).toBe(0);
+	});
+
+	test('converges repeated stable brand quality toward reputation instead of ratcheting to one hundred', () => {
+		expect.assertions(3);
+		let game = brandReputationGame('common-ground', 30);
+		for (let day = 0; day < 5; day += 1) {
+			game = simulateDay(game);
+		}
+
+		expect(game.stores[0]!.reputation).toBe(38);
+		expect(game.stores[0]!.reputation).toBeGreaterThan(30);
+		expect(game.stores[0]!.reputation).toBeLessThan(100);
 	});
 
 	test('reports reputation warning when store reputation falls below threshold', () => {

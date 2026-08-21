@@ -52,6 +52,7 @@ function productionReport(): DailyProductionReport {
 function product(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
 	return {
 		productId: 'bottled-water',
+		brandId: 'common-ground',
 		name: 'Bottled Water',
 		unitsSold: 0,
 		demandMissed: 0,
@@ -100,6 +101,7 @@ function storeReport(
 		stockHealth: 100,
 		staffMorale: 100,
 		reputation: 100,
+		brandReputationAdjustment: 0,
 		marketPosition: 100,
 		productReports,
 		inventoryLossExpense: productReports.reduce(

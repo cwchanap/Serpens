@@ -1,4 +1,5 @@
 import { getArchetype } from './archetypes';
+import { getBrandDefinition, resolveBrandEconomics } from './brands';
 import { assertValidEntityCityOwnership } from './cityInventory';
 import { generateDecisions, pruneExpiredDecisions } from './events';
 import {
@@ -619,6 +620,18 @@ function buildDailyStoreReport(
 	);
 	const customersServed = productReports.reduce((total, report) => total + report.unitsSold, 0);
 	const demandMissed = productReports.reduce((total, report) => total + report.demandMissed, 0);
+	const weightedBrandQuality =
+		customersServed > 0
+			? productReports.reduce(
+					(total, report) => total + report.unitsSold * getBrandDefinition(report.brandId).quality,
+					0
+				) / customersServed
+			: null;
+	const brandReputationAdjustment =
+		weightedBrandQuality === null
+			? 0
+			: Math.max(-3, Math.min(3, Math.round((weightedBrandQuality - profile.reputation) / 10)));
+	const endingReputation = clampScore(profile.reputation + brandReputationAdjustment);
 	const stockHealth = calculateStockHealth(profile.store.products);
 	const grossMargin = revenue - costOfGoods;
 	const operatingCosts = profile.operatingCosts;
@@ -627,7 +640,7 @@ function buildDailyStoreReport(
 		daysOpen: profile.store.daysOpen + 1,
 		stockHealth,
 		staffMorale: profile.staffMorale,
-		reputation: profile.reputation
+		reputation: endingReputation
 	};
 	const warnings = buildStoreWarnings(
 		updatedStore,
@@ -636,7 +649,7 @@ function buildDailyStoreReport(
 		profile.stockPressureThreshold,
 		profile.staffLimit,
 		profile.staffingShortage,
-		profile.reputation
+		endingReputation
 	);
 
 	return {
@@ -656,7 +669,8 @@ function buildDailyStoreReport(
 			staffingShortage: profile.staffingShortage,
 			stockHealth,
 			staffMorale: profile.staffMorale,
-			reputation: profile.reputation,
+			reputation: endingReputation,
+			brandReputationAdjustment,
 			marketPosition: profile.marketPosition,
 			productReports,
 			warnings,
@@ -870,6 +884,7 @@ function getStoreProductReports(
 		if (!productDefinition) {
 			return {
 				productId: product.productId,
+				brandId: product.brandId,
 				name: product.productId,
 				unitsSold: 0,
 				demandMissed: 0,
@@ -904,9 +919,11 @@ function getStoreProductReports(
 			day
 		});
 		const effectiveSellingPrice = product.sellingPrice * marketDynamics.markdownMultiplier;
+		const brandEconomics = resolveBrandEconomics(productDefinition, product.brandId);
 
 		return {
 			productId: product.productId,
+			brandId: product.brandId,
 			name: productDefinition.name,
 			unitsSold: 0,
 			demandMissed: 0,
@@ -917,7 +934,7 @@ function getStoreProductReports(
 			warehouseUnits: 0,
 			warehouseValue: 0,
 			importedUnits: 0,
-			importCost: productDefinition.importCost,
+			importCost: brandEconomics.unitCost,
 			importSpend: 0,
 			wasteUnits: aging?.wasteUnits ?? 0,
 			wasteValue: aging?.wasteValue ?? 0,

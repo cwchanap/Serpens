@@ -1,5 +1,10 @@
 import { getArchetype } from './archetypes';
-import { getBrandDefaultSellingPrice, isBrandSupported } from './brands';
+import {
+	brandedSellerScore,
+	getBrandDefaultSellingPrice,
+	isBrandSupported,
+	resolveBrandEconomics
+} from './brands';
 import { getTilePlacementBlockReason } from './city';
 import { getStoreRevenueMultiplier, getUnlockedProductCount } from './leveling';
 import {
@@ -270,17 +275,19 @@ export function getPolicyAdjustedCityProductDemand(
 ): number {
 	const rawPool = buildCityDemandPools(game, city)[productId] ?? 0;
 	const sellers = getEligibleProductSellers(game, city.id, productId);
-	const totalScore = sellers.reduce(
-		(sum, store) => sum + scoreStoreForCategory(store, productId),
-		0
-	);
+	const totalScore = sellers.reduce((sum, store) => sum + brandedSellerScore(store, productId), 0);
 	if (totalScore <= 0) return 0;
 
 	return Math.round(
 		sellers.reduce((sum, store) => {
-			const share = scoreStoreForCategory(store, productId) / totalScore;
+			const share = brandedSellerScore(store, productId) / totalScore;
 			const policy = effectivePolicyByStoreId.get(store.id)!;
-			return sum + sellerPolicyDemand(rawPool, share, policy);
+			const product = store.products.find((candidate) => candidate.productId === productId)!;
+			const brandEconomics = resolveBrandEconomics(
+				getProductDefinition(productId),
+				product.brandId
+			);
+			return sum + sellerPolicyDemand(rawPool, share, policy) * brandEconomics.demandMultiplier;
 		}, 0)
 	);
 }
@@ -345,7 +352,7 @@ export function simulateProductSalesForCity(input: {
 
 		const sellers = getEligibleProductSellers(input.game, input.city.id, productId);
 		const totalScore = sellers.reduce(
-			(sum, store) => sum + scoreStoreForCategory(store, productId),
+			(sum, store) => sum + brandedSellerScore(store, productId),
 			0
 		);
 
@@ -356,12 +363,13 @@ export function simulateProductSalesForCity(input: {
 		for (const store of sellers) {
 			const currentStore = storesById.get(store.id)!;
 			const product = currentStore.products.find((candidate) => candidate.productId === productId)!;
-			const demandShare = scoreStoreForCategory(store, productId) / totalScore;
+			const demandShare = brandedSellerScore(store, productId) / totalScore;
 			const policyDemand = sellerPolicyDemand(
 				initialDemand[productId] ?? 0,
 				demandShare,
 				effectivePolicyByStoreId.get(store.id)!
 			);
+			const brandEconomics = resolveBrandEconomics(productDefinition, product.brandId);
 			const marketDynamics = resolveProductMarketDynamics({
 				product,
 				definition: productDefinition,
@@ -372,6 +380,7 @@ export function simulateProductSalesForCity(input: {
 				0,
 				Math.round(
 					policyDemand *
+						brandEconomics.demandMultiplier *
 						marketDynamics.obsolescenceMultiplier *
 						priceMultiplier *
 						randomBetween(input.rng, 0.94, 1.06)
@@ -389,7 +398,7 @@ export function simulateProductSalesForCity(input: {
 			const baseRevenue = Math.round(unitsSold * product.sellingPrice * revenueMultiplier);
 			const effectiveSellingPrice = product.sellingPrice * marketDynamics.markdownMultiplier;
 			const revenue = Math.round(unitsSold * effectiveSellingPrice * revenueMultiplier);
-			const costOfGoods = Math.round(unitsSold * productDefinition.importCost);
+			const costOfGoods = Math.round(unitsSold * brandEconomics.unitCost);
 			const aging = productAging.get(store.id)?.get(productId);
 
 			currentStore.products = currentStore.products.map((candidate) =>
@@ -402,6 +411,7 @@ export function simulateProductSalesForCity(input: {
 			);
 			appendProductReport(productReports, store.id, {
 				productId,
+				brandId: product.brandId,
 				name: productDefinition.name,
 				unitsSold,
 				demandMissed,
@@ -413,7 +423,7 @@ export function simulateProductSalesForCity(input: {
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: 0,
-				importCost: productDefinition.importCost,
+				importCost: brandEconomics.unitCost,
 				importSpend: 0,
 				wasteUnits: aging?.wasteUnits ?? 0,
 				wasteValue: aging?.wasteValue ?? 0,
@@ -570,25 +580,9 @@ function getEligibleProductSellers(game: GameState, cityId: string, productId: P
 		)
 		.sort(
 			(left, right) =>
-				scoreStoreForCategory(right, productId) - scoreStoreForCategory(left, productId) ||
+				brandedSellerScore(right, productId) - brandedSellerScore(left, productId) ||
 				compareCodeUnitStrings(left.id, right.id)
 		);
-}
-
-function scoreStoreForCategory(store: Store, productId: ProductId): number {
-	if (!store.products.some((product) => product.productId === productId)) {
-		return 0;
-	}
-
-	const reputation = Number.isFinite(store.reputation) ? store.reputation : 50;
-	const authoredSensitivity = getProductDefinition(productId).dynamics.reputationSensitivity;
-	const reputationSensitivity =
-		authoredSensitivity === undefined || !Number.isFinite(authoredSensitivity)
-			? 1
-			: Math.max(0, authoredSensitivity);
-	const reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * reputationSensitivity;
-
-	return Math.max(1, reputationTerm + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2);
 }
 
 function compareCodeUnitStrings(left: string, right: string): number {
