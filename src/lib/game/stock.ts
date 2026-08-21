@@ -91,7 +91,10 @@ export function updateStoreProduct(
 
 	const product = store.products[productIndex]!;
 	const productDefinition = getProductDefinition(productId);
-	const currentBrandId = product.brandId ?? productDefinition.defaultBrandId;
+	const currentBrandId = product.brandId;
+	if (!isBrandSupported(productId, currentBrandId)) {
+		return game;
+	}
 	const nextBrandId = patch.brandId ?? currentBrandId;
 	if (!isBrandSupported(productId, nextBrandId)) {
 		return game;
