@@ -2843,12 +2843,17 @@ function validateSavedDecision(
 		if (expiresOnDay <= generatedOnDay) {
 			throw new SaveDataError(`${label} expiresOnDay must be after generatedOnDay`);
 		}
-		validateEventTarget(decision.target, `${label} target`, nextRouteSequence, knownCompetitorIds);
+		const target = validateEventTarget(
+			decision.target,
+			`${label} target`,
+			nextRouteSequence,
+			knownCompetitorIds
+		);
 		validateStructuredCopyRef(decision.copy, `${label} copy`);
 		validateUniqueArrayIds(
 			requireArray(decision.options, `${label} options`),
 			`${label} options`,
-			validateSavedEventDecisionOption
+			(value, optionLabel) => validateSavedEventDecisionOption(value, optionLabel, target)
 		);
 		return id;
 	});
@@ -2863,7 +2868,11 @@ function validateSavedSystemDecisionOption(value: unknown, label: string): strin
 	return id;
 }
 
-function validateSavedEventDecisionOption(value: unknown, label: string): string {
+function validateSavedEventDecisionOption(
+	value: unknown,
+	label: string,
+	target: ValidatedEventTarget
+): string {
 	const option = requireRecord(value, label);
 	requireExactKeys(option, ['id', 'effects', 'modifiers'], label);
 	const id = requireString(option.id, `${label} id`);
@@ -2871,7 +2880,11 @@ function validateSavedEventDecisionOption(value: unknown, label: string): string
 	let financeEffectCount = 0;
 	let hasCashAdjustment = false;
 	for (const [index, effect] of effects.entries()) {
-		const effectKind = validateSavedEventImmediateEffect(effect, `${label} effects[${index}]`);
+		const effectKind = validateSavedEventImmediateEffect(
+			effect,
+			`${label} effects[${index}]`,
+			target
+		);
 		if (effectKind === 'finance-borrow') financeEffectCount += 1;
 		if (effectKind === 'cash-adjust') hasCashAdjustment = true;
 	}
@@ -2882,12 +2895,16 @@ function validateSavedEventDecisionOption(value: unknown, label: string): string
 		throw new SaveDataError(`${label} effects must not combine cash-adjust and finance-borrow`);
 	}
 	requireArray(option.modifiers, `${label} modifiers`).forEach((modifier, index) =>
-		validateSavedModifierTemplate(modifier, `${label} modifiers[${index}]`)
+		validateSavedModifierTemplate(modifier, `${label} modifiers[${index}]`, target)
 	);
 	return id;
 }
 
-function validateSavedEventImmediateEffect(value: unknown, label: string): string {
+function validateSavedEventImmediateEffect(
+	value: unknown,
+	label: string,
+	target: ValidatedEventTarget
+): string {
 	const effect = requireRecord(value, label);
 	const kind = requireOneOf(effect.kind, `${label} kind`, [
 		'cash-adjust',
@@ -2899,6 +2916,14 @@ function validateSavedEventImmediateEffect(value: unknown, label: string): strin
 		'competitor-price-posture-set',
 		'competitor-product-focus-set'
 	] as const);
+	if (
+		(kind === 'competitor-status-set' ||
+			kind === 'competitor-price-posture-set' ||
+			kind === 'competitor-product-focus-set') &&
+		target.kind !== 'competitor'
+	) {
+		throw new SaveDataError(`${label} must target a competitor`, 'invariant-event-runtime');
+	}
 
 	switch (kind) {
 		case 'cash-adjust':
@@ -2976,7 +3001,11 @@ function validateSavedBorrowTerms(value: Record<string, unknown>, label: string)
 	}
 }
 
-function validateSavedModifierTemplate(value: unknown, label: string): void {
+function validateSavedModifierTemplate(
+	value: unknown,
+	label: string,
+	target: ValidatedEventTarget
+): void {
 	const modifier = requireRecord(value, label);
 	requireExactKeys(
 		modifier,
@@ -2986,7 +3015,8 @@ function validateSavedModifierTemplate(value: unknown, label: string): void {
 	requirePositiveSafeInteger(modifier.durationDays, `${label} durationDays`);
 	requireString(modifier.stackingKey, `${label} stackingKey`);
 	requireOneOf(modifier.stackingRule, `${label} stackingRule`, ['replace'] as const);
-	validateSavedTimedEffect(modifier.effect, `${label} effect`);
+	const effectKind = validateSavedTimedEffect(modifier.effect, `${label} effect`);
+	validateSavedModifierTargetEffect(target, effectKind, label);
 	validateStructuredCopyRef(modifier.explanation, `${label} explanation`);
 	requireOneOf(modifier.importance, `${label} importance`, ['normal', 'important'] as const);
 }
@@ -3450,15 +3480,31 @@ function validateSavedModifierFields(
 	}
 	const stackingKey = requireString(modifier.stackingKey, `${label} stackingKey`);
 	const effectKind = validateSavedTimedEffect(modifier.effect, `${label} effect`);
+	validateSavedModifierTargetEffect(target, effectKind, label);
+	validateStructuredCopyRef(modifier.explanation, `${label} explanation`);
+	requireOneOf(modifier.importance, `${label} importance`, ['normal', 'important'] as const);
+	return {
+		id,
+		instanceId: source.instanceId,
+		stackingKey,
+		startsOnDay,
+		expiresOnDay,
+		target
+	};
+}
+
+function validateSavedModifierTargetEffect(
+	target: ValidatedEventTarget,
+	effectKind: SavedTimedEffectKind,
+	label: string
+): void {
 	// Mirror the authored/runtime invariant from eventDefinitions.ts: a
 	// company target may only carry import-cost-multiplier, a
 	// recurring-route target may only carry a route effect, and a competitor
-	// target may only carry its attraction effect. The shape
-	// validators above check target and effect independently, so without
-	// this pairing check a route-targeted import-cost multiplier (or a
-	// company-targeted route effect) would decode cleanly and then be
-	// applied globally by compileEventModifierRules, which selects
-	// import-cost modifiers by effect kind alone.
+	// target may only carry its attraction effect. The shape validators above
+	// check target and effect independently, so without this pairing check a
+	// mismatched pending modifier could decode cleanly and only fail at
+	// resolution.
 	if (
 		target.kind === 'recurring-route' &&
 		(effectKind === 'import-cost-multiplier' || effectKind === 'competitor-attraction-multiplier')
@@ -3480,16 +3526,6 @@ function validateSavedModifierFields(
 			'invariant-event-runtime'
 		);
 	}
-	validateStructuredCopyRef(modifier.explanation, `${label} explanation`);
-	requireOneOf(modifier.importance, `${label} importance`, ['normal', 'important'] as const);
-	return {
-		id,
-		instanceId: source.instanceId,
-		stackingKey,
-		startsOnDay,
-		expiresOnDay,
-		target
-	};
 }
 
 function validateSavedModifierSource(
