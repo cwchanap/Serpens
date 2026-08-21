@@ -580,9 +580,25 @@ function getEligibleProductSellers(game: GameState, cityId: string, productId: P
 		)
 		.sort(
 			(left, right) =>
-				brandedSellerScore(right, productId) - brandedSellerScore(left, productId) ||
+				scoreStoreForCategory(right, productId) - scoreStoreForCategory(left, productId) ||
 				compareCodeUnitStrings(left.id, right.id)
 		);
+}
+
+function scoreStoreForCategory(store: Store, productId: ProductId): number {
+	if (!store.products.some((product) => product.productId === productId)) {
+		return 0;
+	}
+
+	const reputation = Number.isFinite(store.reputation) ? store.reputation : 50;
+	const authoredSensitivity = getProductDefinition(productId).dynamics.reputationSensitivity;
+	const reputationSensitivity =
+		authoredSensitivity === undefined || !Number.isFinite(authoredSensitivity)
+			? 1
+			: Math.max(0, authoredSensitivity);
+	const reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * reputationSensitivity;
+
+	return Math.max(1, reputationTerm + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2);
 }
 
 function compareCodeUnitStrings(left: string, right: string): number {

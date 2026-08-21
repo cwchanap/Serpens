@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { brandedSellerScore } from './brands';
 import { resolveEffectivePolicy, setPolicyOverride } from './policyInheritance';
 import { resolveProductMarketDynamics } from './productDynamics';
 import { getProductDefinition } from './products';
@@ -943,6 +944,48 @@ describe('stock rules', () => {
 		);
 		expect(reportsByStore(ascending.result)).toEqual(reportsByStore(descending.result));
 		expect(ascending.rngState).toBe(descending.rngState);
+	});
+
+	test('keeps canonical seller order when brand attraction changes seller shares', () => {
+		expect.assertions(2);
+		const base = createEqualSellerGame(['store-a', 'store-b']);
+		const game: GameState = {
+			...base,
+			stores: base.stores.map((store, index) => ({
+				...store,
+				reputation: index === 0 ? 62 : 60,
+				products: store.products.map((product) => ({
+					...product,
+					brandId: index === 0 ? 'common-ground' : 'budget-bay',
+					lots: [{ receivedDay: 1, quantity: 10_000 }],
+					targetStock: 10_000
+				}))
+			}))
+		};
+		const firstStore = game.stores[0]!;
+		const secondStore = game.stores[1]!;
+		expect(brandedSellerScore(secondStore, 'bottled-water')).toBeGreaterThan(
+			brandedSellerScore(firstStore, 'bottled-water')
+		);
+
+		const rng = createRng(5);
+		const result = simulateProductSalesForCity({
+			game,
+			city: game.cities[0]!,
+			rng,
+			storeCapacity: equalSellerCapacity(game),
+			effectivePolicyByStoreId: effectivePolicyMap(game)
+		});
+		const firstReport = result.productReports.get(firstStore.id)?.[0];
+		const secondReport = result.productReports.get(secondStore.id)?.[0];
+		if (!firstReport || !secondReport) throw new Error('expected branded seller reports');
+
+		// The legacy score orders store-a first, even though branded attraction gives store-b
+		// the larger share. The seed's first jitter draw must therefore stay with store-a.
+		expect({ first: firstReport.unitsSold, second: secondReport.unitsSold }).toEqual({
+			first: 73,
+			second: 85
+		});
 	});
 
 	test('applies a store policy without spilling demand into another seller', () => {
