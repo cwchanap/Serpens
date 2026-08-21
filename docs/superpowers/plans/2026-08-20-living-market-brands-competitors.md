@@ -30,6 +30,7 @@
 - Use closed target/effect unions only.
 - Daily reports persist IDs and day-specific outcomes, not repeated static catalog/current-state fields.
 - Schema 19 rejects 18; no migration.
+- `scenarioCodec.ts` production code is expected to remain unchanged because it already imports `SAVE_SCHEMA_VERSION` and delegates current-game validation; update tests/fixtures unless implementation proves a real production edit is required.
 - `bun run check` is the primary required-field/fixture audit.
 - Before any Svelte edit, follow `AGENTS.md`: Svelte MCP `list-sections`, relevant docs, then autofixer until clean.
 
@@ -270,13 +271,13 @@ export function resolveBrandEconomics(
 export function brandedSellerScore(store: Store, productId: ProductId): number;
 ```
 
-`DailyProductReport` adds only:
+`DailyProductReport` gains only:
 
 ```ts
 brandId: BrandId;
 ```
 
-`DailyStoreReport` adds:
+`DailyStoreReport` gains:
 
 ```ts
 brandReputationAdjustment: number;
