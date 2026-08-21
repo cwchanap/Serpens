@@ -8,6 +8,7 @@
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import { getStoreOrdinal } from '$lib/game/state';
 	import type {
+		BrandId,
 		DailyProductReport,
 		DailyStoreReport,
 		GameState,
@@ -26,6 +27,7 @@
 		hiringCandidates: HiringCandidate[];
 		latestStoreReport: DailyStoreReport | null;
 		onUpdateStoreProduct: (storeId: string, productId: ProductId, patch: StoreProductPatch) => void;
+		onUpdateStoreProductBrand?: (storeId: string, productId: ProductId, brandId: BrandId) => void;
 		onHireStaff: (candidateId: string) => void;
 		onAssignStaff: (staffId: string, storeId: string) => void;
 		onUnassignStaff: (staffId: string) => void;
@@ -33,6 +35,7 @@
 		onClickFeedback?: () => void;
 		canUpdateSellingPrice?: boolean;
 		canUpdateInventoryTargets?: boolean;
+		canUpdateBrand?: boolean;
 		allowedProductIds?: readonly ProductId[];
 		canHireStaff?: boolean;
 		canAssignStaff?: boolean;
@@ -48,6 +51,7 @@
 		hiringCandidates,
 		latestStoreReport,
 		onUpdateStoreProduct,
+		onUpdateStoreProductBrand = () => {},
 		onHireStaff,
 		onAssignStaff,
 		onUnassignStaff,
@@ -55,6 +59,7 @@
 		onClickFeedback = () => {},
 		canUpdateSellingPrice = true,
 		canUpdateInventoryTargets = true,
+		canUpdateBrand = true,
 		allowedProductIds = store.products.map((product) => product.productId),
 		canHireStaff = true,
 		canAssignStaff = true,
@@ -271,8 +276,10 @@
 					ordinal={storeOrdinal}
 					latestReport={latestStoreReport}
 					onUpdate={onUpdateStoreProduct}
+					onUpdateBrand={onUpdateStoreProductBrand}
 					{canUpdateSellingPrice}
 					{canUpdateInventoryTargets}
+					{canUpdateBrand}
 					{allowedProductIds}
 					{disabledReason}
 				/>

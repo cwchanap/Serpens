@@ -62,6 +62,7 @@ function props() {
 		hiringCandidates: [],
 		latestStoreReport: null,
 		onUpdateStoreProduct: vi.fn(),
+		onUpdateStoreProductBrand: vi.fn(),
 		onHireStaff: vi.fn(),
 		onAssignStaff: vi.fn(),
 		onUnassignStaff: vi.fn(),
@@ -238,11 +239,13 @@ describe('StoreDetailModal', () => {
 	});
 
 	it('threads independent stock and staff capabilities to both tabs', async () => {
-		expect.assertions(4);
+		expect.assertions(5);
+		const p = props();
 		render(StoreDetailModal, {
-			...props(),
+			...p,
 			canUpdateSellingPrice: false,
 			canUpdateInventoryTargets: false,
+			canUpdateBrand: false,
 			canHireStaff: false,
 			canAssignStaff: false,
 			canUnassignStaff: false,
@@ -253,11 +256,25 @@ describe('StoreDetailModal', () => {
 		await expect
 			.element(page.getByRole('spinbutton', { name: /reorder threshold/i }))
 			.toBeDisabled();
+		await expect.element(page.getByRole('combobox', { name: /brand/i })).toBeDisabled();
 		await page.getByRole('tab', { name: /staff/i }).click();
 		expect(document.querySelector('.detail-panel.active [role="status"]')?.textContent).toBe(
 			'Unavailable in this challenge.'
 		);
 		await expect.element(page.getByRole('tab', { name: /stock/i })).toBeVisible();
+	});
+
+	it('threads an explicit brand callback from the stock tab', async () => {
+		expect.assertions(2);
+		const p = props();
+		p.store.products[0]!.productId = 'snacks';
+		p.onUpdateStoreProductBrand = vi.fn();
+		render(StoreDetailModal, p);
+
+		await page.getByRole('combobox', { name: 'Brand for Snacks' }).selectOptions('budget-bay');
+
+		expect(p.onUpdateStoreProductBrand).toHaveBeenCalledTimes(1);
+		expect(p.onUpdateStoreProductBrand).toHaveBeenCalledWith('store-1', 'snacks', 'budget-bay');
 	});
 
 	it('summarizes markdown and obsolescence pressure in the detail warning area', async () => {

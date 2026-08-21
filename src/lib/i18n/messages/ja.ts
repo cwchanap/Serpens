@@ -372,6 +372,25 @@ export const ja = {
 			effectivePrice: '実効価格: {price}',
 			inventoryLoss: '在庫損失費用: {amount}'
 		},
+		brandPerformance: {
+			title: 'ブランド実績',
+			empty: 'ブランド実績の根拠はありません。',
+			unitsSold: '販売数量: {units}',
+			revenue: '売上: {amount}',
+			grossMargin: '粗利益: {amount}',
+			reputationAdjustment: '{storeName}のブランド評判反応: {adjustment}'
+		},
+		market: {
+			title: '市場スナップショット',
+			playerShare: '自社シェア: {share}',
+			shareDelta: 'シェア変化: {delta}',
+			noPriorShare: '前回シェアなし',
+			strongestRival: '最大の競合: {competitorId} · {competitorName}',
+			currentProfile: '現在の競合プロフィール: {profile}',
+			rivalShare: '競合シェア: {share}',
+			rivalAttraction: '競合吸引力: {attraction} · イベント倍率: ×{multiplier}',
+			noRival: '競合の根拠はありません。'
+		},
 		inventory: {
 			productionCloseTitle: '生産終了時の在庫（小売補充前）',
 			reportDay: 'レポート日 {day}',
@@ -571,6 +590,7 @@ export const ja = {
 		title: '{storeName}の在庫',
 		headings: {
 			product: '商品',
+			brand: 'ブランド',
 			stock: '在庫',
 			importCost: '輸入単価',
 			configuredPrice: '設定価格',
@@ -581,6 +601,7 @@ export const ja = {
 			latest: '直近'
 		},
 		inputLabels: {
+			brand: '{categoryName}のブランド',
 			sellingPrice: '{categoryName}の販売価格',
 			reorderThreshold: '{categoryName}の再発注しきい値',
 			targetStock: '{categoryName}の目標在庫'
@@ -599,6 +620,9 @@ export const ja = {
 			liveReorder: '現在補充が必要'
 		},
 		evidence: {
+			shelfPrice: '棚価格: {price}',
+			effectivePrice: '実効価格: {price}',
+			grossMargin: '粗利益: {amount}',
 			freshness: '鮮度: {percent}%',
 			waste: '廃棄: {units} 単位',
 			shrink: '在庫減耗: {units} 単位',

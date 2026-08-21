@@ -372,6 +372,25 @@ export const zhHant = {
 			effectivePrice: '有效價格：{price}',
 			inventoryLoss: '庫存損失費用：{amount}'
 		},
+		brandPerformance: {
+			title: '品牌表現',
+			empty: '沒有品牌表現證據。',
+			unitsSold: '售出數量：{units}',
+			revenue: '營收：{amount}',
+			grossMargin: '毛利：{amount}',
+			reputationAdjustment: '{storeName} 品牌聲譽反應：{adjustment}'
+		},
+		market: {
+			title: '市場快照',
+			playerShare: '自家市佔：{share}',
+			shareDelta: '市佔變化：{delta}',
+			noPriorShare: '沒有先前市佔',
+			strongestRival: '最強競爭者：{competitorId} · {competitorName}',
+			currentProfile: '目前競爭者資料：{profile}',
+			rivalShare: '競爭者市佔：{share}',
+			rivalAttraction: '競爭者吸引力：{attraction} · 事件倍率：×{multiplier}',
+			noRival: '沒有競爭者證據。'
+		},
 		inventory: {
 			productionCloseTitle: '生產結束時庫存（零售補貨前）',
 			reportDay: '報表日 {day}',
@@ -571,6 +590,7 @@ export const zhHant = {
 		title: '{storeName}庫存',
 		headings: {
 			product: '商品',
+			brand: '品牌',
 			stock: '庫存',
 			importCost: '進口成本',
 			configuredPrice: '設定價格',
@@ -581,6 +601,7 @@ export const zhHant = {
 			latest: '最新'
 		},
 		inputLabels: {
+			brand: '{categoryName}品牌',
 			sellingPrice: '{categoryName}售價',
 			reorderThreshold: '{categoryName}補貨門檻',
 			targetStock: '{categoryName}目標庫存'
@@ -599,6 +620,9 @@ export const zhHant = {
 			liveReorder: '目前需要補貨'
 		},
 		evidence: {
+			shelfPrice: '貨架價格：{price}',
+			effectivePrice: '有效價格：{price}',
+			grossMargin: '毛利：{amount}',
 			freshness: '新鮮度：{percent}%',
 			waste: '浪費：{units} 單位',
 			shrink: '耗損：{units} 單位',

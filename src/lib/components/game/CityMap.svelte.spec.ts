@@ -47,7 +47,8 @@ const stubSnapshot: CityMapSnapshot = {
 	selectedTileId: null,
 	placementPreview: null,
 	tiles: [],
-	stores: []
+	stores: [],
+	competitors: []
 };
 
 async function waitForMock(fn: ReturnType<typeof vi.fn>): Promise<void> {

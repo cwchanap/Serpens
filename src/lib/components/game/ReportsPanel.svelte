@@ -3,6 +3,8 @@
 	import type { ReportSummary } from '$lib/game/reports';
 	import {
 		localizeEventSourceTitle,
+		localizeBrandName,
+		localizeCompetitorProfile,
 		localizeReportWarning,
 		localizeRouteModifierImpact,
 		localizeRouteModifierRecovery,
@@ -14,6 +16,8 @@
 	import { getRetailReplenishmentOutcome } from '$lib/game/retailSupply';
 	import type {
 		DailyMaterialMovement,
+		DailyMarketCompetitorReport,
+		DailyMarketReport,
 		DailyProductReport,
 		DailyProductionReport,
 		DailyStoreReport,
@@ -42,6 +46,26 @@
 		freshnessPercent: number | null;
 	}
 
+	interface BrandPerformanceRow {
+		brandId: DailyProductReport['brandId'];
+		unitsSold: number;
+		revenue: number;
+		grossMargin: number;
+	}
+
+	interface BrandReputationRow {
+		id: string;
+		storeName: string;
+		adjustment: number;
+	}
+
+	interface MarketSnapshotRow {
+		id: string;
+		report: DailyMarketReport;
+		strongestRival: DailyMarketCompetitorReport | null;
+		currentRival: GameState['competitors'][number] | null;
+	}
+
 	let { i18n, summary, stores, game }: Props = $props();
 
 	const railShipmentUnits = $derived(
@@ -58,6 +82,15 @@
 	);
 	const productPressureRows = $derived.by(() =>
 		buildProductPressureRows(summary.latest?.storeReports ?? [])
+	);
+	const brandPerformanceRows = $derived.by(() =>
+		buildBrandPerformanceRows(summary.latest?.storeReports ?? [])
+	);
+	const brandReputationRows = $derived.by(() =>
+		buildBrandReputationRows(summary.latest?.storeReports ?? [])
+	);
+	const marketSnapshotRows = $derived.by(() =>
+		buildMarketSnapshotRows(summary.latest?.marketReports ?? [])
 	);
 	const inventoryLossExpense = $derived.by(() => {
 		if (!summary.latest) return 0;
@@ -78,6 +111,16 @@
 
 	function getFreshnessPercent(report: DailyProductReport): number | null {
 		return getProductFreshnessPercent(report.productId, report.averageAgeDays);
+	}
+
+	function brandName(brandId: DailyProductReport['brandId']): string {
+		return localizeBrandName(brandId);
+	}
+
+	function signedShareDelta(delta: number | null): string {
+		if (delta === null) return i18n.t('reportsPanel.market.noPriorShare');
+		const formatted = i18n.format.percent(Math.abs(delta));
+		return delta > 0 ? `+${formatted}` : delta < 0 ? `-${formatted}` : formatted;
 	}
 
 	function hasProductPressure(
@@ -116,6 +159,59 @@
 						]
 					: [];
 			});
+		});
+	}
+
+	function buildBrandPerformanceRows(storeReports: DailyStoreReport[]): BrandPerformanceRow[] {
+		const totals: BrandPerformanceRow[] = [];
+		for (const storeReport of storeReports) {
+			for (const report of storeReport.productReports) {
+				const existing = totals.find((row) => row.brandId === report.brandId);
+				if (existing) {
+					existing.unitsSold += report.unitsSold;
+					existing.revenue += report.revenue;
+					existing.grossMargin += report.grossMargin;
+				} else {
+					totals.push({
+						brandId: report.brandId,
+						unitsSold: report.unitsSold,
+						revenue: report.revenue,
+						grossMargin: report.grossMargin
+					});
+				}
+			}
+		}
+		return totals;
+	}
+
+	function buildBrandReputationRows(storeReports: DailyStoreReport[]): BrandReputationRow[] {
+		return storeReports.map((report, index) => {
+			const storeIndex = stores.findIndex((store) => store.id === report.storeId);
+			const storeRecord = stores[storeIndex];
+			return {
+				id: `${report.storeId}-${index}`,
+				storeName: storeRecord
+					? storeDisplayName(storeRecord, storeIndex + 1, i18n)
+					: report.storeId,
+				adjustment: report.brandReputationAdjustment
+			};
+		});
+	}
+
+	function buildMarketSnapshotRows(reports: DailyMarketReport[]): MarketSnapshotRow[] {
+		return reports.map((report, index) => {
+			const strongestRival =
+				[...report.competitors].sort((left, right) => right.share - left.share)[0] ?? null;
+			const currentRival = strongestRival
+				? (game?.competitors.find((competitor) => competitor.id === strongestRival.competitorId) ??
+					null)
+				: null;
+			return {
+				id: `${report.cityId}-${report.productId}-${index}`,
+				report,
+				strongestRival,
+				currentRival
+			};
 		});
 	}
 
@@ -425,6 +521,103 @@
 						})}
 					</p>
 				{/if}
+			</section>
+		{/if}
+
+		{#if brandPerformanceRows.length > 0 || brandReputationRows.length > 0}
+			<section class="brand-performance-evidence" aria-labelledby="brand-performance-heading">
+				<h3 id="brand-performance-heading">{i18n.t('reportsPanel.brandPerformance.title')}</h3>
+				{#if brandPerformanceRows.length > 0}
+					<div class="evidence-list">
+						{#each brandPerformanceRows as row (row.brandId)}
+							<article data-testid={`brand-performance-${row.brandId}`}>
+								<h4>{brandName(row.brandId)}</h4>
+								<ul>
+									<li>
+										{i18n.t('reportsPanel.brandPerformance.unitsSold', {
+											units: i18n.format.integer(row.unitsSold)
+										})}
+									</li>
+									<li>
+										{i18n.t('reportsPanel.brandPerformance.revenue', {
+											amount: i18n.format.currency(row.revenue)
+										})}
+									</li>
+									<li>
+										{i18n.t('reportsPanel.brandPerformance.grossMargin', {
+											amount: i18n.format.currency(row.grossMargin)
+										})}
+									</li>
+								</ul>
+							</article>
+						{/each}
+					</div>
+				{:else}
+					<p>{i18n.t('reportsPanel.brandPerformance.empty')}</p>
+				{/if}
+				{#each brandReputationRows as row (row.id)}
+					<p data-testid={`brand-reputation-${row.id}`}>
+						{i18n.t('reportsPanel.brandPerformance.reputationAdjustment', {
+							storeName: row.storeName,
+							adjustment: row.adjustment > 0 ? `+${row.adjustment}` : String(row.adjustment)
+						})}
+					</p>
+				{/each}
+			</section>
+		{/if}
+
+		{#if marketSnapshotRows.length > 0}
+			<section class="market-evidence" aria-labelledby="market-snapshot-heading">
+				<h3 id="market-snapshot-heading">{i18n.t('reportsPanel.market.title')}</h3>
+				<div class="evidence-list">
+					{#each marketSnapshotRows as row (row.id)}
+						<article data-testid={`market-snapshot-${row.id}`}>
+							<h4>
+								{i18n.labels.productCategory(row.report.productId)} · {cityName(row.report.cityId)}
+							</h4>
+							<ul>
+								<li>
+									{i18n.t('reportsPanel.market.playerShare', {
+										share: i18n.format.percent(row.report.playerShare)
+									})}
+								</li>
+								<li>
+									{i18n.t('reportsPanel.market.shareDelta', {
+										delta: signedShareDelta(row.report.playerShareDelta)
+									})}
+								</li>
+								{#if row.strongestRival}
+									<li>
+										{i18n.t('reportsPanel.market.strongestRival', {
+											competitorId: row.strongestRival.competitorId,
+											competitorName: row.currentRival?.name ?? row.strongestRival.competitorId
+										})}
+									</li>
+									{#if row.currentRival}
+										<li>
+											{i18n.t('reportsPanel.market.currentProfile', {
+												profile: localizeCompetitorProfile(row.currentRival, i18n)
+											})}
+										</li>
+									{/if}
+									<li>
+										{i18n.t('reportsPanel.market.rivalShare', {
+											share: i18n.format.percent(row.strongestRival.share)
+										})}
+									</li>
+									<li>
+										{i18n.t('reportsPanel.market.rivalAttraction', {
+											attraction: i18n.format.integer(row.strongestRival.attractionScore),
+											multiplier: i18n.format.decimal(row.strongestRival.eventMultiplier)
+										})}
+									</li>
+								{:else}
+									<li>{i18n.t('reportsPanel.market.noRival')}</li>
+								{/if}
+							</ul>
+						</article>
+					{/each}
+				</div>
 			</section>
 		{/if}
 
@@ -837,6 +1030,8 @@
 	.modifier-evidence,
 	.inventory-evidence,
 	.product-pressure-evidence,
+	.brand-performance-evidence,
+	.market-evidence,
 	.logistics-evidence,
 	.logistics-subsection,
 	.evidence-list,
@@ -848,6 +1043,8 @@
 	.modifier-evidence,
 	.inventory-evidence,
 	.product-pressure-evidence,
+	.brand-performance-evidence,
+	.market-evidence,
 	.logistics-evidence {
 		margin-top: 1rem;
 	}

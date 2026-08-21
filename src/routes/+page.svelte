@@ -143,6 +143,7 @@
 	} from '$lib/game/decisionContext';
 	import type {
 		ArchetypeId,
+		BrandId,
 		CompanyPolicy,
 		GameState,
 		IndustrialBuildingTypeId,
@@ -2272,6 +2273,11 @@
 		);
 	}
 
+	function changeStoreProductBrand(storeId: string, productId: ProductId, brandId: BrandId): void {
+		if (!game || !mutationAvailability.updateStoreProductBrand) return;
+		void gameRouteController.updateStoreProductBrand(storeId, productId, brandId);
+	}
+
 	function upgradeStoreHandler(storeId: string): void {
 		if (game && mutationAvailability.upgradeStore) {
 			void gameRouteController.upgradeStore(storeId);
@@ -2982,11 +2988,13 @@
 			hiringCandidates={game?.hiringCandidates ?? []}
 			latestStoreReport={latestSelectedStoreReport}
 			onUpdateStoreProduct={changeStoreProduct}
+			onUpdateStoreProductBrand={changeStoreProductBrand}
 			onHireStaff={hireStaff}
 			onAssignStaff={assignStaff}
 			onUnassignStaff={unassignStoreStaff}
 			canUpdateSellingPrice={mutationAvailability.updateStoreSellingPrice}
 			canUpdateInventoryTargets={mutationAvailability.updateStoreInventoryTargets}
+			canUpdateBrand={mutationAvailability.updateStoreProductBrand}
 			{allowedProductIds}
 			canHireStaff={mutationAvailability.hireStaff}
 			canAssignStaff={mutationAvailability.assignStaff}

@@ -168,6 +168,7 @@ function makeSnapshot(overrides?: Partial<CityMapSnapshot>): CityMapSnapshot {
 			})
 		],
 		stores: [],
+		competitors: [],
 		...overrides
 	};
 }
@@ -277,12 +278,13 @@ describe('CityMapScene', () => {
 		});
 
 		it('sets placement preview attributes to inactive when no snapshot', () => {
-			expect.assertions(3);
+			expect.assertions(4);
 			scene.create();
 			const ds = s(scene).game.canvas.dataset;
 			expect(ds.placementPreviewMode).toBe('inactive');
 			expect(ds.placementValidTileCount).toBe('0');
 			expect(ds.placementInvalidTileCount).toBe('0');
+			expect(ds.competitorMarkerCount).toBe('0');
 		});
 	});
 
@@ -769,6 +771,95 @@ describe('CityMapScene', () => {
 	});
 
 	describe('drawStoreMarkers', () => {
+		it('draws active rivals as non-interactive markers and exposes their count', () => {
+			expect.assertions(5);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					competitors: [
+						{
+							id: 'rival-1',
+							name: 'Rival One',
+							archetypeId: 'convenience',
+							x: 1,
+							y: 1,
+							status: 'active'
+						},
+						{
+							id: 'rival-2',
+							name: 'Rival Two',
+							archetypeId: 'grocery',
+							x: 2,
+							y: 2,
+							status: 'active'
+						}
+					]
+				})
+			);
+			const markerGraphics = s(scene).markerGraphics;
+			const ds = s(scene).game.canvas.dataset;
+
+			expect(ds.competitorMarkerCount).toBe('2');
+			expect(markerGraphics.fillCircle).toHaveBeenCalledWith(48, 48, 8);
+			expect(markerGraphics.strokeCircle).toHaveBeenCalledWith(48, 48, 8);
+			expect(markerGraphics.fillCircle).toHaveBeenCalledWith(80, 80, 8);
+			expect(markerGraphics.setInteractive).not.toHaveBeenCalled();
+		});
+
+		it('omits closed rivals from marker rendering', () => {
+			expect.assertions(3);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					competitors: [
+						{
+							id: 'rival-closed',
+							name: 'Closed Rival',
+							archetypeId: 'convenience',
+							x: 1,
+							y: 1,
+							status: 'closed'
+						}
+					]
+				})
+			);
+			const markerGraphics = s(scene).markerGraphics;
+			expect(s(scene).game.canvas.dataset.competitorMarkerCount).toBe('0');
+			expect(markerGraphics.fillCircle).not.toHaveBeenCalled();
+			expect(markerGraphics.strokeCircle).not.toHaveBeenCalled();
+		});
+
+		it('counts one remaining active rival after another closes', () => {
+			expect.assertions(3);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					competitors: [
+						{
+							id: 'rival-active',
+							name: 'Active Rival',
+							archetypeId: 'convenience',
+							x: 1,
+							y: 1,
+							status: 'active'
+						},
+						{
+							id: 'rival-closed',
+							name: 'Closed Rival',
+							archetypeId: 'grocery',
+							x: 2,
+							y: 2,
+							status: 'closed'
+						}
+					]
+				})
+			);
+			const markerGraphics = s(scene).markerGraphics;
+			expect(s(scene).game.canvas.dataset.competitorMarkerCount).toBe('1');
+			expect(markerGraphics.fillCircle).toHaveBeenCalledTimes(1);
+			expect(markerGraphics.fillCircle).toHaveBeenCalledWith(48, 48, 8);
+		});
+
 		it('animates store sprite positions when sprites exist', () => {
 			expect.assertions(1);
 			scene.create();
@@ -1453,6 +1544,32 @@ describe('CityMapScene', () => {
 			expect(setZoom).not.toHaveBeenCalled();
 			scene.updateSnapshot(makeSnapshot({ cityId: 'other-city' })); // city swap
 			expect(setZoom).toHaveBeenCalled();
+		});
+
+		it('does not change terrain or camera framing when only rivals change', () => {
+			expect.assertions(3);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot());
+			const initialTerrainKey = s(scene).terrainKey;
+			const setZoom = s(scene).cameras.main.setZoom as Mock;
+			setZoom.mockClear();
+			scene.updateSnapshot(
+				makeSnapshot({
+					competitors: [
+						{
+							id: 'rival-1',
+							name: 'Rival One',
+							archetypeId: 'convenience',
+							x: 1,
+							y: 1,
+							status: 'active'
+						}
+					]
+				})
+			);
+			expect(s(scene).terrainKey).toBe(initialTerrainKey);
+			expect(setZoom).not.toHaveBeenCalled();
+			expect(s(scene).game.canvas.dataset.competitorMarkerCount).toBe('1');
 		});
 	});
 

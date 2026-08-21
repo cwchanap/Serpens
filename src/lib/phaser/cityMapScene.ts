@@ -38,6 +38,8 @@ const OWNERSHIP_OUTLINE_DEPTH = TERRAIN_DECORATION_DEPTH + 1;
 const TERRAIN_FEATURE_SIZE = TILE_SIZE;
 const TREE_DECORATION_SIZE = TILE_SIZE * 0.72;
 const STORE_MARKER_DEPTH = 10;
+const COMPETITOR_MARKER_COLOR = 0xd97706;
+const COMPETITOR_MARKER_RADIUS = 8;
 const PLACEMENT_PREVIEW_DEPTH = STORE_MARKER_DEPTH - 1;
 const OUTLINE_DEPTH = 20;
 const PLACEMENT_PREVIEW_VALID_COLOR = 0x6b7e3a;
@@ -133,6 +135,7 @@ export class CityMapScene extends Phaser.Scene {
 			this.ownershipGraphics?.clear();
 			this.placementPreviewGraphics?.clear();
 			this.updateCanvasPlacementPreviewAttributes(0, 0);
+			this.updateCanvasCompetitorMarkerAttributes(0);
 			return;
 		}
 
@@ -422,9 +425,20 @@ export class CityMapScene extends Phaser.Scene {
 					storeSprite.baseY + Math.sin(time / 350 + storeSprite.index) * 2
 				);
 			}
-
-			return;
 		}
+
+		const activeCompetitors = this.snapshot.competitors.filter(
+			(competitor) => competitor.status === 'active'
+		);
+		this.markerGraphics.lineStyle(2, COMPETITOR_MARKER_COLOR, 0.95);
+		for (const competitor of activeCompetitors) {
+			const x = competitor.x * TILE_SIZE + TILE_SIZE / 2;
+			const y = competitor.y * TILE_SIZE + TILE_SIZE / 2;
+			this.markerGraphics.fillStyle(COMPETITOR_MARKER_COLOR, 0.9);
+			this.markerGraphics.fillCircle(x, y, COMPETITOR_MARKER_RADIUS);
+			this.markerGraphics.strokeCircle(x, y, COMPETITOR_MARKER_RADIUS);
+		}
+		this.updateCanvasCompetitorMarkerAttributes(activeCompetitors.length);
 	}
 
 	private drawInteractionOutlines(): void {
@@ -742,6 +756,16 @@ export class CityMapScene extends Phaser.Scene {
 
 		canvas.dataset.storeMarkerMode = mode;
 		canvas.dataset.storeSpriteCount = String(spriteCount);
+	}
+
+	private updateCanvasCompetitorMarkerAttributes(markerCount: number): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		canvas.dataset.competitorMarkerCount = String(markerCount);
 	}
 
 	private updateCanvasTerrainAttributes(

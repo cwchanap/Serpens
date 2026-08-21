@@ -55,6 +55,7 @@ import {
 import { updateStoreProduct } from '$lib/game/stock';
 import type {
 	ArchetypeId,
+	BrandId,
 	City,
 	CompanyPolicy,
 	GameState,
@@ -144,6 +145,7 @@ export interface MutationAvailability {
 	promoteStaff: boolean;
 	updateStoreSellingPrice: boolean;
 	updateStoreInventoryTargets: boolean;
+	updateStoreProductBrand: boolean;
 	buildIndustrialBuilding: boolean;
 	upgradeIndustrialBuilding: boolean;
 	buildRail: boolean;
@@ -186,6 +188,7 @@ export function createMutationAvailability(input: {
 		promoteStaff: available('promoteStaff'),
 		updateStoreSellingPrice: available('updateStoreSellingPrice'),
 		updateStoreInventoryTargets: available('updateStoreInventoryTargets'),
+		updateStoreProductBrand: input.playMode === 'sandbox',
 		buildIndustrialBuilding: available('buildIndustrialBuilding'),
 		upgradeIndustrialBuilding: available('upgradeIndustrialBuilding'),
 		buildRail: available('buildRail'),
@@ -1261,6 +1264,17 @@ export class GameRouteController {
 				reorderThreshold,
 				targetStock
 			},
+			cueId: 'sfx.stock.edit'
+		});
+	}
+
+	updateStoreProductBrand(
+		storeId: string,
+		productId: ProductId,
+		brandId: BrandId
+	): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => updateStoreProduct(game!, storeId, productId, { brandId }),
 			cueId: 'sfx.stock.edit'
 		});
 	}

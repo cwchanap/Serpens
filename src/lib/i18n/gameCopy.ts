@@ -1,4 +1,5 @@
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import { getBrandDefinition } from '$lib/game/brands';
 import { PRODUCTION_EVENT_CATALOG } from '$lib/game/eventCatalog';
 import { estimateNextLoanPayment, getLoanArrearsAmount, hasLoanArrears } from '$lib/game/finance';
 import { getFinanceMetrics } from '$lib/game/financeMetrics';
@@ -17,9 +18,11 @@ import type {
 import { COVENANT_THRESHOLD, type GameAlert } from '$lib/game/alerts';
 import type { LogisticsFailureCode } from '$lib/game/commandResult';
 import type {
+	BrandId,
 	DailyReportWarning,
 	DailyRouteModifierRecovery,
 	GameState,
+	MarketCompetitor,
 	DecisionItem,
 	RouteDispatchModifierImpact,
 	Store,
@@ -63,6 +66,17 @@ export function storeDisplayName(
 	i18n: I18nBundle
 ): string {
 	return store.name || i18n.t('store.defaultName', { ordinal });
+}
+
+export function localizeBrandName(brandId: BrandId): string {
+	return getBrandDefinition(brandId).name;
+}
+
+export function localizeCompetitorProfile(
+	competitor: Pick<MarketCompetitor, 'archetypeId'>,
+	i18n: I18nBundle
+): string {
+	return i18n.labels.archetype(competitor.archetypeId).name;
 }
 
 export function formatStoreLocation(location: StoreLocation, i18n: I18nBundle): string {

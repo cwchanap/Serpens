@@ -372,6 +372,25 @@ export const en = {
 			effectivePrice: 'Effective price: {price}',
 			inventoryLoss: 'Inventory loss expense: {amount}'
 		},
+		brandPerformance: {
+			title: 'Brand performance',
+			empty: 'No brand performance evidence recorded.',
+			unitsSold: 'Units sold: {units}',
+			revenue: 'Revenue: {amount}',
+			grossMargin: 'Gross margin: {amount}',
+			reputationAdjustment: '{storeName} brand reputation response: {adjustment}'
+		},
+		market: {
+			title: 'Market snapshot',
+			playerShare: 'Player share: {share}',
+			shareDelta: 'Share change: {delta}',
+			noPriorShare: 'No prior share',
+			strongestRival: 'Strongest rival: {competitorId} · {competitorName}',
+			currentProfile: 'Current rival profile: {profile}',
+			rivalShare: 'Rival share: {share}',
+			rivalAttraction: 'Rival attraction: {attraction} · event multiplier: ×{multiplier}',
+			noRival: 'No rival evidence recorded.'
+		},
 		inventory: {
 			productionCloseTitle: 'Production-close inventory (before retail replenishment)',
 			reportDay: 'Report day {day}',
@@ -572,6 +591,7 @@ export const en = {
 		title: '{storeName} stock',
 		headings: {
 			product: 'Product',
+			brand: 'Brand',
 			stock: 'Stock',
 			importCost: 'Import cost',
 			configuredPrice: 'Configured price',
@@ -582,6 +602,7 @@ export const en = {
 			latest: 'Latest'
 		},
 		inputLabels: {
+			brand: 'Brand for {categoryName}',
 			sellingPrice: 'Selling price for {categoryName}',
 			reorderThreshold: 'Reorder threshold for {categoryName}',
 			targetStock: 'Target stock for {categoryName}'
@@ -600,6 +621,9 @@ export const en = {
 			liveReorder: 'Needs import now'
 		},
 		evidence: {
+			shelfPrice: 'Shelf price: {price}',
+			effectivePrice: 'Effective price: {price}',
+			grossMargin: 'Gross margin: {amount}',
 			freshness: 'Freshness: {percent}%',
 			waste: 'Waste: {units} units',
 			shrink: 'Shrink: {units} units',
