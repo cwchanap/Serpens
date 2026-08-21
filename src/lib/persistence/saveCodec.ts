@@ -1204,6 +1204,7 @@ function comparePolicyOverrideScopes(
 	if (left.kind === 'store' && right.kind === 'store') {
 		return compareStrings(left.storeId, right.storeId);
 	}
+	/* c8 ignore next */
 	return 0;
 }
 

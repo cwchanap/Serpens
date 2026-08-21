@@ -1679,6 +1679,73 @@ describe('saveCodec', () => {
 				)
 			).toThrow(SaveDataError);
 		});
+		test('normalizes policy overrides already sorted city before store', () => {
+			const game = createGame({
+				policyOverrides: [
+					{ scope: { kind: 'city', cityId: 'harbor-city' }, values: { pricing: 'premium' } },
+					{ scope: { kind: 'store', storeId: 'store-1' }, values: { pricing: 'discount' } }
+				]
+			});
+
+			const decoded = validateSaveRecord(createManualSaveRecord({ game }));
+
+			expect(decoded.game.policyOverrides.map((entry) => entry.scope)).toEqual([
+				{ kind: 'city', cityId: 'harbor-city' },
+				{ kind: 'store', storeId: 'store-1' }
+			]);
+		});
+
+		test('accepts a city-scope historical manager action record', () => {
+			const history = createFixtureHistory({
+				scope: { kind: 'city', cityId: 'harbor-city' }
+			});
+
+			const decoded = validateSaveRecord(
+				createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+			);
+
+			expect(decoded.game.managerActionHistory[0]?.scope).toEqual({
+				kind: 'city',
+				cityId: 'harbor-city'
+			});
+		});
+
+		test('accepts a rejected staffing-policy change with null applied', () => {
+			const history = createFixtureHistory({
+				outcome: 'rejected',
+				change: {
+					kind: 'staffing-policy',
+					storeId: 'store-1',
+					before: 'efficient',
+					proposed: 'service',
+					applied: null
+				}
+			});
+
+			const decoded = validateSaveRecord(
+				createManualSaveRecord({ game: createGame({ managerActionHistory: [history] }) })
+			);
+
+			expect(decoded.game.managerActionHistory[0]?.change.kind).toBe('staffing-policy');
+		});
+
+		test('normalizes manager action history already sorted by day ascending', () => {
+			const game = createGame({
+				managerActionHistory: [
+					createFixtureHistory({ id: 'history-a', day: 1 }),
+					createFixtureHistory({ id: 'history-b', day: 2 }),
+					createFixtureHistory({ id: 'history-c', day: 3 })
+				]
+			});
+
+			const decoded = validateSaveRecord(createManualSaveRecord({ game }));
+
+			expect(decoded.game.managerActionHistory.map((entry) => entry.id)).toEqual([
+				'history-a',
+				'history-b',
+				'history-c'
+			]);
+		});
 	});
 
 	test('round-trips a current v15 multi-city save with city-scoped inventory and replenishment evidence', () => {

@@ -425,4 +425,80 @@ describe('ManagerDelegationPanel', () => {
 
 		await expect.element(page.getByText('No manager-role staff available.')).toBeVisible();
 	});
+
+	it('auto-converts a store scope to city when authority changes on a prefer-local-supply delegation', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		const delegation: ManagerDelegation = {
+			...defaultDelegation,
+			playbook: 'prefer-local-supply',
+			scope: { kind: 'store', storeId: baseStore.id },
+			authority: { pricing: false, inventory: false, staffing: false, supply: true }
+		};
+		renderManagerPanel({ game: managerGame({}, delegation), onChange });
+
+		await page.getByLabelText('Supply authority for Alex Chen').click();
+
+		expect(onChange).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				scope: { kind: 'city', cityId: 'harbor-city' },
+				authority: expect.objectContaining({ supply: false })
+			})
+		);
+	});
+
+	it('does not emit when authority changes on a prefer-local-supply delegation with an unresolvable store scope', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		const delegation: ManagerDelegation = {
+			...defaultDelegation,
+			playbook: 'prefer-local-supply',
+			scope: { kind: 'store', storeId: 'nonexistent-store' },
+			authority: { pricing: false, inventory: false, staffing: false, supply: true }
+		};
+		renderManagerPanel({ game: managerGame({}, delegation), onChange });
+
+		await page.getByLabelText('Supply authority for Alex Chen').click();
+
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it('does not emit when switching to prefer-local-supply with an unresolvable store scope', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		const delegation: ManagerDelegation = {
+			...defaultDelegation,
+			playbook: 'protect-margin',
+			scope: { kind: 'store', storeId: 'nonexistent-store' }
+		};
+		renderManagerPanel({ game: managerGame({}, delegation), onChange });
+
+		await page.getByLabelText('Playbook for Alex Chen').selectOptions('prefer-local-supply');
+
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it('does not emit a store scope change when there are no stores', async () => {
+		expect.assertions(1);
+		const onChange = vi.fn();
+		const unassignedManager: StaffMember = {
+			...manager,
+			id: 'manager-no-stores',
+			name: 'No Stores Manager',
+			assignedStoreId: null
+		};
+		renderManagerPanel({
+			game: {
+				...baseGame,
+				staff: [unassignedManager, general],
+				stores: [],
+				managerDelegations: []
+			},
+			onChange
+		});
+
+		await page.getByLabelText('Delegation scope for No Stores Manager').selectOptions('store');
+
+		expect(onChange).not.toHaveBeenCalled();
+	});
 });
