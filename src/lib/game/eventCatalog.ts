@@ -166,6 +166,49 @@ const PRODUCTION_EVENT_DEFINITIONS = [
 		]
 	},
 	{
+		id: 'rival-promotion',
+		version: 1,
+		selection: { kind: 'weighted', weight: 1 },
+		condition: { kind: 'always' },
+		target: { kind: 'competitor', status: 'active' },
+		expiresAfterDays: 2,
+		cooldownDays: 7,
+		copy: { key: 'events.rivalPromotion', params: {} },
+		options: [
+			{
+				id: 'counter-promote',
+				effects: [
+					{ kind: 'cash-adjust', amount: -1_200 },
+					{ kind: 'score-adjust', score: 'marketPosition', amount: 2 }
+				],
+				modifiers: [
+					{
+						durationDays: 3,
+						stackingKey: 'rival-promotion:market-attraction',
+						stackingRule: 'replace',
+						effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+						explanation: { key: 'events.rivalPromotion.modifier', params: {} },
+						importance: 'important'
+					}
+				]
+			},
+			{
+				id: 'differentiate',
+				effects: [{ kind: 'score-adjust', score: 'customerSatisfaction', amount: 2 }],
+				modifiers: [
+					{
+						durationDays: 3,
+						stackingKey: 'rival-promotion:market-attraction',
+						stackingRule: 'replace',
+						effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+						explanation: { key: 'events.rivalPromotion.modifier', params: {} },
+						importance: 'important'
+					}
+				]
+			}
+		]
+	},
+	{
 		id: 'supplier-terms',
 		version: 2,
 		selection: { kind: 'weighted', weight: 1 },

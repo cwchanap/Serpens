@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { getProductDefinition } from './products';
 import { resolveProductMarketShare } from './marketCompetition';
-import type { MarketCompetitor } from './types';
+import type { ActiveEventModifier, MarketCompetitor } from './types';
 
 function competitor(overrides: Partial<MarketCompetitor> = {}): MarketCompetitor {
 	return {
@@ -15,6 +15,22 @@ function competitor(overrides: Partial<MarketCompetitor> = {}): MarketCompetitor
 		productFocus: ['beverages'],
 		brandIds: ['common-ground'],
 		status: 'active',
+		...overrides
+	};
+}
+
+function attractionModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
+	return {
+		id: 'event-modifier-1',
+		source: { eventId: 'rival-promotion', instanceId: 'event-instance-1', optionId: 'respond' },
+		target: { kind: 'competitor', competitorId: 'competitor-harbor-city-1' },
+		startsOnDay: 2,
+		expiresOnDay: 5,
+		stackingKey: 'rival-promotion:market-attraction',
+		stackingRule: 'replace',
+		effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+		explanation: { key: 'events.rivalPromotion.modifier', params: {} },
+		importance: 'important',
 		...overrides
 	};
 }
@@ -153,5 +169,18 @@ describe('explicit product market share', () => {
 			'competitor-harbor-city-2'
 		]);
 		expect(totalShare).toBeCloseTo(1, 10);
+	});
+
+	test('applies an active rival attraction modifier and restores the base share after expiry', () => {
+		const rival = competitor();
+		const product = getProductDefinition('bottled-water');
+		const base = resolveProductMarketShare([rival], [], product, 80, 2);
+		const active = resolveProductMarketShare([rival], [attractionModifier()], product, 80, 2);
+		const expired = resolveProductMarketShare([rival], [attractionModifier()], product, 80, 5);
+
+		expect(active.playerShare).toBeLessThan(base.playerShare);
+		expect(active.competitors[0]?.eventMultiplier).toBe(1.18);
+		expect(expired.playerShare).toBe(base.playerShare);
+		expect(expired.competitors[0]?.eventMultiplier).toBe(1);
 	});
 });

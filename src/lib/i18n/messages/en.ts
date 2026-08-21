@@ -1471,6 +1471,21 @@ export const en = {
 					suspension: 'Dispatch suspended on this route for two days.'
 				}
 			},
+			rivalPromotion: {
+				title: 'Rival promotion',
+				context: '{competitorName} is promoting heavily in {city}. Choose how to respond.',
+				options: {
+					'counter-promote': {
+						label: 'Counter-promote',
+						description: 'Spend $1,200 to counter the promotion and gain market position.'
+					},
+					differentiate: {
+						label: 'Differentiate',
+						description: 'Lean into customer satisfaction instead of matching the promotion.'
+					}
+				},
+				modifier: '{competitorName} gains 18% attraction for three days.'
+			},
 			supplierTerms: {
 				title: 'Supplier terms',
 				context:
@@ -1492,6 +1507,9 @@ export const en = {
 		},
 		modifiers: {
 			companyTarget: 'Company-wide retail imports',
+			competitorTarget: 'Rival: {name}',
+			removedCompetitorTarget: 'Rival: {competitorId} (removed)',
+			competitorAttraction: 'Attraction ×{multiplier}',
 			importCostDiscount: '{percent}% retail import discount',
 			durationDays: 'Active for {days} days',
 			startsOnDay: 'Starts day {day}',

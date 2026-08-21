@@ -4,8 +4,10 @@ import type {
 	EventImmediateEffect,
 	EventModifierTemplate,
 	EventSelectionPolicy,
+	CompanyPolicy,
 	EventTargetSelector,
 	EventTimedEffect,
+	ProductFamilyId,
 	ScoreKey,
 	StructuredCopyRef
 } from './types';
@@ -71,6 +73,19 @@ const SCORE_KEYS: readonly ScoreKey[] = [
 	'staffMorale',
 	'marketPosition'
 ];
+const COMPETITOR_PRICE_POSTURES: readonly CompanyPolicy['pricing'][] = [
+	'discount',
+	'competitive',
+	'standard',
+	'premium'
+];
+const PRODUCT_FAMILY_IDS: readonly ProductFamilyId[] = [
+	'beverages',
+	'convenience-goods',
+	'fashion',
+	'electronics',
+	'grocery-food'
+];
 
 export function validateAndNormalizeEventCatalog(
 	definitions: readonly EventDefinition[]
@@ -124,9 +139,11 @@ function validateDefinition(
 
 	const target = definition.target;
 	const hasSupportedTarget =
-		target?.kind === 'company' || (target?.kind === 'recurring-route' && target.state === 'active');
+		target?.kind === 'company' ||
+		(target?.kind === 'recurring-route' && target.state === 'active') ||
+		(target?.kind === 'competitor' && (target.status === 'active' || target.status === 'closed'));
 	if (!hasSupportedTarget) {
-		add('target', 'must select the company or an active recurring-route target');
+		add('target', 'must select the company, an active recurring-route, or a competitor target');
 	}
 	if (definition.options.length === 0) {
 		add('options', 'must contain at least one option');
@@ -296,6 +313,28 @@ function validateOption(
 					);
 				}
 				break;
+			case 'competitor-status-set':
+				if (targetKind !== 'competitor') {
+					add(`${effectPath}.kind`, 'must target a competitor');
+				}
+				if (effect.status !== 'active' && effect.status !== 'closed') {
+					add(`${effectPath}.status`, 'must be active or closed');
+				}
+				break;
+			case 'competitor-price-posture-set':
+				if (targetKind !== 'competitor') {
+					add(`${effectPath}.kind`, 'must target a competitor');
+				}
+				if (!COMPETITOR_PRICE_POSTURES.includes(effect.pricePosture)) {
+					add(`${effectPath}.pricePosture`, 'must be a supported competitor price posture');
+				}
+				break;
+			case 'competitor-product-focus-set':
+				if (targetKind !== 'competitor') {
+					add(`${effectPath}.kind`, 'must target a competitor');
+				}
+				validateProductFocus(effect.productFocus, `${effectPath}.productFocus`, add);
+				break;
 		}
 	}
 
@@ -352,6 +391,12 @@ function validateModifier(
 			add(`${path}.effect.kind`, 'must be import-cost-multiplier for a company target');
 		}
 	}
+	if (effectKind === 'competitor-attraction-multiplier' && targetKind !== 'competitor') {
+		add(`${path}.effect.kind`, 'must target a competitor');
+	}
+	if (targetKind === 'competitor' && effectKind !== 'competitor-attraction-multiplier') {
+		add(`${path}.effect.kind`, 'must be competitor-attraction-multiplier for a competitor target');
+	}
 	validateCopy(modifier.explanation, `${path}.explanation`, add);
 	if (modifier.importance !== 'normal' && modifier.importance !== 'important') {
 		add(`${path}.importance`, 'must be normal or important');
@@ -388,8 +433,32 @@ function validateTimedEffect(
 			return;
 		case 'route-dispatch-suspension':
 			return;
+		case 'competitor-attraction-multiplier':
+			if (!Number.isFinite(effect.multiplier) || effect.multiplier <= 0) {
+				add(`${path}.multiplier`, 'must be a finite positive multiplier');
+			}
+			return;
 		default:
 			add(`${path}.kind`, 'must be a supported timed effect kind');
+	}
+}
+
+function validateProductFocus(
+	value: readonly ProductFamilyId[],
+	path: string,
+	add: (path: string, message: string) => void
+): void {
+	if (!Array.isArray(value) || value.length < 1 || value.length > 2) {
+		add(path, 'must contain one or two product families');
+		return;
+	}
+	for (const [index, familyId] of value.entries()) {
+		if (!PRODUCT_FAMILY_IDS.includes(familyId)) {
+			add(`${path}[${index}]`, 'must be a supported product family');
+		}
+	}
+	if (new Set(value).size !== value.length) {
+		add(path, 'must contain unique product families');
 	}
 }
 
@@ -440,7 +509,7 @@ function cloneDefinition(definition: EventDefinition): EventDefinition {
 		copy: cloneCopy(definition.copy),
 		options: definition.options.map((option) => ({
 			...option,
-			effects: option.effects.map((effect) => ({ ...effect })),
+			effects: option.effects.map(cloneImmediateEffect),
 			modifiers: option.modifiers.map((modifier) => ({
 				...modifier,
 				effect: cloneTimedEffect(modifier.effect),
@@ -456,7 +525,16 @@ function cloneTargetSelector(selector: EventTargetSelector): EventTargetSelector
 			return { kind: 'company' };
 		case 'recurring-route':
 			return { kind: 'recurring-route', state: selector.state };
+		case 'competitor':
+			return { kind: 'competitor', status: selector.status };
 	}
+}
+
+function cloneImmediateEffect(effect: EventAuthoredImmediateEffect): EventAuthoredImmediateEffect {
+	if (effect.kind === 'competitor-product-focus-set') {
+		return { ...effect, productFocus: [...effect.productFocus] };
+	}
+	return { ...effect };
 }
 
 function cloneCondition(condition: EventCondition): EventCondition {

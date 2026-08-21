@@ -3,7 +3,7 @@
 		resolveEffectiveRecurringRoute,
 		type EffectiveRecurringRoute
 	} from '$lib/game/logisticsRouteModifiers';
-	import type { ActiveEventModifier, RecurringRoute } from '$lib/game/types';
+	import type { ActiveEventModifier, MarketCompetitor, RecurringRoute } from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
 	import { localizeEventSourceTitle, localizeStructuredCopy } from '$lib/i18n/gameCopy';
 
@@ -11,12 +11,14 @@
 		modifiers,
 		day,
 		i18n,
-		routes
+		routes,
+		competitors = []
 	}: {
 		modifiers: ActiveEventModifier[];
 		day: number;
 		i18n: I18nBundle;
 		routes: readonly RecurringRoute[];
+		competitors?: readonly MarketCompetitor[];
 	} = $props();
 
 	const sortedModifiers = $derived(
@@ -92,7 +94,30 @@
 			case 'import-cost-multiplier':
 				// Unreachable: definitions reject import-cost effects on route targets.
 				return '—';
+			case 'competitor-attraction-multiplier':
+				// Unreachable: definitions reject competitor effects on route targets.
+				return '—';
 		}
+	}
+
+	function competitorTargetLabel(
+		modifier: ActiveEventModifier,
+		competitor: MarketCompetitor | undefined
+	): string {
+		if (modifier.target.kind !== 'competitor') return '';
+		if (!competitor) {
+			return i18n.t('copy.modifiers.removedCompetitorTarget', {
+				competitorId: modifier.target.competitorId
+			});
+		}
+		return i18n.t('copy.modifiers.competitorTarget', { name: competitor.name });
+	}
+
+	function competitorEffectValue(modifier: ActiveEventModifier): string {
+		if (modifier.effect.kind !== 'competitor-attraction-multiplier') return '—';
+		return i18n.t('copy.modifiers.competitorAttraction', {
+			multiplier: i18n.format.decimal(modifier.effect.multiplier)
+		});
 	}
 </script>
 
@@ -113,6 +138,22 @@
 						? routes.find((candidate) => candidate.id === targetRouteId)
 						: undefined}
 				{@const targetEffective = targetRoute ? effectiveByRouteId[targetRoute.id] : undefined}
+				{@const targetCompetitorId =
+					modifier.target.kind === 'competitor' ? modifier.target.competitorId : null}
+				{@const targetCompetitor =
+					targetCompetitorId !== null
+						? competitors.find((candidate) => candidate.id === targetCompetitorId)
+						: undefined}
+				{@const explanation =
+					modifier.target.kind === 'competitor'
+						? {
+								...modifier.explanation,
+								params: {
+									...modifier.explanation.params,
+									competitorName: targetCompetitor?.name ?? modifier.target.competitorId
+								}
+							}
+						: modifier.explanation}
 				<article aria-label={title}>
 					<div class="modifier-heading">
 						<h3>{title}</h3>
@@ -120,12 +161,17 @@
 							<span class="seal" data-urgent="true">{i18n.t('copy.modifiers.important')}</span>
 						{/if}
 					</div>
-					<p>{localizeStructuredCopy(modifier.explanation, i18n)}</p>
+					<p>{localizeStructuredCopy(explanation, i18n)}</p>
 					<dl>
 						{#if modifier.target.kind === 'recurring-route'}
 							<div>
 								<dt>{routeTargetLabel(modifier, targetRoute)}</dt>
 								<dd>{routeEffectValue(modifier, targetEffective)}</dd>
+							</div>
+						{:else if modifier.target.kind === 'competitor'}
+							<div>
+								<dt>{competitorTargetLabel(modifier, targetCompetitor)}</dt>
+								<dd>{competitorEffectValue(modifier)}</dd>
 							</div>
 						{:else if modifier.effect.kind === 'import-cost-multiplier'}
 							<div>

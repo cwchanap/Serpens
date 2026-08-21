@@ -258,6 +258,9 @@ function materializeEffect(
 	game: GameState,
 	effect: EventDefinition['options'][number]['effects'][number]
 ): EventImmediateEffect {
+	if (effect.kind === 'competitor-product-focus-set') {
+		return { ...effect, productFocus: [...effect.productFocus] };
+	}
 	if (effect.kind !== 'finance-borrow' || effect.amount !== 'available-credit-clamped') {
 		return { ...effect } as EventImmediateEffect;
 	}

@@ -41,13 +41,14 @@ function diagnosticsFor(definitions: readonly EventDefinition[]) {
 }
 
 describe('PRODUCTION_EVENT_CATALOG', () => {
-	it('contains only the four approved, versioned production definitions', () => {
+	it('contains only the five approved, versioned production definitions', () => {
 		expect(
 			PRODUCTION_EVENT_CATALOG.definitions.map(({ id, version }) => ({ id, version }))
 		).toEqual([
 			{ id: 'cash-pressure', version: 1 },
 			{ id: 'expansion-opportunity', version: 1 },
 			{ id: 'freight-disruption', version: 1 },
+			{ id: 'rival-promotion', version: 1 },
 			{ id: 'supplier-terms', version: 2 }
 		]);
 	});
@@ -62,10 +63,10 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			Extract<EventModifierTemplate, { stackingRule: 'stack' }>
 		>().toEqualTypeOf<never>();
 		expectTypeOf<Extract<EventTarget, { kind: 'store' }>>().toEqualTypeOf<never>();
-		expect(PRODUCTION_EVENT_CATALOG.definitions).toHaveLength(4);
+		expect(PRODUCTION_EVENT_CATALOG.definitions).toHaveLength(5);
 	});
 
-	it('exposes only the company and active recurring-route target variants', () => {
+	it('exposes company, active recurring-route, and competitor target variants', () => {
 		expectTypeOf<Extract<EventTarget, { kind: 'recurring-route' }>>().toEqualTypeOf<{
 			kind: 'recurring-route';
 			routeId: string;
@@ -74,10 +75,19 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			kind: 'recurring-route';
 			state: 'active';
 		}>();
+		expectTypeOf<Extract<EventTarget, { kind: 'competitor' }>>().toEqualTypeOf<{
+			kind: 'competitor';
+			competitorId: string;
+		}>();
+		expectTypeOf<Extract<EventTargetSelector, { kind: 'competitor' }>>().toEqualTypeOf<{
+			kind: 'competitor';
+			status: 'active' | 'closed';
+		}>();
 		expect(PRODUCTION_EVENT_CATALOG.definitions.map((definition) => definition.target)).toEqual([
 			{ kind: 'company' },
 			{ kind: 'company' },
 			{ kind: 'recurring-route', state: 'active' },
+			{ kind: 'competitor', status: 'active' },
 			{ kind: 'company' }
 		]);
 	});
@@ -113,6 +123,13 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			selection: { kind: 'weighted', weight: 1 },
 			condition: { kind: 'always' },
 			target: { kind: 'recurring-route', state: 'active' },
+			expiresAfterDays: 2,
+			cooldownDays: 7
+		});
+		expect(PRODUCTION_EVENT_CATALOG.byId.get('rival-promotion')).toMatchObject({
+			selection: { kind: 'weighted', weight: 1 },
+			condition: { kind: 'always' },
+			target: { kind: 'competitor', status: 'active' },
 			expiresAfterDays: 2,
 			cooldownDays: 7
 		});
@@ -209,6 +226,44 @@ describe('PRODUCTION_EVENT_CATALOG', () => {
 			[],
 			[{ kind: 'cash-adjust', amount: -2_000 }],
 			[]
+		]);
+		const rivalPromotion = PRODUCTION_EVENT_CATALOG.byId.get('rival-promotion')!;
+		expect(rivalPromotion.options.map((option) => option.id)).toEqual([
+			'counter-promote',
+			'differentiate'
+		]);
+		expect(rivalPromotion.options.map((option) => option.effects)).toEqual([
+			[
+				{ kind: 'cash-adjust', amount: -1_200 },
+				{ kind: 'score-adjust', score: 'marketPosition', amount: 2 }
+			],
+			[{ kind: 'score-adjust', score: 'customerSatisfaction', amount: 2 }]
+		]);
+	});
+
+	it('adds the same approved attraction modifier to both rival-promotion options', () => {
+		const rivalPromotion = PRODUCTION_EVENT_CATALOG.byId.get('rival-promotion')!;
+		expect(rivalPromotion.options.map((option) => option.modifiers)).toEqual([
+			[
+				{
+					durationDays: 3,
+					stackingKey: 'rival-promotion:market-attraction',
+					stackingRule: 'replace',
+					effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+					explanation: { key: 'events.rivalPromotion.modifier', params: {} },
+					importance: 'important'
+				}
+			],
+			[
+				{
+					durationDays: 3,
+					stackingKey: 'rival-promotion:market-attraction',
+					stackingRule: 'replace',
+					effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+					explanation: { key: 'events.rivalPromotion.modifier', params: {} },
+					importance: 'important'
+				}
+			]
 		]);
 	});
 
@@ -462,11 +517,12 @@ describe('route timed effect validation', () => {
 });
 
 describe('recurring-route selector validation', () => {
-	it('accepts company and active recurring-route selectors', () => {
+	it('accepts company, active recurring-route, and competitor selectors', () => {
 		expect(() =>
 			validateAndNormalizeEventCatalog([
 				definition({ id: 'company-event', target: { kind: 'company' } }),
-				definition({ id: 'route-event', target: { kind: 'recurring-route', state: 'active' } })
+				definition({ id: 'route-event', target: { kind: 'recurring-route', state: 'active' } }),
+				definition({ id: 'competitor-event', target: { kind: 'competitor', status: 'active' } })
 			])
 		).not.toThrow();
 	});
@@ -479,6 +535,8 @@ describe('recurring-route selector validation', () => {
 
 		expectRejected({ kind: 'recurring-route', state: 'paused' });
 		expectRejected({ kind: 'recurring-route' });
+		expectRejected({ kind: 'competitor', status: 'paused' });
+		expectRejected({ kind: 'competitor' });
 		expectRejected({ kind: 'store' });
 	});
 
@@ -491,5 +549,64 @@ describe('recurring-route selector validation', () => {
 			state: 'active'
 		});
 		expect(Object.isFrozen(catalog.byId.get('route-event'))).toBe(true);
+	});
+});
+
+describe('competitor timed effect validation', () => {
+	it('accepts a positive attraction multiplier on a competitor definition', () => {
+		expect(() =>
+			validateAndNormalizeEventCatalog([
+				definition({
+					id: 'competitor-effect-event',
+					target: { kind: 'competitor', status: 'active' },
+					options: [
+						{
+							id: 'respond',
+							effects: [],
+							modifiers: [
+								{
+									durationDays: 3,
+									stackingKey: 'competitor-attraction',
+									stackingRule: 'replace',
+									effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+									explanation: { key: 'events.competitor.modifier', params: {} },
+									importance: 'important'
+								}
+							]
+						}
+					]
+				})
+			])
+		).not.toThrow();
+	});
+
+	it('rejects non-positive and non-finite attraction multipliers', () => {
+		for (const multiplier of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+			const diagnostics = diagnosticsFor([
+				definition({
+					id: 'bad-competitor-multiplier',
+					target: { kind: 'competitor', status: 'active' },
+					options: [
+						{
+							id: 'respond',
+							effects: [],
+							modifiers: [
+								{
+									durationDays: 3,
+									stackingKey: 'competitor-attraction',
+									stackingRule: 'replace',
+									effect: { kind: 'competitor-attraction-multiplier', multiplier },
+									explanation: { key: 'events.competitor.modifier', params: {} },
+									importance: 'important'
+								}
+							]
+						}
+					]
+				})
+			]);
+			expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+				'bad-competitor-multiplier:options[0].modifiers[0].effect.multiplier'
+			]);
+		}
 	});
 });

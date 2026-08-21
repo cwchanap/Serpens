@@ -54,10 +54,14 @@ export interface StructuredCopyRef {
 	params: StructuredCopyParams;
 }
 
-export type EventTarget = { kind: 'company' } | { kind: 'recurring-route'; routeId: string };
+export type EventTarget =
+	| { kind: 'company' }
+	| { kind: 'recurring-route'; routeId: string }
+	| { kind: 'competitor'; competitorId: string };
 export type EventTargetSelector =
 	| { kind: 'company' }
-	| { kind: 'recurring-route'; state: 'active' };
+	| { kind: 'recurring-route'; state: 'active' }
+	| { kind: 'competitor'; status: 'active' | 'closed' };
 
 export type EventCondition =
 	| { kind: 'always' }
@@ -82,6 +86,18 @@ export type EventImmediateEffect =
 			purpose: 'emergency' | 'supplierCredit';
 			amount: number;
 			termDays: 28 | 56;
+	  }
+	| {
+			kind: 'competitor-status-set';
+			status: 'active' | 'closed';
+	  }
+	| {
+			kind: 'competitor-price-posture-set';
+			pricePosture: CompanyPolicy['pricing'];
+	  }
+	| {
+			kind: 'competitor-product-focus-set';
+			productFocus: ProductFamilyId[];
 	  };
 
 export type EventTimedEffect =
@@ -94,7 +110,8 @@ export type EventTimedEffect =
 	| { kind: 'route-lead-time-adjustment'; days: number }
 	| { kind: 'route-capacity-multiplier'; multiplier: number }
 	| { kind: 'route-dispatch-suspension' }
-	| { kind: 'route-transport-cost-multiplier'; multiplier: number };
+	| { kind: 'route-transport-cost-multiplier'; multiplier: number }
+	| { kind: 'competitor-attraction-multiplier'; multiplier: number };
 
 export interface EventModifierTemplate {
 	durationDays: number;

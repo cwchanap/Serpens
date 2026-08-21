@@ -245,6 +245,45 @@ describe('game copy builders', () => {
 		);
 	});
 
+	it('localizes rival-promotion decision copy from persisted competitor and city params', () => {
+		const decision: EventDecisionItem = {
+			kind: 'event',
+			id: 'event-instance-1',
+			eventId: 'rival-promotion',
+			definitionVersion: 1,
+			generatedOnDay: 1,
+			expiresOnDay: 3,
+			target: { kind: 'competitor', competitorId: 'competitor-harbor-city-1' },
+			copy: {
+				key: 'events.rivalPromotion',
+				params: {
+					competitorId: 'competitor-harbor-city-1',
+					competitorName: 'Harborline Market',
+					cityId: 'harbor-city'
+				}
+			},
+			options: [
+				{ id: 'counter-promote', effects: [], modifiers: [] },
+				{ id: 'differentiate', effects: [], modifiers: [] }
+			]
+		};
+
+		for (const locale of Object.keys(messagesByLocale) as Array<keyof typeof messagesByLocale>) {
+			const localized = localizeDecision(decision, createI18n(locale));
+			expect(localized.title, `${locale} title`).not.toBe('events.rivalPromotion');
+			expect(localized.context, `${locale} context`).toContain('Harborline Market');
+			expect(localized.options[0]?.label, `${locale} option`).not.toBe('counter-promote');
+		}
+		const modifierText = localizeStructuredCopy(
+			{
+				key: 'events.rivalPromotion.modifier',
+				params: { competitorName: 'Harborline Market' }
+			},
+			createI18n('en')
+		);
+		expect(modifierText).toBe('Harborline Market gains 18% attraction for three days.');
+	});
+
 	it('localizes every freight-disruption option with its duration and trade-off in every locale', () => {
 		const decision: EventDecisionItem = {
 			kind: 'event',

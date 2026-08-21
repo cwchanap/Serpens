@@ -96,19 +96,16 @@ function resolveCompetitorEventMultiplier(
 ): number {
 	return modifiers.reduce((multiplier, modifier) => {
 		if (!isModifierActiveOnDay(modifier, day)) return multiplier;
-		const target = modifier.target as unknown as { kind?: string; competitorId?: string };
-		const effect = modifier.effect as unknown as { kind?: string; multiplier?: number };
 		if (
-			target.kind !== 'competitor' ||
-			target.competitorId !== competitorId ||
-			effect.kind !== 'competitor-attraction-multiplier' ||
-			typeof effect.multiplier !== 'number' ||
-			!Number.isFinite(effect.multiplier) ||
-			effect.multiplier <= 0
+			modifier.target.kind !== 'competitor' ||
+			modifier.target.competitorId !== competitorId ||
+			modifier.effect.kind !== 'competitor-attraction-multiplier' ||
+			!Number.isFinite(modifier.effect.multiplier) ||
+			modifier.effect.multiplier <= 0
 		) {
 			return multiplier;
 		}
-		return multiplier * effect.multiplier;
+		return multiplier * modifier.effect.multiplier;
 	}, 1);
 }
 

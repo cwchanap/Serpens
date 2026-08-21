@@ -403,13 +403,11 @@ describe('recurring-route event selection', () => {
 		expect(targetRouteId(second)).toBe('route-1');
 	});
 
-	it('keeps the production weighted mix at 1:1 between supplier-terms and freight-disruption regardless of route count', () => {
+	it('keeps each production weighted target independent of route count', () => {
 		// rngState 6 draws cadence 0.000135 (< 0.12) and weighted 0.510195.
-		// With both weights at 1 the threshold 2 × 0.510 = 1.020 crosses the
-		// freight-disruption slot and lands in supplier-terms. If route count
-		// multiplied the route weight, two eligible routes (threshold 3 × 0.510
-		// = 1.531) would land in freight-disruption instead — the seed is
-		// deliberately discriminating.
+		// The three production weights are equal and sorted as freight-disruption,
+		// rival-promotion, supplier-terms; the draw lands on rival-promotion in
+		// both route-count variants.
 		const oneRoute = selectEventForDay(
 			routeGame([route({ id: 'route-1' })], 6),
 			PRODUCTION_EVENT_CATALOG
@@ -419,8 +417,8 @@ describe('recurring-route event selection', () => {
 			PRODUCTION_EVENT_CATALOG
 		);
 
-		expect(eventIdOf(oneRoute)).toBe('supplier-terms');
-		expect(eventIdOf(twoRoutes)).toBe('supplier-terms');
+		expect(eventIdOf(oneRoute)).toBe('rival-promotion');
+		expect(eventIdOf(twoRoutes)).toBe('rival-promotion');
 	});
 
 	it('lets freight-disruption win its half of the production weighted split on any route count', () => {
@@ -508,5 +506,101 @@ describe('recurring-route event selection', () => {
 			kind: 'route-dispatch-suspension'
 		});
 		expect(event.options[0].modifiers[0].effect).not.toHaveProperty('target');
+	});
+
+	it('materializes competitor product focus as an owned array', () => {
+		const catalog = validateAndNormalizeEventCatalog([
+			definition({
+				id: 'competitor-focus-event',
+				selection: { kind: 'forced', priority: 1 },
+				target: { kind: 'competitor', status: 'active' },
+				options: [
+					{
+						id: 'focus',
+						effects: [
+							{
+								kind: 'competitor-product-focus-set',
+								productFocus: ['beverages', 'grocery-food']
+							}
+						],
+						modifiers: []
+					}
+				]
+			})
+		]);
+		const selected = selectEventForDay(game(7), catalog);
+		const event = selected.decisions.find((decision) => decision.kind === 'event')!;
+		const materializedEffect = event.options[0]?.effects[0];
+		const definitionEffect = catalog.byId.get('competitor-focus-event')?.options[0]?.effects[0];
+
+		expect(materializedEffect).toEqual({
+			kind: 'competitor-product-focus-set',
+			productFocus: ['beverages', 'grocery-food']
+		});
+		expect(materializedEffect).not.toBe(definitionEffect);
+		if (
+			materializedEffect?.kind !== 'competitor-product-focus-set' ||
+			definitionEffect?.kind !== 'competitor-product-focus-set'
+		) {
+			throw new Error('Expected competitor product-focus effects');
+		}
+		expect(materializedEffect.productFocus).not.toBe(definitionEffect.productFocus);
+	});
+
+	it('selects a closed competitor target and persists stable rival copy context', () => {
+		const input = game(7);
+		const rival = input.competitors[0]!;
+		const catalog = validateAndNormalizeEventCatalog([
+			definition({
+				id: 'closed-rival-event',
+				selection: { kind: 'forced', priority: 1 },
+				target: { kind: 'competitor', status: 'closed' },
+				options: [
+					{
+						id: 'respond',
+						effects: [],
+						modifiers: [
+							{
+								durationDays: 3,
+								stackingKey: 'rival-promotion:market-attraction',
+								stackingRule: 'replace',
+								effect: {
+									kind: 'competitor-attraction-multiplier',
+									multiplier: 1.18
+								},
+								explanation: { key: 'events.rivalPromotion.modifier', params: {} },
+								importance: 'important'
+							}
+						]
+					}
+				]
+			})
+		]);
+		const closedGame = {
+			...input,
+			competitors: input.competitors.map((candidate) =>
+				candidate.id === rival.id ? { ...candidate, status: 'closed' as const } : candidate
+			)
+		};
+
+		const selected = selectEventForDay(closedGame, catalog);
+		const event = selected.decisions.find((decision) => decision.kind === 'event');
+
+		expect(event).toMatchObject({
+			eventId: 'closed-rival-event',
+			target: { kind: 'competitor', competitorId: rival.id },
+			copy: {
+				key: 'events.test',
+				params: {
+					competitorId: rival.id,
+					competitorName: rival.name,
+					cityId: rival.cityId
+				}
+			}
+		});
+		expect(event?.options[0]?.modifiers[0]?.effect).toEqual({
+			kind: 'competitor-attraction-multiplier',
+			multiplier: 1.18
+		});
 	});
 });

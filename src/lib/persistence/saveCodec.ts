@@ -427,6 +427,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	validateCurrentIndustrialBuildingPlacements(industrialBuildings, industryCities);
 	validateCurrentRetailStorePlacements(stores, cities);
 	validateCurrentCompetitors(currentGame);
+	const knownCompetitorIds = new Set(currentGame.competitors.map((competitor) => competitor.id));
 	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
 	validateCurrentPolicyOverrides(currentGame, policyOverrides);
 	validateCurrentManagerDelegations(currentGame, managerDelegations);
@@ -440,7 +441,8 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 			decision,
 			gameDay,
 			`Saved game decisions[${index}]`,
-			currentGame.logistics.nextRouteSequence
+			currentGame.logistics.nextRouteSequence,
+			knownCompetitorIds
 		);
 		if (decisionIds.has(id)) {
 			throw new SaveDataError(
@@ -453,7 +455,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	const decodedReports = decodeHistoricalReports(
 		reports,
 		currentGame.logistics.nextRouteSequence,
-		new Set(currentGame.competitors.map((competitor) => competitor.id)),
+		knownCompetitorIds,
 		new Set(
 			currentGame.cities
 				.filter((city) => isCurrentRetailCity(currentGame, city.id))
@@ -470,7 +472,8 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 		decisions,
 		decodedReports,
 		'Saved game events',
-		currentGame.logistics.nextRouteSequence
+		currentGame.logistics.nextRouteSequence,
+		knownCompetitorIds
 	);
 	const storeCap = requireNumber(game.storeCap, 'Saved game storeCap');
 	if (!Number.isInteger(storeCap)) {
@@ -2784,7 +2787,8 @@ function validateSavedDecision(
 	value: unknown,
 	gameDay: number,
 	label: string,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): string {
 	return withEventInvariant(() => {
 		const decision = requireRecord(value, label);
@@ -2839,7 +2843,7 @@ function validateSavedDecision(
 		if (expiresOnDay <= generatedOnDay) {
 			throw new SaveDataError(`${label} expiresOnDay must be after generatedOnDay`);
 		}
-		validateEventTarget(decision.target, `${label} target`, nextRouteSequence);
+		validateEventTarget(decision.target, `${label} target`, nextRouteSequence, knownCompetitorIds);
 		validateStructuredCopyRef(decision.copy, `${label} copy`);
 		validateUniqueArrayIds(
 			requireArray(decision.options, `${label} options`),
@@ -2890,7 +2894,10 @@ function validateSavedEventImmediateEffect(value: unknown, label: string): strin
 		'score-adjust',
 		'store-morale-adjust',
 		'store-stock-adjust-by-target-percent',
-		'finance-borrow'
+		'finance-borrow',
+		'competitor-status-set',
+		'competitor-price-posture-set',
+		'competitor-product-focus-set'
 	] as const);
 
 	switch (kind) {
@@ -2917,6 +2924,36 @@ function validateSavedEventImmediateEffect(value: unknown, label: string): strin
 			requireExactKeys(effect, ['kind', 'purpose', 'amount', 'termDays'], label);
 			validateSavedBorrowTerms(effect, label);
 			break;
+		case 'competitor-status-set':
+			requireExactKeys(effect, ['kind', 'status'], label);
+			requireOneOf(effect.status, `${label} status`, COMPETITOR_STATUSES);
+			break;
+		case 'competitor-price-posture-set':
+			requireExactKeys(effect, ['kind', 'pricePosture'], label);
+			requireOneOf(effect.pricePosture, `${label} pricePosture`, COMPETITOR_PRICE_POSTURES);
+			break;
+		case 'competitor-product-focus-set': {
+			requireExactKeys(effect, ['kind', 'productFocus'], label);
+			const productFocus = requireArray(effect.productFocus, `${label} productFocus`);
+			if (productFocus.length < 1 || productFocus.length > 2) {
+				throw new SaveDataError(`${label} productFocus must contain one or two families`);
+			}
+			const seenFamilies = new Set<string>();
+			productFocus.forEach((familyId, index) => {
+				const normalizedFamilyId = requireOneOf(
+					familyId,
+					`${label} productFocus[${index}]`,
+					PRODUCT_FAMILY_IDS
+				);
+				if (seenFamilies.has(normalizedFamilyId)) {
+					throw new SaveDataError(
+						`${label} productFocus families must be unique: ${normalizedFamilyId}`
+					);
+				}
+				seenFamilies.add(normalizedFamilyId);
+			});
+			break;
+		}
 	}
 	return kind;
 }
@@ -2959,7 +2996,8 @@ type SavedTimedEffectKind =
 	| 'route-lead-time-adjustment'
 	| 'route-capacity-multiplier'
 	| 'route-dispatch-suspension'
-	| 'route-transport-cost-multiplier';
+	| 'route-transport-cost-multiplier'
+	| 'competitor-attraction-multiplier';
 
 function validateSavedTimedEffect(value: unknown, label: string): SavedTimedEffectKind {
 	const effect = requireRecord(value, label);
@@ -2968,7 +3006,8 @@ function validateSavedTimedEffect(value: unknown, label: string): SavedTimedEffe
 		'route-lead-time-adjustment',
 		'route-capacity-multiplier',
 		'route-dispatch-suspension',
-		'route-transport-cost-multiplier'
+		'route-transport-cost-multiplier',
+		'competitor-attraction-multiplier'
 	] as const);
 
 	switch (kind) {
@@ -2992,6 +3031,10 @@ function validateSavedTimedEffect(value: unknown, label: string): SavedTimedEffe
 			break;
 		case 'route-dispatch-suspension':
 			requireExactKeys(effect, ['kind'], label);
+			break;
+		case 'competitor-attraction-multiplier':
+			requireExactKeys(effect, ['kind', 'multiplier'], label);
+			requirePositiveFiniteMultiplier(effect.multiplier, `${label} multiplier`);
 			break;
 	}
 	return kind;
@@ -3020,18 +3063,34 @@ function validateStructuredCopyRef(value: unknown, label: string): void {
 	}
 }
 
-type ValidatedEventTarget = { kind: 'company' } | { kind: 'recurring-route'; routeId: string };
+type ValidatedEventTarget =
+	| { kind: 'company' }
+	| { kind: 'recurring-route'; routeId: string }
+	| { kind: 'competitor'; competitorId: string };
 
 function validateEventTarget(
 	value: unknown,
 	label: string,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds?: ReadonlySet<string>
 ): ValidatedEventTarget {
 	const target = requireRecord(value, label);
-	const kind = requireOneOf(target.kind, `${label} kind`, ['company', 'recurring-route'] as const);
+	const kind = requireOneOf(target.kind, `${label} kind`, [
+		'company',
+		'recurring-route',
+		'competitor'
+	] as const);
 	if (kind === 'company') {
 		requireExactKeys(target, ['kind'], label);
 		return { kind: 'company' };
+	}
+	if (kind === 'competitor') {
+		requireExactKeys(target, ['kind', 'competitorId'], label);
+		const competitorId = requireString(target.competitorId, `${label} competitorId`);
+		if (knownCompetitorIds && !knownCompetitorIds.has(competitorId)) {
+			throw new SaveDataError(`${label} competitorId must reference a persisted competitor`);
+		}
+		return { kind: 'competitor', competitorId };
 	}
 	requireExactKeys(target, ['kind', 'routeId'], label);
 	// Event targets may outlive the route they reference (the route can be
@@ -3051,6 +3110,11 @@ function eventTargetKey(eventId: string, target: ValidatedEventTarget): string {
 	if (target.kind === 'company') {
 		return eventId ? `${eventId}:company` : 'company';
 	}
+	if (target.kind === 'competitor') {
+		return eventId
+			? `${eventId}:competitor:${target.competitorId}`
+			: `competitor:${target.competitorId}`;
+	}
 	return eventId ? `${eventId}:route:${target.routeId}` : `route:${target.routeId}`;
 }
 
@@ -3060,7 +3124,8 @@ function validateSavedEventRuntime(
 	decisions: unknown[],
 	reports: unknown[],
 	label: string,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): void {
 	withEventInvariant(() => {
 		const events = requireRecord(value, label);
@@ -3108,7 +3173,8 @@ function validateSavedEventRuntime(
 			const cooldownTarget = validateEventTarget(
 				cooldown.target,
 				`${cooldownLabel} target`,
-				nextRouteSequence
+				nextRouteSequence,
+				knownCompetitorIds
 			);
 			const generatedOnDay = requireNonNegativeInteger(
 				cooldown.generatedOnDay,
@@ -3152,7 +3218,8 @@ function validateSavedEventRuntime(
 					modifierValue,
 					gameDay,
 					modifierLabel,
-					nextRouteSequence
+					nextRouteSequence,
+					knownCompetitorIds
 				);
 				if (activeModifierIds.has(modifier.id)) {
 					throw new SaveDataError(`${modifierLabel} id must be unique: ${modifier.id}`);
@@ -3196,7 +3263,8 @@ function validateSavedEventRuntime(
 				entryValue,
 				gameDay,
 				entryLabel,
-				nextRouteSequence
+				nextRouteSequence,
+				knownCompetitorIds
 			);
 			if (evidence.day < previousHistoryDay) {
 				throw new SaveDataError(`${entryLabel} day must not be before the previous history day`);
@@ -3295,7 +3363,8 @@ function validateSavedActiveModifier(
 	value: unknown,
 	gameDay: number,
 	label: string,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): { id: string; instanceId: string; stackingKey: string; target: ValidatedEventTarget } {
 	const modifier = requireRecord(value, label);
 	requireExactKeys(
@@ -3314,7 +3383,7 @@ function validateSavedActiveModifier(
 		],
 		label
 	);
-	const base = validateSavedModifierFields(modifier, label, nextRouteSequence);
+	const base = validateSavedModifierFields(modifier, label, nextRouteSequence, knownCompetitorIds);
 	requireOneOf(modifier.stackingRule, `${label} stackingRule`, ['replace'] as const);
 	if (!(base.startsOnDay <= gameDay && gameDay < base.expiresOnDay)) {
 		throw new SaveDataError(`${label} must be active on the current game day ${gameDay}`);
@@ -3330,7 +3399,8 @@ function validateSavedActiveModifier(
 function validateSavedModifierSnapshot(
 	value: unknown,
 	label: string,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): { id: string; instanceId: string; startsOnDay: number; expiresOnDay: number } {
 	const modifier = requireRecord(value, label);
 	requireExactKeys(
@@ -3348,13 +3418,14 @@ function validateSavedModifierSnapshot(
 		],
 		label
 	);
-	return validateSavedModifierFields(modifier, label, nextRouteSequence);
+	return validateSavedModifierFields(modifier, label, nextRouteSequence, knownCompetitorIds);
 }
 
 function validateSavedModifierFields(
 	modifier: Record<string, unknown>,
 	label: string,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): {
 	id: string;
 	instanceId: string;
@@ -3366,7 +3437,12 @@ function validateSavedModifierFields(
 	const id = requireString(modifier.id, `${label} id`);
 	requireGeneratedId(id, 'event-modifier-', `${label} id`);
 	const source = validateSavedModifierSource(modifier.source, `${label} source`);
-	const target = validateEventTarget(modifier.target, `${label} target`, nextRouteSequence);
+	const target = validateEventTarget(
+		modifier.target,
+		`${label} target`,
+		nextRouteSequence,
+		knownCompetitorIds
+	);
 	const startsOnDay = requireNonNegativeInteger(modifier.startsOnDay, `${label} startsOnDay`);
 	const expiresOnDay = requireNonNegativeInteger(modifier.expiresOnDay, `${label} expiresOnDay`);
 	if (expiresOnDay <= startsOnDay) {
@@ -3375,14 +3451,18 @@ function validateSavedModifierFields(
 	const stackingKey = requireString(modifier.stackingKey, `${label} stackingKey`);
 	const effectKind = validateSavedTimedEffect(modifier.effect, `${label} effect`);
 	// Mirror the authored/runtime invariant from eventDefinitions.ts: a
-	// company target may only carry import-cost-multiplier, and a
-	// recurring-route target may only carry a route effect. The shape
+	// company target may only carry import-cost-multiplier, a
+	// recurring-route target may only carry a route effect, and a competitor
+	// target may only carry its attraction effect. The shape
 	// validators above check target and effect independently, so without
 	// this pairing check a route-targeted import-cost multiplier (or a
 	// company-targeted route effect) would decode cleanly and then be
 	// applied globally by compileEventModifierRules, which selects
 	// import-cost modifiers by effect kind alone.
-	if (target.kind === 'recurring-route' && effectKind === 'import-cost-multiplier') {
+	if (
+		target.kind === 'recurring-route' &&
+		(effectKind === 'import-cost-multiplier' || effectKind === 'competitor-attraction-multiplier')
+	) {
 		throw new SaveDataError(
 			`${label} effect must be a route effect for a recurring-route target`,
 			'invariant-event-runtime'
@@ -3391,6 +3471,12 @@ function validateSavedModifierFields(
 	if (target.kind === 'company' && effectKind !== 'import-cost-multiplier') {
 		throw new SaveDataError(
 			`${label} effect must be import-cost-multiplier for a company target`,
+			'invariant-event-runtime'
+		);
+	}
+	if (target.kind === 'competitor' && effectKind !== 'competitor-attraction-multiplier') {
+		throw new SaveDataError(
+			`${label} effect must be competitor-attraction-multiplier for a competitor target`,
 			'invariant-event-runtime'
 		);
 	}
@@ -3423,7 +3509,8 @@ function validateSavedEventHistoryEntry(
 	value: unknown,
 	gameDay: number,
 	label: string,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): { day: number; instanceSequence: number; modifierSequence: number } {
 	const entry = requireRecord(value, label);
 	const kind = requireOneOf(entry.kind, `${label} kind`, [
@@ -3437,7 +3524,14 @@ function validateSavedEventHistoryEntry(
 
 	if (kind === 'modifier-lifecycle') {
 		requireExactKeys(entry, ['kind', 'day', 'status', 'modifier', 'replacedByModifierId'], label);
-		const lifecycle = validateSavedModifierLifecycle(entry, label, true, day, nextRouteSequence);
+		const lifecycle = validateSavedModifierLifecycle(
+			entry,
+			label,
+			true,
+			day,
+			nextRouteSequence,
+			knownCompetitorIds
+		);
 		return {
 			day,
 			instanceSequence: requireGeneratedId(
@@ -3457,7 +3551,7 @@ function validateSavedEventHistoryEntry(
 		'event-instance-',
 		`${label} instanceId`
 	);
-	validateEventTarget(entry.target, `${label} target`, nextRouteSequence);
+	validateEventTarget(entry.target, `${label} target`, nextRouteSequence, knownCompetitorIds);
 	if (kind === 'event-resolved') requireString(entry.optionId, `${label} optionId`);
 	return { day, instanceSequence, modifierSequence: 0 };
 }
@@ -3467,7 +3561,8 @@ function validateSavedModifierLifecycle(
 	label: string,
 	hasHistoryFields: boolean,
 	lifecycleDay: number,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): { instanceId: string; modifierSequence: number; replacedBySequence: number } {
 	const status = requireOneOf(value.status, `${label} status`, [
 		'activated',
@@ -3477,7 +3572,8 @@ function validateSavedModifierLifecycle(
 	const modifier = validateSavedModifierSnapshot(
 		value.modifier,
 		`${label} modifier`,
-		nextRouteSequence
+		nextRouteSequence,
+		knownCompetitorIds
 	);
 	let replacedBySequence = 0;
 	if (status === 'replaced') {
@@ -3630,13 +3726,15 @@ function validateSavedReport(
 		validateSavedModifierImpacts(
 			report.modifierImpacts,
 			`${label} modifierImpacts`,
-			nextRouteSequence
+			nextRouteSequence,
+			knownCompetitorIds
 		);
 		validateSavedReportModifierLifecycle(
 			report.modifierLifecycle,
 			`${label} modifierLifecycle`,
 			day,
-			nextRouteSequence
+			nextRouteSequence,
+			knownCompetitorIds
 		);
 	});
 	validateSavedWarningArray(report.warnings, `${label} warnings`, false);
@@ -3779,7 +3877,8 @@ function validateSavedMarketReports(
 function validateSavedModifierImpacts(
 	value: unknown,
 	label: string,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): void {
 	const modifierIds = new Set<string>();
 	let previousModifierId: string | undefined;
@@ -3816,7 +3915,12 @@ function validateSavedModifierImpacts(
 		previousModifierId = modifierId;
 		const source = validateSavedModifierSource(impact.source, `${impactLabel} source`);
 		requireGeneratedId(source.instanceId, 'event-instance-', `${impactLabel} source instanceId`);
-		validateEventTarget(impact.target, `${impactLabel} target`, nextRouteSequence);
+		validateEventTarget(
+			impact.target,
+			`${impactLabel} target`,
+			nextRouteSequence,
+			knownCompetitorIds
+		);
 		requireOneOf(impact.effectKind, `${impactLabel} effectKind`, [
 			'import-cost-multiplier'
 		] as const);
@@ -3874,13 +3978,21 @@ function validateSavedReportModifierLifecycle(
 	value: unknown,
 	label: string,
 	reportDay: number,
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): void {
 	requireArray(value, label).forEach((lifecycleValue, index) => {
 		const lifecycleLabel = `${label}[${index}]`;
 		const lifecycle = requireRecord(lifecycleValue, lifecycleLabel);
 		requireExactKeys(lifecycle, ['status', 'modifier', 'replacedByModifierId'], lifecycleLabel);
-		validateSavedModifierLifecycle(lifecycle, lifecycleLabel, false, reportDay, nextRouteSequence);
+		validateSavedModifierLifecycle(
+			lifecycle,
+			lifecycleLabel,
+			false,
+			reportDay,
+			nextRouteSequence,
+			knownCompetitorIds
+		);
 	});
 }
 

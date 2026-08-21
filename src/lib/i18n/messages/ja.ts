@@ -1448,6 +1448,21 @@ export const ja = {
 					suspension: 'この航路の配送が2日間停止します。'
 				}
 			},
+			rivalPromotion: {
+				title: '競合の販促',
+				context: '{competitorName} が {city} で大規模な販促を行っています。対応を選んでください。',
+				options: {
+					'counter-promote': {
+						label: '対抗販促',
+						description: '1,200 を使って販促に対抗し、市場ポジションを高めます。'
+					},
+					differentiate: {
+						label: '差別化する',
+						description: '販促を追わず、顧客満足度を高めます。'
+					}
+				},
+				modifier: '{competitorName} の集客力が3日間18%上昇します。'
+			},
 			supplierTerms: {
 				title: '仕入条件',
 				context: '次の補充サイクル前に、仕入先が取引条件の見直しに応じる構えです。',
@@ -1466,6 +1481,9 @@ export const ja = {
 		},
 		modifiers: {
 			companyTarget: '全社の小売輸入',
+			competitorTarget: '競合: {name}',
+			removedCompetitorTarget: '競合: {competitorId}（撤退済み）',
+			competitorAttraction: '集客力 ×{multiplier}',
 			importCostDiscount: '小売輸入費 {percent}% 割引',
 			durationDays: '{days}日間有効',
 			startsOnDay: '{day}日目に開始',
