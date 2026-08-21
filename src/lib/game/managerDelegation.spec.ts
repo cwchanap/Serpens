@@ -995,4 +995,117 @@ describe('manager delegation edge cases', () => {
 
 		expect(updated.managerDelegations.map((d) => d.managerId)).toEqual(['manager-a', 'manager-z']);
 	});
+
+	test('setManagerDelegation accepts a city-scoped delegation', () => {
+		const game = createNewGame('convenience', 120);
+		const result = setManagerDelegation(
+			game,
+			delegation({ scope: { kind: 'city', cityId: 'harbor-city' } })
+		);
+		expect(result.managerDelegations).toHaveLength(1);
+		expect(result.managerDelegations[0]?.scope).toEqual({ kind: 'city', cityId: 'harbor-city' });
+	});
+
+	test('Protect Availability handles a store report with undefined productReports', () => {
+		const game = withLatestReport(
+			{
+				...createNewGame('convenience', 121),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {
+					productReports: undefined as never,
+					warnings: [{ code: 'nearStaffCapacity', storeId: 'store-1' }]
+				})
+			]
+		);
+		const result = applyManagerDelegations(game);
+		// With undefined productReports, selectAvailabilityProduct gets [], returns null
+		// Falls through to staffing check with nearStaffCapacity warning
+		expect(result.records[0]?.change.kind).toBe('staffing-policy');
+	});
+
+	test('Stabilize Cash handles a store report with undefined productReports', () => {
+		const game = withLatestReport(
+			{
+				...createNewGame('convenience', 122),
+				managerDelegations: [delegation({ playbook: 'stabilize-cash' })]
+			},
+			[storeReport('store-1', { productReports: undefined as never })],
+			-1
+		);
+		const result = applyManagerDelegations(game);
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
+	test('selectAvailabilityProduct handles products with undefined demand fields', () => {
+		const game = withLatestReport(
+			{
+				...withProducts(createNewGame('convenience', 123), [
+					product('bottled-water', { reorderThreshold: 5, targetStock: 10 }),
+					product('snacks', { reorderThreshold: 5, targetStock: 10 })
+				]),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					{ productId: 'bottled-water' } as DailyProductReport,
+					{ productId: 'snacks', stockoutLostDemand: 1 } as DailyProductReport
+				])
+			]
+		);
+		const result = applyManagerDelegations(game);
+		// bottled-water has undefined stockoutLostDemand (treated as 0 via ?? 0)
+		// snacks has stockoutLostDemand=1, so it's selected
+		expect(result.records[0]?.change.kind).toBe('inventory-targets');
+		const change = result.records[0]?.change;
+		expect(change?.kind === 'inventory-targets' && change.productId).toBe('snacks');
+	});
+
+	test('Protect Availability handles a store report with undefined warnings', () => {
+		const game = withLatestReport(
+			{
+				...withProducts(createNewGame('convenience', 124), [product()]),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[storeReport('store-1', { warnings: undefined as never }, [productReport('bottled-water')])]
+		);
+		const result = applyManagerDelegations(game);
+		// With undefined warnings, hasNearStaffCapacity returns false (via ?. and ?? false)
+		// And no availability pressure (stockoutLostDemand=0, demandMissed=0)
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
+
+	test('findBestSupplyCity returns null when all starting products lack production materials', () => {
+		const base = createNewGame('boutique', 130);
+		// Boutique starting products: apparel, home-goods, gifts, fashion-accessories
+		// Only 'gifts' has a productionMaterialId. Remove it so all remaining have null.
+		const game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: store.products.filter((p) => p.productId !== 'gifts')
+				})),
+				cityInventories: [
+					{ cityId: 'industry-city', materials: { gifts: 20 } },
+					{ cityId: 'breadbasket-basin', materials: {} }
+				],
+				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }],
+				managerDelegations: [
+					delegation({
+						scope: { kind: 'city', cityId: 'harbor-city' },
+						playbook: 'prefer-local-supply'
+					})
+				]
+			},
+			[],
+			0
+		);
+		const result = applyManagerDelegations(game);
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
+	});
 });

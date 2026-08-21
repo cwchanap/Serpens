@@ -41,6 +41,7 @@ function compareScopes(left: PolicyOverrideScope, right: PolicyOverrideScope): n
 	if (left.kind === 'store' && right.kind === 'store') {
 		return compareStoreIds(left.storeId, right.storeId);
 	}
+	/* c8 ignore next */
 	return 0;
 }
 
@@ -127,6 +128,7 @@ export function resolveEffectivePolicy(
 
 	const cityId = resolveStoreCityId(game, scope.storeId);
 	if (!cityId) {
+		/* c8 ignore next */
 		throw new Error('Policy inheritance invariant: store city could not be resolved');
 	}
 

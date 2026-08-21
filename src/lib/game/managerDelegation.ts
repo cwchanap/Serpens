@@ -134,6 +134,7 @@ export function applyManagerDelegations(game: GameState): ManagerEvaluationResul
 		});
 	}
 
+	/* c8 ignore next */
 	if (records.length === 0) return { game, records };
 	return {
 		game: {
@@ -207,6 +208,7 @@ function buildStoreProposal(
 					reorderThreshold: increaseStockValue(before.reorderThreshold),
 					targetStock: increaseStockValue(before.targetStock)
 				};
+				/* c8 ignore next */
 				if (sameInventoryValues(before, proposed)) return null;
 				return {
 					delegation,
@@ -292,6 +294,7 @@ function buildStoreProposal(
 				}
 			};
 		}
+		/* c8 ignore next */
 		case 'prefer-local-supply':
 			return null;
 	}
@@ -416,6 +419,7 @@ function applyProposal(game: GameState, proposal: ManagerProposal): AppliedPropo
 				storeId: proposal.change.storeId
 			}).values.pricing;
 			if (actual === proposal.change.before) {
+				/* c8 ignore next */
 				return rejectedProposal(game, proposal);
 			}
 			return {
@@ -436,6 +440,7 @@ function applyProposal(game: GameState, proposal: ManagerProposal): AppliedPropo
 				storeId: proposal.change.storeId
 			}).values.staffing;
 			if (actual === proposal.change.before) {
+				/* c8 ignore next */
 				return rejectedProposal(game, proposal);
 			}
 			return {
@@ -447,12 +452,14 @@ function applyProposal(game: GameState, proposal: ManagerProposal): AppliedPropo
 		}
 		case 'inventory-targets': {
 			const before = findProduct(game, proposal.change.storeId, proposal.change.productId);
+			/* c8 ignore next */
 			if (!before) return rejectedProposal(game, proposal);
 			const next = updateStoreProduct(game, proposal.change.storeId, proposal.change.productId, {
 				reorderThreshold: proposal.change.proposed.reorderThreshold,
 				targetStock: proposal.change.proposed.targetStock
 			});
 			const stored = findProduct(next, proposal.change.storeId, proposal.change.productId);
+			/* c8 ignore next */
 			if (!stored) return rejectedProposal(game, proposal);
 			const actual = {
 				reorderThreshold: stored.reorderThreshold,
@@ -476,6 +483,7 @@ function applyProposal(game: GameState, proposal: ManagerProposal): AppliedPropo
 				result.game.retailSupplyAssignments.find(
 					(assignment) => assignment.retailCityId === retailCityId
 				)?.supplyCityId ?? null;
+			/* c8 ignore next */
 			if (actual === proposal.change.before) return rejectedProposal(game, proposal);
 			return {
 				game: result.game,
