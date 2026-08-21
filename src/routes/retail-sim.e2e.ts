@@ -203,6 +203,78 @@ function selectProductionSupplierEvent(game: GameState, quietSelectionDays = 0):
 	throw new Error('Could not find a deterministic production supplier event seed.');
 }
 
+function selectRivalPromotionEvent(game: GameState, quietSelectionDays = 4): GameState {
+	const targetCompetitorId = `competitor-${game.activeCityId}-2`;
+
+	for (let eventSeed = 1; eventSeed <= 100_000; eventSeed += 1) {
+		const selected = selectEventForDay(
+			{
+				...game,
+				events: createInitialEventRuntime(eventSeed),
+				decisions: []
+			},
+			PRODUCTION_EVENT_CATALOG
+		);
+		const promotion = selected.decisions.find(
+			(decision): decision is Extract<DecisionItem, { kind: 'event' }> =>
+				decision.kind === 'event' &&
+				decision.eventId === 'rival-promotion' &&
+				decision.target.kind === 'competitor' &&
+				decision.target.competitorId === targetCompetitorId
+		);
+		if (!promotion) continue;
+
+		let probe: GameState = { ...selected, decisions: [] };
+		let streamIsQuiet = true;
+		for (let offset = 1; offset <= quietSelectionDays; offset += 1) {
+			probe = selectEventForDay(
+				{ ...probe, day: game.day + offset, decisions: [] },
+				PRODUCTION_EVENT_CATALOG
+			);
+			if (probe.decisions.some((decision) => decision.kind === 'event')) {
+				streamIsQuiet = false;
+				break;
+			}
+		}
+		if (streamIsQuiet) return selected;
+	}
+
+	throw new Error('Could not find a deterministic rival promotion event seed.');
+}
+
+function livingMarketSandboxGame(): GameState {
+	const base = createNewGame('convenience', 280_278);
+	return {
+		...base,
+		policy: { ...base.policy, marketing: 'none' },
+		staff: [],
+		hiringCandidates: [],
+		stores: base.stores.map((store) => {
+			const products = store.products.map((product) => ({
+				...product,
+				brandId: 'common-ground' as const,
+				lots: [],
+				reorderThreshold: 0,
+				targetStock: 0,
+				sellingPrice: product.productId === 'bottled-water' ? 6 : product.sellingPrice
+			}));
+			return {
+				...store,
+				reputation: 0,
+				staffCapacity: 0,
+				products,
+				stockHealth: calculateStockHealth(products)
+			};
+		}),
+		decisions: [],
+		reports: []
+	};
+}
+
+function rivalPromotionLifecycleGame(): GameState {
+	return selectRivalPromotionEvent(livingMarketSandboxGame());
+}
+
 function productionSupplierLifecycleGame(): GameState {
 	const closingDay = 5;
 	const base = createNewGame('convenience', 280_278);
@@ -759,6 +831,7 @@ interface SavedMaterialMovement {
 
 interface SavedProductReport {
 	productId: string;
+	brandId: string;
 	name: string;
 	unitsSold: number;
 	endingStock: number;
@@ -805,6 +878,19 @@ interface SavedDailyReport {
 		grossMargin: number;
 		importSpend: number;
 		productReports: SavedProductReport[];
+	}>;
+	marketReports: Array<{
+		cityId: string;
+		productId: string;
+		playerShare: number;
+		playerShareDelta: number | null;
+		playerAttractionScore: number;
+		competitors: Array<{
+			competitorId: string;
+			share: number;
+			attractionScore: number;
+			eventMultiplier: number;
+		}>;
 	}>;
 	modifierImpacts: Array<{
 		modifierId: string;
@@ -858,9 +944,11 @@ interface SavedGame {
 		mapY: number;
 		products: Array<{
 			productId: string;
+			brandId: string;
 			lots: Array<{ receivedDay: number; quantity: number }>;
 			reorderThreshold: number;
 			targetStock: number;
+			sellingPrice: number;
 		}>;
 	}>;
 	cityInventories: Array<{
@@ -891,6 +979,10 @@ interface SavedGame {
 		activeModifiers: Array<{
 			id: string;
 			expiresOnDay: number;
+			target: {
+				kind: string;
+				competitorId?: string;
+			};
 			effect: EventTimedEffect;
 		}>;
 	};
@@ -1331,6 +1423,12 @@ async function waitForAutoSaveDay(page: Page, day: number): Promise<SavedGame> {
 	return readAutoSaveGame(page);
 }
 
+async function waitForSavedReportDay(page: Page, day: number): Promise<SavedGame> {
+	await expect.poll(async () => (await readAutoSaveGame(page)).reports.at(-1)?.day).toBe(day);
+
+	return readAutoSaveGame(page);
+}
+
 async function waitForSavedProductSettings(
 	page: Page,
 	productId: string,
@@ -1501,6 +1599,175 @@ function negativeCashDecisionRun(): ScenarioRun {
 		evaluation: evaluateScenario(definition, game, false)
 	};
 }
+
+test('living market sandbox persists a brand edit and reports market evidence', async ({
+	page
+}) => {
+	const seededGame = livingMarketSandboxGame();
+	const store = seededGame.stores[0];
+	if (!store) throw new Error('Living market fixture has no starter store.');
+
+	await installSandboxAutoSave(page, seededGame);
+	const canvas = await expectRetailMapReady(page);
+	await expect(canvas).toHaveAttribute('data-competitor-marker-count', '2');
+
+	await clickMapTile(page, store.mapX, store.mapY);
+	const storeDetails = await openStoreDetail(page);
+	const bottledWaterBrand = storeDetails.getByRole('combobox', {
+		name: 'Brand for Bottled Water'
+	});
+	await bottledWaterBrand.selectOption('budget-bay');
+	await expect(bottledWaterBrand).toHaveValue('budget-bay');
+	await expect
+		.poll(async () => {
+			const savedProduct = getSavedProduct(await readAutoSaveGame(page), 'bottled-water');
+			return { brandId: savedProduct.brandId, sellingPrice: savedProduct.sellingPrice };
+		})
+		.toEqual({ brandId: 'budget-bay', sellingPrice: 3 });
+
+	await storeDetails.getByRole('button', { name: /close store details/i }).click();
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
+	await expectRetailMapReady(page);
+
+	await clickMapTile(page, store.mapX, store.mapY);
+	const reloadedDetails = await openStoreDetail(page);
+	await expect(
+		reloadedDetails.getByRole('combobox', { name: 'Brand for Bottled Water' })
+	).toHaveValue('budget-bay');
+	await expect(
+		reloadedDetails.getByRole('spinbutton', { name: 'Selling price for Bottled Water' })
+	).toHaveValue('3');
+	await reloadedDetails.getByRole('button', { name: /close store details/i }).click();
+
+	await page.getByRole('button', { name: /^advance day$/i }).click();
+	const saved = await waitForAutoSaveDay(page, seededGame.day + 1);
+	const latest = getLatestReport(saved);
+	expect(latest.storeReports[0]?.productReports[0]).toMatchObject({
+		productId: 'bottled-water',
+		brandId: 'budget-bay'
+	});
+
+	const reports = await openManagementPanel(page, /reports/i);
+	await expect(reports.getByRole('region', { name: 'Brand performance' })).toContainText(
+		'Budget Bay'
+	);
+	await expect(reports.getByRole('region', { name: 'Market snapshot' })).toContainText(
+		'Player share:'
+	);
+	await expect(reports.getByRole('region', { name: 'Market snapshot' })).toContainText(
+		'Strongest rival:'
+	);
+});
+
+test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly', async ({
+	page
+}) => {
+	const seededGame = rivalPromotionLifecycleGame();
+	const event = seededGame.decisions.find(
+		(decision): decision is Extract<DecisionItem, { kind: 'event' }> =>
+			decision.kind === 'event' && decision.eventId === 'rival-promotion'
+	);
+	if (!event || event.kind !== 'event' || event.target.kind !== 'competitor') {
+		throw new Error('Rival promotion fixture did not materialize a competitor event.');
+	}
+	const targetCompetitor = event.target;
+	const targetCompetitorId = targetCompetitor.competitorId;
+	const baseline = simulateDay({ ...seededGame, decisions: [] });
+	const baselineMarket = baseline.reports
+		.at(-1)
+		?.marketReports.find((report) => report.productId === 'bottled-water');
+	if (!baselineMarket) throw new Error('Rival promotion fixture has no baseline market report.');
+
+	await installSandboxAutoSave(page, seededGame);
+	await expect(activeMapCanvas(page)).toHaveAttribute('data-competitor-marker-count', '2');
+
+	const decisions = await openManagementPanel(page, 'Decisions');
+	const promotion = decisions
+		.getByRole('article')
+		.filter({ has: page.getByRole('heading', { name: 'Rival promotion', exact: true }) });
+	await expect(promotion).toBeVisible();
+	await promotion.getByRole('button', { name: /differentiate/i }).click();
+
+	await expect
+		.poll(async () => {
+			const saved = await readAutoSaveGame(page);
+			return saved.events.activeModifiers.find(
+				(modifier) => modifier.target.competitorId === targetCompetitorId
+			);
+		})
+		.toMatchObject({
+			target: { kind: 'competitor', competitorId: targetCompetitorId },
+			effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 }
+		});
+	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
+
+	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await waitForAutoSaveDay(page, seededGame.day + 1);
+	let saved = await waitForSavedReportDay(page, seededGame.day);
+	const activeReport = getLatestReport(saved);
+	const activeMarket = activeReport.marketReports.find(
+		(report) => report.productId === 'bottled-water'
+	);
+	if (!activeMarket) throw new Error('Rival promotion active report has no market evidence.');
+	const activeRival = activeMarket.competitors.find(
+		(competitor) => competitor.competitorId === targetCompetitorId
+	);
+	expect(activeRival).toMatchObject({ eventMultiplier: 1.18 });
+	expect(activeMarket.playerShare).toBeLessThan(baselineMarket.playerShare);
+
+	let expiryReport: SavedDailyReport | undefined;
+	for (const day of [3, 4, 5]) {
+		await page.getByRole('button', { name: /^advance day$/i }).click();
+		await waitForAutoSaveDay(page, day);
+		saved = await waitForSavedReportDay(page, day - 1);
+		if (day === 4) {
+			expiryReport = getLatestReport(saved);
+			const reports = await openManagementPanel(page, /reports/i);
+			await expect(
+				reports.getByRole('region', { name: 'Latest-day modifier lifecycle' })
+			).toContainText('Status: Expired');
+			await reports.getByRole('button', { name: 'Close Reports', exact: true }).click();
+		}
+	}
+	if (!expiryReport) throw new Error('Rival promotion expiry report was not captured.');
+	expect(expiryReport.modifierLifecycle).toEqual([expect.objectContaining({ status: 'expired' })]);
+	const stableReport = getLatestReport(saved);
+	const stableMarket = stableReport.marketReports.find(
+		(report) => report.productId === 'bottled-water'
+	);
+	if (!stableMarket) throw new Error('Rival promotion stable report has no market evidence.');
+	const stableRival = stableMarket.competitors.find(
+		(competitor) => competitor.competitorId === targetCompetitorId
+	);
+	expect(stableRival).toMatchObject({ eventMultiplier: 1 });
+	expect(stableMarket.playerShare).toBeCloseTo(baselineMarket.playerShare, 12);
+
+	const reports = await openManagementPanel(page, /reports/i);
+	await expect(reports.getByRole('region', { name: 'Market snapshot' })).toContainText(
+		'event multiplier: ×1'
+	);
+	await reports.getByRole('button', { name: 'Close Reports', exact: true }).click();
+});
+
+test('scenario remains rival-free and brand read-only', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 1000 });
+	await page.goto('/');
+	await startFirstProfitChallenge(page);
+
+	const canvas = await expectRetailMapReady(page);
+	await expect(canvas).toHaveAttribute('data-competitor-marker-count', '0');
+	await clickMapTile(page, 29, 35);
+	const storeDetails = await openStoreDetail(page);
+	await expect(
+		storeDetails.getByRole('combobox', { name: 'Brand for Bottled Water' })
+	).toBeDisabled();
+});
 
 test('production supplier bulk discount stays active through its final import and then expires', async ({
 	page

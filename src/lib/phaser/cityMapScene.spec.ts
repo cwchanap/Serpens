@@ -860,6 +860,53 @@ describe('CityMapScene', () => {
 			expect(markerGraphics.fillCircle).toHaveBeenCalledWith(48, 48, 8);
 		});
 
+		it('transitions one scene from two rivals to one and then zero', () => {
+			expect.assertions(3);
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					competitors: [
+						{
+							id: 'rival-1',
+							name: 'Rival One',
+							archetypeId: 'convenience',
+							x: 1,
+							y: 1,
+							status: 'active'
+						},
+						{
+							id: 'rival-2',
+							name: 'Rival Two',
+							archetypeId: 'grocery',
+							x: 2,
+							y: 2,
+							status: 'active'
+						}
+					]
+				})
+			);
+			expect(s(scene).game.canvas.dataset.competitorMarkerCount).toBe('2');
+
+			scene.updateSnapshot(
+				makeSnapshot({
+					competitors: [
+						{
+							id: 'rival-1',
+							name: 'Rival One',
+							archetypeId: 'convenience',
+							x: 1,
+							y: 1,
+							status: 'active'
+						}
+					]
+				})
+			);
+			expect(s(scene).game.canvas.dataset.competitorMarkerCount).toBe('1');
+
+			scene.updateSnapshot(makeSnapshot());
+			expect(s(scene).game.canvas.dataset.competitorMarkerCount).toBe('0');
+		});
+
 		it('animates store sprite positions when sprites exist', () => {
 			expect.assertions(1);
 			scene.create();
