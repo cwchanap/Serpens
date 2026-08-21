@@ -37,6 +37,7 @@ const eventSource: SimulationRuleSource = {
 function withOneReplenishmentProduct(game: GameState): GameState {
 	const product: StoreProduct = {
 		productId: 'snacks',
+		brandId: 'common-ground',
 		lots: [{ receivedDay: 1, quantity: 4 }],
 		reorderThreshold: 10,
 		targetStock: 25,
@@ -84,6 +85,7 @@ function createReplenishmentStore(
 		products: [
 			{
 				productId: 'bottled-water',
+				brandId: 'common-ground',
 				lots: [],
 				reorderThreshold: 1,
 				targetStock: 10,
@@ -589,6 +591,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'accessories',
+							brandId: 'common-ground',
 							lots: [],
 							reorderThreshold: 1,
 							targetStock: 3,
@@ -623,7 +626,14 @@ describe('weekly retail replenishment', () => {
 				{
 					...base.stores[0]!,
 					products: [
-						{ productId: 'games', lots: [], reorderThreshold: 1, targetStock: 3, sellingPrice: 48 }
+						{
+							productId: 'games',
+							brandId: 'common-ground',
+							lots: [],
+							reorderThreshold: 1,
+							targetStock: 3,
+							sellingPrice: 48
+						}
 					]
 				}
 			]
@@ -728,6 +738,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'snacks',
+							brandId: 'common-ground',
 							lots: [],
 							reorderThreshold: 1,
 							targetStock: 2,
@@ -735,6 +746,7 @@ describe('weekly retail replenishment', () => {
 						},
 						{
 							productId: 'bottled-water',
+							brandId: 'common-ground',
 							lots: [],
 							reorderThreshold: 1,
 							targetStock: 2,
@@ -774,6 +786,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'apparel',
+							brandId: 'common-ground',
 							lots: [{ receivedDay: 1, quantity: 4 }],
 							reorderThreshold: 10,
 							targetStock: 25,
@@ -806,6 +819,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'snacks',
+							brandId: 'common-ground',
 							lots: [{ receivedDay: 1, quantity: 30 }],
 							reorderThreshold: 10,
 							targetStock: 100,
@@ -835,6 +849,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'nonexistent-category' as ProductId,
+							brandId: 'common-ground',
 							lots: [{ receivedDay: 1, quantity: 4 }],
 							reorderThreshold: 10,
 							targetStock: 25,
@@ -863,6 +878,7 @@ describe('weekly retail replenishment', () => {
 					products: [
 						{
 							productId: 'snacks',
+							brandId: 'common-ground',
 							lots: [{ receivedDay: 1, quantity: 5 }],
 							reorderThreshold: 10,
 							targetStock: 5,

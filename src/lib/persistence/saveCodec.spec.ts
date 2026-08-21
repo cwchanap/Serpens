@@ -1259,11 +1259,43 @@ function createCompleteRouteEventGame(): GameState {
 }
 
 describe('saveCodec', () => {
-	describe('schema 18 policy and manager state validation', () => {
+	describe('schema 19 brand, policy, and manager state validation', () => {
 		test('rejects schema 17 without migration', () => {
 			const record = { ...createManualSaveRecord(), schemaVersion: 17 };
 
 			expect(() => validateSaveRecord(record)).toThrow('Unsupported save schema version: 17');
+		});
+
+		test('rejects schema 18 without migration', () => {
+			const record = { ...createManualSaveRecord(), schemaVersion: 18 };
+
+			expect(() => validateSaveRecord(record)).toThrow('Unsupported save schema version: 18');
+		});
+
+		test('preserves a known supported brand while validating a current game', () => {
+			const decoded = validateCurrentGameState(createGame());
+
+			expect(decoded.stores[0]!.products[0]!.brandId).toBe('common-ground');
+		});
+
+		test.each([
+			['missing', undefined],
+			['unknown', 'not-a-brand'],
+			['unsupported', 'fresh-field']
+		] as const)('rejects a %s product brand', (_label, brandId) => {
+			const game = createGame();
+			const product = game.stores[0]!.products[0]!;
+			const malformed = {
+				...game,
+				stores: [
+					{
+						...game.stores[0]!,
+						products: [{ ...product, brandId }]
+					}
+				]
+			} as unknown as GameState;
+
+			expect(() => validateCurrentGameState(malformed)).toThrow(SaveDataError);
 		});
 
 		test.each(['policyOverrides', 'managerDelegations', 'managerActionHistory'])(
@@ -1760,8 +1792,8 @@ describe('saveCodec', () => {
 		const validated = validateSaveRecord(structuredClone(record));
 		const report = validated.game.reports[0]!;
 
-		expect(SAVE_SCHEMA_VERSION).toBe(18);
-		expect(validated.schemaVersion).toBe(18);
+		expect(SAVE_SCHEMA_VERSION).toBe(19);
+		expect(validated.schemaVersion).toBe(19);
 		expect(validated.game.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
@@ -3477,7 +3509,7 @@ describe('saveCodec', () => {
 			createManualSaveRecord({ game: withCurrentReports(game, [noAttemptReport]) })
 		);
 
-		expect(SAVE_SCHEMA_VERSION).toBe(18);
+		expect(SAVE_SCHEMA_VERSION).toBe(19);
 		expect(validated.game.reports[0]!.storeReports[0]!.replenishment).toBeNull();
 	});
 
@@ -3487,7 +3519,7 @@ describe('saveCodec', () => {
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(18);
+		expect(SAVE_SCHEMA_VERSION).toBe(19);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
 	});
@@ -3498,7 +3530,7 @@ describe('saveCodec', () => {
 
 		const validated = validateSaveRecord(structuredClone(record));
 
-		expect(SAVE_SCHEMA_VERSION).toBe(18);
+		expect(SAVE_SCHEMA_VERSION).toBe(19);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
 	});

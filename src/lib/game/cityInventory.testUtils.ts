@@ -65,6 +65,7 @@ export function createOneCityInventoryFixture(): GameState {
 				products: [
 					{
 						productId: 'bottled-water',
+						brandId: 'common-ground',
 						lots: [],
 						reorderThreshold: 20,
 						targetStock: 20,

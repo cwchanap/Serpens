@@ -13,6 +13,7 @@ import type { StoreProduct } from './types';
 function createProduct(): StoreProduct {
 	return {
 		productId: 'produce',
+		brandId: 'common-ground',
 		lots: [
 			{ receivedDay: 1, quantity: 4 },
 			{ receivedDay: 2, quantity: 3 }
@@ -177,6 +178,7 @@ describe('product dynamics', () => {
 	it('skips empty lots during aging without counting them as waste or shrink', () => {
 		const product: StoreProduct = {
 			productId: 'produce',
+			brandId: 'common-ground',
 			lots: [
 				{ receivedDay: 1, quantity: 0 },
 				{ receivedDay: 2, quantity: 4 }
@@ -197,6 +199,7 @@ describe('product dynamics', () => {
 	it('getOldestSellableAgeDays ignores empty and expired lots', () => {
 		const product: StoreProduct = {
 			productId: 'produce',
+			brandId: 'common-ground',
 			lots: [
 				{ receivedDay: 1, quantity: 0 },
 				{ receivedDay: 2, quantity: 5 },

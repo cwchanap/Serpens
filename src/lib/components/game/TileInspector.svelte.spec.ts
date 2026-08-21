@@ -174,6 +174,7 @@ describe('TileInspector basic card', () => {
 			products: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					lots: [],
 					reorderThreshold: 10,
 					targetStock: 50,

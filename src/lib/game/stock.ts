@@ -1,4 +1,5 @@
 import { getArchetype } from './archetypes';
+import { getBrandDefaultSellingPrice, isBrandSupported } from './brands';
 import { getTilePlacementBlockReason } from './city';
 import { getStoreRevenueMultiplier, getUnlockedProductCount } from './leveling';
 import {
@@ -43,6 +44,7 @@ export function createStoreProduct(productId: ProductId, receivedDay = 1): Store
 	const product = getProductDefinition(productId);
 	return {
 		productId,
+		brandId: product.defaultBrandId,
 		lots: [
 			{
 				receivedDay,
@@ -51,7 +53,7 @@ export function createStoreProduct(productId: ProductId, receivedDay = 1): Store
 		],
 		reorderThreshold: Math.max(0, roundStockDefault(product.demandWeight * 25)),
 		targetStock: Math.max(1, roundStockDefault(product.demandWeight * 90)),
-		sellingPrice: product.defaultSellingPrice
+		sellingPrice: getBrandDefaultSellingPrice(product, product.defaultBrandId)
 	};
 }
 
@@ -88,9 +90,18 @@ export function updateStoreProduct(
 	}
 
 	const product = store.products[productIndex]!;
+	const productDefinition = getProductDefinition(productId);
+	const currentBrandId = product.brandId ?? productDefinition.defaultBrandId;
+	const nextBrandId = patch.brandId ?? currentBrandId;
+	if (!isBrandSupported(productId, nextBrandId)) {
+		return game;
+	}
+	const brandChanged = nextBrandId !== currentBrandId;
 	const sellingPrice = Math.max(
 		1,
-		roundedFiniteOrFallback(patch.sellingPrice, product.sellingPrice)
+		brandChanged && patch.sellingPrice === undefined
+			? getBrandDefaultSellingPrice(productDefinition, nextBrandId)
+			: roundedFiniteOrFallback(patch.sellingPrice, product.sellingPrice)
 	);
 	const reorderThreshold = Math.max(
 		0,
@@ -105,6 +116,7 @@ export function updateStoreProduct(
 		index === productIndex
 			? {
 					...candidate,
+					brandId: nextBrandId,
 					lots: candidate.lots.map((lot) => ({ ...lot })),
 					sellingPrice,
 					reorderThreshold,
