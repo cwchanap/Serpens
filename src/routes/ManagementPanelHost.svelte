@@ -259,6 +259,7 @@
 					day={panelGame.day}
 					modifiers={panelGame.events.activeModifiers}
 					routes={panelGame.logistics.recurringRoutes}
+					competitors={panelGame.competitors}
 				/>
 			</div>
 		{:else if panelId === 'reports'}

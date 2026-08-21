@@ -1433,6 +1433,21 @@ export const zhHant = {
 					suspension: '此航線的配送暫停 2 天。'
 				}
 			},
+			rivalPromotion: {
+				title: '競爭對手促銷',
+				context: '{competitorName} 正在 {city} 大力促銷。請選擇應對方式。',
+				options: {
+					'counter-promote': {
+						label: '反制促銷',
+						description: '花費 $1,200 反制促銷，提升市場地位。'
+					},
+					differentiate: {
+						label: '差異化',
+						description: '不跟進促銷，改為強化顧客滿意度。'
+					}
+				},
+				modifier: '{competitorName} 的吸引力在三天內提高 18%。'
+			},
 			supplierTerms: {
 				title: '供應條件',
 				context: '供應商願意在下一次補貨前重新協商訂購條件。',
@@ -1451,6 +1466,9 @@ export const zhHant = {
 		},
 		modifiers: {
 			companyTarget: '全公司的零售進口',
+			competitorTarget: '競爭對手：{name}',
+			removedCompetitorTarget: '競爭對手：{competitorId}（已撤出）',
+			competitorAttraction: '吸引力 ×{multiplier}',
 			importCostDiscount: '零售進口成本 {percent}% 折扣',
 			durationDays: '持續 {days} 天',
 			startsOnDay: '第 {day} 天開始',

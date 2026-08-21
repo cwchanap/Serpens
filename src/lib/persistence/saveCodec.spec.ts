@@ -35,6 +35,7 @@ import type {
 	DailyReport,
 	DailyReportWarning,
 	DailyStoreReport,
+	EventImmediateEffect,
 	GameState,
 	IndustryTile,
 	MaterialId,
@@ -1258,6 +1259,126 @@ function createCompleteRouteEventGame(): GameState {
 				]
 			}
 		]
+	};
+}
+
+function createCompleteCompetitorEventGame(): GameState {
+	const base = ensureCompetitorsForRetailCity(createCompleteEventGame(), 'harbor-city');
+	const competitor = base.competitors[0]!;
+	const target = { kind: 'competitor' as const, competitorId: competitor.id };
+	const activeModifier: GameState['events']['activeModifiers'][number] = {
+		...base.events.activeModifiers[0]!,
+		id: 'event-modifier-2',
+		source: {
+			eventId: 'rival-promotion',
+			instanceId: 'event-instance-1',
+			optionId: 'counter-promote'
+		},
+		target,
+		stackingKey: 'rival-promotion:market-attraction',
+		effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+		explanation: { key: 'events.rivalPromotion.modifier', params: {} }
+	};
+	const modifierSnapshot = {
+		id: activeModifier.id,
+		source: { ...activeModifier.source },
+		target: { ...activeModifier.target },
+		startsOnDay: activeModifier.startsOnDay,
+		expiresOnDay: activeModifier.expiresOnDay,
+		stackingKey: activeModifier.stackingKey,
+		effect: cloneTimedEffect(activeModifier.effect),
+		explanation: {
+			...activeModifier.explanation,
+			params: { ...activeModifier.explanation.params }
+		},
+		importance: activeModifier.importance
+	};
+
+	return {
+		...base,
+		events: {
+			...base.events,
+			nextInstanceSequence: 3,
+			nextModifierSequence: 3,
+			cooldowns: [
+				{
+					eventId: 'rival-promotion',
+					target,
+					generatedOnDay: 3,
+					eligibleOnDay: 10
+				}
+			],
+			activeModifiers: [activeModifier],
+			history: [
+				{
+					kind: 'event-generated',
+					day: 2,
+					eventId: 'rival-promotion',
+					instanceId: 'event-instance-1',
+					target
+				},
+				{
+					kind: 'event-resolved',
+					day: 2,
+					eventId: 'rival-promotion',
+					instanceId: 'event-instance-1',
+					optionId: 'counter-promote',
+					target
+				},
+				{
+					kind: 'modifier-lifecycle',
+					day: 2,
+					status: 'activated',
+					modifier: modifierSnapshot
+				},
+				{
+					kind: 'event-generated',
+					day: 3,
+					eventId: 'rival-promotion',
+					instanceId: 'event-instance-2',
+					target
+				}
+			]
+		},
+		decisions: base.decisions.map((decision) =>
+			decision.kind === 'event'
+				? {
+						...decision,
+						target,
+						options: decision.options.map((option, index) =>
+							index === 0
+								? {
+										...option,
+										effects: [
+											{
+												kind: 'competitor-status-set',
+												status: 'closed'
+											} satisfies EventImmediateEffect,
+											{
+												kind: 'competitor-price-posture-set',
+												pricePosture: 'premium'
+											} satisfies EventImmediateEffect,
+											{
+												kind: 'competitor-product-focus-set',
+												productFocus: ['beverages', 'grocery-food']
+											} satisfies EventImmediateEffect
+										]
+									}
+								: option
+						),
+						copy: {
+							...decision.copy,
+							params: {
+								...decision.copy.params,
+								competitorId: competitor.id,
+								competitorName: competitor.name,
+								cityId: competitor.cityId
+							}
+						}
+					}
+				: decision
+		),
+		reports: []
 	};
 }
 
@@ -3690,6 +3811,35 @@ describe('saveCodec', () => {
 		expect(SAVE_SCHEMA_VERSION).toBe(19);
 		expect(validated).toEqual(record);
 		expect(validated).not.toBe(record);
+	});
+
+	test('round-trips competitor-targeted event evidence with target-scoped attraction', () => {
+		expect.assertions(3);
+		const record = createManualSaveRecord({ game: createCompleteCompetitorEventGame() });
+
+		const validated = validateSaveRecord(structuredClone(record));
+
+		expect(SAVE_SCHEMA_VERSION).toBe(19);
+		expect(validated).toEqual(record);
+		expect(validated).not.toBe(record);
+	});
+
+	test('rejects a persisted competitor target that is not in the competitor roster', () => {
+		const game = createCompleteCompetitorEventGame();
+		const decision = game.decisions.find((candidate) => candidate.kind === 'event')!;
+		const malformed = {
+			...game,
+			decisions: [
+				{
+					...decision,
+					target: { kind: 'competitor', competitorId: 'competitor-harbor-city-9' }
+				}
+			]
+		} as GameState;
+
+		expect(() => validateCurrentGameState(malformed)).toThrow(
+			'Saved game decisions[0] target competitorId must reference a persisted competitor'
+		);
 	});
 
 	test('rejects duplicate stacking keys on the same route target while allowing cross-route coexistence', () => {

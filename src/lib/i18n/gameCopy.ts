@@ -149,6 +149,9 @@ function resolveEventCopyParams(
 	if (typeof params.materialId === 'string') {
 		resolved.material = i18n.labels.material(params.materialId);
 	}
+	if (typeof params.cityId === 'string') {
+		resolved.city = i18n.labels.worldCity(params.cityId).name;
+	}
 	return resolved;
 }
 

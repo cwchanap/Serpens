@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createInitialEventRuntime } from './eventSelection';
 import {
 	activateEventModifiers,
+	cloneTimedEffect,
 	expireModifiersAfterDay,
 	isModifierActiveOnDay
 } from './eventModifiers';
@@ -253,5 +254,43 @@ describe('event modifier lifecycle', () => {
 			'event-modifier-2'
 		]);
 		expect(result.lifecycle.every((entry) => entry.status === 'activated')).toBe(true);
+	});
+
+	it('clones competitor attraction effects and replaces per concrete rival target', () => {
+		const effect = { kind: 'competitor-attraction-multiplier', multiplier: 1.18 } as const;
+		expect(cloneTimedEffect(effect)).toEqual(effect);
+
+		const firstTarget = { kind: 'competitor' as const, competitorId: 'competitor-harbor-city-1' };
+		const secondTarget = { kind: 'competitor' as const, competitorId: 'competitor-harbor-city-2' };
+		const template: EventModifierTemplate = {
+			durationDays: 3,
+			stackingKey: 'rival-promotion:market-attraction',
+			stackingRule: 'replace',
+			effect,
+			explanation: { key: 'events.rivalPromotion.modifier', params: {} },
+			importance: 'important'
+		};
+
+		const first = activateEventModifiers(createInitialEventRuntime(42), source, firstTarget, 5, [
+			template
+		]);
+		const withSecond = activateEventModifiers(first.state, source, secondTarget, 5, [template]);
+		const replaced = activateEventModifiers(
+			withSecond.state,
+			{ ...source, instanceId: 'event-instance-2' },
+			firstTarget,
+			6,
+			[template]
+		);
+
+		expect(withSecond.state.activeModifiers.map((modifier) => modifier.target)).toEqual([
+			firstTarget,
+			secondTarget
+		]);
+		expect(replaced.state.activeModifiers.map((modifier) => modifier.target)).toEqual([
+			secondTarget,
+			firstTarget
+		]);
+		expect(replaced.lifecycle.map((entry) => entry.status)).toEqual(['replaced', 'activated']);
 	});
 });

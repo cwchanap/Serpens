@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import type { ActiveEventModifier, RecurringRoute } from '$lib/game/types';
+import type { ActiveEventModifier, MarketCompetitor, RecurringRoute } from '$lib/game/types';
 import { createI18n } from '$lib/i18n';
 import ActiveModifiers from './ActiveModifiers.svelte';
 
@@ -17,6 +17,19 @@ const route: RecurringRoute = {
 	priority: 1,
 	state: 'active',
 	nextDispatchOnDay: 11
+};
+
+const competitor: MarketCompetitor = {
+	id: 'competitor-harbor-city-1',
+	name: 'Harborline Market',
+	cityId: 'harbor-city',
+	location: { neighborhoodId: 'downtown', x: 1, y: 1 },
+	archetypeId: 'boutique',
+	reputation: 60,
+	pricePosture: 'competitive',
+	productFocus: ['fashion'],
+	brandIds: ['common-ground'],
+	status: 'active'
 };
 
 function modifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEventModifier {
@@ -83,6 +96,43 @@ describe('ActiveModifiers', () => {
 		await expect.element(article.getByText('Important')).toBeVisible();
 		await expect.element(article.getByText('Expires after day 8')).not.toBeInTheDocument();
 		await expect.element(article.getByText(/three days/i)).toBeVisible();
+	});
+
+	it('shows a localized competitor target, structured explanation, and attraction multiplier', async () => {
+		expect.assertions(5);
+		render(ActiveModifiers, {
+			i18n: createI18n('en'),
+			day: 5,
+			modifiers: [
+				modifier({
+					source: {
+						eventId: 'rival-promotion',
+						instanceId: 'event-instance-2',
+						optionId: 'counter-promote'
+					},
+					target: { kind: 'competitor', competitorId: competitor.id },
+					stackingKey: 'rival-promotion:market-attraction',
+					effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+					explanation: { key: 'events.rivalPromotion.modifier', params: {} }
+				})
+			],
+			routes: [],
+			competitors: [competitor]
+		});
+
+		const region = page.getByRole('region', { name: 'Active modifiers' });
+		const article = region.getByRole('article', { name: 'Rival promotion' });
+		await expect.element(article).toBeVisible();
+		await expect
+			.element(article.getByText('Rival: Harborline Market', { exact: true }))
+			.toBeVisible();
+		await expect
+			.element(
+				article.getByText('Harborline Market gains 18% attraction for three days.', { exact: true })
+			)
+			.toBeVisible();
+		await expect.element(article.getByText('Attraction ×1.18', { exact: true })).toBeVisible();
+		await expect.element(article.getByText('Company-wide retail imports')).not.toBeInTheDocument();
 	});
 
 	it('shows all four route effects with route, material, base → effective value, and remaining duration', async () => {

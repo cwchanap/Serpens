@@ -66,6 +66,17 @@ function routeGame(): GameState {
 	return withRecurringRoutes(createTwoIndustryCityGame({ seed: 7 }), [route()]);
 }
 
+function competitorDecision(
+	base: GameState,
+	effects: readonly unknown[],
+	competitorId = base.competitors[0]?.id ?? 'competitor-harbor-city-1'
+): EventDecisionItem {
+	return eventDecision({
+		target: { kind: 'competitor', competitorId } as never,
+		options: [{ id: 'accept', effects: effects as never, modifiers: [] }]
+	});
+}
+
 function routeSuspensionDecision(): EventDecisionItem {
 	return eventDecision({
 		id: 'route-event-instance',
@@ -770,4 +781,123 @@ describe('atomic decision resolution', () => {
 			context: { modifierIndex: 0, payload: 'modifier' }
 		});
 	});
+
+	it('rejects a competitor-targeted modifier whose effect kind is not attraction', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = competitorDecision(base, []);
+		decision.options[0]!.modifiers = [
+			{
+				durationDays: 3,
+				stackingKey: 'route-disruption:competitor',
+				stackingRule: 'replace',
+				effect: { kind: 'route-capacity-multiplier', multiplier: 0.8 },
+				explanation: { key: 'events.fixture.modifier', params: {} },
+				importance: 'important'
+			}
+		];
+		const game = withDecision(base, decision);
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'effect-rejected',
+			context: { modifierIndex: 0, payload: 'modifier' }
+		});
+		expect(result.game).toBe(game);
+	});
+
+	it('applies typed competitor status, posture, and canonical product-focus effects atomically', () => {
+		const base = createNewGame('grocery', 55);
+		const rival = base.competitors[0]!;
+		const decision = competitorDecision(base, [
+			{ kind: 'competitor-status-set', status: 'closed' },
+			{ kind: 'competitor-price-posture-set', pricePosture: 'premium' },
+			{ kind: 'competitor-product-focus-set', productFocus: ['grocery-food', 'beverages'] }
+		]);
+		const game = withDecision(base, decision);
+
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		const updated = result.game.competitors.find((candidate) => candidate.id === rival.id)!;
+		expect(updated.status).toBe('closed');
+		expect(updated.pricePosture).toBe('premium');
+		expect(updated.productFocus).toEqual(['beverages', 'grocery-food']);
+	});
+
+	it('rejects competitor effects when the event target is not a competitor without mutation', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = eventDecision({
+			target: { kind: 'company' },
+			options: [
+				{
+					id: 'accept',
+					effects: [{ kind: 'competitor-status-set', status: 'closed' } as never],
+					modifiers: []
+				}
+			]
+		});
+		const game = withDecision(base, decision);
+
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+		expect(result.game).toBe(game);
+		expect(game.competitors).toEqual(base.competitors);
+	});
+
+	it('rejects a competitor effect for an unknown rival atomically', () => {
+		const base = createNewGame('grocery', 55);
+		const decision = competitorDecision(
+			base,
+			[{ kind: 'competitor-status-set', status: 'closed' }],
+			'competitor-harbor-city-99'
+		);
+		const game = withDecision(base, decision);
+
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'effect-rejected',
+			context: { payload: 'target' }
+		});
+		expect(result.game).toBe(game);
+	});
+
+	it.each([
+		{ kind: 'competitor-price-posture-set', pricePosture: 'aggressive' },
+		{ kind: 'competitor-status-set', status: 'paused' }
+	])('rejects an invalid competitor enum effect atomically', (effect) => {
+		const base = createNewGame('grocery', 55);
+		const decision = competitorDecision(base, [effect]);
+		const game = withDecision(base, decision);
+
+		const result = resolveDecision(game, decision.id, 'accept');
+
+		expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+		expect(result.game).toBe(game);
+	});
+
+	it.each([
+		[] as string[],
+		['beverages', 'beverages'],
+		['beverages', 'fashion', 'electronics'],
+		['unknown-family']
+	] as string[][])(
+		'rejects a product focus that is not one or two unique known families',
+		(productFocus) => {
+			const base = createNewGame('grocery', 55);
+			const decision = competitorDecision(base, [
+				{ kind: 'competitor-product-focus-set', productFocus }
+			]);
+			const game = withDecision(base, decision);
+
+			const result = resolveDecision(game, decision.id, 'accept');
+
+			expect(result).toMatchObject({ ok: false, code: 'effect-rejected' });
+			expect(result.game).toBe(game);
+		}
+	);
 });

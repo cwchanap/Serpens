@@ -650,4 +650,94 @@ describe('validateAndNormalizeEventCatalog', () => {
 			'non-finite-number-param:copy.params.count'
 		]);
 	});
+
+	it('accepts a competitor target and clones competitor event payloads deeply', () => {
+		const focus = ['beverages', 'grocery-food'] as const;
+		const authored = definition({
+			id: 'competitor-event',
+			target: { kind: 'competitor', status: 'active' },
+			options: [
+				{
+					id: 'respond',
+					effects: [
+						{ kind: 'competitor-status-set', status: 'closed' },
+						{ kind: 'competitor-price-posture-set', pricePosture: 'premium' },
+						{ kind: 'competitor-product-focus-set', productFocus: [...focus] }
+					],
+					modifiers: [
+						{
+							durationDays: 3,
+							stackingKey: 'competitor:event',
+							stackingRule: 'replace',
+							effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+							explanation: { key: 'events.competitor.modifier', params: {} },
+							importance: 'important'
+						}
+					]
+				}
+			]
+		});
+
+		const catalog = validateAndNormalizeEventCatalog([authored]);
+		const normalized = catalog.byId.get('competitor-event')!;
+
+		expect(normalized.target).toEqual({ kind: 'competitor', status: 'active' });
+		expect(normalized.options[0]?.effects[2]).toEqual({
+			kind: 'competitor-product-focus-set',
+			productFocus: focus
+		});
+		expect(normalized.options[0]?.effects[2]).not.toBe(authored.options[0]?.effects[2]);
+		expect(normalized.options[0]?.modifiers[0]?.effect).toEqual({
+			kind: 'competitor-attraction-multiplier',
+			multiplier: 1.18
+		});
+	});
+
+	it('rejects competitor effects and modifiers with the wrong target or malformed values', () => {
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'wrong-competitor-effect-target',
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'competitor-status-set', status: 'closed' }],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'bad-competitor-effect',
+				target: { kind: 'competitor', status: 'active' },
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{ kind: 'competitor-price-posture-set', pricePosture: 'aggressive' as never },
+							{
+								kind: 'competitor-product-focus-set',
+								productFocus: ['beverages', 'beverages']
+							}
+						],
+						modifiers: [
+							{
+								durationDays: 3,
+								stackingKey: 'competitor:event',
+								stackingRule: 'replace',
+								effect: { kind: 'competitor-attraction-multiplier', multiplier: 0 },
+								explanation: { key: 'events.competitor.modifier', params: {} },
+								importance: 'important'
+							}
+						]
+					}
+				]
+			})
+		]);
+
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-competitor-effect:options[0].effects[0].pricePosture',
+			'bad-competitor-effect:options[0].effects[1].productFocus',
+			'bad-competitor-effect:options[0].modifiers[0].effect.multiplier',
+			'wrong-competitor-effect-target:options[0].effects[0].kind'
+		]);
+	});
 });

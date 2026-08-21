@@ -92,7 +92,7 @@ describe('production event facade', () => {
 	});
 
 	test('materializes supplier terms from the isolated cadence packet', () => {
-		const base = withEventRngState(createNewGame('convenience', 43), 1);
+		const base = withEventRngState(createNewGame('convenience', 43), 6);
 		const decision = generatedEvent(base)!;
 
 		expect(decision.eventId).toBe('supplier-terms');

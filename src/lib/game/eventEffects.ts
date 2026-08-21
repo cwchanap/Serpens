@@ -17,6 +17,8 @@ import type {
 	EventTarget,
 	EventTimedEffect,
 	GameState,
+	MarketCompetitor,
+	ProductFamilyId,
 	ScoreKey
 } from './types';
 import { refreshWorldProgress } from './world';
@@ -68,6 +70,19 @@ const SCORE_KEYS: readonly ScoreKey[] = [
 	'customerSatisfaction',
 	'staffMorale',
 	'marketPosition'
+];
+const COMPETITOR_PRICE_POSTURES: readonly MarketCompetitor['pricePosture'][] = [
+	'discount',
+	'competitive',
+	'standard',
+	'premium'
+];
+const PRODUCT_FAMILY_IDS: readonly ProductFamilyId[] = [
+	'beverages',
+	'convenience-goods',
+	'fashion',
+	'electronics',
+	'grocery-food'
 ];
 
 export function getDecisionOptionAvailability(
@@ -247,9 +262,104 @@ function applyEffect(
 			}
 			return { ok: true, game: borrowing.game };
 		}
+		case 'competitor-status-set':
+			if (effect.status !== 'active' && effect.status !== 'closed') return rejected();
+			return updateCompetitor(
+				originalGame,
+				tentativeGame,
+				decision,
+				optionId,
+				effectIndex,
+				(competitor) => ({
+					...competitor,
+					status: effect.status
+				})
+			);
+		case 'competitor-price-posture-set':
+			if (!COMPETITOR_PRICE_POSTURES.includes(effect.pricePosture)) return rejected();
+			return updateCompetitor(
+				originalGame,
+				tentativeGame,
+				decision,
+				optionId,
+				effectIndex,
+				(competitor) => ({
+					...competitor,
+					pricePosture: effect.pricePosture
+				})
+			);
+		case 'competitor-product-focus-set': {
+			const productFocus = normalizeProductFocus(effect.productFocus);
+			if (!productFocus) return rejected();
+			return updateCompetitor(
+				originalGame,
+				tentativeGame,
+				decision,
+				optionId,
+				effectIndex,
+				(competitor) => ({
+					...competitor,
+					productFocus
+				})
+			);
+		}
 		default:
 			return rejected();
 	}
+}
+
+function updateCompetitor(
+	originalGame: GameState,
+	tentativeGame: GameState,
+	decision: EventDecisionItem,
+	optionId: string,
+	effectIndex: number,
+	update: (competitor: MarketCompetitor) => MarketCompetitor
+): PreparedResolution {
+	const target = decision.target;
+	if (target.kind !== 'competitor') {
+		return failure(originalGame, 'effect-rejected', {
+			decisionId: decision.id,
+			optionId,
+			effectIndex,
+			payload: 'target'
+		});
+	}
+	const competitorIndex = tentativeGame.competitors.findIndex(
+		(competitor) => competitor.id === target.competitorId
+	);
+	if (competitorIndex < 0) {
+		return failure(originalGame, 'effect-rejected', {
+			decisionId: decision.id,
+			optionId,
+			effectIndex,
+			payload: 'target'
+		});
+	}
+	return {
+		ok: true,
+		game: {
+			...tentativeGame,
+			competitors: tentativeGame.competitors.map((competitor, index) =>
+				index === competitorIndex ? update(competitor) : competitor
+			)
+		}
+	};
+}
+
+function normalizeProductFocus(value: unknown): ProductFamilyId[] | null {
+	if (!Array.isArray(value) || value.length < 1 || value.length > 2) return null;
+	if (
+		value.some(
+			(candidate) =>
+				typeof candidate !== 'string' || !PRODUCT_FAMILY_IDS.includes(candidate as ProductFamilyId)
+		)
+	) {
+		return null;
+	}
+	const unique = [...new Set(value as ProductFamilyId[])];
+	if (unique.length !== value.length) return null;
+	return unique.sort(compareCodeUnits);
 }
 
 function prepareModifiers(
@@ -304,8 +414,17 @@ function isValidModifierTemplate(template: EventModifierTemplate, target: EventT
 	}
 	const effect = template.effect;
 	if (!effect || typeof effect !== 'object') return false;
-	if (target.kind === 'company' && effect.kind !== 'import-cost-multiplier') return false;
-	if (target.kind === 'recurring-route' && effect.kind === 'import-cost-multiplier') return false;
+	if (target.kind === 'company')
+		return effect.kind === 'import-cost-multiplier' && isValidTimedEffect(effect);
+	if (target.kind === 'competitor') {
+		return effect.kind === 'competitor-attraction-multiplier' && isValidTimedEffect(effect);
+	}
+	if (
+		effect.kind === 'import-cost-multiplier' ||
+		effect.kind === 'competitor-attraction-multiplier'
+	) {
+		return false;
+	}
 	return isValidTimedEffect(effect);
 }
 
@@ -322,10 +441,15 @@ function isValidTimedEffect(effect: EventTimedEffect): boolean {
 			return Number.isSafeInteger(effect.days) && effect.days > 0;
 		case 'route-capacity-multiplier':
 		case 'route-transport-cost-multiplier':
+		case 'competitor-attraction-multiplier':
 			return Number.isFinite(effect.multiplier) && effect.multiplier > 0;
 		case 'route-dispatch-suspension':
 			return true;
 	}
+}
+
+function compareCodeUnits(first: string, second: string): number {
+	return first < second ? -1 : first > second ? 1 : 0;
 }
 
 function failure(

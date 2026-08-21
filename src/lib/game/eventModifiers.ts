@@ -36,6 +36,8 @@ export function cloneTimedEffect(effect: EventTimedEffect): EventTimedEffect {
 			return { kind: 'route-dispatch-suspension' };
 		case 'route-transport-cost-multiplier':
 			return { kind: 'route-transport-cost-multiplier', multiplier: effect.multiplier };
+		case 'competitor-attraction-multiplier':
+			return { kind: 'competitor-attraction-multiplier', multiplier: effect.multiplier };
 	}
 }
 
