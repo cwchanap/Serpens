@@ -617,6 +617,7 @@ function featureRenderVariantForDirections(
 		{
 			cities: [{ id: cityId, name: 'Test', width: 3, height: 3, tiles }] as City[],
 			stores: [],
+			competitors: [],
 			activeCityId: cityId
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		} as any,

@@ -97,7 +97,7 @@ export function createCityMapSnapshot(
 	}
 
 	const activeCityStores = game.stores.filter((store) => store.cityId === city.id);
-	const activeCityCompetitors = (game.competitors ?? []).filter(
+	const activeCityCompetitors = game.competitors.filter(
 		(competitor) => competitor.cityId === city.id && competitor.status === 'active'
 	);
 	const tileLookup = createCityTileLookup(city);

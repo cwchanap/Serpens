@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StoreStockTable from './StoreStockTable.svelte';
 import { getProductArt } from '$lib/assets/gameArt';
+import { getSupportedBrands } from '$lib/game/brands';
 import { getProductDefinition } from '$lib/game/products';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createI18n } from '$lib/i18n';
@@ -198,6 +199,29 @@ describe('StoreStockTable', () => {
 		expect(onUpdateBrand).toHaveBeenCalledTimes(1);
 		expect(onUpdateBrand).toHaveBeenCalledWith('store-1', 'bottled-water', 'budget-bay');
 		expect(onUpdate).not.toHaveBeenCalled();
+	});
+
+	it('offers exactly the compatible family brands and excludes incompatible brands', async () => {
+		expect.assertions(2);
+		const snacksStore: Store = {
+			...store,
+			products: [productWithStock('snacks')]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: snacksStore,
+			ordinal: 1,
+			latestReport: null,
+			onUpdate: vi.fn()
+		});
+
+		const selector = page.getByRole('combobox', { name: 'Brand for Snacks' });
+		const optionIds = Array.from(selector.element().querySelectorAll('option')).map(
+			(option) => option.value
+		);
+		expect(optionIds).toEqual(getSupportedBrands('snacks').map((brand) => brand.id));
+		expect(optionIds).not.toContain('northstar-select');
 	});
 
 	it('keeps the brand selector disabled independently in scenario mode', async () => {
