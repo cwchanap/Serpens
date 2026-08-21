@@ -75,6 +75,7 @@ function pressureReport(): DailyStoreReport {
 	const definition = getProductDefinition('devices');
 	const productReport: DailyProductReport = {
 		productId: 'devices',
+		brandId: 'common-ground',
 		name: definition.name,
 		unitsSold: 2,
 		demandMissed: 1,
@@ -116,6 +117,7 @@ function pressureReport(): DailyStoreReport {
 		stockHealth: 50,
 		staffMorale: 70,
 		reputation: 60,
+		brandReputationAdjustment: 0,
 		marketPosition: 50,
 		productReports: [productReport],
 		inventoryLossExpense: 0,
@@ -293,6 +295,7 @@ describe('StoreDetailModal', () => {
 		expect.assertions(6);
 		const produceReport: DailyProductReport = {
 			productId: 'produce',
+			brandId: 'common-ground',
 			name: 'Produce',
 			unitsSold: 4,
 			demandMissed: 2,
@@ -333,6 +336,7 @@ describe('StoreDetailModal', () => {
 			stockHealth: 50,
 			staffMorale: 70,
 			reputation: 60,
+			brandReputationAdjustment: 0,
 			marketPosition: 50,
 			productReports: [produceReport],
 			inventoryLossExpense: 8,
@@ -386,10 +390,12 @@ describe('StoreDetailModal', () => {
 			stockHealth: 100,
 			staffMorale: 70,
 			reputation: 60,
+			brandReputationAdjustment: 0,
 			marketPosition: 50,
 			productReports: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					name: 'Snacks',
 					unitsSold: 0,
 					demandMissed: 0,

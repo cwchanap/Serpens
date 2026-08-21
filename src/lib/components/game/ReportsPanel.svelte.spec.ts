@@ -196,10 +196,12 @@ function replenishedStoreReport(): DailyStoreReport {
 		stockHealth: 100,
 		staffMorale: 100,
 		reputation: 50,
+		brandReputationAdjustment: 0,
 		marketPosition: 50,
 		productReports: [
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				name: 'Snacks',
 				unitsSold: 0,
 				demandMissed: 0,
@@ -239,6 +241,7 @@ function replenishedStoreReport(): DailyStoreReport {
 function pressureStoreReport(): DailyStoreReport {
 	const product: DailyProductReport = {
 		productId: 'produce',
+		brandId: 'common-ground',
 		name: 'Produce',
 		unitsSold: 6,
 		demandMissed: 3,
@@ -280,6 +283,7 @@ function pressureStoreReport(): DailyStoreReport {
 		stockHealth: 50,
 		staffMorale: 75,
 		reputation: 50,
+		brandReputationAdjustment: 0,
 		marketPosition: 50,
 		productReports: [product],
 		inventoryLossExpense: 6,

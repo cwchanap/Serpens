@@ -827,6 +827,50 @@ describe('stock rules', () => {
 		);
 	});
 
+	test('applies selected brand demand and unit cost while keeping the configured selling price', () => {
+		expect.assertions(8);
+		const base = createNewGame('convenience', 20260820);
+		const makeStore = (brandId: StoreProduct['brandId']) => ({
+			...base.stores[0]!,
+			products: [
+				{
+					productId: 'snacks' as const,
+					brandId,
+					lots: [{ receivedDay: 1, quantity: 10_000 }],
+					reorderThreshold: 10,
+					targetStock: 10_000,
+					sellingPrice: 5
+				}
+			]
+		});
+		const commonStore = makeStore('common-ground');
+		const budgetStore = makeStore('budget-bay');
+		const common = simulateProductSalesForCity({
+			game: { ...base, stores: [commonStore] },
+			city: base.cities[0]!,
+			rng: createRng(31),
+			storeCapacity: new Map([[commonStore.id, 10_000]])
+		});
+		const budget = simulateProductSalesForCity({
+			game: { ...base, stores: [budgetStore] },
+			city: base.cities[0]!,
+			rng: createRng(31),
+			storeCapacity: new Map([[budgetStore.id, 10_000]])
+		});
+		const commonReport = common.productReports.get(commonStore.id)?.[0];
+		const budgetReport = budget.productReports.get(budgetStore.id)?.[0];
+		if (!commonReport || !budgetReport) throw new Error('expected branded sales reports');
+
+		expect(budgetReport.brandId).toBe('budget-bay');
+		expect(budgetReport.unitsSold).toBeGreaterThan(commonReport.unitsSold);
+		expect(commonReport.importCost).toBe(3);
+		expect(budgetReport.importCost).toBe(2.52);
+		expect(commonReport.costOfGoods).toBe(Math.round(commonReport.unitsSold * 3));
+		expect(budgetReport.costOfGoods).toBe(Math.round(budgetReport.unitsSold * 2.52));
+		expect(budgetReport.baseSellingPrice).toBe(5);
+		expect(budgetReport).not.toHaveProperty('customerPrice');
+	});
+
 	test('allows independent seller demand above the raw trend pool without changing canonical order', () => {
 		expect.assertions(7);
 		const makeHighStock = (game: GameState): GameState => ({

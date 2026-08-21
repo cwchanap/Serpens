@@ -42,10 +42,12 @@ const staleReport: DailyStoreReport = {
 	stockHealth: 90,
 	staffMorale: 82,
 	reputation: 55,
+	brandReputationAdjustment: 0,
 	marketPosition: 45,
 	productReports: [
 		{
 			productId: 'snacks',
+			brandId: 'common-ground',
 			name: 'Snacks',
 			unitsSold: 6,
 			demandMissed: 1,
@@ -198,6 +200,7 @@ describe('StoreOverview', () => {
 			productReports: [
 				{
 					productId: 'snacks',
+					brandId: 'common-ground',
 					name: 'Snacks',
 					unitsSold: 6,
 					demandMissed: 1,

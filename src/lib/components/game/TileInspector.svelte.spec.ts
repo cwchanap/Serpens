@@ -64,10 +64,12 @@ const latestStoreReport: DailyStoreReport = {
 	stockHealth: 80,
 	staffMorale: 75,
 	reputation: 50,
+	brandReputationAdjustment: 0,
 	marketPosition: 40,
 	productReports: [
 		{
 			productId: 'bottled-water',
+			brandId: 'common-ground',
 			name: 'Bottled Water',
 			unitsSold: 12,
 			demandMissed: 2,

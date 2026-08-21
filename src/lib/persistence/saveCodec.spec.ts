@@ -650,6 +650,7 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 		stockHealth: 70,
 		staffMorale: 65,
 		reputation: 60,
+		brandReputationAdjustment: 0,
 		marketPosition: 50,
 		productReports: [],
 		inventoryLossExpense: 0,
@@ -662,6 +663,7 @@ function createDailyStoreReport(overrides: Partial<DailyStoreReport> = {}): Dail
 function createDailyProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {
 	return {
 		productId: 'snacks',
+		brandId: 'common-ground',
 		name: 'Snacks',
 		unitsSold: 1,
 		demandMissed: 0,

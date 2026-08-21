@@ -89,6 +89,7 @@ function storeReport(importSpend: number): DailyStoreReport {
 		stockHealth: 100,
 		staffMorale: 100,
 		reputation: 100,
+		brandReputationAdjustment: 0,
 		marketPosition: 100,
 		productReports: [],
 		inventoryLossExpense: 0,

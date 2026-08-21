@@ -7,6 +7,7 @@ import {
 	supportsCityInventory
 } from './cityInventory';
 import { getArchetype } from './archetypes';
+import { resolveBrandEconomics } from './brands';
 import { MATERIALS } from './industry';
 import { getProductDefinition } from './products';
 import {
@@ -161,7 +162,8 @@ export function applyWeeklyReplenishment(
 					neededUnits,
 					cityInventoriesByCityId
 				});
-				const baselineCost = replenishment.importedUnits * productDefinition.importCost;
+				const brandEconomics = resolveBrandEconomics(productDefinition, product.brandId);
+				const baselineCost = replenishment.importedUnits * brandEconomics.unitCost;
 				const costResolution = resolveImportCostMultiplier(
 					rules,
 					'retail-product',
@@ -191,7 +193,9 @@ export function applyWeeklyReplenishment(
 					warehouseValue: replenishment.warehouseValue,
 					importedUnits: replenishment.importedUnits,
 					importSpend: spend,
-					baseSellingPrice: product.sellingPrice
+					baseSellingPrice: product.sellingPrice,
+					importCost: brandEconomics.unitCost,
+					brandId: product.brandId
 				});
 
 				return addStoreProductStockLot(product, {
@@ -337,17 +341,20 @@ function mergeReplenishmentReport(
 		warehouseValue: number;
 		importedUnits: number;
 		importSpend: number;
+		importCost: number;
+		brandId: DailyProductReport['brandId'];
 		baseSellingPrice?: number;
 	}
 ): void {
 	const storeReports = reports.get(storeId) ?? [];
 	const existingIndex = storeReports.findIndex((report) => report.productId === product.id);
 	const replenishedFields = {
+		brandId: refill.brandId,
 		endingStock: refill.endingStock,
 		warehouseUnits: refill.warehouseUnits,
 		warehouseValue: refill.warehouseValue,
 		importedUnits: refill.importedUnits,
-		importCost: product.importCost,
+		importCost: refill.importCost,
 		importSpend: refill.importSpend
 	};
 

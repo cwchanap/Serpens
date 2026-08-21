@@ -518,6 +518,7 @@ export function aggregateProductReports(
 
 	return {
 		productId,
+		brandId: firstReport.brandId,
 		name: firstReport.name,
 		unitsSold: sumProductReports(productReports, (report) => report.unitsSold),
 		demandMissed: sumProductReports(productReports, (report) => report.demandMissed),

@@ -1,11 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import { PRODUCTS } from './products';
 import {
+	brandedSellerScore,
 	getBrandDefinition,
 	getBrandDefaultSellingPrice,
 	getSupportedBrands,
-	isBrandSupported
+	isBrandSupported,
+	resolveBrandEconomics
 } from './brands';
+import { createNewGame } from './state';
 import type { BrandId, ProductFamilyId } from './types';
 
 const BRAND_IDS: readonly BrandId[] = [
@@ -123,5 +126,52 @@ describe('brand catalog', () => {
 
 		expect(getBrandDefaultSellingPrice(PRODUCTS.apparel, 'northstar-select')).toBe(45);
 		expect(getBrandDefaultSellingPrice(PRODUCTS['bottled-water'], 'common-ground')).toBe(3);
+	});
+
+	test('resolves unit cost, demand, and market attraction without a customer price', () => {
+		expect.assertions(5);
+
+		expect(resolveBrandEconomics(PRODUCTS.snacks, 'budget-bay')).toEqual({
+			unitCost: 2.52,
+			demandMultiplier: 1.1,
+			marketAttractionMultiplier: 1.026
+		});
+		expect(resolveBrandEconomics(PRODUCTS.apparel, 'northstar-select')).toMatchObject({
+			unitCost: 19.8,
+			demandMultiplier: 0.94
+		});
+		expect(
+			resolveBrandEconomics(PRODUCTS.apparel, 'northstar-select').marketAttractionMultiplier
+		).toBeCloseTo(1.0304, 10);
+		const reportShape = resolveBrandEconomics(PRODUCTS.snacks, 'budget-bay');
+		expect(reportShape).not.toHaveProperty('customerPrice');
+		expect(reportShape).not.toHaveProperty('sellingPrice');
+	});
+
+	test('multiplies the existing seller score by the selected brand attraction', () => {
+		expect.assertions(2);
+		const game = createNewGame('boutique', 20260820);
+		const store = {
+			...game.stores[0]!,
+			reputation: 70,
+			staffCapacity: 100,
+			competition: 20,
+			products: [
+				{
+					...game.stores[0]!.products[0]!,
+					productId: 'apparel' as const,
+					brandId: 'northstar-select' as const
+				}
+			]
+		};
+		const commonGroundStore = {
+			...store,
+			products: [{ ...store.products[0]!, brandId: 'common-ground' as const }]
+		};
+
+		expect(brandedSellerScore(store, 'apparel')).toBeCloseTo(87.584, 10);
+		expect(brandedSellerScore(store, 'apparel')).toBeGreaterThan(
+			brandedSellerScore(commonGroundStore, 'apparel')
+		);
 	});
 });

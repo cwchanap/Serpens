@@ -50,10 +50,12 @@ const latestReport: DailyStoreReport = {
 	stockHealth: 80,
 	staffMorale: 75,
 	reputation: 50,
+	brandReputationAdjustment: 0,
 	marketPosition: 40,
 	productReports: [
 		{
 			productId: 'bottled-water',
+			brandId: 'common-ground',
 			name: 'Bottled Water',
 			unitsSold: 12,
 			demandMissed: 2,
@@ -110,6 +112,7 @@ function productReport(
 	const definition = getProductDefinition(productId);
 	return {
 		productId,
+		brandId: 'common-ground',
 		name: definition.name,
 		unitsSold: 0,
 		demandMissed: 0,
