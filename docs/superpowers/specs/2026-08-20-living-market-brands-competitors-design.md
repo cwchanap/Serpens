@@ -8,69 +8,78 @@
 
 Add a visible market around the existing retail simulation without creating a second simulation stack:
 
-1. every existing `StoreProduct` carries one supported brand selection;
-2. brand data changes attraction, direct demand, unit cost, and customer response while `StoreProduct.sellingPrice` remains the one customer-facing shelf price;
-3. each opened retail city owns two deterministic lightweight competitors with persisted identity and posture but no inventory, staffing, finance, factories, or logistics;
-4. city/product demand is split visibly between the player company and competitors before HPA-41's existing per-seller allocation runs;
-5. the old random `Store.competition` scalar is removed so named competitors replace hidden competition penalties rather than stack on top of them;
-6. daily store `marketPosition` explicitly incorporates the visible player market share instead of silently dropping competition pressure;
-7. competitor promotions use timed event modifiers, while typed immediate effects support launch/closure and repositioning;
+1. each existing `StoreProduct` carries one supported brand;
+2. brand data changes attraction, demand, unit cost, and customer response while `StoreProduct.sellingPrice` remains the only shelf price;
+3. sandbox retail cities own two deterministic lightweight competitors that are not `Store` objects;
+4. explicit player-versus-rival market share reduces the city/product pool before HPA-41 seller allocation;
+5. named rivals replace the hidden `Store.competition` penalty in the same market-integration checkpoint;
+6. `DailyStoreReport.marketPosition` follows visible player share;
+7. rival promotion uses the existing timed-modifier lifecycle and closed event unions;
 8. existing Store Detail, Reports, retail map, persistence, Supply Planner, and event surfaces expose the feature.
 
-This remains one HPA-39 implementation PR. Do not add multi-brand SKU inventory, a rival economy, a generic market engine, a second shelf-price lens, a new dashboard, multiplayer, acquisitions, or franchising.
+This stays one HPA-39 implementation PR. Do not add multi-brand SKU inventory, a rival economy, rival land ownership, a generic market engine, a second shelf-price lens, a new dashboard, new rival art, multiplayer, acquisitions, or franchising.
 
 ## Review resolution
 
-The codebase review identified six integration gaps. All are accepted:
+### Already resolved before this review
 
-- **Single shelf-price contract:** `priceMultiplier` is a write-through default used when a product row is created or its brand changes. Live simulation continues to read `StoreProduct.sellingPrice`; no `brandCustomerPrice` or second live price is introduced.
-- **Explicit brand mutation route:** `GameRouteController` gains sandbox-only `updateStoreProductBrand(...)` with no `ScenarioCommand`, following the same no-scenario mutation pattern as scoped policy overrides.
-- **Visible share drives market position:** after removing `Store.competition`, store report `marketPosition` receives a bounded adjustment from the store's mean eligible-product player share.
-- **One seller-score seam:** `stock.ts` exports `brandedSellerScore(store, productId)` and live sales, planner demand, and market-share resolution reuse it rather than copying attraction arithmetic.
-- **Complete blast radius:** schema work includes `scenarioCodec.ts`/`.spec.ts`; timed-effect work includes `ActiveModifiers.svelte` and every exhaustive effect switch; competitor immediate effects read and validate `decision.target` at the actual `applyEffect` mutation site.
-- **Stable checkpoint fixtures:** Task 2 brand-only numeric sales fixtures explicitly use `competitors: []`; Task 3 adds market pressure around those already-pinned brand terms.
+Two findings in the latest review describe an older revision and require no further design change:
 
-Two smaller refinements are also adopted:
+- there is **no** live `customerPrice`; brand `priceMultiplier` only writes a default into `StoreProduct.sellingPrice` on product creation or brand change;
+- `marketPosition` already has an explicit bounded player-share adjustment.
 
-- `ensureCompetitorsForRetailCity` is an explicit no-op for industry cities and non-materialized retail cities.
-- competitor `productFocus` is always 1–2 unique known `ProductFamilyId` values; persisted/event-provided focus outside that bound is rejected.
+### Accepted
+
+- **Scenario scope must be explicit.** Existing authored scenarios stay rival-free to preserve their curated challenge scope. They still receive default brands. Scenario setup preserves `brandId` when applying product overrides and explicitly normalizes `competitors: []` once competitor state exists. After hidden competition is removed, the three authored scenario reference/objective suites are rerun and catalog thresholds change only if a failing reference trace proves a balance adjustment is needed.
+- **Brand response converges instead of ratcheting.** Brand quality pulls reputation toward a weighted quality target rather than adding a fixed positive/negative constant every day.
+- **Brand support is family-based.** `BrandDefinition.supportedFamilyIds` reuses `ProductFamilyId`; product additions inherit support automatically.
+- **Market resolver takes state slices.** `resolveProductMarketShare` takes city competitors, active modifiers, a `ProductDefinition`, player attraction, and day. It never takes `GameState` and never imports `stock.ts`.
+- **Report payload is thinner.** `DailyProductReport` adds only `brandId`; existing price, import-cost, revenue, COGS, and margin fields already carry the day-specific economics. Rival report rows keep only day-specific market evidence.
+- **Hidden competition deletion moves beside its replacement.** `Store.competition` remains through the brand-only checkpoint and is removed in the market-share checkpoint, so RNG/fixture churn happens once.
+- **Compiler drives fixture discovery.** `bun run check` is the authoritative required-field audit. A narrow `stock.testUtils.ts` helper may centralize repeated `StoreProduct` fixtures; do not introduce a generic `makeGameState` factory that masks future required-field failures.
+- **Drop dominated event choice.** `rival-promotion` has two meaningful player responses; there is no zero-benefit `hold-course` option.
+
+### Not adopted
+
+- **Split HPA-39 into two PRs.** Project workflow is one PR per ticket unless explicitly approved otherwise. Brands also feed rival compatibility and player attraction directly, so a split would add a temporary schema/integration boundary without reducing implementation work. The six checkpoints below remain review gates inside one PR.
+- **Put `canUpdateBrand` in scenario capabilities.** Brand mutation deliberately has no `ScenarioCommand`; its capability belongs in route `MutationAvailability` as a sandbox-only boolean, beside scoped policy/delegation controls. `src/lib/scenarios/capabilities.ts` therefore does not gain a fake command capability.
+- **Add authored scenario brand fields.** Scenario product overrides should spread the materialized `StoreProduct` and replace stock/targets/price, preserving its default `brandId`. `ScenarioStartBlueprint` and catalog rows do not need another brand dimension.
 
 ## Existing seams
 
-HPA-39 extends current code rather than replacing it:
+HPA-39 extends current contracts:
 
-- `src/lib/game/products.ts`: static `PRODUCTS` catalog and product economics;
-- `src/lib/game/productDynamics.ts`: trend, obsolescence, aging, markdown, and shrink calculations;
-- `src/lib/game/stock.ts`: raw city demand, seller eligibility/scoring, policy-adjusted demand, sales, and product reports;
-- `src/lib/game/retailSupply.ts`: weekly retail replenishment and retail import-cost accounting;
-- `src/lib/game/simulateDay.ts`: deterministic daily ordering, store profile calculation, and report composition;
-- `src/lib/game/state.ts` / `src/lib/game/world.ts`: new-game and retail-city lifecycle;
-- `src/routes/gameRouteController.ts`: explicit command/autosave boundary for selling price and inventory target edits;
-- `src/lib/game/eventTargets.ts`, `eventEffects.ts`, `eventModifiers.ts`, `eventCatalog.ts`: event extension points;
-- `src/lib/components/game/ActiveModifiers.svelte`: player-visible timed-modifier rendering with an exhaustive effect switch;
-- `src/lib/game/mapRender.ts` + `src/lib/phaser/cityMapScene.ts`: snapshot-only retail map rendering;
+- `src/lib/game/products.ts`: product catalog and `ProductFamilyId` ownership;
+- `src/lib/game/stock.ts`: seller eligibility/scoring, policy demand, live sales, price sensitivity, product reports;
+- `src/lib/game/retailSupply.ts`: weekly replenishment and retail import accounting;
+- `src/lib/game/simulateDay.ts`: store operation profile, report composition, scorecard;
+- `src/lib/game/state.ts` / `world.ts`: sandbox new-game and retail-city lifecycle;
+- `src/lib/game/logisticsRouteModifiers.ts`: precedent for “base state + active modifiers + day -> derived values”;
+- `src/lib/game/eventTargets.ts`, `eventEffects.ts`, `eventModifiers.ts`, `eventCatalog.ts`: typed event extension points;
+- `src/routes/gameRouteController.ts`: mutation/autosave boundary and `MutationAvailability`;
+- `src/lib/scenarios/setup.ts`: scenario materialization/override normalization;
+- `src/lib/scenarios/catalog.ts`: three authored challenge balances to re-verify after the competition cut;
+- `src/lib/components/game/ActiveModifiers.svelte`: exhaustive timed-effect presentation;
+- `src/lib/game/mapRender.ts` + `src/lib/phaser/cityMapScene.ts`: snapshot-driven retail map rendering;
 - `StoreStockTable.svelte`, `StoreDetailModal.svelte`, `ReportsPanel.svelte`: existing player-facing homes;
-- `src/lib/persistence/saveCodec.ts` and `scenarioCodec.ts`: current-game persistence and scenario-run embedding of current `GameState`/save schema.
+- `src/lib/persistence/saveCodec.ts`: strict current-game validation;
+- `src/lib/persistence/scenarioCodec.ts`: already imports `SAVE_SCHEMA_VERSION` and delegates embedded game validation to `validateCurrentGameState`.
 
 ## Scope decisions
 
-- **One brand per existing product row.** `Store.products` already has one inventory/configuration row per `ProductId`. A second brand dimension would require per-brand lots, reorder targets, prices, replenishment, and reporting and would turn HPA-39 into SKU simulation. The store's brand assortment/mix is simply the selected brands across its current product rows.
-- **Defaults are inheritance.** New stores and newly unlocked products inherit `ProductDefinition.defaultBrandId`; the player may override the brand for that store/product when supported. Do not add company/city brand inheritance.
-- **One shelf price.** `StoreProduct.sellingPrice` remains what customers pay before existing markdown. Brand `priceMultiplier` only chooses a recommended/default price when a row is created or brand is changed.
-- **Brand control is sandbox-only.** Scenarios receive deterministic default brands and competitor pressure but do not gain a new scenario command/capability in HPA-39.
-- **Competitors are not `Store`.** They never enter staffing, inventory, rent, finance, supply, placement, or manager-delegation flows.
-- **Competitor locations are non-blocking map presence.** They are approximate city-map locations for visibility only and never reserve tiles or affect placement validity.
-- **Competitor generation uses a derived RNG.** It must not consume or reorder the main `GameState.rngState` stream.
-- **Remove `Store.competition`.** Today it is a hidden random scalar that depresses seller score and market position and raises operating cost. HPA-39 replaces it with explicit market share. Do not retain a compatibility alias, shadow penalty, or dummy RNG draw.
-- **No new management surface.** Brand controls stay in stock/detail, market evidence stays in Reports, and rivals appear on the existing retail map.
-- **No new image asset is required.** Rival map presence uses lightweight Phaser graphics and existing labels; do not create competitor storefront art.
-- **Pre-release save policy stays strict.** Schema 19 rejects schema 18; no migration or alias path.
+- One brand per existing product row. The store’s brand mix is the set of selected brands across its products.
+- Default brand is product-level only; no company/city brand inheritance.
+- `sellingPrice` remains the only player/manager/scenario shelf-price contract.
+- Brand editing is sandbox-only and has no `ScenarioCommand`.
+- Existing authored scenarios remain rival-free; they are not a second market-balance surface in HPA-39.
+- Competitors are never `Store`, never occupy tiles, and never enter staffing, finance, inventory, production, logistics, managers, or placement legality.
+- Sandbox competitor generation consumes a derived local RNG only; `GameState.rngState` is untouched.
+- No compatibility alias or ghost RNG draw is kept when `Store.competition` is removed.
+- Pre-release persistence remains strict: schema 19 rejects schema 18; no migration.
 
 ## Brand domain
 
-### Catalog and identity
-
-Add closed brand identity to `types.ts` and a static catalog in `brands.ts`:
+### Identity and family compatibility
 
 ```ts
 export type BrandId =
@@ -79,133 +88,94 @@ export type BrandId =
   | 'northstar-select'
   | 'fresh-field';
 
-export type BrandPositioning = 'value' | 'mainstream' | 'premium';
-
 export interface BrandDefinition {
   id: BrandId;
   name: string;
-  positioning: BrandPositioning;
-  supportedProductIds: readonly ProductId[];
+  positioning: 'value' | 'mainstream' | 'premium';
+  supportedFamilyIds: readonly ProductFamilyId[];
   quality: number;                 // 0..100
-  loyaltyMultiplier: number;       // market attraction
-  availabilityMultiplier: number;  // market attraction / reach
-  priceMultiplier: number;         // write-through default only
+  loyaltyMultiplier: number;       // player/rival attraction
+  availabilityMultiplier: number;  // player/rival attraction
+  priceMultiplier: number;         // default write-through only
   demandMultiplier: number;        // live/planner seller demand
   unitCostMultiplier: number;      // retail COGS/import cost
 }
 ```
 
-Initial authored profiles remain deliberately small:
+Authored profiles:
 
-| Brand | Positioning | Quality | Loyalty | Availability | Default price | Demand | Unit cost | Support |
+| Brand | Positioning | Quality | Loyalty | Availability | Default price | Demand | Unit cost | Supported families |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Common Ground | mainstream | 50 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | all current products |
-| Budget Bay | value | 42 | 0.95 | 1.08 | 0.90 | 1.10 | 0.84 | bottled water, soft drinks, snacks, essentials, household, produce, pantry, prepared, bakery |
-| Northstar Select | premium | 82 | 1.12 | 0.92 | 1.18 | 0.94 | 1.10 | apparel, home goods, gifts, fashion accessories, games, accessories, devices, peripherals |
-| Fresh Field | premium | 74 | 1.08 | 0.98 | 1.08 | 1.06 | 1.04 | produce, pantry, prepared, bakery |
+| Common Ground | mainstream | 50 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | all five current families |
+| Budget Bay | value | 42 | 0.95 | 1.08 | 0.90 | 1.10 | 0.84 | beverages, convenience-goods, grocery-food |
+| Northstar Select | premium | 82 | 1.12 | 0.92 | 1.18 | 0.94 | 1.10 | fashion, electronics |
+| Fresh Field | premium | 74 | 1.08 | 0.98 | 1.08 | 1.06 | 1.04 | grocery-food |
 
 `ProductDefinition` gains required `defaultBrandId`; all current products default to `common-ground`.
 
 `brands.ts` owns:
 
 ```ts
-export function getBrandDefinition(brandId: BrandId): BrandDefinition;
-export function getSupportedBrands(productId: ProductId): readonly BrandDefinition[];
-export function isBrandSupported(productId: ProductId, brandId: BrandId): boolean;
+getBrandDefinition(brandId): BrandDefinition
+getSupportedBrands(productId): readonly BrandDefinition[]
+isBrandSupported(productId, brandId): boolean
+getBrandDefaultSellingPrice(product, brandId): number
+resolveBrandEconomics(product, brandId): BrandEconomics
+```
 
+`isBrandSupported` resolves the product’s `familyId` and checks `supportedFamilyIds`; there are no hand-maintained product lists in the brand catalog.
+
+```ts
 export interface BrandEconomics {
   unitCost: number;
   demandMultiplier: number;
   marketAttractionMultiplier: number;
-  customerResponse: number;
 }
-
-export function resolveBrandEconomics(
-  product: ProductDefinition,
-  brandId: BrandId
-): BrandEconomics;
-
-export function getBrandDefaultSellingPrice(
-  product: ProductDefinition,
-  brandId: BrandId
-): number;
 ```
-
-Formulas:
 
 ```text
 brandDefaultSellingPrice = max(1, round(product.defaultSellingPrice * brand.priceMultiplier))
 unitCost = product.importCost * brand.unitCostMultiplier
 marketAttractionMultiplier = brand.loyaltyMultiplier * brand.availabilityMultiplier
-customerResponse = clamp(-3, 3, round((brand.quality - 50) / 10))
 ```
-
-There is intentionally no live `customerPrice` field. Existing `StoreProduct.sellingPrice` and existing `DailyProductReport.baseSellingPrice` / `effectiveSellingPrice` remain the price contract and evidence.
-
-Catalog tests pin unique IDs, known product support, positive finite multipliers, quality bounds, supported defaults, at least one three-brand product, and at least one rejected combination.
 
 ### Store assortment and price write-through
 
-`StoreProduct` gains:
+`StoreProduct` gains required `brandId`.
 
-```ts
-brandId: BrandId;
-```
-
-`StoreProductPatch` gains optional `brandId` for the shared domain transition, but UI routing does not assume a generic controller command.
-
-`createStoreProduct` initializes:
+`createStoreProduct` uses:
 
 ```text
 brandId = product.defaultBrandId
 sellingPrice = getBrandDefaultSellingPrice(product, product.defaultBrandId)
 ```
 
-`updateStoreProduct` rules:
+`updateStoreProduct`:
 
-1. unsupported `brandId` => return original game unchanged;
-2. valid brand change updates `brandId`;
-3. when a brand changes and the same internal patch does not explicitly provide `sellingPrice`, write through the new brand default price;
-4. later player, manager, and scenario selling-price edits continue to mutate `StoreProduct.sellingPrice` directly and are not multiplied again by brand data.
+1. rejects an unsupported brand without changing the game;
+2. changes `brandId` when supported;
+3. if that patch did not also provide `sellingPrice`, writes the new brand default selling price once;
+4. all later player/manager/scenario price edits mutate `sellingPrice` directly and are never multiplied again.
 
-This keeps manager/scenario price semantics unchanged and avoids a second price lens.
+Scenario product overrides spread the existing materialized product before replacing lots, targets, and selling price, so default `brandId` survives without adding scenario-authored brand fields.
 
-### Explicit controller mutation
+## Brand economics in live retail
 
-`GameRouteController` gains:
+### Shared player seller score
 
-```ts
-updateStoreProductBrand(
-  storeId: string,
-  productId: ProductId,
-  brandId: BrandId
-): Promise<GameRouteCommitResult>
-```
-
-It calls the existing `updateStoreProduct(game, storeId, productId, { brandId })`, carries normal stock-edit feedback/audio if appropriate, and deliberately has **no** `ScenarioCommand`. The route threads `canUpdateBrand` next to the existing selling-price/inventory capabilities; active scenarios disable brand editing instead of inventing scenario semantics.
-
-## Live brand economics
-
-### One branded seller-score seam
-
-After removing hidden competition, `stock.ts` exports:
+Task 2 exports:
 
 ```ts
 export function brandedSellerScore(store: Store, productId: ProductId): number;
 ```
 
-It:
+During the brand-only checkpoint it is the current seller score (including the legacy hidden competition term) multiplied by brand attraction. In Task 3 the legacy competition term is removed from the same helper when explicit rival share lands.
 
-1. verifies the product row exists;
-2. calculates the existing reputation-sensitive base score using reputation + staff capacity only;
-3. resolves the row's selected brand;
-4. multiplies by `marketAttractionMultiplier`.
+Live sales and planner demand call `brandedSellerScore`. `marketCompetition.ts` does **not** import it; callers sum it into a number and pass that number to the market resolver, preserving one-directional dependencies.
 
-Live sales, `getPolicyAdjustedCityProductDemand`, and `marketCompetition.ts` all use this function. Do not copy the base score or brand-attraction arithmetic into another module.
+### Sales and replenishment
 
-### Sales formula
-
-For a live seller after the competitor split:
+Final live formula:
 
 ```text
 sellerShare = brandedSellerScore / totalPlayerAttraction
@@ -217,60 +187,41 @@ desiredUnits = policyDemand
              * priceDemandMultiplier(productDefinition, storeProduct.sellingPrice)
              * existingJitter
 
-base revenue = unitsSold * storeProduct.sellingPrice * storeRevenueMultiplier
-effective selling price = storeProduct.sellingPrice * markdownMultiplier
-revenue = unitsSold * effective selling price * storeRevenueMultiplier
+effectiveSellingPrice = storeProduct.sellingPrice * markdownMultiplier
+revenue = unitsSold * effectiveSellingPrice * storeRevenueMultiplier
 costOfGoods = unitsSold * brand.unitCost
 ```
 
-The current sales RNG call remains exactly where it is; brand and competitor calculations add no RNG.
+Weekly imported replenishment uses `brand.unitCost` as the baseline before existing event import-cost multipliers. Local warehouse value semantics stay unchanged.
 
-Weekly imported retail replenishment uses `brand.unitCost` as baseline import cost, then composes existing event import-cost multipliers exactly once. Warehouse/local-material consumption is unchanged.
-
-`DailyProductReport` adds only brand evidence that is not already represented by existing price fields:
+`DailyProductReport` adds only:
 
 ```ts
 brandId: BrandId;
-brandUnitCost: number;
-brandDemandMultiplier: number;
-brandMarketAttractionMultiplier: number;
-brandCustomerResponse: number;
 ```
 
-At store close, sold units weight `brandCustomerResponse`. The resulting rounded response adjusts ending store reputation before the normal company scorecard consumes that report. No persistent loyalty ledger or customer cohort is added.
+Existing `baseSellingPrice`, `effectiveSellingPrice`, `importCost`, `revenue`, `costOfGoods`, and `grossMargin` already persist the day-specific economic outcomes.
 
-## Remove hidden competition and connect visible share to market position
+### Reputation convergence
 
-Delete `Store.competition` from the type, initialization, persistence, fixtures, and formulas.
-
-The store operation profile becomes competition-free:
+Do not store a constant per-brand daily reputation delta. At store close:
 
 ```text
-base seller score = reputation term + staffCapacity * 0.25
-base market position = 35 + localDemand / 5 + reputation / 3 + marketing.market
-operating cost = baseRent * 0.92 + marketing.cost
+totalSold = sum(productReport.unitsSold)
+weightedBrandQuality = totalSold > 0
+  ? sum(productReport.unitsSold * brand(productReport.brandId).quality) / totalSold
+  : null
+brandReputationAdjustment = weightedBrandQuality === null
+  ? 0
+  : clamp(-3, 3, round((weightedBrandQuality - profile.reputation) / 10))
+endingReputation = clampScore(profile.reputation + brandReputationAdjustment)
 ```
 
-The final `DailyStoreReport.marketPosition` then incorporates visible market evidence. For the products the store actually sells, take the current day's matching `DailyMarketReport.playerShare` values:
+This pulls reputation toward what customers actually bought instead of ratcheting premium brands to 100. `DailyStoreReport` adds `brandReputationAdjustment` as the single day-specific customer-response evidence field.
 
-```text
-meanPlayerShare = mean(playerShare for this store's eligible product rows)
-shareAdjustment = round((meanPlayerShare - 0.50) * 20)  // bounded -10..+10
-marketPosition = clampScore(baseMarketPosition + shareAdjustment)
-```
-
-If no eligible market row exists, use adjustment `0` rather than fabricating share. This keeps the existing operational health inputs while making the direction truthful: more rival pressure lowers `marketPosition`, stronger player share raises it.
-
-This is a declared balance change. Exact legacy seeded totals are not compatibility requirements.
-
-## Lightweight competitor state
-
-Add:
+## Lightweight competitors
 
 ```ts
-export type CompetitorStatus = 'active' | 'closed';
-export type CompetitorPricePosture = CompanyPolicy['pricing'];
-
 export interface MarketCompetitor {
   id: string;
   name: string;
@@ -278,100 +229,109 @@ export interface MarketCompetitor {
   location: StoreLocation;
   archetypeId: ArchetypeId;
   reputation: number;
-  pricePosture: CompetitorPricePosture;
+  pricePosture: CompanyPolicy['pricing'];
   productFocus: ProductFamilyId[]; // exactly 1-2 unique values
   brandIds: BrandId[];
-  status: CompetitorStatus;
+  status: 'active' | 'closed';
 }
 ```
 
-`GameState` gains required `competitors: MarketCompetitor[]`.
-
-### Deterministic generation
-
-`competitors.ts` owns a pure generator and idempotent initializer. Every opened **retail** city gets exactly two competitors.
-
-Generation seed:
+Sandbox generation is deterministic and idempotent:
 
 ```text
-normalizeSeed(game.seed + worldCity.seed * 37 + 39_039)
+seed = normalizeSeed(game.seed + worldCity.seed * 37 + 39_039)
 ```
 
-Use a local RNG created from that seed; never touch `game.rngState`.
+Rules:
 
-Generation rules:
-
-- stable IDs `competitor-${cityId}-1` / `-2`;
-- fixed small fictional-name list;
-- existing retail archetypes;
+- exactly two rivals per opened/materialized sandbox retail city;
+- stable IDs `competitor-${cityId}-1` and `-2`;
+- fixed fictional name pool;
+- existing retail archetypes and pricing postures;
 - reputation 45..75;
-- existing four pricing postures;
-- exactly 1–2 unique product-family focuses compatible with the selected archetype;
+- exactly 1–2 unique compatible family focuses;
 - `common-ground` plus at most one compatible specialist brand;
-- deterministic approximate buildable-tile location, preferring an unowned tile at generation time;
-- status starts `active`;
-- output canonical by competitor ID.
+- deterministic buildable-tile marker location, preferring currently unowned tiles;
+- active by default; canonical ID order.
 
-`ensureCompetitorsForRetailCity(game, cityId)` returns the original game when the city is industry, unopened, or not materialized. `createNewGame` calls it for Harbor City after the founding store exists. `openWorldCity` calls it after a new retail map is materialized; financed opening already reuses that transition.
+`createNewGame` initializes Harbor rivals after the founding store exists. `openWorldCity` initializes rivals after a sandbox retail map is materialized. `ensureCompetitorsForRetailCity` is a no-op for industry, unopened, or non-materialized cities.
 
-Competitors never occupy land. A later player store may use the same tile.
+Scenario setup explicitly normalizes `competitors: []`; scenarios do not call the sandbox competitor initializer.
 
-## Explicit market-share calculation
+## Explicit market share
 
-Create `marketCompetition.ts` as a pure read model. It does not simulate rival sales.
+### Resolver boundary
 
-### Player attraction
-
-For the current city/product:
-
-```text
-playerAttraction = sum(brandedSellerScore(store, productId))
+```ts
+export function resolveProductMarketShare(
+  cityCompetitors: readonly MarketCompetitor[],
+  modifiers: readonly ActiveEventModifier[],
+  product: ProductDefinition,
+  playerAttractionScore: number,
+  day: number
+): MarketShareResolution;
 ```
 
-### Competitor attraction
+`stock.ts` and Supply Planner:
 
-A competitor is eligible only when active, in the current opened retail city, its archetype supports the product, and at least one rival brand supports the product.
+1. filter the current city’s competitors;
+2. sum player attraction with `brandedSellerScore`;
+3. pass only those state slices to `marketCompetition.ts`.
 
-For each eligible competitor:
+This mirrors `resolveEffectiveRecurringRoute(route, modifiers, day)` and avoids full-`GameState` test fixtures or a `stock.ts` import cycle.
+
+### Rival attraction
+
+A rival contributes only when active, its archetype supports the product, and at least one rival brand supports the product family.
 
 ```text
 base = 25 + reputation * 0.5
-focus = 1.20 when product.familyId is focused, otherwise 0.85
+focus = product.familyId in productFocus ? 1.20 : 0.85
 postureBase = discount 1.12 | competitive 1.06 | standard 1.00 | premium 0.90
 price = clamp(0.5, 1.5, 1 + (postureBase - 1) * product.priceSensitivity)
-brand = average(loyaltyMultiplier * availabilityMultiplier) of compatible brands
-promotion = product of active competitor-attraction modifiers, default 1
-competitorAttraction = base * focus * price * brand * promotion
+brand = average(loyaltyMultiplier * availabilityMultiplier) of compatible rival brands
+event = product of active competitor-attraction modifiers for this rival, default 1
+attraction = base * focus * price * brand * event
 ```
-
-No rival inventory, capacity, staffing, per-product price, cash, or revenue is modeled.
-
-### Demand split
 
 ```text
-denominator = playerAttraction + sum(competitorAttraction)
-playerMarketShare = denominator > 0 ? playerAttraction / denominator : 0
-competitorShare_i = competitorAttraction_i / denominator
-companyDemandPool = cityProductDemandPool * playerMarketShare
+playerShare = playerAttraction / (playerAttraction + rivalAttractionTotal)
+companyDemandPool = cityProductDemandPool * playerShare
 ```
 
-For live sales, the pool is trend-adjusted first, then split, then passed into HPA-41 seller policy allocation and the brand/direct-price dynamics above. Do not restore shared residual-demand capping.
+The company pool is calculated before HPA-41 seller allocation. The removed residual-demand cap stays removed.
 
-For Supply Planner, use the same current attraction/share and brand-demand terms against the existing trend-free raw pool. Planner still excludes future trend, jitter, obsolescence, markdown, and future rival actions; already-active rival promotion is current state and therefore affects the snapshot.
+Supply Planner uses the same current share against its existing trend-free pool and excludes future events, jitter, obsolescence, and markdown.
 
-### Daily market evidence
+### Replace hidden competition in the same checkpoint
 
-Add:
+When explicit share lands, delete `Store.competition` from type, initialization, persistence, fixtures, seller score, `marketPosition`, and operating-cost formulas. Do not retain a dummy RNG draw.
+
+Final base formulas:
+
+```text
+base seller score = reputation term + staffCapacity * 0.25
+base market position = 35 + localDemand / 5 + reputation / 3 + marketing.market
+operating cost = baseRent * 0.92 + marketing.cost
+```
+
+Then derive final store market position from current market rows:
+
+```text
+meanPlayerShare = mean(playerShare for this store's eligible product rows)
+shareAdjustment = meanPlayerShare exists
+  ? round((meanPlayerShare - 0.50) * 20)
+  : 0
+marketPosition = clampScore(baseMarketPosition + clamp(-10, 10, shareAdjustment))
+```
+
+## Thin daily market evidence
 
 ```ts
 export interface DailyMarketCompetitorReport {
   competitorId: string;
   share: number;
   attractionScore: number;
-  reputation: number;
-  pricePosture: CompetitorPricePosture;
-  focused: boolean;
-  brandIds: BrandId[];
   eventMultiplier: number;
 }
 
@@ -387,144 +347,135 @@ export interface DailyMarketReport {
 }
 ```
 
-`simulateProductSalesForCity` returns current market rows alongside product reports. `simulateDay` fills delta from the latest completed report by `(cityId, productId)`, passes those rows into store-report composition for `marketPosition`, and appends canonical `marketReports` to `DailyReport`.
+Do not repeat rival reputation, posture, focus, or brand IDs into every daily/product report row. Latest-report UI may resolve the current rival profile from `game.competitors`; the persisted day-specific facts remain share, attraction score, and event multiplier. Historical charts are a non-goal.
+
+`simulateDay` fills `playerShareDelta` from the latest completed report by `(cityId, productId)` and passes current market rows into store-report composition for `marketPosition`.
+
+## Scenario policy
+
+Existing authored scenarios are curated challenge content, not sandbox market simulations.
+
+- Product rows inherit neutral default brands through normal product creation.
+- `applyAuthoredOverrides` preserves the materialized `brandId`; `ScenarioStartBlueprint` and `catalog.ts` do not gain brand fields.
+- Scenario setup explicitly sets `competitors: []` after materializing the starting world. No rival event can select a target in those runs.
+- `GameRouteController.MutationAvailability.updateStoreProductBrand` is `true` only in sandbox; `src/lib/scenarios/capabilities.ts` is unchanged because no brand `ScenarioCommand` exists.
+- `scenarioCodec.ts` production code is expected to require no change: it already imports `SAVE_SCHEMA_VERSION` and delegates embedded game validation to `validateCurrentGameState`. Tests/fixtures still move with schema 19.
+- After Task 3 removes hidden competition, rerun `catalog.spec.ts`, `setup.spec.ts`, `runtime.spec.ts`, and `validation.spec.ts` for all three authored scenarios. Adjust catalog thresholds only when an existing approved reference trace actually fails or becomes nonsensical; do not add rivals merely to recover old numbers.
 
 ## Rival event actions
 
-Extend the existing event framework instead of adding a rival scheduler.
-
-### Targets
+Extend existing closed unions:
 
 ```ts
 EventTarget |= { kind: 'competitor'; competitorId: string };
-EventTargetSelector |= { kind: 'competitor'; status: CompetitorStatus };
-```
+EventTargetSelector |= { kind: 'competitor'; status: 'active' | 'closed' };
 
-Selection considers only competitors in opened retail cities. Closed rivals remain resolvable for historical decisions/lifecycle evidence.
+EventImmediateEffect |=
+  | { kind: 'competitor-status-set'; status: 'active' | 'closed' }
+  | { kind: 'competitor-price-posture-set'; pricePosture: CompanyPolicy['pricing'] }
+  | { kind: 'competitor-product-focus-set'; productFocus: ProductFamilyId[] };
 
-### Immediate effects
-
-Add closed effect kinds:
-
-```ts
-{ kind: 'competitor-status-set'; status: CompetitorStatus }
-{ kind: 'competitor-price-posture-set'; pricePosture: CompetitorPricePosture }
-{ kind: 'competitor-product-focus-set'; productFocus: ProductFamilyId[] }
-```
-
-`competitor-product-focus-set` accepts exactly 1–2 unique known families and stores them canonically.
-
-The mutation site is the existing `applyEffect(...)` path in `eventEffects.ts`. Competitor effects must explicitly require `decision.target.kind === 'competitor'`, resolve that competitor, and reject the whole decision atomically on wrong/unknown target or invalid payload.
-
-### Timed promotion effect
-
-```ts
 EventTimedEffect |= {
   kind: 'competitor-attraction-multiplier';
   multiplier: number;
 };
 ```
 
-It is legal only on a competitor target. `marketCompetition.ts` reads active modifiers with the existing active-on-day helper; do not widen `SimulationRules`.
+Immediate competitor effects require `decision.target.kind === 'competitor'` at the real `applyEffect` mutation site. Focus replacement accepts exactly 1–2 unique known families.
 
-All exhaustive timed-effect consumers must be updated, including:
+Timed rival promotion is read directly from active event modifiers with `isModifierActiveOnDay`; `SimulationRules` does not gain competitor state. Update every exhaustive timed-effect consumer, including `cloneTimedEffect`, validation/persistence, and `ActiveModifiers.svelte`.
 
-- `cloneTimedEffect` and modifier snapshot/validation code;
-- persistence event validation;
-- `ActiveModifiers.svelte`, which must render the competitor target and localized modifier copy without falling through the existing route-only switch.
+Author one production `rival-promotion` event with exactly two responses:
 
-Author exactly one production `rival-promotion` weighted event in this ticket. Launch/closure/reposition effect kinds remain unit-tested extension points; do not add more production events yet.
+- `counter-promote`: cash -$1,200, company `marketPosition` +2;
+- `differentiate`: customer satisfaction +2.
+
+Both carry the same 3-day `competitor-attraction-multiplier: 1.18` because the rival promotion has already happened. Launch/closure/reposition effects remain unit-tested extension points, not additional production events.
 
 ## Persistence
 
-Schema 19 is strict and schema 18 is unsupported.
+Final schema 19 validates:
 
-`saveCodec.ts` validates:
+- known/supported `StoreProduct.brandId` via family compatibility;
+- unique canonical competitor IDs;
+- competitor city opened/materialized/retail for persisted sandbox games that contain competitors;
+- valid rival location, archetype, posture, status, reputation, brands;
+- exactly 1–2 unique known product-focus families;
+- thin market report ranges, finite scores, known competitor references, canonical ordering;
+- competitor event targets/effects/modifiers;
+- removal of legacy `Store.competition` in the final shape.
 
-- `StoreProduct.brandId` known and supported;
-- unique competitor IDs;
-- competitor city opened, materialized, and retail;
-- competitor location belongs to that city;
-- known archetype/posture/family/brand/status values;
-- reputation finite 0..100;
-- `productFocus` exactly 1–2 unique known families, canonically ordered;
-- non-empty brand mix with product compatibility for the competitor archetype;
-- competitor array canonical by ID;
-- market report ranges, finite scores, known references, and canonical ordering;
-- competitor event targets/effects/modifiers.
-
-`scenarioCodec.ts` and its tests are part of the schema-19 blast radius because scenario run records embed current `GameState` and reference `SAVE_SCHEMA_VERSION`. HPA-39 adds no scenario command, but scenario encode/decode must accept the new current game shape and reject stale schema-18 records consistently.
-
-Historical market rows may reference a competitor now `closed`; current existence is enough to retain attribution.
+Schema 18 is rejected; there is no migration.
 
 ## UI and map
 
 ### Brand control
 
-`StoreStockTable` keeps one row per product and adds one Brand select using `getSupportedBrands(productId)`.
+`StoreStockTable` adds one brand select per existing product row. Options come from `getSupportedBrands(productId)`.
 
-The component chain gets explicit brand wiring:
+Explicit mutation chain:
 
 ```text
-StoreStockTable -> StoreDetailModal -> +page.svelte -> GameRouteController.updateStoreProductBrand
+StoreStockTable
+  -> StoreDetailModal onUpdateBrand
+  -> +page.svelte
+  -> GameRouteController.updateStoreProductBrand
 ```
 
-Thread `canUpdateBrand` beside existing selling-price/inventory capabilities. In active scenarios it is disabled with the existing disabled reason. Do not reuse the selling-price scenario command and do not add a scenario brand command.
-
-Brand evidence reuses existing `baseSellingPrice`/`effectiveSellingPrice` plus new brand cost/demand/attraction/customer-response fields. There is no duplicate brand price field.
+`MutationAvailability` gains sandbox-only `updateStoreProductBrand`. Active scenarios disable the control with the existing reason.
 
 ### Reports
 
-Add two latest-report sections:
+Latest report adds:
 
-- Brand performance: selected brand, units, revenue, gross margin, weighted customer response.
-- Market: city/product player share, delta, strongest rival, rival posture/focus/brands, and active promotion multiplier.
+- Brand performance grouped by `brandId`, using existing units/revenue/gross-margin fields and store-level `brandReputationAdjustment`;
+- Market rows with player share/delta and strongest rival share/attraction/event multiplier; current rival profile may be shown from `game.competitors` as current context, not duplicated report state.
 
-No charting, historical filter UI, or new dashboard.
+No historical charts, filters, or new dashboard.
 
 ### Retail map
 
-Extend `CityMapSnapshot` with active-city competitor render rows and draw lightweight non-interactive Phaser markers. Rivals never enter `getOccupiedStoreTileIds`, ownership outlines, placement previews, store sprite lists, or terrain/camera keys. Closed rivals render no marker.
+`CityMapSnapshot` carries active-city competitor render rows. Phaser draws non-interactive markers and exposes `data-competitor-marker-count` using the existing dataset convention.
 
-No industry-map changes and no new art assets.
+Rivals never enter ownership, `getOccupiedStoreTileIds`, placement previews, store sprites, or terrain/camera keys. Closed rivals render no marker. No industry-map or art changes.
 
 ## Testing strategy
 
-Use six implementation checkpoints in one PR:
+Six checkpoints remain inside one PR:
 
-1. type/catalog/competitor lifecycle/schema-19 cut and hidden-competition deletion;
-2. brand economics while fixtures explicitly use `competitors: []`;
-3. explicit market share + market-position integration;
-4. rival event lifecycle plus exhaustive switch/scenario-codec coverage;
-5. existing-surface UI/map integration with explicit controller brand mutation;
-6. deterministic E2E and final full verification.
+1. brand identity/family compatibility + schema 19 + scenario brand preservation;
+2. brand economics/reputation convergence + shared branded seller scoring while legacy competition is still present;
+3. competitor state/generation + explicit market share + hidden-competition removal + marketPosition + scenario re-verification;
+4. rival event lifecycle + exhaustive effect consumers;
+5. explicit sandbox brand mutation + Store Detail/Reports/retail-map presentation;
+6. deterministic E2E + final full verification.
 
 Important invariants:
 
-- `sellingPrice` remains the sole shelf-price field;
-- brand change writes a default price once; later price edits are direct;
-- no hidden competition scalar remains;
-- higher rival attraction lowers player share and store `marketPosition` directionally;
-- no-rival market share is 1 for a valid player seller;
-- rival generation never changes main RNG state;
-- live/planner share and branded seller scoring reuse the same pure helpers;
-- Task 2 brand-only numeric fixtures stay rival-free until Task 3;
-- rival `productFocus` is always 1–2 unique families;
-- scenario persistence moves with schema 19 even though scenario commands do not gain brand mutation;
-- timed-effect exhaustive switches compile after competitor promotion is added;
-- map rivals never affect placement ownership;
-- no rival inventory/staffing/finance/logistics subsystem appears.
+- one shelf price;
+- family-based brand support;
+- brand reputation converges toward weighted purchased quality;
+- market resolver takes slices, not `GameState`;
+- `marketCompetition.ts` never imports `stock.ts`;
+- no hidden competition remains after Task 3;
+- higher rival attraction lowers player share and market position;
+- no-rival player share is 1;
+- sandbox rival generation never changes main RNG state;
+- authored scenarios are rival-free and remain valid after the balance cut;
+- daily reports persist IDs/outcomes, not repeated catalog/state fields;
+- map rivals never affect placement;
+- no rival simulation subsystem appears.
 
 ## Non-goals
 
-- per-brand inventory/SKU rows;
-- a second customer-facing price field;
+- per-brand inventory/SKUs;
+- second customer-facing price;
 - company/city brand inheritance;
-- rival staffing, inventory, cash, debt, production, logistics, or full stores;
-- rival land occupancy or interactive rival inspectors;
-- autonomous competitor AI beyond typed event effects;
-- additional production rival event families beyond one promotion lifecycle;
-- historical market charts or a new dashboard;
-- new competitor art assets;
-- pre-release save migration/backward compatibility;
-- multiplayer, acquisitions, or franchising.
+- scenario-authored brands or rivals;
+- rival staffing, inventory, finance, production, logistics, managers, or land;
+- rival interactive inspector;
+- generic market/event DSL;
+- historical market charts;
+- new rival art;
+- pre-release migration/backward compatibility;
+- multiplayer, acquisitions, franchising.
