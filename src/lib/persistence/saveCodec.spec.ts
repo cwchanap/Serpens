@@ -1727,6 +1727,7 @@ describe('saveCodec', () => {
 			);
 
 			expect(decoded.game.managerActionHistory[0]?.change.kind).toBe('staffing-policy');
+			expect(decoded.game.managerActionHistory[0]?.change.applied).toBe(null);
 		});
 
 		test('normalizes manager action history already sorted by day ascending', () => {
