@@ -106,7 +106,6 @@ function store(overrides: Partial<Store> = {}): Store {
 		staffMorale: 80,
 		staffCapacity: 2,
 		localDemand: 50,
-		competition: 20,
 		managerQuality: 40,
 		...overrides
 	};
@@ -202,6 +201,7 @@ function baseGame(overrides: Partial<GameState> = {}): GameState {
 			nextRouteSequence: 1
 		},
 		stores: [],
+		competitors: [],
 		staff: [],
 		hiringCandidates: [],
 		events: createInitialEventRuntime(1),

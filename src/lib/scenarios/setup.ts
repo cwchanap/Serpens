@@ -663,6 +663,9 @@ export function buildScenarioGame(
 	if (!retailSupply.game) return { ok: false, diagnostics: retailSupply.diagnostics };
 	game = retailSupply.game;
 	game = refreshWorldProgress(game);
+	// Authored scenarios own their market inputs; keep generated sandbox rivals
+	// out of scenario evaluation so references remain reproducible and isolated.
+	game = { ...game, competitors: [] };
 	const startingContentDiagnostic = validateStartingContentCitiesAreOpened(definition, game);
 	if (startingContentDiagnostic) return { ok: false, diagnostics: [startingContentDiagnostic] };
 

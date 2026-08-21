@@ -16,6 +16,7 @@ import {
 	initializeCityInventory,
 	initializeRetailSupplyAssignment
 } from './cityInventory';
+import { ensureCompetitorsForRetailCity } from './competitors';
 import { getWorldCityDefinition } from './worldCatalog';
 import {
 	decisionContextWorldCityNotAvailableYet,
@@ -261,7 +262,7 @@ export function openWorldCity(game: GameState, cityId: string): GameState {
 	const lifecycleGame =
 		city.kind === 'industry'
 			? initializeCityInventory(mapGame, city.id)
-			: initializeRetailSupplyAssignment(mapGame, city.id);
+			: initializeRetailSupplyAssignment(ensureCompetitorsForRetailCity(mapGame, city.id), city.id);
 
 	return refreshWorldProgress(selectWorldCity(lifecycleGame, city.id));
 }

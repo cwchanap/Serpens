@@ -248,10 +248,10 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				staffMorale: 65,
 				staffCapacity: 66,
 				localDemand: computeStoreLocalDemand(storeTile),
-				competition: 40,
 				managerQuality: 58
 			}
 		],
+		competitors: [],
 		staff: [],
 		hiringCandidates: [],
 		events: overrides.events ?? createInitialEventRuntime(20260505),
@@ -526,6 +526,7 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		storeReports: [createDailyStoreReport()],
 		modifierImpacts: [],
 		modifierLifecycle: [],
+		marketReports: [],
 		warnings: [],
 		...overrides,
 		logistics: overrides.logistics ?? emptyLogisticsReport()

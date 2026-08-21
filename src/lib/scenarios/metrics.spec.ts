@@ -154,6 +154,7 @@ function report(
 		inventoryLossExpense: storeReports.reduce((sum, item) => sum + item.inventoryLossExpense, 0),
 		modifierImpacts: [],
 		modifierLifecycle: [],
+		marketReports: [],
 		warnings: [],
 		...overrides,
 		logistics: overrides.logistics ?? emptyLogisticsReport()
@@ -178,7 +179,6 @@ function store(id: string): Store {
 		staffMorale: 50,
 		staffCapacity: 1,
 		localDemand: 50,
-		competition: 50,
 		managerQuality: 50
 	};
 }
@@ -240,6 +240,7 @@ function game(overrides: Partial<GameState> = {}): GameState {
 			nextRouteSequence: 1
 		},
 		stores: [],
+		competitors: [],
 		staff: [],
 		hiringCandidates: [],
 		events: overrides.events ?? createInitialEventRuntime(280),

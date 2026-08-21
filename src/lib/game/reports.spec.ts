@@ -69,6 +69,7 @@ function report(
 		inventoryLossExpense: 0,
 		modifierImpacts: [],
 		modifierLifecycle: [],
+		marketReports: [],
 		warnings: []
 	};
 }

@@ -236,6 +236,7 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 				inventoryLossExpense: 0,
 				modifierImpacts: [],
 				modifierLifecycle: [],
+				marketReports: [],
 				warnings: []
 			}
 		]
@@ -509,6 +510,7 @@ describe('buildProductChainTree', () => {
 					],
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					inventoryLossExpense: 0,
 					warnings: []
 				}
@@ -620,6 +622,7 @@ describe('buildProductChainTree', () => {
 					],
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					inventoryLossExpense: 0,
 					warnings: []
 				}
@@ -1417,6 +1420,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 					],
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					inventoryLossExpense: 0,
 					warnings: []
 				}
@@ -1475,6 +1479,7 @@ describe('buildStoreCategoryChainSummaries (tree)', () => {
 					],
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					inventoryLossExpense: 0,
 					warnings: []
 				}

@@ -1391,7 +1391,6 @@ describe('resolveSelectionAnchorTileId', () => {
 			staffMorale: 70,
 			staffCapacity: 2,
 			localDemand: 60,
-			competition: 0,
 			managerQuality: 50
 		};
 		// (2,2) is the bottom-right cell of the anchor's 2x2 footprint.
@@ -1421,7 +1420,6 @@ describe('resolveSelectionAnchorTileId', () => {
 			staffMorale: 70,
 			staffCapacity: 2,
 			localDemand: 60,
-			competition: 0,
 			managerQuality: 50
 		};
 		// (3,3) is outside the (1,1) anchor's 2x2 footprint.
@@ -1451,7 +1449,6 @@ describe('resolveSelectionAnchorTileId', () => {
 			staffMorale: 70,
 			staffCapacity: 2,
 			localDemand: 60,
-			competition: 0,
 			managerQuality: 50
 		};
 		const bottomRight = city.tiles.find((tile) => tile.x === 2 && tile.y === 2)!;

@@ -21,6 +21,7 @@ import { formatLocation } from '$lib/game/placement';
 import { RAIL_MAX_LEVEL } from '$lib/game/rail';
 import {
 	createCityTileLookup,
+	getOccupiedStoreTileIds,
 	getRetailStoreFootprint,
 	type CityTileLookup
 } from '$lib/game/storeFootprint';
@@ -52,6 +53,7 @@ import type {
 	PolicyOverrideScope,
 	ProductId,
 	ProductStockLot,
+	MarketCompetitor,
 	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
@@ -179,6 +181,15 @@ const WORLD_MILESTONE_IDS = [
 	'positive-income-store-cap'
 ] as const;
 const SCORE_KEYS = ['profit', 'customerSatisfaction', 'staffMorale', 'marketPosition'] as const;
+const PRODUCT_FAMILY_IDS = [
+	'beverages',
+	'convenience-goods',
+	'fashion',
+	'electronics',
+	'grocery-food'
+] as const;
+const COMPETITOR_PRICE_POSTURES = ['discount', 'competitive', 'standard', 'premium'] as const;
+const COMPETITOR_STATUSES = ['active', 'closed'] as const;
 
 export function createEmptySaveStore(): SaveStoreSnapshot {
 	return {
@@ -415,6 +426,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	validateCurrentLogisticsState(currentGame);
 	validateCurrentIndustrialBuildingPlacements(industrialBuildings, industryCities);
 	validateCurrentRetailStorePlacements(stores, cities);
+	validateCurrentCompetitors(currentGame);
 	staff.forEach((member, index) => validateSavedStaffMember(member, `Saved game staff[${index}]`));
 	validateCurrentPolicyOverrides(currentGame, policyOverrides);
 	validateCurrentManagerDelegations(currentGame, managerDelegations);
@@ -438,7 +450,11 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 		}
 		decisionIds.add(id);
 	});
-	const decodedReports = decodeHistoricalReports(reports, currentGame.logistics.nextRouteSequence);
+	const decodedReports = decodeHistoricalReports(
+		reports,
+		currentGame.logistics.nextRouteSequence,
+		new Set(currentGame.competitors.map((competitor) => competitor.id))
+	);
 	currentGame.reports = decodedReports;
 	validateSavedEventRuntime(
 		game.events,
@@ -807,6 +823,145 @@ function validateCurrentRetailStorePlacements(stores: unknown[], cities: unknown
 			`Saved game stores[${invalidIndex}] placement must already match a buildable, non-overlapping city footprint`
 		);
 	}
+}
+
+function validateCurrentCompetitors(game: GameState): void {
+	const values = requireArray(game.competitors, 'Saved game competitors');
+	const citiesById = new Map(game.cities.map((city) => [city.id, city] as const));
+	const ids = new Set<string>();
+	const countsByCity = new Map<string, number>();
+	const markerKeysByCity = new Map<string, Set<string>>();
+	let previousId: string | undefined;
+
+	for (const [index, value] of values.entries()) {
+		const label = `Saved game competitors[${index}]`;
+		const competitor = validateSavedCompetitor(value, label);
+		if (previousId !== undefined && competitor.id <= previousId) {
+			throw new SaveDataError(`${label} id must be in ascending code-unit order`);
+		}
+		previousId = competitor.id;
+		if (ids.has(competitor.id)) {
+			throw new SaveDataError(`${label} id must be unique: ${competitor.id}`);
+		}
+		ids.add(competitor.id);
+
+		const definition = getWorldCityDefinition(competitor.cityId);
+		const city = citiesById.get(competitor.cityId);
+		if (
+			!definition ||
+			definition.kind !== 'retail' ||
+			!game.world.openedCityIds.includes(competitor.cityId) ||
+			!city
+		) {
+			throw new SaveDataError(`${label} must reference an opened, materialized retail city`);
+		}
+
+		const count = (countsByCity.get(competitor.cityId) ?? 0) + 1;
+		if (count > 2) {
+			throw new SaveDataError(`${label} must contain at most two rivals per retail city`);
+		}
+		countsByCity.set(competitor.cityId, count);
+
+		const tile = city.tiles.find(
+			(candidate) => candidate.x === competitor.location.x && candidate.y === competitor.location.y
+		);
+		if (!tile || !isTileBuildable(tile)) {
+			throw new SaveDataError(`${label} location must reference a buildable city tile`);
+		}
+		if (tile.neighborhood !== competitor.location.neighborhoodId) {
+			throw new SaveDataError(`${label} location neighborhood must match its city tile`);
+		}
+
+		const lookup = createCityTileLookup(city);
+		const occupiedTileIds = getOccupiedStoreTileIds(
+			city,
+			game.stores.filter((store) => store.cityId === city.id),
+			lookup
+		);
+		if (occupiedTileIds.has(tile.id)) {
+			throw new SaveDataError(`${label} location must not overlap a player store footprint`);
+		}
+		const markerKeys = markerKeysByCity.get(city.id) ?? new Set<string>();
+		const markerKey = `${tile.x},${tile.y}`;
+		if (markerKeys.has(markerKey)) {
+			throw new SaveDataError(`${label} location must be unique within its city`);
+		}
+		markerKeys.add(markerKey);
+		markerKeysByCity.set(city.id, markerKeys);
+	}
+
+	for (const [cityId, count] of countsByCity) {
+		if (count === 1) {
+			throw new SaveDataError(
+				`Saved game competitors for ${cityId} must contain both canonical rivals or none`
+			);
+		}
+	}
+}
+
+function validateSavedCompetitor(value: unknown, label: string): MarketCompetitor {
+	const competitor = requireRecord(value, label);
+	const id = requireString(competitor.id, `${label} id`);
+	const cityId = requireOneOf(competitor.cityId, `${label} cityId`, WORLD_CITY_IDS) as WorldCityId;
+	const expectedPrefix = `competitor-${cityId}-`;
+	if (!id.startsWith(expectedPrefix)) {
+		throw new SaveDataError(`${label} id must use the canonical ${expectedPrefix}<ordinal> form`);
+	}
+	const ordinal = Number(id.slice(expectedPrefix.length));
+	if (!Number.isSafeInteger(ordinal) || ordinal < 1 || ordinal > 2) {
+		throw new SaveDataError(`${label} id must use canonical ordinal 1 or 2`);
+	}
+	const name = requireString(competitor.name, `${label} name`);
+	validateStoreLocation(competitor.location, `${label} location`);
+	const reputation = requireNumber(competitor.reputation, `${label} reputation`);
+	if (reputation < 0 || reputation > 100) {
+		throw new SaveDataError(`${label} reputation must be between 0 and 100`);
+	}
+	const archetypeId = requireOneOf(competitor.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
+	const pricePosture = requireOneOf(
+		competitor.pricePosture,
+		`${label} pricePosture`,
+		COMPETITOR_PRICE_POSTURES
+	);
+	const productFocus = requireArray(competitor.productFocus, `${label} productFocus`).map(
+		(familyId, index) =>
+			requireOneOf(familyId, `${label} productFocus[${index}]`, PRODUCT_FAMILY_IDS)
+	);
+	if (productFocus.length < 1 || productFocus.length > 2) {
+		throw new SaveDataError(`${label} productFocus must contain one or two families`);
+	}
+	if (new Set(productFocus).size !== productFocus.length) {
+		throw new SaveDataError(`${label} productFocus families must be unique`);
+	}
+	const brandIds = requireArray(competitor.brandIds, `${label} brandIds`).map((brandId, index) =>
+		requireKnownId(brandId, `${label} brandIds[${index}]`, BRAND_ID_SET, 'brand')
+	);
+	if (brandIds.length < 1 || brandIds.length > 2) {
+		throw new SaveDataError(`${label} brandIds must contain one or two brands`);
+	}
+	if (new Set(brandIds).size !== brandIds.length) {
+		throw new SaveDataError(`${label} brandIds must be unique`);
+	}
+	for (const brandId of brandIds) {
+		const brand = BRANDS[brandId as keyof typeof BRANDS];
+		if (!brand.supportedFamilyIds.some((familyId) => productFocus.includes(familyId))) {
+			throw new SaveDataError(`${label} brandIds must support at least one focused family`);
+		}
+	}
+	const status = requireOneOf(competitor.status, `${label} status`, COMPETITOR_STATUSES);
+
+	return {
+		id,
+		name,
+		cityId,
+		location: competitor.location as MarketCompetitor['location'],
+		archetypeId,
+		reputation,
+		pricePosture,
+		productFocus: productFocus as MarketCompetitor['productFocus'],
+		brandIds: brandIds as MarketCompetitor['brandIds'],
+		status
+	};
 }
 
 function validateCurrentIndustrialBuildingPlacements(
@@ -2485,7 +2640,6 @@ function validateSavedStore(value: unknown, label: string, gameDay: number): voi
 	requireNumber(store.staffMorale, `${label} staffMorale`);
 	requireNumber(store.staffCapacity, `${label} staffCapacity`);
 	requireNumber(store.localDemand, `${label} localDemand`);
-	requireNumber(store.competition, `${label} competition`);
 	requireNumber(store.managerQuality, `${label} managerQuality`);
 }
 
@@ -3365,13 +3519,19 @@ function withEventInvariant<T>(operation: () => T): T {
 
 function decodeHistoricalReports(
 	reports: unknown[],
-	nextRouteSequence: number
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
 ): GameState['reports'] {
 	const decoded: GameState['reports'] = [];
 
 	for (const [index, report] of reports.entries()) {
 		try {
-			validateSavedReport(report, `Saved game reports[${index}]`, nextRouteSequence);
+			validateSavedReport(
+				report,
+				`Saved game reports[${index}]`,
+				nextRouteSequence,
+				knownCompetitorIds
+			);
 			decoded.push(report as GameState['reports'][number]);
 		} catch (error) {
 			if (!(error instanceof SaveDataError)) throw error;
@@ -3382,7 +3542,12 @@ function decodeHistoricalReports(
 	return decoded;
 }
 
-function validateSavedReport(value: unknown, label: string, nextRouteSequence: number): void {
+function validateSavedReport(
+	value: unknown,
+	label: string,
+	nextRouteSequence: number,
+	knownCompetitorIds: ReadonlySet<string>
+): void {
 	const report = requireRecord(value, label);
 
 	const day = requireNonNegativeInteger(report.day, `${label} day`);
@@ -3420,6 +3585,7 @@ function validateSavedReport(value: unknown, label: string, nextRouteSequence: n
 	validateSavedScorecard(report.scorecard, `${label} scorecard`);
 	validateSavedProductionReport(report.productionReport, `${label} productionReport`);
 	validateSavedDailyLogisticsReport(report.logistics, `${label} logistics`);
+	validateSavedMarketReports(report.marketReports, `${label} marketReports`, knownCompetitorIds);
 	const seenStoreIds = new Set<string>();
 	let storeInventoryLossExpense = 0;
 	requireArray(report.storeReports, `${label} storeReports`).forEach((storeReport, index) => {
@@ -3454,6 +3620,130 @@ function validateSavedReport(value: unknown, label: string, nextRouteSequence: n
 		);
 	});
 	validateSavedWarningArray(report.warnings, `${label} warnings`, false);
+}
+
+function validateSavedMarketReports(
+	value: unknown,
+	label: string,
+	knownCompetitorIds: ReadonlySet<string>
+): void {
+	let previousKey: string | undefined;
+	const seenKeys = new Set<string>();
+	requireArray(value, label).forEach((marketValue, index) => {
+		const marketLabel = `${label}[${index}]`;
+		const market = requireRecord(marketValue, marketLabel);
+		requireExactKeys(
+			market,
+			[
+				'cityId',
+				'productId',
+				'cityDemandPool',
+				'playerDemandPool',
+				'playerShare',
+				'playerShareDelta',
+				'playerAttractionScore',
+				'competitors'
+			],
+			marketLabel
+		);
+		const cityId = requireOneOf(market.cityId, `${marketLabel} cityId`, WORLD_CITY_IDS);
+		const productId = requireKnownId(
+			market.productId,
+			`${marketLabel} productId`,
+			PRODUCT_ID_SET,
+			'product'
+		);
+		const key = `${cityId}:${productId}`;
+		if (seenKeys.has(key)) {
+			throw new SaveDataError(
+				`${marketLabel} cityId/productId must be unique within a daily report`
+			);
+		}
+		if (previousKey !== undefined && key <= previousKey) {
+			throw new SaveDataError(
+				`${marketLabel} cityId/productId must be in ascending code-unit order`
+			);
+		}
+		seenKeys.add(key);
+		previousKey = key;
+
+		const cityDemandPool = requireNonNegativeFiniteNumber(
+			market.cityDemandPool,
+			`${marketLabel} cityDemandPool`
+		);
+		const playerDemandPool = requireNonNegativeFiniteNumber(
+			market.playerDemandPool,
+			`${marketLabel} playerDemandPool`
+		);
+		if (playerDemandPool > cityDemandPool) {
+			throw new SaveDataError(`${marketLabel} playerDemandPool must not exceed cityDemandPool`);
+		}
+		const playerShare = requireNumber(market.playerShare, `${marketLabel} playerShare`);
+		if (playerShare < 0 || playerShare > 1) {
+			throw new SaveDataError(`${marketLabel} playerShare must be between 0 and 1`);
+		}
+		if (market.playerShareDelta !== null) {
+			const playerShareDelta = requireNumber(
+				market.playerShareDelta,
+				`${marketLabel} playerShareDelta`
+			);
+			if (playerShareDelta < -1 || playerShareDelta > 1) {
+				throw new SaveDataError(`${marketLabel} playerShareDelta must be between -1 and 1`);
+			}
+		}
+		requireNonNegativeFiniteNumber(
+			market.playerAttractionScore,
+			`${marketLabel} playerAttractionScore`
+		);
+
+		let previousCompetitorId: string | undefined;
+		const competitorIds = new Set<string>();
+		requireArray(market.competitors, `${marketLabel} competitors`).forEach(
+			(competitorValue, competitorIndex) => {
+				const competitorLabel = `${marketLabel} competitors[${competitorIndex}]`;
+				const competitor = requireRecord(competitorValue, competitorLabel);
+				requireExactKeys(
+					competitor,
+					['competitorId', 'share', 'attractionScore', 'eventMultiplier'],
+					competitorLabel
+				);
+				const competitorId = requireString(
+					competitor.competitorId,
+					`${competitorLabel} competitorId`
+				);
+				if (!knownCompetitorIds.has(competitorId)) {
+					throw new SaveDataError(
+						`${competitorLabel} competitorId must reference a persisted competitor`
+					);
+				}
+				if (previousCompetitorId !== undefined && competitorId <= previousCompetitorId) {
+					throw new SaveDataError(
+						`${competitorLabel} competitorId must be in ascending code-unit order`
+					);
+				}
+				if (competitorIds.has(competitorId)) {
+					throw new SaveDataError(`${competitorLabel} competitorId must be unique`);
+				}
+				competitorIds.add(competitorId);
+				previousCompetitorId = competitorId;
+				const share = requireNumber(competitor.share, `${competitorLabel} share`);
+				if (share < 0 || share > 1) {
+					throw new SaveDataError(`${competitorLabel} share must be between 0 and 1`);
+				}
+				requireNonNegativeFiniteNumber(
+					competitor.attractionScore,
+					`${competitorLabel} attractionScore`
+				);
+				const eventMultiplier = requireNumber(
+					competitor.eventMultiplier,
+					`${competitorLabel} eventMultiplier`
+				);
+				if (eventMultiplier <= 0) {
+					throw new SaveDataError(`${competitorLabel} eventMultiplier must be positive`);
+				}
+			}
+		);
+	});
 }
 
 function validateSavedModifierImpacts(

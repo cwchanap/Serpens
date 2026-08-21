@@ -330,6 +330,15 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(differentSeed.game.rngState).not.toBe(first.game.rngState);
 	});
 
+	it('keeps authored scenario worlds explicitly rival-free', () => {
+		const definition = scenarioDefinition();
+		const result = buildScenarioGame(definition, definition.officialSeed);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.game.competitors).toEqual([]);
+	});
+
 	it('applies every authored override and maps setup refs to generated ids', () => {
 		const definition = scenarioDefinition();
 		const result = buildScenarioGame(definition, definition.officialSeed);
@@ -931,6 +940,7 @@ describe('launch catalog setup isolation', { timeout: 30_000 }, () => {
 			expect(second.ok).toBe(true);
 			if (!first.ok || !second.ok) continue;
 			expect(first.game).toEqual(second.game);
+			expect(first.game.competitors).toEqual([]);
 			expect(first.game).not.toBe(second.game);
 			expect(first.game.cities).not.toBe(second.game.cities);
 			expect(first.game.industryCities).not.toBe(second.game.industryCities);

@@ -193,6 +193,66 @@ function routeModifier(overrides: Partial<ActiveEventModifier> = {}): ActiveEven
 }
 
 describe('daily simulation', () => {
+	test('persists thin daily market evidence and compares the latest matching share', () => {
+		expect.assertions(6);
+		const generated = createNewGame('convenience', 20260820);
+		const base = {
+			...generated,
+			competitors: generated.competitors.map((competitor) => ({
+				...competitor,
+				archetypeId: 'convenience' as const,
+				productFocus: ['beverages' as const],
+				brandIds: ['common-ground' as const]
+			}))
+		};
+		const first = simulateDay(base);
+		const firstMarket = first.reports[0]?.marketReports.find(
+			(market) => market.competitors.length > 0
+		);
+		expect(firstMarket).toBeDefined();
+		if (!firstMarket) return;
+		expect(firstMarket.cityId).toBe('harbor-city');
+		expect(firstMarket.playerShare).toBeGreaterThan(0);
+		expect(firstMarket.competitors.map((rival) => rival.competitorId)).toEqual([
+			'competitor-harbor-city-1',
+			'competitor-harbor-city-2'
+		]);
+
+		const second = simulateDay(first);
+		const secondMarket = second.reports[1]?.marketReports.find(
+			(market) => market.cityId === firstMarket.cityId && market.productId === firstMarket.productId
+		);
+		expect(secondMarket).toBeDefined();
+		expect(secondMarket?.playerShareDelta).toBeCloseTo(
+			(secondMarket?.playerShare ?? 0) - firstMarket.playerShare,
+			10
+		);
+	});
+
+	test('moves visible market position with player share and keeps it bounded', () => {
+		expect.assertions(4);
+		const generated = createNewGame('convenience', 20260821);
+		const noRivals = simulateDay({ ...generated, competitors: [] });
+		const strongRivals = simulateDay({
+			...generated,
+			competitors: generated.competitors.map((competitor) => ({
+				...competitor,
+				archetypeId: 'convenience' as const,
+				productFocus: ['beverages' as const],
+				brandIds: ['common-ground' as const],
+				reputation: 100,
+				pricePosture: 'discount' as const
+			}))
+		});
+		const noRivalPosition = noRivals.reports[0]!.storeReports[0]!.marketPosition;
+		const strongRivalPosition = strongRivals.reports[0]!.storeReports[0]!.marketPosition;
+
+		expect(strongRivalPosition).toBeLessThan(noRivalPosition);
+		expect(strongRivalPosition).toBeGreaterThanOrEqual(0);
+		expect(noRivalPosition).toBeLessThanOrEqual(100);
+		expect(noRivalPosition).toBeGreaterThanOrEqual(0);
+	});
+
 	test('rejects invalid entity ownership before starting a daily tick', () => {
 		expect.assertions(1);
 		const base = createNewGame('convenience', 292_524);
@@ -209,7 +269,7 @@ describe('daily simulation', () => {
 
 		expect(projectOneCityParity(after)).toMatchInlineSnapshot(`
 			{
-			  "cash": 99762,
+			  "cash": 99775,
 			  "cityInventories": [
 			    {
 			      "cityId": "industry-city",
@@ -221,7 +281,7 @@ describe('daily simulation', () => {
 			  ],
 			  "report": {
 			    "importSpend": 10,
-			    "netCashChange": -238,
+			    "netCashChange": -225,
 			    "production": {
 			      "cityInventories": [
 			        {
@@ -1375,8 +1435,8 @@ describe('daily simulation', () => {
 			convenience: [
 				{
 					day: 8,
-					cashBefore: 30_643,
-					cashAfter: 29_967,
+					cashBefore: 30_734,
+					cashAfter: 30_071,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1384,8 +1444,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 28_674,
-					cashAfter: 27_981,
+					cashBefore: 28_856,
+					cashAfter: 28_176,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1393,8 +1453,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 26_706,
-					cashAfter: 26_024,
+					cashBefore: 26_979,
+					cashAfter: 26_304,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1404,8 +1464,8 @@ describe('daily simulation', () => {
 			boutique: [
 				{
 					day: 8,
-					cashBefore: 37_507,
-					cashAfter: 39_321,
+					cashBefore: 37_612,
+					cashAfter: 39_251,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1413,8 +1473,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 37_261,
-					cashAfter: 38_999,
+					cashBefore: 37_471,
+					cashAfter: 39_300,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1422,8 +1482,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 37_015,
-					cashAfter: 38_641,
+					cashBefore: 37_330,
+					cashAfter: 39_047,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1433,8 +1493,8 @@ describe('daily simulation', () => {
 			electronics: [
 				{
 					day: 8,
-					cashBefore: 44_835,
-					cashAfter: 46_789,
+					cashBefore: 44_954,
+					cashAfter: 47_117,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1442,8 +1502,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 43_603,
-					cashAfter: 45_463,
+					cashBefore: 43_841,
+					cashAfter: 45_814,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1451,8 +1511,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 42_373,
-					cashAfter: 44_091,
+					cashBefore: 42_730,
+					cashAfter: 44_705,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1462,8 +1522,8 @@ describe('daily simulation', () => {
 			grocery: [
 				{
 					day: 8,
-					cashBefore: 40_346,
-					cashAfter: 39_182,
+					cashBefore: 40_472,
+					cashAfter: 39_314,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1471,8 +1531,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 37_574,
-					cashAfter: 36_409,
+					cashBefore: 37_826,
+					cashAfter: 36_659,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1480,8 +1540,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 34_805,
-					cashAfter: 33_630,
+					cashBefore: 35_183,
+					cashAfter: 34_018,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,

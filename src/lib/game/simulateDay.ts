@@ -51,6 +51,7 @@ import { refreshWorldProgress } from './world';
 import type {
 	ActiveEventModifier,
 	DailyMaterialMovement,
+	DailyMarketReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
@@ -169,19 +170,22 @@ export function simulateDay(
 					city,
 					rng,
 					storeCapacity,
-					effectivePolicyByStoreId
+					effectivePolicyByStoreId,
+					activeModifiers: activeEventModifiers
 				});
 
 				return {
 					stores: sales.stores,
 					productReports: mergeProductReportMaps(result.productReports, sales.productReports),
-					productAging: mergeProductAgingMaps(result.productAging, sales.productAging)
+					productAging: mergeProductAgingMaps(result.productAging, sales.productAging),
+					marketReports: [...result.marketReports, ...sales.marketReports]
 				};
 			},
 			{
 				stores: pricedSalesGame.stores,
 				productReports: new Map<string, DailyProductReport[]>(),
-				productAging: new Map<string, Map<ProductId, ProductInventoryAgingResult>>()
+				productAging: new Map<string, Map<ProductId, ProductInventoryAgingResult>>(),
+				marketReports: [] as DailyMarketReport[]
 			}
 		);
 	const stockGame = {
@@ -213,7 +217,8 @@ export function simulateDay(
 				citySales.productAging,
 				productionGame.day
 			),
-			replenishmentResult.storeReplenishmentContexts.get(store.id) ?? null
+			replenishmentResult.storeReplenishmentContexts.get(store.id) ?? null,
+			citySales.marketReports
 		)
 	);
 	const storeReports = storeResults.map((result) => result.report);
@@ -338,6 +343,10 @@ export function simulateDay(
 			modifierRecoveries
 		},
 		storeReports,
+		marketReports: [...citySales.marketReports].sort(
+			(left, right) =>
+				compareIds(left.cityId, right.cityId) || compareIds(left.productId, right.productId)
+		),
 		modifierImpacts,
 		modifierLifecycle,
 		warnings
@@ -552,11 +561,9 @@ function buildStoreOperationProfile(
 			managerPenalty +
 			(staffingSummary.coverage < 80 ? -2 : 1)
 	);
-	const marketPosition = clampScore(
-		35 + store.localDemand / 5 + reputation / 3 - store.competition / 4 + marketing.market
-	);
+	const marketPosition = clampScore(35 + store.localDemand / 5 + reputation / 3 + marketing.market);
 	const operatingCosts = Math.round(
-		getArchetype(store.archetypeId).baseRent * (0.92 + store.competition / 450) + marketing.cost
+		getArchetype(store.archetypeId).baseRent * 0.92 + marketing.cost
 	);
 
 	return {
@@ -609,7 +616,8 @@ function accrueStaffXp(
 function buildDailyStoreReport(
 	profile: StoreOperationProfile,
 	productReports: DailyProductReport[],
-	replenishment: RetailReplenishmentContext | null
+	replenishment: RetailReplenishmentContext | null,
+	marketReports: readonly DailyMarketReport[]
 ): { store: Store; report: DailyStoreReport } {
 	const revenue = productReports.reduce((total, report) => total + report.revenue, 0);
 	const costOfGoods = productReports.reduce((total, report) => total + report.costOfGoods, 0);
@@ -635,6 +643,19 @@ function buildDailyStoreReport(
 	const stockHealth = calculateStockHealth(profile.store.products);
 	const grossMargin = revenue - costOfGoods;
 	const operatingCosts = profile.operatingCosts;
+	const eligibleMarketShares = marketReports
+		.filter(
+			(market) =>
+				market.cityId === profile.store.cityId &&
+				profile.store.products.some((product) => product.productId === market.productId)
+		)
+		.map((market) => market.playerShare);
+	const meanPlayerShare = eligibleMarketShares.length > 0 ? average(eligibleMarketShares) : null;
+	const shareAdjustment =
+		meanPlayerShare === null
+			? 0
+			: Math.max(-10, Math.min(10, Math.round((meanPlayerShare - 0.5) * 20)));
+	const marketPosition = clampScore(profile.marketPosition + shareAdjustment);
 	const updatedStore = {
 		...profile.store,
 		daysOpen: profile.store.daysOpen + 1,
@@ -671,7 +692,7 @@ function buildDailyStoreReport(
 			staffMorale: profile.staffMorale,
 			reputation: endingReputation,
 			brandReputationAdjustment,
-			marketPosition: profile.marketPosition,
+			marketPosition,
 			productReports,
 			warnings,
 			replenishment

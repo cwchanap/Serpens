@@ -148,14 +148,13 @@ describe('brand catalog', () => {
 		expect(reportShape).not.toHaveProperty('sellingPrice');
 	});
 
-	test('multiplies the existing seller score by the selected brand attraction', () => {
+	test('multiplies the seller score without a hidden competition term', () => {
 		expect.assertions(2);
 		const game = createNewGame('boutique', 20260820);
 		const store = {
 			...game.stores[0]!,
 			reputation: 70,
 			staffCapacity: 100,
-			competition: 20,
 			products: [
 				{
 					...game.stores[0]!.products[0]!,
@@ -169,7 +168,7 @@ describe('brand catalog', () => {
 			products: [{ ...store.products[0]!, brandId: 'common-ground' as const }]
 		};
 
-		expect(brandedSellerScore(store, 'apparel')).toBeCloseTo(87.584, 10);
+		expect(brandedSellerScore(store, 'apparel')).toBeCloseTo(71.0976, 10);
 		expect(brandedSellerScore(store, 'apparel')).toBeGreaterThan(
 			brandedSellerScore(commonGroundStore, 'apparel')
 		);

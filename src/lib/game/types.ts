@@ -800,6 +800,19 @@ export interface StoreLocation {
 	y: number;
 }
 
+export interface MarketCompetitor {
+	id: string;
+	name: string;
+	cityId: WorldCityId;
+	location: StoreLocation;
+	archetypeId: ArchetypeId;
+	reputation: number;
+	pricePosture: CompanyPolicy['pricing'];
+	productFocus: ProductFamilyId[];
+	brandIds: BrandId[];
+	status: 'active' | 'closed';
+}
+
 export interface Store {
 	id: string;
 	level: number;
@@ -817,7 +830,6 @@ export interface Store {
 	staffMorale: number;
 	staffCapacity: number;
 	localDemand: number;
-	competition: number;
 	managerQuality: number;
 }
 
@@ -954,6 +966,24 @@ export interface DailyStoreReport {
 	replenishment: RetailReplenishmentContext | null;
 }
 
+export interface DailyMarketCompetitorReport {
+	competitorId: string;
+	share: number;
+	attractionScore: number;
+	eventMultiplier: number;
+}
+
+export interface DailyMarketReport {
+	cityId: WorldCityId;
+	productId: ProductId;
+	cityDemandPool: number;
+	playerDemandPool: number;
+	playerShare: number;
+	playerShareDelta: number | null;
+	playerAttractionScore: number;
+	competitors: DailyMarketCompetitorReport[];
+}
+
 export interface DailyReport {
 	day: number;
 	revenue: number;
@@ -981,6 +1011,7 @@ export interface DailyReport {
 	productionReport: DailyProductionReport;
 	logistics: DailyLogisticsReport;
 	storeReports: DailyStoreReport[];
+	marketReports: DailyMarketReport[];
 	/** Sum of store inventory loss expenses; excluded from operating cash flow. */
 	inventoryLossExpense: number;
 	modifierImpacts: EventModifierImpact[];
@@ -1168,6 +1199,7 @@ export interface GameState {
 	retailSupplyAssignments: RetailSupplyAssignment[];
 	logistics: LogisticsState;
 	stores: Store[];
+	competitors: MarketCompetitor[];
 	staff: StaffMember[];
 	hiringCandidates: HiringCandidate[];
 	events: EventRuntimeState;

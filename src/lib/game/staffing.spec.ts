@@ -414,6 +414,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			nextRouteSequence: 1
 		},
 		stores: [createStore({ id: 'store-1', archetypeId: 'convenience' })],
+		competitors: [],
 		staff: [],
 		hiringCandidates: [],
 		events: createInitialEventRuntime(1),
@@ -445,7 +446,6 @@ function createStore(input: {
 		staffMorale: input.staffMorale ?? 50,
 		staffCapacity: 50,
 		localDemand: 50,
-		competition: 50,
 		managerQuality: 50
 	};
 }
