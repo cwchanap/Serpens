@@ -142,7 +142,7 @@ function productReport(
 
 describe('StoreStockTable', () => {
 	it('renders product stock rows with fixed cost and latest report demand', async () => {
-		expect.assertions(9);
+		expect.assertions(13);
 
 		render(StoreStockTable, {
 			i18n: createI18n('en'),
@@ -159,7 +159,7 @@ describe('StoreStockTable', () => {
 		const image = page.getByTestId('product-art-bottled-water');
 		await expect.element(image).toBeVisible();
 		await expect.element(image).toHaveAttribute('src', bottledWaterArt.path);
-		await expect.element(page.getByRole('cell', { name: '$2' })).toBeVisible();
+		await expect.element(page.getByRole('cell', { name: '$2', exact: true })).toBeVisible();
 		await expect.element(page.getByText('12 sold / 2 missed')).toBeVisible();
 		await expect
 			.element(page.getByRole('spinbutton', { name: 'Selling price for Bottled Water' }))
@@ -169,6 +169,56 @@ describe('StoreStockTable', () => {
 			.toBeVisible();
 		await expect
 			.element(page.getByRole('spinbutton', { name: 'Target stock for Bottled Water' }))
+			.toBeVisible();
+		await expect
+			.element(page.getByRole('combobox', { name: 'Brand for Bottled Water' }))
+			.toHaveValue('common-ground');
+		await expect.element(page.getByTestId('shelf-price-bottled-water')).toHaveTextContent('$5');
+		await expect.element(page.getByTestId('effective-price-bottled-water')).toHaveTextContent('$5');
+		await expect.element(page.getByTestId('gross-margin-bottled-water')).toHaveTextContent('$24');
+	});
+
+	it('sends an explicit brand update without changing the shelf-price callback', async () => {
+		expect.assertions(3);
+		const onUpdate = vi.fn();
+		const onUpdateBrand = vi.fn();
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store,
+			ordinal: 1,
+			latestReport,
+			onUpdate,
+			onUpdateBrand
+		});
+
+		const brand = page.getByRole('combobox', { name: 'Brand for Bottled Water' });
+		await brand.selectOptions('budget-bay');
+
+		expect(onUpdateBrand).toHaveBeenCalledTimes(1);
+		expect(onUpdateBrand).toHaveBeenCalledWith('store-1', 'bottled-water', 'budget-bay');
+		expect(onUpdate).not.toHaveBeenCalled();
+	});
+
+	it('keeps the brand selector disabled independently in scenario mode', async () => {
+		expect.assertions(2);
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store,
+			ordinal: 1,
+			latestReport,
+			onUpdate: vi.fn(),
+			onUpdateBrand: vi.fn(),
+			canUpdateBrand: false,
+			disabledReason: 'Brand changes are unavailable in this challenge.'
+		});
+
+		await expect
+			.element(page.getByRole('combobox', { name: 'Brand for Bottled Water' }))
+			.toBeDisabled();
+		await expect
+			.element(page.getByText('Brand changes are unavailable in this challenge.'))
 			.toBeVisible();
 	});
 

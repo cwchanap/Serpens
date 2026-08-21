@@ -7,7 +7,7 @@ import type {
 } from '$lib/game/interCityLogistics';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import { createNewGame } from '$lib/game/state';
-import type { EventDecisionItem, GameState, WorldCityId } from '$lib/game/types';
+import type { BrandId, EventDecisionItem, GameState, WorldCityId } from '$lib/game/types';
 import { createEmptySaveStore } from '$lib/persistence/saveCodec';
 import {
 	SaveRepositoryFromDriver,
@@ -269,6 +269,7 @@ describe('createMutationAvailability', () => {
 			promoteStaff: true,
 			updateStoreSellingPrice: true,
 			updateStoreInventoryTargets: true,
+			updateStoreProductBrand: true,
 			buildIndustrialBuilding: true,
 			upgradeIndustrialBuilding: true,
 			buildRail: true,
@@ -1680,6 +1681,44 @@ describe('GameRouteController', () => {
 			expect(harness.sfx).toHaveBeenCalledWith('sfx.time.advance-day');
 			await flushMicrotasks();
 			expect(harness.onAutoSave).toHaveBeenCalled();
+		});
+
+		it('updates a store product brand only through the sandbox mutation boundary', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 3));
+			harness.onStateChange.mockClear();
+			harness.onAutoSave.mockClear();
+			harness.sfx.mockClear();
+
+			const result = await harness.controller.updateStoreProductBrand(
+				'store-1',
+				'bottled-water',
+				'budget-bay' as BrandId
+			);
+
+			expect(result).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(
+				harness.controller.state.sandboxGame?.stores[0]?.products.find(
+					(product) => product.productId === 'bottled-water'
+				)?.brandId
+			).toBe('budget-bay');
+			expect(harness.sfx).toHaveBeenCalledWith('sfx.stock.edit');
+			expect(harness.onStateChange).toHaveBeenCalledTimes(1);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).toHaveBeenCalledTimes(1);
+		});
+
+		it('does not expose the sandbox-only brand mutation to scenario mode', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const unavailable = await harness.controller.updateStoreProductBrand(
+				'store-1',
+				'bottled-water',
+				'budget-bay' as BrandId
+			);
+
+			expect(unavailable).toEqual({ status: 'unavailable' });
 		});
 
 		it('reports unchanged when the transition returns the same game reference', async () => {

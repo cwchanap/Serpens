@@ -1,4 +1,4 @@
-import type { ArchetypeId, CityTile, GameState, Store } from './types';
+import type { ArchetypeId, CityTile, GameState, MarketCompetitor, Store } from './types';
 import type { PlacementPreview } from './placementPreview';
 import { storeNameOrOrdinal } from './state';
 import {
@@ -56,6 +56,15 @@ export interface CityMapStoreRender {
 	height: number;
 }
 
+export interface CityMapCompetitorRender {
+	id: string;
+	name: string;
+	archetypeId: ArchetypeId;
+	x: number;
+	y: number;
+	status: MarketCompetitor['status'];
+}
+
 export interface CityMapSnapshot {
 	cityId: string;
 	width: number;
@@ -64,6 +73,7 @@ export interface CityMapSnapshot {
 	placementPreview: PlacementPreview | null;
 	tiles: CityMapTileRender[];
 	stores: CityMapStoreRender[];
+	competitors: CityMapCompetitorRender[];
 }
 
 export function createCityMapSnapshot(
@@ -81,11 +91,15 @@ export function createCityMapSnapshot(
 			selectedTileId,
 			placementPreview: clonePlacementPreview(placementPreview),
 			tiles: [],
-			stores: []
+			stores: [],
+			competitors: []
 		};
 	}
 
 	const activeCityStores = game.stores.filter((store) => store.cityId === city.id);
+	const activeCityCompetitors = (game.competitors ?? []).filter(
+		(competitor) => competitor.cityId === city.id && competitor.status === 'active'
+	);
 	const tileLookup = createCityTileLookup(city);
 	const ownedTileIds = getOccupiedStoreTileIds(city, activeCityStores, tileLookup);
 	const roadCoordinates = new Set(
@@ -110,7 +124,8 @@ export function createCityMapSnapshot(
 		),
 		stores: activeCityStores.map((store) =>
 			createStoreRender(store, game.stores.findIndex((candidate) => candidate.id === store.id) + 1)
-		)
+		),
+		competitors: activeCityCompetitors.map(createCompetitorRender)
 	};
 }
 
@@ -206,5 +221,16 @@ function createStoreRender(store: Store, ordinal: number): CityMapStoreRender {
 		y: store.mapY,
 		width: RETAIL_STORE_FOOTPRINT_WIDTH,
 		height: RETAIL_STORE_FOOTPRINT_HEIGHT
+	};
+}
+
+function createCompetitorRender(competitor: MarketCompetitor): CityMapCompetitorRender {
+	return {
+		id: competitor.id,
+		name: competitor.name,
+		archetypeId: competitor.archetypeId,
+		x: competitor.location.x,
+		y: competitor.location.y,
+		status: competitor.status
 	};
 }

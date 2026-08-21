@@ -2,12 +2,14 @@
 	import { asset } from '$app/paths';
 	import { getProductArt } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
+	import { getSupportedBrands } from '$lib/game/brands';
 	import { getProductDefinition, getProductFreshnessPercent } from '$lib/game/products';
 	import { getStoreProductStatus, getStoreProductStock } from '$lib/game/stock';
 	import { localizeStockStatus } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import type {
+		BrandId,
 		DailyProductReport,
 		DailyStoreReport,
 		ProductId,
@@ -22,8 +24,10 @@
 		ordinal: number;
 		latestReport: DailyStoreReport | null;
 		onUpdate: (storeId: string, productId: ProductId, patch: StoreProductPatch) => void;
+		onUpdateBrand?: (storeId: string, productId: ProductId, brandId: BrandId) => void;
 		canUpdateSellingPrice?: boolean;
 		canUpdateInventoryTargets?: boolean;
+		canUpdateBrand?: boolean;
 		allowedProductIds?: readonly ProductId[];
 		disabledReason?: string | null;
 	}
@@ -34,8 +38,10 @@
 		ordinal,
 		latestReport,
 		onUpdate,
+		onUpdateBrand = () => {},
 		canUpdateSellingPrice = true,
 		canUpdateInventoryTargets = true,
+		canUpdateBrand = true,
 		allowedProductIds = store.products.map((product) => product.productId),
 		disabledReason = null
 	}: Props = $props();
@@ -155,13 +161,20 @@
 
 		onUpdate(store.id, productId, { [field]: value });
 	}
+
+	function updateBrand(productId: ProductId, event: Event): void {
+		if (!canUpdateBrand || !allowedProductSet.has(productId)) return;
+		const brandId = (event.currentTarget as HTMLSelectElement).value as BrandId;
+		if (!getSupportedBrands(productId).some((brand) => brand.id === brandId)) return;
+		onUpdateBrand(store.id, productId, brandId);
+	}
 </script>
 
 <section class="stock-table" aria-labelledby={`${store.id}-stock-heading`}>
 	<h3 id={`${store.id}-stock-heading`}>
 		{i18n.t('storeStockTable.title', { storeName: storeDisplayName(store, ordinal, i18n) })}
 	</h3>
-	{#if disabledReason && (!canUpdateSellingPrice || !canUpdateInventoryTargets || hasDisallowedProduct)}
+	{#if disabledReason && (!canUpdateSellingPrice || !canUpdateInventoryTargets || !canUpdateBrand || hasDisallowedProduct)}
 		<p class="disabled-copy" role="status">{disabledReason}</p>
 	{/if}
 
@@ -174,6 +187,7 @@
 			<thead>
 				<tr>
 					<th scope="col">{i18n.t('storeStockTable.headings.product')}</th>
+					<th scope="col">{i18n.t('storeStockTable.headings.brand')}</th>
 					<th scope="col">{i18n.t('storeStockTable.headings.stock')}</th>
 					<th scope="col">{i18n.t('storeStockTable.headings.importCost')}</th>
 					<th scope="col">{i18n.t('storeStockTable.headings.configuredPrice')}</th>
@@ -187,6 +201,7 @@
 				{#each store.products as product (product.productId)}
 					{@const productName = getProductName(product.productId)}
 					{@const productArt = getProductArt(product.productId)}
+					{@const supportedBrands = getSupportedBrands(product.productId)}
 					{@const report = getProductReport(product.productId)}
 					{@const freshnessPercent = getFreshnessPercent(product.productId, report)}
 					{@const pressureKind = getPressureKind(product.productId, product, report)}
@@ -206,6 +221,20 @@
 								</span>
 								<span>{productName}</span>
 							</div>
+						</td>
+						<td>
+							<select
+								value={product.brandId}
+								disabled={!canUpdateBrand || !allowedProductSet.has(product.productId)}
+								aria-label={i18n.t('storeStockTable.inputLabels.brand', {
+									categoryName: productName
+								})}
+								onchange={(event) => updateBrand(product.productId, event)}
+							>
+								{#each supportedBrands as brand (brand.id)}
+									<option value={brand.id}>{brand.name}</option>
+								{/each}
+							</select>
 						</td>
 						<td data-testid={`derived-stock-${product.productId}`}>
 							{i18n.format.integer(getStoreProductStock(product))}
@@ -270,6 +299,21 @@
 									missed: i18n.format.integer(report.demandMissed)
 								})}
 								<div class="report-evidence">
+									<span data-testid={`shelf-price-${product.productId}`}>
+										{i18n.t('storeStockTable.evidence.shelfPrice', {
+											price: i18n.format.currency(report.baseSellingPrice)
+										})}
+									</span>
+									<span data-testid={`effective-price-${product.productId}`}>
+										{i18n.t('storeStockTable.evidence.effectivePrice', {
+											price: i18n.format.currency(report.effectiveSellingPrice)
+										})}
+									</span>
+									<span data-testid={`gross-margin-${product.productId}`}>
+										{i18n.t('storeStockTable.evidence.grossMargin', {
+											amount: i18n.format.currency(report.grossMargin)
+										})}
+									</span>
 									{#if freshnessPercent !== null}
 										<span data-testid={`freshness-${product.productId}`}>
 											{i18n.t('storeStockTable.evidence.freshness', {
@@ -346,7 +390,7 @@
 
 	table {
 		width: 100%;
-		min-width: 42rem;
+		min-width: 46rem;
 		border-collapse: collapse;
 		font-size: 0.76rem;
 	}
@@ -397,7 +441,8 @@
 		object-fit: contain;
 	}
 
-	input {
+	input,
+	select {
 		width: 4.5rem;
 		min-height: 2rem;
 		border: 1px solid var(--paper-edge);
@@ -409,7 +454,13 @@
 		font-variant-numeric: tabular-nums lining-nums;
 	}
 
-	input:focus {
+	select {
+		width: 8.5rem;
+		font-family: var(--font-body);
+	}
+
+	input:focus,
+	select:focus {
 		border-color: var(--brass-500);
 		outline: none;
 	}

@@ -322,6 +322,83 @@ function currentInventoryGame(): GameState {
 }
 
 describe('ReportsPanel', () => {
+	it('shows latest brand performance and current market rival evidence', async () => {
+		expect.assertions(11);
+		const game = createNewGame('convenience', 20260821);
+		const strongestRival = game.competitors[0]!;
+		const latestProduct = {
+			...replenishedStoreReport().productReports[0]!,
+			brandId: 'budget-bay' as const,
+			unitsSold: 7,
+			revenue: 35,
+			costOfGoods: 21,
+			grossMargin: 14
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [
+						{
+							...replenishedStoreReport(),
+							brandReputationAdjustment: 3,
+							productReports: [latestProduct]
+						}
+					],
+					marketReports: [
+						{
+							cityId: 'harbor-city',
+							productId: 'snacks',
+							cityDemandPool: 100,
+							playerDemandPool: 42,
+							playerShare: 0.42,
+							playerShareDelta: 0.05,
+							playerAttractionScore: 71,
+							competitors: [
+								{
+									competitorId: strongestRival.id,
+									share: 0.33,
+									attractionScore: 68,
+									eventMultiplier: 1.2
+								},
+								{
+									competitorId: game.competitors[1]!.id,
+									share: 0.18,
+									attractionScore: 52,
+									eventMultiplier: 1
+								}
+							]
+						}
+					]
+				}
+			}
+		});
+
+		const brands = page.getByRole('region', { name: 'Brand performance' });
+		await expect.element(brands.getByText('Budget Bay')).toBeVisible();
+		await expect.element(brands.getByText('Units sold: 7')).toBeVisible();
+		await expect.element(brands.getByText('Revenue: $35')).toBeVisible();
+		await expect.element(brands.getByText('Gross margin: $14')).toBeVisible();
+		await expect.element(brands.getByText('Brand reputation response: +3')).toBeVisible();
+
+		const market = page.getByRole('region', { name: 'Market snapshot' });
+		await expect.element(market.getByText('Snacks · Harbor City')).toBeVisible();
+		await expect.element(market.getByText('Player share: 42%')).toBeVisible();
+		await expect.element(market.getByText('Share change: +5%')).toBeVisible();
+		await expect
+			.element(market.getByText(`Strongest rival: ${strongestRival.id} · ${strongestRival.name}`))
+			.toBeVisible();
+		await expect.element(market.getByText('Rival share: 33%')).toBeVisible();
+		await expect
+			.element(market.getByText('Rival attraction: 68 · event multiplier: ×1.2'))
+			.toBeVisible();
+	});
+
 	it('shows latest-day modifier impact provenance without adding rolling modifier totals', async () => {
 		expect.assertions(9);
 		render(ReportsPanel, {

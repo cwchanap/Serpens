@@ -135,7 +135,8 @@ function surfaceProps(overrides: Partial<SurfaceProps> = {}): SurfaceProps {
 			selectedTileId: null,
 			placementPreview: null,
 			tiles: [],
-			stores: []
+			stores: [],
+			competitors: []
 		},
 		onSelectRetailTile: vi.fn(),
 		industryMapSnapshot: {

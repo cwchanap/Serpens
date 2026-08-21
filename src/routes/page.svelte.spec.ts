@@ -835,6 +835,11 @@ describe('GameRouteController sandbox handlers', () => {
 				expect(after.stores[0]!.products[0]!.targetStock).toBe(product.targetStock + 4);
 			}
 		);
+		await assertChanged(
+			'sfx.stock.edit',
+			() => controller.updateStoreProductBrand(storeId, product.productId, 'budget-bay'),
+			(_before, after) => expect(after.stores[0]!.products[0]!.brandId).toBe('budget-bay')
+		);
 
 		controller.loadSandboxGame({
 			...boostedGame(12_003),

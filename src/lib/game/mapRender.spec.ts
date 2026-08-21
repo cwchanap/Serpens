@@ -6,7 +6,7 @@ import type { City, CityTile } from './types';
 
 describe('city map render snapshot', () => {
 	test('creates a serializable snapshot for the active city', () => {
-		expect.assertions(11);
+		expect.assertions(12);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -35,6 +35,52 @@ describe('city map render snapshot', () => {
 		expect(snapshot.tiles.find((candidate) => candidate.feature === 'road')?.feature).toBe('road');
 		expect(snapshot.stores[0]?.width).toBe(2);
 		expect(snapshot.stores[0]?.height).toBe(2);
+		expect(snapshot.competitors.length).toBe(2);
+	});
+
+	test('renders only active rivals in the current retail city without changing ownership', () => {
+		expect.assertions(6);
+		const city = createFlatCity(8, 8);
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: 'retail-city-0-0',
+			seed: 9
+		});
+		const cityCompetitors = game.competitors.map((competitor) => ({
+			...competitor,
+			cityId: city.id as typeof competitor.cityId
+		}));
+		const [activeRival, closedRival] = cityCompetitors;
+		if (!activeRival || !closedRival) throw new Error('expected starter rivals');
+
+		const snapshot = createCityMapSnapshot(
+			{
+				...game,
+				competitors: [
+					{ ...activeRival, status: 'active' },
+					{ ...closedRival, status: 'closed' },
+					{ ...activeRival, id: 'other-city-rival', cityId: 'campus-junction' }
+				]
+			},
+			null
+		);
+
+		expect(snapshot.competitors).toEqual([
+			{
+				id: activeRival.id,
+				name: activeRival.name,
+				archetypeId: activeRival.archetypeId,
+				x: activeRival.location.x,
+				y: activeRival.location.y,
+				status: 'active'
+			}
+		]);
+		expect(snapshot.competitors).toHaveLength(1);
+		expect(snapshot.stores).toHaveLength(1);
+		expect(snapshot.tiles.filter((tile) => tile.owned)).toHaveLength(4);
+		expect(snapshot.selectedTileId).toBeNull();
+		expect(snapshot.placementPreview).toBeNull();
 	});
 
 	test('marks every tile in a retail store footprint as owned', () => {
@@ -58,7 +104,7 @@ describe('city map render snapshot', () => {
 	});
 
 	test('returns an empty safe snapshot when the active city is missing', () => {
-		expect.assertions(5);
+		expect.assertions(6);
 		const city = generateCity({
 			id: 'harbor-city',
 			name: 'Harbor City',
@@ -81,6 +127,7 @@ describe('city map render snapshot', () => {
 		expect(snapshot.height).toBe(0);
 		expect(snapshot.placementPreview).toBeNull();
 		expect(snapshot.tiles).toHaveLength(0);
+		expect(snapshot.competitors).toHaveLength(0);
 	});
 
 	test('includes retail placement preview metadata when provided', () => {
