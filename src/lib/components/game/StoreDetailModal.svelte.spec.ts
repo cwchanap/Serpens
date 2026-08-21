@@ -35,7 +35,6 @@ function store(): Store {
 		staffMorale: 70,
 		staffCapacity: 2,
 		localDemand: 50,
-		competition: 20,
 		managerQuality: 40
 	};
 }

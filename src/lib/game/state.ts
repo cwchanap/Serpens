@@ -43,6 +43,7 @@ import { calculateStockHealth, createStoreProduct, initializeStoreProducts } fro
 import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from './world';
 import { createFoundingFinanceState } from './finance';
 import { initializeCityInventory, initializeRetailSupplyAssignment } from './cityInventory';
+import { ensureCompetitorsForRetailCity } from './competitors';
 export {
 	getDecisionOptionAvailability,
 	resolveDecision,
@@ -189,6 +190,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 			nextRouteSequence: 1
 		},
 		stores: [placedOpeningStore],
+		competitors: [],
 		staff,
 		hiringCandidates,
 		events: createInitialEventRuntime(normalizedSeed),
@@ -197,7 +199,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 	};
 
 	return initializeRetailSupplyAssignment(
-		initializeCityInventory(initialGame, industryCity.id),
+		initializeCityInventory(ensureCompetitorsForRetailCity(initialGame, city.id), industryCity.id),
 		city.id
 	);
 }
@@ -358,7 +360,6 @@ function createStore(input: {
 		staffMorale: clampScore(60 + randomInt(input.rng, -6, 6)),
 		staffCapacity: clampScore(64 + randomInt(input.rng, -5, 5)),
 		localDemand: Math.max(0, archetype.baseTraffic + randomInt(input.rng, -8, 8)),
-		competition: clampScore(45 + randomInt(input.rng, -10, 10)),
 		managerQuality: clampScore(58 + randomInt(input.rng, -7, 7))
 	};
 }

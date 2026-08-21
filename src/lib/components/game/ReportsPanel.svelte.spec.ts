@@ -37,7 +37,6 @@ const store: Store = {
 	staffMorale: 75,
 	staffCapacity: 70,
 	localDemand: 72,
-	competition: 15,
 	managerQuality: 60
 };
 
@@ -96,6 +95,7 @@ const summary: ReportSummary = {
 		storeReports: [],
 		modifierImpacts: [],
 		modifierLifecycle: [],
+		marketReports: [],
 		warnings: []
 	},
 	sevenDay: {

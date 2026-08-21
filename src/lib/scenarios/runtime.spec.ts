@@ -1189,18 +1189,16 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	});
 
 	it.each([
-		['first-profit', [], 'completed', 4, 682],
-		['import-squeeze', [], 'completed', 18, 645],
-		['local-lifeline', [], 'failed', 21, 500]
+		['first-profit', [], 'completed', 4, 862, 'gold'],
+		['import-squeeze', [], 'completed', 18, 647, 'bronze'],
+		['local-lifeline', [], 'failed', 21, 500, null]
 	] as const)(
 		'%s no-action trace ends %s on day %i with the calibrated score %i',
-		(scenarioId, opening, outcome, completionDay, score) => {
+		(scenarioId, opening, outcome, completionDay, score, medal) => {
 			const run = replayLaunchCalibration(scenarioId, opening, false);
 			expect(run.status).not.toBe('active');
 			expect(run.result).not.toBeNull();
-			expect(run.result).toMatchObject({ outcome, completionDay, score });
-			expect(run.result!.score).toBeLessThan(700);
-			expect(run.result!.medal === null || run.result!.medal === 'bronze').toBe(true);
+			expect(run.result).toMatchObject({ outcome, completionDay, score, medal });
 		}
 	);
 

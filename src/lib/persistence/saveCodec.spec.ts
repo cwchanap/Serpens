@@ -17,6 +17,7 @@ import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { cloneTimedEffect } from '$lib/game/eventModifiers';
 import { createNewGame, resolveDecision } from '$lib/game/state';
+import { ensureCompetitorsForRetailCity } from '$lib/game/competitors';
 import { MANAGER_ACTION_HISTORY_LIMIT } from '$lib/game/managerDelegation';
 import { getProductDefinition } from '$lib/game/products';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
@@ -221,10 +222,10 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 				staffMorale: 65,
 				staffCapacity: 66,
 				localDemand: computeStoreLocalDemand(storeTile),
-				competition: 40,
 				managerQuality: 58
 			}
 		],
+		competitors: [],
 		staff: [],
 		hiringCandidates: [],
 		events: overrides.events ?? createInitialEventRuntime(20260505),
@@ -262,7 +263,6 @@ function createGameWithTwoStores(overrides: Partial<GameState> = {}): GameState 
 				staffMorale: 60,
 				staffCapacity: 60,
 				localDemand: computeStoreLocalDemand(secondTile),
-				competition: 35,
 				managerQuality: 50
 			}
 		]
@@ -428,6 +428,7 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		storeReports: [],
 		modifierImpacts: [],
 		modifierLifecycle: [],
+		marketReports: [],
 		warnings: [],
 		...overrides
 	};
@@ -1278,6 +1279,66 @@ describe('saveCodec', () => {
 			const decoded = validateCurrentGameState(createGame());
 
 			expect(decoded.stores[0]!.products[0]!.brandId).toBe('common-ground');
+		});
+
+		test.each([
+			[
+				'non-canonical id',
+				(competitor: GameState['competitors'][number]) => ({ ...competitor, id: 'rival-1' })
+			],
+			[
+				'blocked location',
+				(competitor: GameState['competitors'][number]) => ({
+					...competitor,
+					location: { ...competitor.location, x: 0, y: 0 }
+				})
+			]
+		] as const)('rejects a competitor with a %s', (_label, mutate) => {
+			const game = ensureCompetitorsForRetailCity(createGame(), 'harbor-city');
+			const malformed = {
+				...game,
+				competitors: [mutate(game.competitors[0]!), game.competitors[1]!]
+			} as GameState;
+
+			expect(() => validateCurrentGameState(malformed)).toThrow(SaveDataError);
+		});
+
+		test('round-trips thin market evidence and drops unknown historical rival references', () => {
+			const game = ensureCompetitorsForRetailCity(createGame(), 'harbor-city');
+			const marketReport = {
+				cityId: 'harbor-city' as const,
+				productId: 'bottled-water' as const,
+				cityDemandPool: 120,
+				playerDemandPool: 80,
+				playerShare: 2 / 3,
+				playerShareDelta: null,
+				playerAttractionScore: 100,
+				competitors: [
+					{
+						competitorId: game.competitors[0]!.id,
+						share: 1 / 3,
+						attractionScore: 50,
+						eventMultiplier: 1
+					}
+				]
+			};
+			const report = createDailyReport({ marketReports: [marketReport] });
+			const decoded = decodeHistoricalReport({ ...game, reports: [] }, report);
+			expect(decoded.reports[0]!.marketReports).toEqual([marketReport]);
+
+			const malformedReport = createDailyReport({
+				marketReports: [
+					{
+						...marketReport,
+						competitors: [
+							{ ...marketReport.competitors[0]!, competitorId: 'competitor-harbor-city-9' }
+						]
+					}
+				]
+			});
+			expectHistoricalReportDropped(() =>
+				decodeHistoricalReport({ ...game, reports: [] }, malformedReport)
+			);
 		});
 
 		test.each([

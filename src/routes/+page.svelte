@@ -314,6 +314,7 @@
 			nextRouteSequence: 1
 		},
 		stores: [],
+		competitors: [],
 		staff: [],
 		hiringCandidates: [],
 		events: createInitialEventRuntime(20260503),

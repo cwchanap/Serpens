@@ -1081,6 +1081,9 @@ describe('supply planner action noop branches', () => {
 		};
 		const game = {
 			...base,
+			// This logistics diagnosis fixture isolates route timing from the
+			// explicit market-share demand reduction covered by supplyPlanner.spec.ts.
+			competitors: [],
 			industrialBuildings: [
 				...base.industrialBuildings,
 				...Array.from({ length: 5 }, (_, index) =>

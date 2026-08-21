@@ -13,6 +13,7 @@ import {
 	resolveTrendMultiplier
 } from './productDynamics';
 import { getProductDefinition, PRODUCTS } from './products';
+import { resolveProductMarketShare } from './marketCompetition';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
 import { getRetailCityDemandMultiplier } from './world';
@@ -21,6 +22,8 @@ import type {
 	City,
 	CompanyPolicy,
 	DailyProductReport,
+	DailyMarketReport,
+	ActiveEventModifier,
 	GameState,
 	ProductDefinition,
 	ProductId,
@@ -43,6 +46,7 @@ export interface ProductSalesResult {
 	remainingDemand: RetailDemandProfile;
 	/** Derived aging evidence carried into the daily report composition. */
 	productAging: Map<string, Map<ProductId, ProductInventoryAgingResult>>;
+	marketReports: DailyMarketReport[];
 }
 
 export function createStoreProduct(productId: ProductId, receivedDay = 1): StoreProduct {
@@ -277,17 +281,23 @@ export function getPolicyAdjustedCityProductDemand(
 	const sellers = getEligibleProductSellers(game, city.id, productId);
 	const totalScore = sellers.reduce((sum, store) => sum + brandedSellerScore(store, productId), 0);
 	if (totalScore <= 0) return 0;
+	const productDefinition = getProductDefinition(productId);
+	const market = resolveProductMarketShare(
+		game.competitors.filter((competitor) => competitor.cityId === city.id),
+		getActiveMarketModifiers(game),
+		productDefinition,
+		totalScore,
+		game.day
+	);
+	const companyPool = rawPool * market.playerShare;
 
 	return Math.round(
 		sellers.reduce((sum, store) => {
 			const share = brandedSellerScore(store, productId) / totalScore;
 			const policy = effectivePolicyByStoreId.get(store.id)!;
 			const product = store.products.find((candidate) => candidate.productId === productId)!;
-			const brandEconomics = resolveBrandEconomics(
-				getProductDefinition(productId),
-				product.brandId
-			);
-			return sum + sellerPolicyDemand(rawPool, share, policy) * brandEconomics.demandMultiplier;
+			const brandEconomics = resolveBrandEconomics(productDefinition, product.brandId);
+			return sum + sellerPolicyDemand(companyPool, share, policy) * brandEconomics.demandMultiplier;
 		}, 0)
 	);
 }
@@ -298,6 +308,7 @@ export function simulateProductSalesForCity(input: {
 	rng: Rng;
 	storeCapacity: Map<string, number>;
 	effectivePolicyByStoreId: EffectivePolicyByStoreId;
+	activeModifiers?: readonly ActiveEventModifier[];
 }): ProductSalesResult {
 	const effectivePolicyByStoreId = input.effectivePolicyByStoreId;
 	const baselineDemand = buildCityDemandPools(input.game, input.city);
@@ -313,6 +324,7 @@ export function simulateProductSalesForCity(input: {
 	}
 	const totalUnitsSoldByProduct = new Map<ProductId, number>();
 	const productReports = new Map<string, DailyProductReport[]>();
+	const marketReports: DailyMarketReport[] = [];
 	const capacityRemaining = new Map(input.storeCapacity);
 	const cityStoreIds = new Set(
 		input.game.stores.filter((store) => store.cityId === input.city.id).map((store) => store.id)
@@ -359,13 +371,37 @@ export function simulateProductSalesForCity(input: {
 		if (totalScore <= 0) {
 			continue;
 		}
+		const market = resolveProductMarketShare(
+			input.game.competitors.filter((competitor) => competitor.cityId === input.city.id),
+			input.activeModifiers ?? getActiveMarketModifiers(input.game),
+			productDefinition,
+			totalScore,
+			input.game.day
+		);
+		const cityDemandPool = initialDemand[productId] ?? 0;
+		const playerDemandPool = Math.round(cityDemandPool * market.playerShare);
+		marketReports.push({
+			cityId: input.city.id as DailyMarketReport['cityId'],
+			productId,
+			cityDemandPool,
+			playerDemandPool,
+			playerShare: market.playerShare,
+			playerShareDelta: latestPlayerShareDelta(
+				input.game,
+				input.city.id,
+				productId,
+				market.playerShare
+			),
+			playerAttractionScore: market.playerAttractionScore,
+			competitors: market.competitors
+		});
 
 		for (const store of sellers) {
 			const currentStore = storesById.get(store.id)!;
 			const product = currentStore.products.find((candidate) => candidate.productId === productId)!;
 			const demandShare = brandedSellerScore(store, productId) / totalScore;
 			const policyDemand = sellerPolicyDemand(
-				initialDemand[productId] ?? 0,
+				playerDemandPool,
 				demandShare,
 				effectivePolicyByStoreId.get(store.id)!
 			);
@@ -451,7 +487,26 @@ export function simulateProductSalesForCity(input: {
 		])
 	);
 
-	return { stores, productReports, initialDemand, remainingDemand, productAging };
+	return { stores, productReports, initialDemand, remainingDemand, productAging, marketReports };
+}
+
+function getActiveMarketModifiers(game: Pick<GameState, 'events' | 'day'>): ActiveEventModifier[] {
+	return game.events.activeModifiers.filter(
+		(modifier) => modifier.startsOnDay <= game.day && game.day < modifier.expiresOnDay
+	);
+}
+
+function latestPlayerShareDelta(
+	game: Pick<GameState, 'reports'>,
+	cityId: string,
+	productId: ProductId,
+	playerShare: number
+): number | null {
+	const previous = [...game.reports]
+		.reverse()
+		.flatMap((report) => report.marketReports ?? [])
+		.find((marketReport) => marketReport.cityId === cityId && marketReport.productId === productId);
+	return previous ? playerShare - previous.playerShare : null;
 }
 
 function roundedFiniteOrFallback(value: number | undefined, fallback: number): number {
@@ -598,7 +653,7 @@ function scoreStoreForCategory(store: Store, productId: ProductId): number {
 			: Math.max(0, authoredSensitivity);
 	const reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * reputationSensitivity;
 
-	return Math.max(1, reputationTerm + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2);
+	return Math.max(1, reputationTerm + store.staffCapacity * 0.25);
 }
 
 function compareCodeUnitStrings(left: string, right: string): number {

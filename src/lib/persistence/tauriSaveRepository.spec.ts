@@ -140,6 +140,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 			nextRouteSequence: 1
 		},
 		stores: [],
+		competitors: [],
 		staff: [],
 		hiringCandidates: [],
 		events: overrides.events ?? createInitialEventRuntime(20260505),

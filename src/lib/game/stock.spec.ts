@@ -828,6 +828,32 @@ describe('stock rules', () => {
 		);
 	});
 
+	test('applies current rival market share before allocating live product demand', () => {
+		expect.assertions(2);
+		const generated = createNewGame('convenience', 20260820);
+		const base = {
+			...generated,
+			competitors: generated.competitors.map((competitor) => ({
+				...competitor,
+				archetypeId: 'convenience' as const,
+				productFocus: ['beverages' as const],
+				brandIds: ['common-ground' as const]
+			}))
+		};
+		const policies = effectivePolicyMap(base);
+		const withRivals = simulateProductSalesForCity({
+			game: base,
+			city: base.cities[0]!,
+			rng: createRng(31),
+			storeCapacity: new Map([[base.stores[0]!.id, 10_000]]),
+			effectivePolicyByStoreId: policies
+		});
+		const rivalMarket = withRivals.marketReports[0]!;
+
+		expect(rivalMarket.playerShare).toBeLessThan(1);
+		expect(rivalMarket.playerDemandPool).toBeLessThan(rivalMarket.cityDemandPool);
+	});
+
 	test('applies selected brand demand and unit cost while keeping the configured selling price', () => {
 		expect.assertions(8);
 		const base = createNewGame('convenience', 20260820);
@@ -1286,8 +1312,7 @@ describe('sales loop guards', () => {
 				}
 			],
 			reputation: 10,
-			staffCapacity: 10,
-			competition: 50
+			staffCapacity: 10
 		};
 		const highScoreStore: GameState['stores'][number] = {
 			...game.stores[0]!,
@@ -1297,7 +1322,6 @@ describe('sales loop guards', () => {
 			archetypeId: 'electronics' as const,
 			reputation: 100,
 			staffCapacity: 100,
-			competition: 0,
 			products: [
 				{
 					productId: 'snacks',

@@ -60,6 +60,7 @@ function gameStub(overrides: Partial<GameState> = {}): GameState {
 			nextRouteSequence: 1
 		},
 		stores: [],
+		competitors: [],
 		staff: [],
 		hiringCandidates: [],
 		decisions: [],
@@ -511,6 +512,7 @@ describe('world progression and city opening', () => {
 					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					warnings: []
 				}
 			]
@@ -626,6 +628,7 @@ describe('world progression and city opening', () => {
 					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					warnings: []
 				}
 			]
@@ -730,6 +733,7 @@ describe('world progression and city opening', () => {
 					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					warnings: []
 				}
 			]
@@ -813,6 +817,7 @@ describe('world progression and city opening', () => {
 					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					warnings: []
 				}
 			]
@@ -886,6 +891,7 @@ describe('world progression and city opening', () => {
 					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					warnings: []
 				}
 			]
@@ -953,6 +959,7 @@ describe('world progression and city opening', () => {
 					inventoryLossExpense: 0,
 					modifierImpacts: [],
 					modifierLifecycle: [],
+					marketReports: [],
 					warnings: []
 				}
 			]

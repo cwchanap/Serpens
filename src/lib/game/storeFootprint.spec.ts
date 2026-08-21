@@ -61,7 +61,6 @@ function makeStore(cityId: string, tileId: string, mapX: number, mapY: number): 
 		staffMorale: 80,
 		staffCapacity: 1,
 		localDemand: 50,
-		competition: 0,
 		managerQuality: 0
 	};
 }

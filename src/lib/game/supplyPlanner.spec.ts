@@ -356,6 +356,32 @@ describe('supply planner snapshot', () => {
 		expect(row.potentialDemandPerDay).toBe(129);
 	});
 
+	it('applies the current rival share to the planner trend-free demand pool', () => {
+		expect.assertions(3);
+		const generated = plannerGame([product('snacks')]);
+		const rivals = generated.competitors.map((competitor) => ({
+			...competitor,
+			archetypeId: 'convenience' as const,
+			productFocus: ['convenience-goods' as const],
+			brandIds: ['common-ground' as const]
+		}));
+		const withRivals = readySnapshot(
+			{ ...generated, competitors: rivals },
+			{
+				retailCityId: 'harbor-city',
+				productId: 'snacks'
+			}
+		);
+		const withoutRivals = readySnapshot(
+			{ ...generated, competitors: [] },
+			{ retailCityId: 'harbor-city', productId: 'snacks' }
+		);
+
+		expect(withRivals.demandContributors[0]!.potentialDemandPerDay).toBeLessThan(
+			withoutRivals.demandContributors[0]!.potentialDemandPerDay
+		);
+	});
+
 	it('includes the selected brand demand multiplier in planner seller contribution', () => {
 		expect.assertions(4);
 		const common = readySnapshot(plannerGame([product('snacks')]), {

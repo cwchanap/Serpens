@@ -122,10 +122,7 @@ export function brandedSellerScore(store: Store, productId: ProductId): number {
 			? 1
 			: Math.max(0, authoredSensitivity);
 	const reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * reputationSensitivity;
-	const existingScore = Math.max(
-		1,
-		reputationTerm + store.staffCapacity * 0.25 + (100 - store.competition) * 0.2
-	);
+	const existingScore = Math.max(1, reputationTerm + store.staffCapacity * 0.25);
 
 	return (
 		existingScore * resolveBrandEconomics(product, storeProduct.brandId).marketAttractionMultiplier

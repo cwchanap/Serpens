@@ -58,6 +58,7 @@ function makeReport(railUsage: Record<string, number>): DailyReport {
 		inventoryLossExpense: 0,
 		modifierImpacts: [],
 		modifierLifecycle: [],
+		marketReports: [],
 		warnings: []
 	};
 }
