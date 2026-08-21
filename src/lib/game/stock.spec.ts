@@ -23,9 +23,7 @@ import {
 } from './stock';
 import type { CompanyPolicy, GameState, ProductId, StoreProduct } from './types';
 
-function withOneStoreProducts(
-	products: Array<Omit<StoreProduct, 'brandId'> & Partial<Pick<StoreProduct, 'brandId'>>>
-): GameState {
+function withOneStoreProducts(products: StoreProduct[]): GameState {
 	const game = createNewGame('convenience', 20260508);
 
 	return {
@@ -33,7 +31,7 @@ function withOneStoreProducts(
 		stores: [
 			{
 				...game.stores[0]!,
-				products: products.map((product) => ({ brandId: 'common-ground', ...product }))
+				products: products.map((product) => ({ ...product }))
 			}
 		]
 	};
@@ -256,6 +254,29 @@ describe('stock rules', () => {
 		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(3);
 	});
 
+	test('returns the original game when an existing product has no brand identity', () => {
+		expect.assertions(2);
+		const game = withOneStoreProducts([createStoreProduct('snacks')]);
+		const malformedGame = {
+			...game,
+			stores: game.stores.map((store) => ({
+				...store,
+				products: store.products.map((product) => {
+					const malformedProduct = { ...product };
+					Reflect.deleteProperty(malformedProduct, 'brandId');
+					return malformedProduct;
+				})
+			}))
+		} as unknown as GameState;
+
+		const updated = updateStoreProduct(malformedGame, 'store-1', 'snacks', {
+			sellingPrice: 7
+		});
+
+		expect(updated).toBe(malformedGame);
+		expect(updated.stores[0]!.products[0]!.brandId).toBeUndefined();
+	});
+
 	test('initializes unlocked categories for a given level', () => {
 		expect.assertions(3);
 		expect(initializeStoreProducts('convenience', 4).map((p) => p.productId)).toEqual([
@@ -318,6 +339,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -335,6 +357,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 0,
 				targetStock: 30,
@@ -358,6 +381,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -380,6 +404,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -403,6 +428,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -428,6 +454,7 @@ describe('stock rules', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -1267,6 +1294,7 @@ describe('branch coverage edge cases', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
@@ -1375,6 +1403,7 @@ describe('branch coverage edge cases', () => {
 		const game = withOneStoreProducts([
 			{
 				productId: 'snacks',
+				brandId: 'common-ground',
 				lots: [{ receivedDay: 1, quantity: 8 }],
 				reorderThreshold: 12,
 				targetStock: 30,
