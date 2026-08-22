@@ -89,6 +89,12 @@ function findFixtureStoreTile(city: GameState['cities'][number]) {
 	return tile;
 }
 
+function findFixtureBlockedTile(city: GameState['cities'][number]) {
+	const tile = city.tiles.find((candidate) => !isTileBuildable(candidate));
+	if (!tile) throw new Error(`Expected a blocked fixture tile in ${city.id}.`);
+	return tile;
+}
+
 function findSecondFixtureStoreTile(
 	city: GameState['cities'][number],
 	firstTile: GameState['cities'][number]['tiles'][number]
@@ -1452,10 +1458,13 @@ describe('saveCodec', () => {
 			],
 			[
 				'blocked location',
-				(competitor: GameState['competitors'][number]) => ({
-					...competitor,
-					location: { ...competitor.location, x: 0, y: 0 }
-				}),
+				(competitor: GameState['competitors'][number]) => {
+					const blocked = findFixtureBlockedTile(createFixtureRetailCity());
+					return {
+						...competitor,
+						location: { ...competitor.location, x: blocked.x, y: blocked.y }
+					};
+				},
 				'location must reference a buildable city tile'
 			]
 		] as const)('rejects a competitor with a %s', (_label, mutate, fragment) => {

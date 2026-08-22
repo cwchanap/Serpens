@@ -1623,7 +1623,7 @@ test('living market sandbox persists a brand edit and reports market evidence', 
 			const savedProduct = getSavedProduct(await readAutoSaveGame(page), 'bottled-water');
 			return { brandId: savedProduct.brandId, sellingPrice: savedProduct.sellingPrice };
 		})
-		.toEqual({ brandId: 'budget-bay', sellingPrice: 3 });
+		.toEqual({ brandId: 'budget-bay', sellingPrice: 6 });
 
 	await storeDetails.getByRole('button', { name: /close store details/i }).click();
 	await page.reload();
@@ -1642,7 +1642,7 @@ test('living market sandbox persists a brand edit and reports market evidence', 
 	).toHaveValue('budget-bay');
 	await expect(
 		reloadedDetails.getByRole('spinbutton', { name: 'Selling price for Bottled Water' })
-	).toHaveValue('3');
+	).toHaveValue('6');
 	await reloadedDetails.getByRole('button', { name: /close store details/i }).click();
 
 	await page.getByRole('button', { name: /^advance day$/i }).click();

@@ -9,13 +9,21 @@ export type ProductFamilyId =
 	| 'grocery-food';
 export type BrandId = 'common-ground' | 'budget-bay' | 'northstar-select' | 'fresh-field';
 
-export const ALL_PRODUCT_FAMILIES: readonly ProductFamilyId[] = [
+/** Compile-time check helper: errors unless T is never. */
+type AssertExhausted<T extends never> = T;
+
+export const ALL_PRODUCT_FAMILIES = [
 	'beverages',
 	'convenience-goods',
 	'fashion',
 	'electronics',
 	'grocery-food'
-];
+] as const satisfies readonly ProductFamilyId[];
+// Errors when a ProductFamilyId member is added without extending the list above.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- compile-time exhaustiveness check
+type AllProductFamiliesExhaustive = AssertExhausted<
+	Exclude<ProductFamilyId, (typeof ALL_PRODUCT_FAMILIES)[number]>
+>;
 
 export interface BrandDefinition {
 	id: BrandId;
@@ -50,12 +58,17 @@ export type ProductId =
 	| 'bakery';
 export type PricingPosture = 'discount' | 'competitive' | 'standard' | 'premium';
 
-export const PRICING_POSTURES: readonly PricingPosture[] = [
+export const PRICING_POSTURES = [
 	'discount',
 	'competitive',
 	'standard',
 	'premium'
-];
+] as const satisfies readonly PricingPosture[];
+// Errors when a PricingPosture member is added without extending the list above.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- compile-time exhaustiveness check
+type PricingPosturesExhaustive = AssertExhausted<
+	Exclude<PricingPosture, (typeof PRICING_POSTURES)[number]>
+>;
 export type InventoryBuffer = 'lean' | 'balanced' | 'generous';
 export type StaffingPosture = 'minimal' | 'efficient' | 'service';
 export type StaffRole = 'manager' | 'general';

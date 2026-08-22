@@ -37,6 +37,7 @@ function attractionModifier(overrides: Partial<ActiveEventModifier> = {}): Activ
 
 describe('explicit product market share', () => {
 	test('gives the player the whole market with no rivals and positive attraction', () => {
+		expect.assertions(2);
 		const resolution = resolveProductMarketShare(
 			[],
 			[],
@@ -50,6 +51,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('excludes closed rivals from attraction and report rows', () => {
+		expect.assertions(2);
 		const resolution = resolveProductMarketShare(
 			[competitor({ status: 'closed' })],
 			[],
@@ -63,6 +65,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('reduces player share as a rival reputation increases', () => {
+		expect.assertions(2);
 		const product = getProductDefinition('bottled-water');
 		const low = resolveProductMarketShare([competitor({ reputation: 45 })], [], product, 80, 1);
 		const high = resolveProductMarketShare([competitor({ reputation: 75 })], [], product, 80, 1);
@@ -74,6 +77,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('lowers player share for a focused rival compared with an unfocused rival', () => {
+		expect.assertions(1);
 		const product = getProductDefinition('bottled-water');
 		const focused = resolveProductMarketShare(
 			[competitor({ productFocus: ['beverages'] })],
@@ -94,6 +98,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('makes an aggressive discount posture more effective as price sensitivity rises', () => {
+		expect.assertions(1);
 		const rival = competitor({ pricePosture: 'discount' });
 		const sensitive = resolveProductMarketShare(
 			[rival],
@@ -116,6 +121,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('raises compatible specialist attraction for the matching product family', () => {
+		expect.assertions(1);
 		const product = getProductDefinition('produce');
 		const common = resolveProductMarketShare(
 			[
@@ -150,6 +156,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('excludes a rival whose archetype does not stock the product', () => {
+		expect.assertions(2);
 		const resolution = resolveProductMarketShare(
 			[competitor({ archetypeId: 'boutique' })],
 			[],
@@ -163,6 +170,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('excludes a rival whose brands support only other product families', () => {
+		expect.assertions(2);
 		const resolution = resolveProductMarketShare(
 			[competitor({ brandIds: ['northstar-select'] })],
 			[],
@@ -176,6 +184,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('returns canonical rival rows and shares that sum to one', () => {
+		expect.assertions(2);
 		const resolution = resolveProductMarketShare(
 			[
 				competitor({ id: 'competitor-harbor-city-2', reputation: 60 }),
@@ -198,6 +207,7 @@ describe('explicit product market share', () => {
 	});
 
 	test('applies an active rival attraction modifier and restores the base share after expiry', () => {
+		expect.assertions(4);
 		const rival = competitor();
 		const product = getProductDefinition('bottled-water');
 		const base = resolveProductMarketShare([rival], [], product, 80, 2);
@@ -208,5 +218,31 @@ describe('explicit product market share', () => {
 		expect(active.competitors[0]?.eventMultiplier).toBe(1.18);
 		expect(expired.playerShare).toBe(base.playerShare);
 		expect(expired.competitors[0]?.eventMultiplier).toBe(1);
+	});
+
+	test('normalizes a negative or non-finite player attraction score to zero', () => {
+		expect.assertions(6);
+		const product = getProductDefinition('bottled-water');
+
+		for (const invalidScore of [-12, Number.NEGATIVE_INFINITY, Number.NaN]) {
+			const resolution = resolveProductMarketShare([competitor()], [], product, invalidScore, 1);
+
+			expect(resolution.playerAttractionScore).toBe(0);
+			expect(resolution.playerShare).toBe(0);
+		}
+	});
+
+	test('returns a zero player share when the total attraction pool is zero', () => {
+		expect.assertions(2);
+		const resolution = resolveProductMarketShare(
+			[],
+			[],
+			getProductDefinition('bottled-water'),
+			Number.NaN,
+			1
+		);
+
+		expect(resolution.playerShare).toBe(0);
+		expect(resolution.competitors).toEqual([]);
 	});
 });

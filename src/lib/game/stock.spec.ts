@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { brandedSellerScore } from './brands';
+import { brandedSellerScore, getBrandDefaultSellingPrice } from './brands';
 import { resolveEffectivePolicy, setPolicyOverride } from './policyInheritance';
 import { resolveProductMarketDynamics } from './productDynamics';
 import { getProductDefinition } from './products';
@@ -218,7 +218,7 @@ describe('stock rules', () => {
 		expect(product.brandId).toBe('common-ground');
 	});
 
-	test('changes a supported brand and writes its default price only when price is omitted', () => {
+	test('changes a supported brand without repricing unless a price is provided', () => {
 		expect.assertions(7);
 		const game = withOneStoreProducts([createStoreProduct('apparel')]);
 
@@ -227,22 +227,29 @@ describe('stock rules', () => {
 		});
 		const brandedProduct = branded.stores[0]!.products[0]!;
 		expect(brandedProduct.brandId).toBe('northstar-select');
-		expect(brandedProduct.sellingPrice).toBe(45);
+		// The brand switch preserves the shelf price instead of writing the
+		// northstar-select default (45).
+		expect(brandedProduct.sellingPrice).toBe(38);
 
-		const explicitlyPriced = updateStoreProduct(branded, 'store-1', 'apparel', {
+		const priceEdited = updateStoreProduct(branded, 'store-1', 'apparel', {
+			sellingPrice: 39
+		});
+		const priceEditedProduct = priceEdited.stores[0]!.products[0]!;
+		expect(priceEditedProduct.brandId).toBe('northstar-select');
+		expect(priceEditedProduct.sellingPrice).toBe(39);
+		// Editing the price alone neither reapplies the brand multiplier nor
+		// resets to the brand's default price.
+		expect(priceEditedProduct.sellingPrice).not.toBe(
+			getBrandDefaultSellingPrice(getProductDefinition('apparel'), 'northstar-select')
+		);
+
+		const explicitlyPriced = updateStoreProduct(priceEdited, 'store-1', 'apparel', {
 			brandId: 'common-ground',
 			sellingPrice: 51
 		});
 		const explicitlyPricedProduct = explicitlyPriced.stores[0]!.products[0]!;
 		expect(explicitlyPricedProduct.brandId).toBe('common-ground');
 		expect(explicitlyPricedProduct.sellingPrice).toBe(51);
-
-		const priceEdited = updateStoreProduct(explicitlyPriced, 'store-1', 'apparel', {
-			sellingPrice: 39
-		});
-		expect(priceEdited.stores[0]!.products[0]!.brandId).toBe('common-ground');
-		expect(priceEdited.stores[0]!.products[0]!.sellingPrice).toBe(39);
-		expect(priceEdited.stores[0]!.products[0]!.sellingPrice).not.toBe(39 * 1.18);
 	});
 
 	test('rejects a brand that does not support the product family without changing the game', () => {
@@ -258,7 +265,7 @@ describe('stock rules', () => {
 		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(3);
 	});
 
-	test('applies non-brand edits when the existing product has no brand identity', () => {
+	test('applies non-brand edits and heals a missing brand identity through the product default', () => {
 		expect.assertions(3);
 		const game = withOneStoreProducts([createStoreProduct('snacks')]);
 		const malformedGame = {
@@ -278,7 +285,7 @@ describe('stock rules', () => {
 		});
 
 		expect(updated).not.toBe(malformedGame);
-		expect(updated.stores[0]!.products[0]!.brandId).toBeUndefined();
+		expect(updated.stores[0]!.products[0]!.brandId).toBe('common-ground');
 		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(7);
 	});
 
@@ -899,7 +906,7 @@ describe('stock rules', () => {
 		expect(commonReport.costOfGoods).toBe(Math.round(commonReport.unitsSold * 3));
 		expect(budgetReport.costOfGoods).toBe(Math.round(budgetReport.unitsSold * 2.52));
 		expect(budgetReport.baseSellingPrice).toBe(5);
-		expect(budgetReport).not.toHaveProperty('customerPrice');
+		expect(budgetReport.effectiveSellingPrice).toBe(5);
 	});
 
 	test('allows independent seller demand above the raw trend pool without changing canonical order', () => {

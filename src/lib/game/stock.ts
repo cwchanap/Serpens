@@ -103,18 +103,18 @@ export function updateStoreProduct(
 	const product = store.products[productIndex]!;
 	const productDefinition = getProductDefinition(productId);
 	const currentBrandId = product.brandId;
-	const nextBrandId = patch.brandId ?? currentBrandId;
+	const nextBrandId = patch.brandId ?? currentBrandId ?? productDefinition.defaultBrandId;
 	// Reject only brand changes onto an unsupported family; unrelated price,
 	// reorder-threshold, and target-stock edits still apply.
 	const brandChanged = nextBrandId !== currentBrandId;
 	if (brandChanged && !isBrandSupported(productId, nextBrandId)) {
 		return game;
 	}
+	// A brand switch alone never reprices the shelf: only an explicit price
+	// patch (or none at all, preserving the current price) updates it.
 	const sellingPrice = Math.max(
 		1,
-		brandChanged && patch.sellingPrice === undefined
-			? getBrandDefaultSellingPrice(productDefinition, nextBrandId)
-			: roundedFiniteOrFallback(patch.sellingPrice, product.sellingPrice)
+		roundedFiniteOrFallback(patch.sellingPrice, product.sellingPrice)
 	);
 	const reorderThreshold = Math.max(
 		0,

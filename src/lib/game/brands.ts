@@ -104,12 +104,13 @@ export function baseSellerScore(
 	reputationSensitivity: number | undefined
 ): number {
 	const safeReputation = Number.isFinite(reputation) ? reputation : 50;
+	const safeStaffCapacity = Number.isFinite(staffCapacity) ? staffCapacity : 0;
 	const sensitivity =
 		reputationSensitivity === undefined || !Number.isFinite(reputationSensitivity)
 			? 1
 			: Math.max(0, reputationSensitivity);
 	const reputationTerm = 50 * 0.55 + (safeReputation - 50) * 0.55 * sensitivity;
-	return Math.max(1, reputationTerm + staffCapacity * 0.25);
+	return Math.max(1, reputationTerm + safeStaffCapacity * 0.25);
 }
 
 export function brandedSellerScore(store: Store, productId: ProductId): number {
