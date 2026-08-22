@@ -292,6 +292,33 @@ describe('stock rules', () => {
 		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(7);
 	});
 
+	test('heals a missing brand identity without resetting an existing shelf price when no price is supplied', () => {
+		expect.assertions(3);
+		const game = withOneStoreProducts([createStoreProduct('snacks')]);
+		// Pin a custom shelf price and strip the brand so the patch must repair
+		// the brand via the product default without touching the price.
+		const customPrice = 42;
+		const malformedGame = {
+			...game,
+			stores: game.stores.map((store) => ({
+				...store,
+				products: store.products.map((product) => ({
+					...product,
+					sellingPrice: customPrice,
+					brandId: undefined
+				}))
+			}))
+		} as unknown as GameState;
+
+		const updated = updateStoreProduct(malformedGame, 'store-1', 'snacks', {
+			reorderThreshold: 9
+		});
+
+		expect(updated.stores[0]!.products[0]!.brandId).toBe('common-ground');
+		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(customPrice);
+		expect(updated.stores[0]!.products[0]!.reorderThreshold).toBe(9);
+	});
+
 	test('initializes unlocked categories for a given level', () => {
 		expect.assertions(3);
 		expect(initializeStoreProducts('convenience', 4).map((p) => p.productId)).toEqual([
