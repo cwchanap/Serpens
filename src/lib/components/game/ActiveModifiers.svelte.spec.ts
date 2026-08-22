@@ -191,6 +191,34 @@ describe('ActiveModifiers', () => {
 		await expect.element(region.getByText('Capacity: 30 → 15 units')).not.toBeInTheDocument();
 	});
 
+	it('falls back to the raw competitor id when the competitor target no longer exists', async () => {
+		expect.assertions(1);
+		render(ActiveModifiers, {
+			i18n: createI18n('en'),
+			day: 5,
+			modifiers: [
+				modifier({
+					source: {
+						eventId: 'rival-promotion',
+						instanceId: 'event-instance-2',
+						optionId: 'counter-promote'
+					},
+					target: { kind: 'competitor', competitorId: 'competitor-harbor-city-1' },
+					stackingKey: 'rival-promotion:market-attraction',
+					effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.18 },
+					explanation: { key: 'events.rivalPromotion.modifier', params: {} }
+				})
+			],
+			routes: [],
+			competitors: []
+		});
+
+		const region = page.getByRole('region', { name: 'Active modifiers' });
+		await expect
+			.element(region.getByText('Rival: competitor-harbor-city-1 (removed)', { exact: true }))
+			.toBeVisible();
+	});
+
 	it('sorts modifiers by exclusive expiry then locale-independent ID order', () => {
 		render(ActiveModifiers, {
 			i18n: createI18n('en'),

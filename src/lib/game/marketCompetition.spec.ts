@@ -220,6 +220,59 @@ describe('explicit product market share', () => {
 		expect(expired.competitors[0]?.eventMultiplier).toBe(1);
 	});
 
+	test('ignores active modifiers that target another rival or carry invalid attraction values', () => {
+		expect.assertions(4);
+		const rival = competitor();
+		const product = getProductDefinition('bottled-water');
+		const base = resolveProductMarketShare([rival], [], product, 80, 2);
+
+		const otherRival = resolveProductMarketShare(
+			[rival],
+			[
+				attractionModifier({
+					target: { kind: 'competitor', competitorId: 'competitor-harbor-city-2' }
+				})
+			],
+			product,
+			80,
+			2
+		);
+		const nonFinite = resolveProductMarketShare(
+			[rival],
+			[
+				attractionModifier({
+					effect: { kind: 'competitor-attraction-multiplier', multiplier: Number.NaN }
+				})
+			],
+			product,
+			80,
+			2
+		);
+		const nonPositive = resolveProductMarketShare(
+			[rival],
+			[attractionModifier({ effect: { kind: 'competitor-attraction-multiplier', multiplier: 0 } })],
+			product,
+			80,
+			2
+		);
+		const wrongEffect = resolveProductMarketShare(
+			[rival],
+			[
+				attractionModifier({
+					effect: { kind: 'route-capacity-multiplier', multiplier: 1.5 } as never
+				})
+			],
+			product,
+			80,
+			2
+		);
+
+		expect(otherRival.playerShare).toBe(base.playerShare);
+		expect(nonFinite.playerShare).toBe(base.playerShare);
+		expect(nonPositive.playerShare).toBe(base.playerShare);
+		expect(wrongEffect.playerShare).toBe(base.playerShare);
+	});
+
 	test('normalizes a negative or non-finite player attraction score to zero', () => {
 		expect.assertions(6);
 		const product = getProductDefinition('bottled-water');

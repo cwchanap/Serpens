@@ -104,6 +104,24 @@ describe('sandbox competitor generation', () => {
 		});
 	});
 
+	test('is a no-op for an unknown city id and when too few buildable tiles remain', () => {
+		const game = createNewGame('convenience', 20260822);
+
+		expect(ensureCompetitorsForRetailCity(game, 'nonexistent-city')).toBe(game);
+
+		const withoutRivals = { ...game, competitors: [] };
+		const harborCity = withoutRivals.cities.find((city) => city.id === 'harbor-city')!;
+		const noBuildableTiles = {
+			...withoutRivals,
+			cities: withoutRivals.cities.map((city) =>
+				city.id === 'harbor-city' ? { ...city, tiles: [] } : city
+			)
+		};
+		expect(noBuildableTiles.cities.find((city) => city.id === 'harbor-city')!.tiles).toEqual([]);
+		expect(harborCity).toBeDefined();
+		expect(ensureCompetitorsForRetailCity(noBuildableTiles, 'harbor-city')).toBe(noBuildableTiles);
+	});
+
 	test('adds exactly two rivals when a second sandbox retail map is opened', () => {
 		const game = withCampusRevealed(createNewGame('convenience', 20260823));
 		const opened = openWorldCity(game, 'campus-junction');

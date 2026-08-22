@@ -30,6 +30,7 @@ import {
 } from '$lib/game/world';
 import type {
 	DailyMaterialMovement,
+	DailyMarketReport,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
@@ -1477,6 +1478,105 @@ describe('saveCodec', () => {
 			expectGameStateErrorCode(malformed, 'corrupt', fragment);
 		});
 
+		test.each([
+			[
+				'descending id order',
+				(game: GameState) => ({
+					...game,
+					competitors: [...game.competitors].sort((a, b) => (a.id < b.id ? 1 : -1))
+				}),
+				'id must be in ascending code-unit order'
+			],
+			[
+				'unopened city',
+				(game: GameState) => ({
+					...game,
+					competitors: game.competitors.map((c) => ({
+						...c,
+						cityId: 'campus-junction' as WorldCityId,
+						id: c.id.replace('harbor-city', 'campus-junction')
+					})),
+					world: { ...game.world, openedCityIds: ['harbor-city', 'industry-city'] }
+				}),
+				'must reference an opened, materialized retail city'
+			],
+			[
+				'neighborhood mismatch',
+				(game: GameState) => ({
+					...game,
+					competitors: game.competitors.map((c) => ({
+						...c,
+						location: { ...c.location, neighborhoodId: 'downtown' as never }
+					}))
+				}),
+				'location neighborhood must match its city tile'
+			],
+			[
+				'duplicate location within city',
+				(game: GameState) => ({
+					...game,
+					competitors: [
+						{ ...game.competitors[0]! },
+						{ ...game.competitors[1]!, location: { ...game.competitors[0]!.location } }
+					]
+				}),
+				'location must be unique within its city'
+			],
+			[
+				'only one rival per city',
+				(game: GameState) => ({
+					...game,
+					competitors: [game.competitors[0]!]
+				}),
+				'must contain both canonical rivals or none'
+			]
+		] as const)('rejects competitors with %s', (_label, mutate, fragment) => {
+			const game = ensureCompetitorsForRetailCity(createGame(), 'harbor-city');
+			expectGameStateErrorCode(mutate(game) as GameState, 'corrupt', fragment);
+		});
+
+		test.each([
+			[
+				'ordinal out of range',
+				{ id: 'competitor-harbor-city-3' },
+				'id must use canonical ordinal 1 or 2'
+			],
+			['reputation out of range', { reputation: 150 }, 'reputation must be between 0 and 100'],
+			[
+				'productFocus too long',
+				{ productFocus: ['beverages', 'fashion', 'electronics'] },
+				'productFocus must contain one or two families'
+			],
+			[
+				'productFocus not unique',
+				{ productFocus: ['beverages', 'beverages'] },
+				'productFocus families must be unique'
+			],
+			[
+				'brandIds too long',
+				{ brandIds: ['common-ground', 'budget-bay', 'fresh-field'] },
+				'brandIds must contain one or two brands'
+			],
+			[
+				'brandIds not unique',
+				{ brandIds: ['common-ground', 'common-ground'] },
+				'brandIds must be unique'
+			],
+			[
+				'brand does not support focused family',
+				{ productFocus: ['electronics'], brandIds: ['fresh-field'] },
+				'brandIds must support at least one focused family'
+			]
+		] as const)('rejects a competitor with %s', (_label, overrides, fragment) => {
+			const game = ensureCompetitorsForRetailCity(createGame(), 'harbor-city');
+			const malformed = {
+				...game,
+				competitors: [{ ...game.competitors[0]!, ...overrides }, game.competitors[1]!]
+			} as GameState;
+
+			expectGameStateErrorCode(malformed, 'corrupt', fragment);
+		});
+
 		test('round-trips thin market evidence and drops unknown historical rival references', () => {
 			const game = ensureCompetitorsForRetailCity(createGame(), 'harbor-city');
 			const marketReport = {
@@ -1606,6 +1706,212 @@ describe('saveCodec', () => {
 
 			expectHistoricalReportPreserved(() =>
 				decodeHistoricalReport({ ...closedGame, reports: [] }, report)
+			);
+		});
+
+		const marketEvidenceGame = ensureCompetitorsForRetailCity(createGame(), 'harbor-city');
+		test.each([
+			[
+				'duplicate city/product key',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 100,
+						playerDemandPool: 50,
+						playerShare: 0.5,
+						playerShareDelta: null,
+						playerAttractionScore: 80,
+						competitors: []
+					},
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 100,
+						playerDemandPool: 50,
+						playerShare: 0.5,
+						playerShareDelta: null,
+						playerAttractionScore: 80,
+						competitors: []
+					}
+				]
+			],
+			[
+				'descending city/product key order',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'snacks',
+						cityDemandPool: 100,
+						playerDemandPool: 50,
+						playerShare: 0.5,
+						playerShareDelta: null,
+						playerAttractionScore: 80,
+						competitors: []
+					},
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 100,
+						playerDemandPool: 50,
+						playerShare: 0.5,
+						playerShareDelta: null,
+						playerAttractionScore: 80,
+						competitors: []
+					}
+				]
+			],
+			[
+				'playerDemandPool exceeding cityDemandPool',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 50,
+						playerDemandPool: 80,
+						playerShare: 0.5,
+						playerShareDelta: null,
+						playerAttractionScore: 80,
+						competitors: []
+					}
+				]
+			],
+			[
+				'playerShare out of range',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 100,
+						playerDemandPool: 50,
+						playerShare: 1.5,
+						playerShareDelta: null,
+						playerAttractionScore: 80,
+						competitors: []
+					}
+				]
+			],
+			[
+				'playerShareDelta out of range',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 100,
+						playerDemandPool: 50,
+						playerShare: 0.5,
+						playerShareDelta: 2,
+						playerAttractionScore: 80,
+						competitors: []
+					}
+				]
+			],
+			[
+				'descending competitorId order',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 120,
+						playerDemandPool: 80,
+						playerShare: 2 / 3,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: [
+							{
+								competitorId: marketEvidenceGame.competitors[1]!.id,
+								share: 1 / 6,
+								attractionScore: 25,
+								eventMultiplier: 1
+							},
+							{
+								competitorId: marketEvidenceGame.competitors[0]!.id,
+								share: 1 / 6,
+								attractionScore: 25,
+								eventMultiplier: 1
+							}
+						]
+					}
+				]
+			],
+			[
+				'duplicate competitorId',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 120,
+						playerDemandPool: 80,
+						playerShare: 2 / 3,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: [
+							{
+								competitorId: marketEvidenceGame.competitors[0]!.id,
+								share: 1 / 6,
+								attractionScore: 25,
+								eventMultiplier: 1
+							},
+							{
+								competitorId: marketEvidenceGame.competitors[0]!.id,
+								share: 1 / 6,
+								attractionScore: 25,
+								eventMultiplier: 1
+							}
+						]
+					}
+				]
+			],
+			[
+				'competitor share out of range',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 120,
+						playerDemandPool: 80,
+						playerShare: 2 / 3,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: [
+							{
+								competitorId: marketEvidenceGame.competitors[0]!.id,
+								share: 1.5,
+								attractionScore: 25,
+								eventMultiplier: 1
+							}
+						]
+					}
+				]
+			],
+			[
+				'non-positive eventMultiplier',
+				[
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: 120,
+						playerDemandPool: 80,
+						playerShare: 2 / 3,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: [
+							{
+								competitorId: marketEvidenceGame.competitors[0]!.id,
+								share: 1 / 3,
+								attractionScore: 25,
+								eventMultiplier: 0
+							}
+						]
+					}
+				]
+			]
+		] as const)('drops a historical report with %s in market evidence', (_label, marketReports) => {
+			const report = createDailyReport({
+				marketReports: marketReports as unknown as DailyMarketReport[]
+			});
+			expectHistoricalReportDropped(() =>
+				decodeHistoricalReport({ ...marketEvidenceGame, reports: [] }, report)
 			);
 		});
 
@@ -3951,6 +4257,41 @@ describe('saveCodec', () => {
 			'must be competitor-attraction-multiplier for a competitor target'
 		);
 	});
+
+	test.each([
+		[['beverages', 'fashion', 'electronics'], 'must contain one or two families'],
+		[['beverages', 'beverages'], 'productFocus families must be unique']
+	] as const)(
+		'rejects a saved competitor-product-focus-set effect with %j',
+		(productFocus, fragment) => {
+			const game = createCompleteCompetitorEventGame();
+			const malformed = {
+				...game,
+				decisions: game.decisions.map((decision) =>
+					decision.kind === 'event'
+						? {
+								...decision,
+								options: decision.options.map((option, index) =>
+									index === 0
+										? {
+												...option,
+												effects: [
+													{
+														kind: 'competitor-product-focus-set',
+														productFocus
+													}
+												]
+											}
+										: option
+								)
+							}
+						: decision
+				)
+			} as GameState;
+
+			expect(() => validateCurrentGameState(malformed)).toThrow(fragment);
+		}
+	);
 
 	test('rejects duplicate stacking keys on the same route target while allowing cross-route coexistence', () => {
 		const game = createCompleteRouteEventGame();

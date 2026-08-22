@@ -743,4 +743,117 @@ describe('validateAndNormalizeEventCatalog', () => {
 			'wrong-competitor-effect-target:options[0].effects[0].kind'
 		]);
 	});
+
+	it('rejects competitor status, posture, focus, and modifier target/effect mismatches', () => {
+		const competitorTarget = { kind: 'competitor' as const, status: 'active' as const };
+		const diagnostics = diagnosticsFor([
+			definition({
+				id: 'bad-status-set',
+				target: competitorTarget,
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'competitor-status-set', status: 'paused' as never }],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'wrong-posture-target',
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'competitor-price-posture-set', pricePosture: 'premium' as never }],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'wrong-focus-target',
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'competitor-product-focus-set', productFocus: ['beverages'] }],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'wrong-mod-target',
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							{
+								durationDays: 3,
+								stackingKey: 'competitor:event',
+								stackingRule: 'replace',
+								effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.1 },
+								explanation: { key: 'events.competitor.modifier', params: {} },
+								importance: 'important'
+							}
+						]
+					}
+				]
+			}),
+			definition({
+				id: 'wrong-mod-effect',
+				target: competitorTarget,
+				options: [
+					{
+						id: 'accept',
+						effects: [],
+						modifiers: [
+							{
+								durationDays: 3,
+								stackingKey: 'competitor:event',
+								stackingRule: 'replace',
+								effect: { kind: 'route-capacity-multiplier', multiplier: 0.8 },
+								explanation: { key: 'events.competitor.modifier', params: {} },
+								importance: 'important'
+							}
+						]
+					}
+				]
+			}),
+			definition({
+				id: 'bad-focus-length',
+				target: competitorTarget,
+				options: [
+					{
+						id: 'accept',
+						effects: [{ kind: 'competitor-product-focus-set', productFocus: [] }],
+						modifiers: []
+					}
+				]
+			}),
+			definition({
+				id: 'bad-focus-family',
+				target: competitorTarget,
+				options: [
+					{
+						id: 'accept',
+						effects: [
+							{
+								kind: 'competitor-product-focus-set',
+								productFocus: ['unknown-family' as never]
+							}
+						],
+						modifiers: []
+					}
+				]
+			})
+		]);
+
+		expect(diagnostics.map(({ eventId, path }) => `${eventId}:${path}`)).toEqual([
+			'bad-focus-family:options[0].effects[0].productFocus[0]',
+			'bad-focus-length:options[0].effects[0].productFocus',
+			'bad-status-set:options[0].effects[0].status',
+			'wrong-focus-target:options[0].effects[0].kind',
+			'wrong-mod-effect:options[0].modifiers[0].effect.kind',
+			'wrong-mod-target:options[0].modifiers[0].effect.kind',
+			'wrong-posture-target:options[0].effects[0].kind'
+		]);
+	});
 });

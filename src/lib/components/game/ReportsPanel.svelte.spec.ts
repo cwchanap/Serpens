@@ -399,6 +399,110 @@ describe('ReportsPanel', () => {
 			.toBeVisible();
 	});
 
+	it('accumulates brand performance across multiple products with the same brand', async () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260821);
+		const productA = {
+			...replenishedStoreReport().productReports[0]!,
+			productId: 'snacks' as const,
+			brandId: 'common-ground' as const,
+			unitsSold: 5,
+			revenue: 25,
+			costOfGoods: 15,
+			grossMargin: 10
+		};
+		const productB = {
+			...productA,
+			productId: 'bottled-water' as const,
+			unitsSold: 3,
+			revenue: 12,
+			costOfGoods: 6,
+			grossMargin: 6
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [
+						{
+							...replenishedStoreReport(),
+							productReports: [productA, productB]
+						}
+					]
+				}
+			}
+		});
+
+		const brands = page.getByRole('region', { name: 'Brand performance' });
+		await expect.element(brands.getByText('Units sold: 8')).toBeVisible();
+		await expect.element(brands.getByText('Revenue: $37')).toBeVisible();
+		await expect.element(brands.getByText('Gross margin: $16')).toBeVisible();
+	});
+
+	it('shows the empty brand performance message when only reputation rows exist', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260821);
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [
+						{
+							...replenishedStoreReport(),
+							brandReputationAdjustment: 2,
+							productReports: []
+						}
+					]
+				}
+			}
+		});
+
+		const brands = page.getByRole('region', { name: 'Brand performance' });
+		await expect.element(brands.getByText('No brand performance evidence recorded.')).toBeVisible();
+	});
+
+	it('shows the no-rival message when a market report has no competitors', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260821);
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					marketReports: [
+						{
+							cityId: 'harbor-city',
+							productId: 'snacks',
+							cityDemandPool: 100,
+							playerDemandPool: 100,
+							playerShare: 1,
+							playerShareDelta: null,
+							playerAttractionScore: 80,
+							competitors: []
+						}
+					]
+				}
+			}
+		});
+
+		const market = page.getByRole('region', { name: 'Market snapshot' });
+		await expect.element(market.getByText('No rival evidence recorded.')).toBeVisible();
+	});
+
 	it('shows latest-day modifier impact provenance without adding rolling modifier totals', async () => {
 		expect.assertions(9);
 		render(ReportsPanel, {
