@@ -109,11 +109,11 @@ describe('event target resolution', () => {
 			competitor({ id: 'competitor-harbor-city-3', status: 'active' })
 		]);
 
-		expect(resolveEventTargets(game, { kind: 'competitor', status: 'active' } as never)).toEqual([
+		expect(resolveEventTargets(game, { kind: 'competitor', status: 'active' })).toEqual([
 			{ kind: 'competitor', competitorId: 'competitor-harbor-city-1' },
 			{ kind: 'competitor', competitorId: 'competitor-harbor-city-3' }
 		]);
-		expect(resolveEventTargets(game, { kind: 'competitor', status: 'closed' } as never)).toEqual([
+		expect(resolveEventTargets(game, { kind: 'competitor', status: 'closed' })).toEqual([
 			{ kind: 'competitor', competitorId: 'competitor-harbor-city-2' }
 		]);
 	});
@@ -148,8 +148,11 @@ describe('event target selection eligibility', () => {
 
 	it('keeps a known closed competitor resolvable but not an unknown rival', () => {
 		const game = gameWithCompetitors([competitor({ status: 'closed' })]);
-		const closedTarget = { kind: 'competitor', competitorId: competitor().id } as never;
-		const unknownTarget = { kind: 'competitor', competitorId: 'competitor-harbor-city-9' } as never;
+		const closedTarget = { kind: 'competitor' as const, competitorId: competitor().id };
+		const unknownTarget = {
+			kind: 'competitor' as const,
+			competitorId: 'competitor-harbor-city-9'
+		};
 
 		expect(isEventTargetEligibleForSelection(game, closedTarget)).toBe(true);
 		expect(isEventTargetResolvable(game, closedTarget)).toBe(true);
@@ -192,14 +195,14 @@ describe('event target equality and cloning', () => {
 		expect(sameEventTarget(company, firstRoute)).toBe(false);
 		expect(
 			sameEventTarget(
-				{ kind: 'competitor', competitorId: 'competitor-harbor-city-1' } as never,
-				{ kind: 'competitor', competitorId: 'competitor-harbor-city-1' } as never
+				{ kind: 'competitor', competitorId: 'competitor-harbor-city-1' },
+				{ kind: 'competitor', competitorId: 'competitor-harbor-city-1' }
 			)
 		).toBe(true);
 		expect(
 			sameEventTarget(
-				{ kind: 'competitor', competitorId: 'competitor-harbor-city-1' } as never,
-				{ kind: 'competitor', competitorId: 'competitor-harbor-city-2' } as never
+				{ kind: 'competitor', competitorId: 'competitor-harbor-city-1' },
+				{ kind: 'competitor', competitorId: 'competitor-harbor-city-2' }
 			)
 		).toBe(false);
 	});
@@ -212,9 +215,9 @@ describe('event target equality and cloning', () => {
 		expect(cloneEventTarget(routeTarget)).toEqual(routeTarget);
 		expect(cloneEventTarget(routeTarget)).not.toBe(routeTarget);
 		const competitorTarget = {
-			kind: 'competitor',
+			kind: 'competitor' as const,
 			competitorId: 'competitor-harbor-city-1'
-		} as never;
+		};
 		expect(cloneEventTarget(competitorTarget)).toEqual(competitorTarget);
 		expect(cloneEventTarget(competitorTarget)).not.toBe(competitorTarget);
 	});
@@ -250,7 +253,7 @@ describe('event target copy params', () => {
 			getEventTargetCopyParams(game, {
 				kind: 'competitor',
 				competitorId: rival.id
-			} as never)
+			})
 		).toEqual({ competitorId: rival.id, competitorName: rival.name, cityId: rival.cityId });
 
 		const closed = gameWithCompetitors([{ ...rival, status: 'closed' }]);
@@ -258,7 +261,7 @@ describe('event target copy params', () => {
 			getEventTargetCopyParams(closed, {
 				kind: 'competitor',
 				competitorId: rival.id
-			} as never)
+			})
 		).toEqual({ competitorId: rival.id, competitorName: rival.name, cityId: rival.cityId });
 	});
 
@@ -267,7 +270,7 @@ describe('event target copy params', () => {
 			getEventTargetCopyParams(gameWithCompetitors([]), {
 				kind: 'competitor',
 				competitorId: 'competitor-harbor-city-1'
-			} as never)
+			})
 		).toEqual({ competitorId: 'competitor-harbor-city-1' });
 	});
 });

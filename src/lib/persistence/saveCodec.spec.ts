@@ -1447,23 +1447,25 @@ describe('saveCodec', () => {
 		test.each([
 			[
 				'non-canonical id',
-				(competitor: GameState['competitors'][number]) => ({ ...competitor, id: 'rival-1' })
+				(competitor: GameState['competitors'][number]) => ({ ...competitor, id: 'rival-1' }),
+				'must use the canonical competitor-harbor-city-<ordinal> form'
 			],
 			[
 				'blocked location',
 				(competitor: GameState['competitors'][number]) => ({
 					...competitor,
 					location: { ...competitor.location, x: 0, y: 0 }
-				})
+				}),
+				'location must reference a buildable city tile'
 			]
-		] as const)('rejects a competitor with a %s', (_label, mutate) => {
+		] as const)('rejects a competitor with a %s', (_label, mutate, fragment) => {
 			const game = ensureCompetitorsForRetailCity(createGame(), 'harbor-city');
 			const malformed = {
 				...game,
 				competitors: [mutate(game.competitors[0]!), game.competitors[1]!]
 			} as GameState;
 
-			expect(() => validateCurrentGameState(malformed)).toThrow(SaveDataError);
+			expectGameStateErrorCode(malformed, 'corrupt', fragment);
 		});
 
 		test('round-trips thin market evidence and drops unknown historical rival references', () => {
@@ -3915,6 +3917,29 @@ describe('saveCodec', () => {
 
 		expect(() => validateCurrentGameState(malformed)).toThrow(
 			'must be import-cost-multiplier for a company target'
+		);
+	});
+
+	test('rejects an active modifier targeting a competitor with a non-competitor effect', () => {
+		const game = createCompleteCompetitorEventGame();
+		const malformed = {
+			...game,
+			events: {
+				...game.events,
+				activeModifiers: game.events.activeModifiers.map((modifier) => ({
+					...modifier,
+					effect: {
+						kind: 'import-cost-multiplier' as const,
+						scope: 'retail-product',
+						target: { kind: 'all' },
+						multiplier: 1.2
+					}
+				}))
+			}
+		} as GameState;
+
+		expect(() => validateCurrentGameState(malformed)).toThrow(
+			'must be competitor-attraction-multiplier for a competitor target'
 		);
 	});
 

@@ -247,6 +247,9 @@ function plannerGame(
 	const game = baseGame(archetype);
 	return {
 		...game,
+		// Drop generated rivals so baseline fixtures measure the full player
+		// pool; rival interplay has its own dedicated test below.
+		competitors: [],
 		stores: [{ ...game.stores[0]!, products }],
 		...options
 	};
@@ -359,11 +362,20 @@ describe('supply planner snapshot', () => {
 	it('applies the current rival share to the planner trend-free demand pool', () => {
 		expect.assertions(3);
 		const generated = plannerGame([product('snacks')]);
-		const rivals = generated.competitors.map((competitor) => ({
-			...competitor,
+		const rivals: GameState['competitors'] = [
+			'competitor-harbor-city-1',
+			'competitor-harbor-city-2'
+		].map((id) => ({
+			id,
+			name: id,
+			cityId: 'harbor-city',
+			location: { neighborhoodId: 'downtown', x: 1, y: 1 },
 			archetypeId: 'convenience' as const,
+			reputation: 50,
+			pricePosture: 'standard' as const,
 			productFocus: ['convenience-goods' as const],
-			brandIds: ['common-ground' as const]
+			brandIds: ['common-ground' as const],
+			status: 'active' as const
 		}));
 		const withRivals = readySnapshot(
 			{ ...generated, competitors: rivals },

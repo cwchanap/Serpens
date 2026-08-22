@@ -559,7 +559,10 @@
 					<p data-testid={`brand-reputation-${row.id}`}>
 						{i18n.t('reportsPanel.brandPerformance.reputationAdjustment', {
 							storeName: row.storeName,
-							adjustment: row.adjustment > 0 ? `+${row.adjustment}` : String(row.adjustment)
+							adjustment:
+								row.adjustment > 0
+									? `+${i18n.format.integer(row.adjustment)}`
+									: i18n.format.integer(row.adjustment)
 						})}
 					</p>
 				{/each}

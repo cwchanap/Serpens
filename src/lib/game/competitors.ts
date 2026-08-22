@@ -2,7 +2,7 @@ import { getArchetype } from './archetypes';
 import { isTileBuildable } from './city';
 import { BRANDS } from './brands';
 import { getProductDefinition } from './products';
-import { createRng, normalizeSeed, randomInt, type Rng } from './rng';
+import { createRngFromState, randomInt, type Rng } from './rng';
 import { createCityTileLookup, getOccupiedStoreTileIds } from './storeFootprint';
 import { getWorldCityDefinition } from './worldCatalog';
 import type {
@@ -17,7 +17,7 @@ import type {
 	WorldCityId
 } from './types';
 
-const COMPETITOR_COUNT = 2;
+export const COMPETITOR_COUNT = 2;
 const COMPETITOR_NAMES: Readonly<Record<WorldCityId, readonly string[]>> = {
 	'harbor-city': ['Harborline Market', 'Tideway Goods'],
 	'campus-junction': ['Junction Circuit', 'Campus Corner'],
@@ -60,7 +60,7 @@ export function ensureCompetitorsForRetailCity(
 		return game;
 	}
 
-	const rng = createRng(normalizeSeed(game.seed + worldCity.seed * 37 + 39_039));
+	const rng = createRngFromState(game.rngState);
 	const cityLookup = createCityTileLookup(city);
 	const occupiedTileIds = getOccupiedStoreTileIds(
 		city,
@@ -70,7 +70,9 @@ export function ensureCompetitorsForRetailCity(
 	const availableTiles = city.tiles.filter(
 		(tile) => isTileBuildable(tile) && !occupiedTileIds.has(tile.id)
 	);
-	const fallbackTiles = city.tiles.filter(isTileBuildable);
+	// Rival markers must never sit on player-owned tiles; defer creation
+	// until enough unoccupied buildable tiles exist.
+	if (availableTiles.length < COMPETITOR_COUNT) return game;
 	const selectedTileIds = new Set<string>();
 	const generated: MarketCompetitor[] = [];
 
@@ -85,7 +87,7 @@ export function ensureCompetitorsForRetailCity(
 			brandIds.push(compatibleSpecialists[randomInt(rng, 0, compatibleSpecialists.length - 1)]!);
 		}
 
-		const tile = selectTile(availableTiles, fallbackTiles, selectedTileIds, rng);
+		const tile = selectTile(availableTiles, selectedTileIds, rng);
 		if (!tile) continue;
 		selectedTileIds.add(tile.id);
 		generated.push({
@@ -106,6 +108,7 @@ export function ensureCompetitorsForRetailCity(
 
 	return {
 		...game,
+		rngState: rng.getState(),
 		competitors: [
 			...game.competitors.filter((competitor) => competitor.cityId !== worldCity.id),
 			...generated
@@ -136,14 +139,11 @@ function getArchetypeFamilyFocuses(archetypeId: ArchetypeId, rng: Rng): ProductF
 
 function selectTile(
 	availableTiles: readonly CityTile[],
-	fallbackTiles: readonly CityTile[],
 	selectedTileIds: ReadonlySet<string>,
 	rng: Rng
 ): CityTile | undefined {
 	const candidates = availableTiles.filter((tile) => !selectedTileIds.has(tile.id));
-	const fallbackCandidates = fallbackTiles.filter((tile) => !selectedTileIds.has(tile.id));
-	const pool = candidates.length > 0 ? candidates : fallbackCandidates;
-	return pool.length > 0 ? pool[randomInt(rng, 0, pool.length - 1)] : undefined;
+	return candidates.length > 0 ? candidates[randomInt(rng, 0, candidates.length - 1)] : undefined;
 }
 
 function toStoreLocation(tile: CityTile): StoreLocation {

@@ -1478,7 +1478,7 @@ export const ja = {
 				options: {
 					'counter-promote': {
 						label: '対抗販促',
-						description: '1,200 を使って販促に対抗し、市場ポジションを高めます。'
+						description: '$1,200 を使って販促に対抗し、市場ポジションを高めます。'
 					},
 					differentiate: {
 						label: '差別化する',

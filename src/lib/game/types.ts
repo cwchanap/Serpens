@@ -9,6 +9,14 @@ export type ProductFamilyId =
 	| 'grocery-food';
 export type BrandId = 'common-ground' | 'budget-bay' | 'northstar-select' | 'fresh-field';
 
+export const ALL_PRODUCT_FAMILIES: readonly ProductFamilyId[] = [
+	'beverages',
+	'convenience-goods',
+	'fashion',
+	'electronics',
+	'grocery-food'
+];
+
 export interface BrandDefinition {
 	id: BrandId;
 	name: string;
@@ -41,6 +49,13 @@ export type ProductId =
 	| 'prepared'
 	| 'bakery';
 export type PricingPosture = 'discount' | 'competitive' | 'standard' | 'premium';
+
+export const PRICING_POSTURES: readonly PricingPosture[] = [
+	'discount',
+	'competitive',
+	'standard',
+	'premium'
+];
 export type InventoryBuffer = 'lean' | 'balanced' | 'generous';
 export type StaffingPosture = 'minimal' | 'efficient' | 'service';
 export type StaffRole = 'manager' | 'general';

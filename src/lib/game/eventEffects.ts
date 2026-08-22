@@ -7,20 +7,22 @@ import {
 import { BRANDS } from './brands';
 import { appendHistory } from './eventHistory';
 import { activateEventModifiers } from './eventModifiers';
-import { isEventTargetResolvable } from './eventTargets';
+import { isEventTargetResolvable, compareCodeUnits } from './eventTargets';
 import { clampScore } from './reports';
 import { addStoreProductStockLot, calculateStockHealth, consumeStoreProductStock } from './stock';
-import type {
-	DecisionItem,
-	EventDecisionItem,
-	EventImmediateEffect,
-	EventModifierTemplate,
-	EventTarget,
-	EventTimedEffect,
-	GameState,
-	MarketCompetitor,
-	ProductFamilyId,
-	ScoreKey
+import {
+	ALL_PRODUCT_FAMILIES,
+	PRICING_POSTURES,
+	type DecisionItem,
+	type EventDecisionItem,
+	type EventImmediateEffect,
+	type EventModifierTemplate,
+	type EventTarget,
+	type EventTimedEffect,
+	type GameState,
+	type MarketCompetitor,
+	type ProductFamilyId,
+	type ScoreKey
 } from './types';
 import { refreshWorldProgress } from './world';
 
@@ -71,19 +73,6 @@ const SCORE_KEYS: readonly ScoreKey[] = [
 	'customerSatisfaction',
 	'staffMorale',
 	'marketPosition'
-];
-const COMPETITOR_PRICE_POSTURES: readonly MarketCompetitor['pricePosture'][] = [
-	'discount',
-	'competitive',
-	'standard',
-	'premium'
-];
-const PRODUCT_FAMILY_IDS: readonly ProductFamilyId[] = [
-	'beverages',
-	'convenience-goods',
-	'fashion',
-	'electronics',
-	'grocery-food'
 ];
 
 export function getDecisionOptionAvailability(
@@ -277,7 +266,7 @@ function applyEffect(
 				})
 			);
 		case 'competitor-price-posture-set':
-			if (!COMPETITOR_PRICE_POSTURES.includes(effect.pricePosture)) return rejected();
+			if (!PRICING_POSTURES.includes(effect.pricePosture)) return rejected();
 			return updateCompetitor(
 				originalGame,
 				tentativeGame,
@@ -375,7 +364,8 @@ function normalizeProductFocus(value: unknown): ProductFamilyId[] | null {
 	if (
 		value.some(
 			(candidate) =>
-				typeof candidate !== 'string' || !PRODUCT_FAMILY_IDS.includes(candidate as ProductFamilyId)
+				typeof candidate !== 'string' ||
+				!ALL_PRODUCT_FAMILIES.includes(candidate as ProductFamilyId)
 		)
 	) {
 		return null;
@@ -469,10 +459,6 @@ function isValidTimedEffect(effect: EventTimedEffect): boolean {
 		case 'route-dispatch-suspension':
 			return true;
 	}
-}
-
-function compareCodeUnits(first: string, second: string): number {
-	return first < second ? -1 : first > second ? 1 : 0;
 }
 
 function failure(

@@ -56,6 +56,9 @@ function createEqualSellerGame(storeIds: string[]): GameState {
 
 	return {
 		...game,
+		// Rivals are irrelevant to these seller-split mechanics; dropping them
+		// keeps the expected values independent of rival-generation calibration.
+		competitors: [],
 		stores: storeIds.map((id) => ({
 			...baseStore,
 			id,
@@ -255,8 +258,8 @@ describe('stock rules', () => {
 		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(3);
 	});
 
-	test('returns the original game when an existing product has no brand identity', () => {
-		expect.assertions(2);
+	test('applies non-brand edits when the existing product has no brand identity', () => {
+		expect.assertions(3);
 		const game = withOneStoreProducts([createStoreProduct('snacks')]);
 		const malformedGame = {
 			...game,
@@ -274,8 +277,9 @@ describe('stock rules', () => {
 			sellingPrice: 7
 		});
 
-		expect(updated).toBe(malformedGame);
+		expect(updated).not.toBe(malformedGame);
 		expect(updated.stores[0]!.products[0]!.brandId).toBeUndefined();
+		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(7);
 	});
 
 	test('initializes unlocked categories for a given level', () => {

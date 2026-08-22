@@ -427,9 +427,7 @@ export class CityMapScene extends Phaser.Scene {
 			}
 		}
 
-		const activeCompetitors = this.snapshot.competitors.filter(
-			(competitor) => competitor.status === 'active'
-		);
+		const activeCompetitors = this.snapshot.competitors;
 		this.markerGraphics.lineStyle(2, COMPETITOR_MARKER_COLOR, 0.95);
 		for (const competitor of activeCompetitors) {
 			const x = competitor.x * TILE_SIZE + TILE_SIZE / 2;

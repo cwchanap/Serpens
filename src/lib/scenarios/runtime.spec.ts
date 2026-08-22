@@ -1184,7 +1184,7 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	it('keeps the first-profit calibration stable after instance-id resolution cutover', () => {
 		const run = replayLaunchCalibration('first-profit', FIRST_PROFIT_REFERENCE_OPENING, true);
 
-		expect(run.result).toMatchObject({ outcome: 'completed', completionDay: 4 });
+		expect(run.result).toMatchObject({ outcome: 'completed', completionDay: 4, score: 867 });
 		expect(run.result?.medal).toBe('gold');
 	});
 
@@ -1213,6 +1213,11 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 			expect(run.status).toBe('completed');
 			expect(run.result).toMatchObject({ outcome: 'completed', completionDay });
 			expect(run.result?.medal).toBe(medal);
+			if (scenarioId === 'first-profit') {
+				// Recalibrated after rivals began consuming the game RNG stream
+				// (previously 950 with derived-seed rivals).
+				expect(run.result?.score).toBe(867);
+			}
 		}
 	);
 });

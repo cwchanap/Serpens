@@ -1399,6 +1399,14 @@ describe('daily simulation', () => {
 		const game: GameState = {
 			...base,
 			day: 210,
+			// Empty the founding stock so the day-210 import cycle must order.
+			stores: base.stores.map((store) => ({
+				...store,
+				products: store.products.map((product) => ({
+					...product,
+					lots: [{ receivedDay: 200, quantity: 0 }]
+				}))
+			})),
 			finance: {
 				...base.finance,
 				loans: [{ ...loan, nextPaymentDay: 210, lastInterestAccrualDay: 209 }]
@@ -1436,7 +1444,7 @@ describe('daily simulation', () => {
 				{
 					day: 8,
 					cashBefore: 30_734,
-					cashAfter: 30_071,
+					cashAfter: 30_068,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1445,7 +1453,7 @@ describe('daily simulation', () => {
 				{
 					day: 15,
 					cashBefore: 28_856,
-					cashAfter: 28_176,
+					cashAfter: 28_179,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1465,7 +1473,7 @@ describe('daily simulation', () => {
 				{
 					day: 8,
 					cashBefore: 37_612,
-					cashAfter: 39_251,
+					cashAfter: 39_555,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1474,7 +1482,7 @@ describe('daily simulation', () => {
 				{
 					day: 15,
 					cashBefore: 37_471,
-					cashAfter: 39_300,
+					cashAfter: 39_338,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1483,7 +1491,7 @@ describe('daily simulation', () => {
 				{
 					day: 22,
 					cashBefore: 37_330,
-					cashAfter: 39_047,
+					cashAfter: 39_123,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1494,7 +1502,7 @@ describe('daily simulation', () => {
 				{
 					day: 8,
 					cashBefore: 44_954,
-					cashAfter: 47_117,
+					cashAfter: 46_493,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1503,7 +1511,7 @@ describe('daily simulation', () => {
 				{
 					day: 15,
 					cashBefore: 43_841,
-					cashAfter: 45_814,
+					cashAfter: 45_478,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1512,7 +1520,7 @@ describe('daily simulation', () => {
 				{
 					day: 22,
 					cashBefore: 42_730,
-					cashAfter: 44_705,
+					cashAfter: 44_417,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1523,7 +1531,7 @@ describe('daily simulation', () => {
 				{
 					day: 8,
 					cashBefore: 40_472,
-					cashAfter: 39_314,
+					cashAfter: 39_318,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1532,7 +1540,7 @@ describe('daily simulation', () => {
 				{
 					day: 15,
 					cashBefore: 37_826,
-					cashAfter: 36_659,
+					cashAfter: 36_663,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1541,7 +1549,7 @@ describe('daily simulation', () => {
 				{
 					day: 22,
 					cashBefore: 35_183,
-					cashAfter: 34_018,
+					cashAfter: 34_014,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1956,7 +1964,7 @@ describe('daily simulation', () => {
 
 	test('inventory posture changes daily product sales capacity', () => {
 		expect.assertions(3);
-		const game = createNewGame('convenience', 20260508);
+		const game = createNewGame('convenience', 20260509);
 		const stores = game.stores.map((store) => ({
 			...store,
 			products: store.products.map((product) => ({

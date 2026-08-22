@@ -5,6 +5,7 @@ import { cloneTimedEffect } from './eventModifiers';
 import { createRngFromState, normalizeSeed, type Rng } from './rng';
 import {
 	cloneEventTarget,
+	compareCodeUnits,
 	getEventTargetCopyParams,
 	isEventTargetEligibleForSelection,
 	resolveEventTargets,
@@ -206,10 +207,6 @@ function selectCandidate(
 		if (threshold < 0) return candidate;
 	}
 	return weighted[weighted.length - 1];
-}
-
-function compareCodeUnits(first: string, second: string): number {
-	return first < second ? -1 : first > second ? 1 : 0;
 }
 
 function materializeTarget(

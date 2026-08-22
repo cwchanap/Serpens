@@ -1,5 +1,6 @@
 import { getArchetype } from './archetypes';
 import {
+	baseSellerScore,
 	brandedSellerScore,
 	getBrandDefaultSellingPrice,
 	isBrandSupported,
@@ -14,9 +15,10 @@ import {
 } from './productDynamics';
 import { getProductDefinition, PRODUCTS } from './products';
 import { resolveProductMarketShare } from './marketCompetition';
+import { isModifierActiveOnDay } from './eventModifiers';
 import { clampScore } from './reports';
 import { randomBetween, type Rng } from './rng';
-import { getRetailCityDemandMultiplier } from './world';
+import { getRetailCityDemandMultiplier, isWorldCityId } from './world';
 import type {
 	ArchetypeId,
 	City,
@@ -101,14 +103,13 @@ export function updateStoreProduct(
 	const product = store.products[productIndex]!;
 	const productDefinition = getProductDefinition(productId);
 	const currentBrandId = product.brandId;
-	if (!isBrandSupported(productId, currentBrandId)) {
-		return game;
-	}
 	const nextBrandId = patch.brandId ?? currentBrandId;
-	if (!isBrandSupported(productId, nextBrandId)) {
+	// Reject only brand changes onto an unsupported family; unrelated price,
+	// reorder-threshold, and target-stock edits still apply.
+	const brandChanged = nextBrandId !== currentBrandId;
+	if (brandChanged && !isBrandSupported(productId, nextBrandId)) {
 		return game;
 	}
-	const brandChanged = nextBrandId !== currentBrandId;
 	const sellingPrice = Math.max(
 		1,
 		brandChanged && patch.sellingPrice === undefined
@@ -325,6 +326,7 @@ export function simulateProductSalesForCity(input: {
 	const totalUnitsSoldByProduct = new Map<ProductId, number>();
 	const productReports = new Map<string, DailyProductReport[]>();
 	const marketReports: DailyMarketReport[] = [];
+	const marketCityId = isWorldCityId(input.city.id) ? input.city.id : null;
 	const capacityRemaining = new Map(input.storeCapacity);
 	const cityStoreIds = new Set(
 		input.game.stores.filter((store) => store.cityId === input.city.id).map((store) => store.id)
@@ -380,21 +382,23 @@ export function simulateProductSalesForCity(input: {
 		);
 		const cityDemandPool = initialDemand[productId] ?? 0;
 		const playerDemandPool = Math.round(cityDemandPool * market.playerShare);
-		marketReports.push({
-			cityId: input.city.id as DailyMarketReport['cityId'],
-			productId,
-			cityDemandPool,
-			playerDemandPool,
-			playerShare: market.playerShare,
-			playerShareDelta: latestPlayerShareDelta(
-				input.game,
-				input.city.id,
+		if (marketCityId !== null) {
+			marketReports.push({
+				cityId: marketCityId,
 				productId,
-				market.playerShare
-			),
-			playerAttractionScore: market.playerAttractionScore,
-			competitors: market.competitors
-		});
+				cityDemandPool,
+				playerDemandPool,
+				playerShare: market.playerShare,
+				playerShareDelta: latestPlayerShareDelta(
+					input.game,
+					input.city.id,
+					productId,
+					market.playerShare
+				),
+				playerAttractionScore: market.playerAttractionScore,
+				competitors: market.competitors
+			});
+		}
 
 		for (const store of sellers) {
 			const currentStore = storesById.get(store.id)!;
@@ -491,8 +495,8 @@ export function simulateProductSalesForCity(input: {
 }
 
 function getActiveMarketModifiers(game: Pick<GameState, 'events' | 'day'>): ActiveEventModifier[] {
-	return game.events.activeModifiers.filter(
-		(modifier) => modifier.startsOnDay <= game.day && game.day < modifier.expiresOnDay
+	return game.events.activeModifiers.filter((modifier) =>
+		isModifierActiveOnDay(modifier, game.day)
 	);
 }
 
@@ -502,11 +506,14 @@ function latestPlayerShareDelta(
 	productId: ProductId,
 	playerShare: number
 ): number | null {
-	const previous = [...game.reports]
-		.reverse()
-		.flatMap((report) => report.marketReports ?? [])
-		.find((marketReport) => marketReport.cityId === cityId && marketReport.productId === productId);
-	return previous ? playerShare - previous.playerShare : null;
+	for (let index = game.reports.length - 1; index >= 0; index -= 1) {
+		const marketReports = game.reports[index]!.marketReports ?? [];
+		const previous = marketReports.find(
+			(marketReport) => marketReport.cityId === cityId && marketReport.productId === productId
+		);
+		if (previous) return playerShare - previous.playerShare;
+	}
+	return null;
 }
 
 function roundedFiniteOrFallback(value: number | undefined, fallback: number): number {
@@ -645,15 +652,11 @@ function scoreStoreForCategory(store: Store, productId: ProductId): number {
 		return 0;
 	}
 
-	const reputation = Number.isFinite(store.reputation) ? store.reputation : 50;
-	const authoredSensitivity = getProductDefinition(productId).dynamics.reputationSensitivity;
-	const reputationSensitivity =
-		authoredSensitivity === undefined || !Number.isFinite(authoredSensitivity)
-			? 1
-			: Math.max(0, authoredSensitivity);
-	const reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * reputationSensitivity;
-
-	return Math.max(1, reputationTerm + store.staffCapacity * 0.25);
+	return baseSellerScore(
+		store.reputation,
+		store.staffCapacity,
+		getProductDefinition(productId).dynamics.reputationSensitivity
+	);
 }
 
 function compareCodeUnitStrings(left: string, right: string): number {

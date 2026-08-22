@@ -303,6 +303,19 @@ describe('store category chain summaries', () => {
 		expect(aggregate?.trendMultiplier).toBe(1);
 	});
 
+	test('labels the aggregate with null brandId when reports mix brands, regardless of order', () => {
+		expect.assertions(3);
+		const commonGround = snackProductReport({ unitsSold: 6 });
+		const budgetBay = snackProductReport({ brandId: 'budget-bay', unitsSold: 2 });
+
+		const firstOrder = aggregateProductReports('snacks', [commonGround, budgetBay]);
+		const secondOrder = aggregateProductReports('snacks', [budgetBay, commonGround]);
+
+		expect(firstOrder?.brandId).toBeNull();
+		expect(secondOrder?.brandId).toBeNull();
+		expect(aggregateProductReports('snacks', [commonGround])?.brandId).toBe('common-ground');
+	});
+
 	test('falls back to the first report price when no units were sold', () => {
 		expect.assertions(3);
 		const aggregate = aggregateProductReports('snacks', [
