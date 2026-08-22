@@ -104,16 +104,20 @@ export function updateStoreProduct(
 	const productDefinition = getProductDefinition(productId);
 	const currentBrandId = product.brandId;
 	const nextBrandId = patch.brandId ?? currentBrandId ?? productDefinition.defaultBrandId;
-	// Reject only brand changes onto an unsupported family; unrelated price,
-	// reorder-threshold, and target-stock edits still apply.
-	const brandChanged = nextBrandId !== currentBrandId;
+	// Reject only explicit brand changes onto an unsupported family; unrelated
+	// price, reorder-threshold, and target-stock edits still apply, and a
+	// missing brand repaired via the product default is never treated as a
+	// change (the default is always supported).
+	const brandChanged = patch.brandId !== undefined && patch.brandId !== currentBrandId;
 	if (brandChanged && !isBrandSupported(productId, nextBrandId)) {
 		return game;
 	}
 	// A brand switch writes the new brand's default shelf price once: when the
-	// patch omits an explicit sellingPrice alongside a brand change, fall back to
-	// the new brand default instead of preserving the prior price. Later price
-	// edits mutate sellingPrice directly and are never multiplied again.
+	// patch omits an explicit sellingPrice alongside an explicit brand change,
+	// fall back to the new brand default instead of preserving the prior price.
+	// A brand repair (no explicit brandId) preserves the existing shelf price,
+	// and later price edits mutate sellingPrice directly and are never
+	// multiplied again.
 	const fallbackSellingPrice = brandChanged
 		? getBrandDefaultSellingPrice(productDefinition, nextBrandId)
 		: product.sellingPrice;
