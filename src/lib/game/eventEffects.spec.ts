@@ -917,11 +917,11 @@ describe('atomic decision resolution', () => {
 	});
 
 	it.each([
-		[] as string[],
-		['beverages', 'beverages'],
-		['beverages', 'fashion', 'electronics'],
-		['unknown-family']
-	] as string[][])(
+		[[] as string[]],
+		[['beverages', 'beverages']],
+		[['beverages', 'fashion', 'electronics']],
+		[['unknown-family']]
+	] as string[][][])(
 		'rejects a product focus that is not one or two unique known families',
 		(productFocus) => {
 			const base = createNewGame('grocery', 55);

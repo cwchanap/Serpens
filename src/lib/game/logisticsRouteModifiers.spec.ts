@@ -258,6 +258,28 @@ describe('resolveEffectiveRecurringRoute', () => {
 			contributions: []
 		});
 	});
+
+	test('skips a competitor-attraction-multiplier effect that incorrectly targets a route', () => {
+		const result = resolveEffectiveRecurringRoute(
+			route(),
+			[
+				routeModifier({
+					effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.2 } as never
+				})
+			],
+			9
+		);
+
+		expect(result).toEqual({
+			base: route(),
+			capacity: 100,
+			leadTimeDays: 2,
+			transportCostMultiplier: 1,
+			transportCostPerUnit: 2,
+			dispatchSuspended: false,
+			contributions: []
+		});
+	});
 });
 
 describe('buildRouteModifierRecoveries', () => {
@@ -541,6 +563,21 @@ describe('buildRouteModifierRecoveries', () => {
 						target: { kind: 'all' },
 						multiplier: 0.9
 					} as never
+				})
+			],
+			afterExpiry: [],
+			closingDay: 9
+		});
+
+		expect(result).toEqual([]);
+	});
+
+	test('skips a competitor-attraction-multiplier effect that incorrectly targets a route', () => {
+		const result = buildRouteModifierRecoveries({
+			routes: [route()],
+			beforeExpiry: [
+				expiringModifier({
+					effect: { kind: 'competitor-attraction-multiplier', multiplier: 1.2 } as never
 				})
 			],
 			afterExpiry: [],

@@ -865,6 +865,45 @@ describe('stock rules', () => {
 		expect(rivalMarket.playerDemandPool).toBeLessThan(rivalMarket.cityDemandPool);
 	});
 
+	test('reports a non-null player share delta when a prior market report exists', () => {
+		expect.assertions(2);
+		const generated = createNewGame('convenience', 20260820);
+		const base = {
+			...generated,
+			competitors: generated.competitors.map((competitor) => ({
+				...competitor,
+				archetypeId: 'convenience' as const,
+				productFocus: ['beverages' as const],
+				brandIds: ['common-ground' as const]
+			}))
+		};
+		const priorMarketReports = base.stores[0]!.products.map((product) => ({
+			cityId: 'harbor-city' as const,
+			productId: product.productId,
+			cityDemandPool: 100,
+			playerDemandPool: 50,
+			playerShare: 0.5,
+			playerShareDelta: null,
+			playerAttractionScore: 80,
+			competitors: []
+		}));
+		const withPrior = {
+			...base,
+			reports: [{ marketReports: priorMarketReports } as unknown as GameState['reports'][number]]
+		};
+		const policies = effectivePolicyMap(withPrior);
+		const result = simulateProductSalesForCity({
+			game: withPrior,
+			city: withPrior.cities[0]!,
+			rng: createRng(31),
+			storeCapacity: new Map([[withPrior.stores[0]!.id, 10_000]]),
+			effectivePolicyByStoreId: policies
+		});
+
+		expect(result.marketReports.length).toBeGreaterThan(0);
+		expect(result.marketReports.every((report) => report.playerShareDelta !== null)).toBe(true);
+	});
+
 	test('applies selected brand demand and unit cost while keeping the configured selling price', () => {
 		expect.assertions(8);
 		const base = createNewGame('convenience', 20260820);
