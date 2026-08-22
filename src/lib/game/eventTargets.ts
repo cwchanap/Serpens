@@ -99,6 +99,6 @@ function findCompetitor(game: GameState, competitorId: string): MarketCompetitor
 	return game.competitors.find((candidate) => candidate.id === competitorId);
 }
 
-function compareCodeUnits(first: string, second: string): number {
+export function compareCodeUnits(first: string, second: string): number {
 	return first < second ? -1 : first > second ? 1 : 0;
 }

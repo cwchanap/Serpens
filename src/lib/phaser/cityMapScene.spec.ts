@@ -782,16 +782,14 @@ describe('CityMapScene', () => {
 							name: 'Rival One',
 							archetypeId: 'convenience',
 							x: 1,
-							y: 1,
-							status: 'active'
+							y: 1
 						},
 						{
 							id: 'rival-2',
 							name: 'Rival Two',
 							archetypeId: 'grocery',
 							x: 2,
-							y: 2,
-							status: 'active'
+							y: 2
 						}
 					]
 				})
@@ -806,21 +804,12 @@ describe('CityMapScene', () => {
 			expect(markerGraphics.setInteractive).not.toHaveBeenCalled();
 		});
 
-		it('omits closed rivals from marker rendering', () => {
+		it('draws no rival markers when the snapshot has no rivals', () => {
 			expect.assertions(3);
 			scene.create();
 			scene.updateSnapshot(
 				makeSnapshot({
-					competitors: [
-						{
-							id: 'rival-closed',
-							name: 'Closed Rival',
-							archetypeId: 'convenience',
-							x: 1,
-							y: 1,
-							status: 'closed'
-						}
-					]
+					competitors: []
 				})
 			);
 			const markerGraphics = s(scene).markerGraphics;
@@ -829,7 +818,7 @@ describe('CityMapScene', () => {
 			expect(markerGraphics.strokeCircle).not.toHaveBeenCalled();
 		});
 
-		it('counts one remaining active rival after another closes', () => {
+		it('counts a single remaining rival marker', () => {
 			expect.assertions(3);
 			scene.create();
 			scene.updateSnapshot(
@@ -840,16 +829,7 @@ describe('CityMapScene', () => {
 							name: 'Active Rival',
 							archetypeId: 'convenience',
 							x: 1,
-							y: 1,
-							status: 'active'
-						},
-						{
-							id: 'rival-closed',
-							name: 'Closed Rival',
-							archetypeId: 'grocery',
-							x: 2,
-							y: 2,
-							status: 'closed'
+							y: 1
 						}
 					]
 				})
@@ -871,16 +851,14 @@ describe('CityMapScene', () => {
 							name: 'Rival One',
 							archetypeId: 'convenience',
 							x: 1,
-							y: 1,
-							status: 'active'
+							y: 1
 						},
 						{
 							id: 'rival-2',
 							name: 'Rival Two',
 							archetypeId: 'grocery',
 							x: 2,
-							y: 2,
-							status: 'active'
+							y: 2
 						}
 					]
 				})
@@ -895,8 +873,7 @@ describe('CityMapScene', () => {
 							name: 'Rival One',
 							archetypeId: 'convenience',
 							x: 1,
-							y: 1,
-							status: 'active'
+							y: 1
 						}
 					]
 				})
@@ -1608,8 +1585,7 @@ describe('CityMapScene', () => {
 							name: 'Rival One',
 							archetypeId: 'convenience',
 							x: 1,
-							y: 1,
-							status: 'active'
+							y: 1
 						}
 					]
 				})

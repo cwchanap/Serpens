@@ -1712,6 +1712,8 @@ describe('GameRouteController', () => {
 		it('does not expose the sandbox-only brand mutation to scenario mode', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeSaves();
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
 			const unavailable = await harness.controller.updateStoreProductBrand(
 				'store-1',
 				'bottled-water',

@@ -5,6 +5,7 @@ import { getBuildingThroughputMultiplier } from './leveling';
 import { getProductDefinition } from './products';
 import type {
 	BuildingTier,
+	BrandId,
 	CityInventory,
 	DailyMaterialMovement,
 	DailyProductReport,
@@ -482,7 +483,7 @@ export function latestStoreProductReport(
 	store: Store | null,
 	productId: ProductId,
 	allowedStoreIds?: ReadonlySet<string>
-): DailyProductReport | null {
+): AggregatedProductReport | null {
 	const storeReports = (game.reports.at(-1)?.storeReports ?? []).filter(
 		(report) => !allowedStoreIds || allowedStoreIds.has(report.storeId)
 	);
@@ -506,19 +507,25 @@ export function latestStoreProductReport(
 	);
 }
 
+export type AggregatedProductReport = Omit<DailyProductReport, 'brandId'> & {
+	/** Null when the aggregated reports span multiple brands. */
+	brandId: BrandId | null;
+};
+
 export function aggregateProductReports(
 	productId: ProductId,
 	productReports: DailyProductReport[]
-): DailyProductReport | null {
+): AggregatedProductReport | null {
 	if (productReports.length === 0) {
 		return null;
 	}
 
 	const firstReport = productReports[0]!;
+	const mixedBrands = productReports.some((report) => report.brandId !== firstReport.brandId);
 
 	return {
 		productId,
-		brandId: firstReport.brandId,
+		brandId: mixedBrands ? null : firstReport.brandId,
 		name: firstReport.name,
 		unitsSold: sumProductReports(productReports, (report) => report.unitsSold),
 		demandMissed: sumProductReports(productReports, (report) => report.demandMissed),
@@ -712,7 +719,7 @@ export function emptyActualMetrics(): ProductChainActualMetrics {
 export function materialActualMetrics(
 	report: DailyProductionReport | null,
 	materialId: MaterialId,
-	retailRoot: { productReport: DailyProductReport | null } | null = null
+	retailRoot: { productReport: AggregatedProductReport | null } | null = null
 ): ProductChainActualMetrics {
 	const productReport = retailRoot?.productReport ?? null;
 	return {
@@ -743,7 +750,7 @@ export function materialActualMetrics(
 function resolveWarehousePulled(
 	report: DailyProductionReport | null,
 	materialId: MaterialId,
-	retailRoot: { productReport: DailyProductReport | null } | null
+	retailRoot: { productReport: AggregatedProductReport | null } | null
 ): number {
 	if (retailRoot?.productReport) {
 		return retailRoot.productReport.warehouseUnits;

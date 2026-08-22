@@ -149,6 +149,32 @@ describe('explicit product market share', () => {
 		);
 	});
 
+	test('excludes a rival whose archetype does not stock the product', () => {
+		const resolution = resolveProductMarketShare(
+			[competitor({ archetypeId: 'boutique' })],
+			[],
+			getProductDefinition('bottled-water'),
+			80,
+			1
+		);
+
+		expect(resolution.competitors).toEqual([]);
+		expect(resolution.playerShare).toBe(1);
+	});
+
+	test('excludes a rival whose brands support only other product families', () => {
+		const resolution = resolveProductMarketShare(
+			[competitor({ brandIds: ['northstar-select'] })],
+			[],
+			getProductDefinition('bottled-water'),
+			80,
+			1
+		);
+
+		expect(resolution.competitors).toEqual([]);
+		expect(resolution.playerShare).toBe(1);
+	});
+
 	test('returns canonical rival rows and shares that sum to one', () => {
 		const resolution = resolveProductMarketShare(
 			[

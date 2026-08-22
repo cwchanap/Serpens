@@ -1,11 +1,11 @@
 import { getProductDefinition } from './products';
-import type {
-	BrandDefinition,
-	BrandId,
-	ProductDefinition,
-	ProductFamilyId,
-	ProductId,
-	Store
+import {
+	ALL_PRODUCT_FAMILIES,
+	type BrandDefinition,
+	type BrandId,
+	type ProductDefinition,
+	type ProductId,
+	type Store
 } from './types';
 
 export type { BrandDefinition, BrandId } from './types';
@@ -15,14 +15,6 @@ export interface BrandEconomics {
 	demandMultiplier: number;
 	marketAttractionMultiplier: number;
 }
-
-const ALL_PRODUCT_FAMILIES: readonly ProductFamilyId[] = [
-	'beverages',
-	'convenience-goods',
-	'fashion',
-	'electronics',
-	'grocery-food'
-];
 
 export const BRANDS: Readonly<Record<BrandId, BrandDefinition>> = {
 	'common-ground': {
@@ -85,12 +77,7 @@ export function getSupportedBrands(productId: ProductId): readonly BrandDefiniti
 }
 
 export function isBrandSupported(productId: ProductId, brandId: BrandId): boolean {
-	const brand = BRANDS[brandId];
-	if (!brand) return false;
-	const product = getProductDefinition(productId);
-	if (!product) return false;
-
-	return brand.supportedFamilyIds.includes(product.familyId);
+	return BRANDS[brandId].supportedFamilyIds.includes(getProductDefinition(productId).familyId);
 }
 
 export function getBrandDefaultSellingPrice(product: ProductDefinition, brandId: BrandId): number {
@@ -110,19 +97,31 @@ export function resolveBrandEconomics(
 	};
 }
 
+/** Reputation + staff-capacity seller score before brand attraction is applied. */
+export function baseSellerScore(
+	reputation: number,
+	staffCapacity: number,
+	reputationSensitivity: number | undefined
+): number {
+	const safeReputation = Number.isFinite(reputation) ? reputation : 50;
+	const sensitivity =
+		reputationSensitivity === undefined || !Number.isFinite(reputationSensitivity)
+			? 1
+			: Math.max(0, reputationSensitivity);
+	const reputationTerm = 50 * 0.55 + (safeReputation - 50) * 0.55 * sensitivity;
+	return Math.max(1, reputationTerm + staffCapacity * 0.25);
+}
+
 export function brandedSellerScore(store: Store, productId: ProductId): number {
 	const storeProduct = store.products.find((product) => product.productId === productId);
 	if (!storeProduct) return 0;
 
 	const product = getProductDefinition(productId);
-	const reputation = Number.isFinite(store.reputation) ? store.reputation : 50;
-	const authoredSensitivity = product.dynamics.reputationSensitivity;
-	const reputationSensitivity =
-		authoredSensitivity === undefined || !Number.isFinite(authoredSensitivity)
-			? 1
-			: Math.max(0, authoredSensitivity);
-	const reputationTerm = 50 * 0.55 + (reputation - 50) * 0.55 * reputationSensitivity;
-	const existingScore = Math.max(1, reputationTerm + store.staffCapacity * 0.25);
+	const existingScore = baseSellerScore(
+		store.reputation,
+		store.staffCapacity,
+		product.dynamics.reputationSensitivity
+	);
 
 	return (
 		existingScore * resolveBrandEconomics(product, storeProduct.brandId).marketAttractionMultiplier

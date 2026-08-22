@@ -809,13 +809,23 @@ describe('atomic decision resolution', () => {
 
 	it('applies typed competitor status, posture, and canonical product-focus effects atomically', () => {
 		const base = createNewGame('grocery', 55);
-		const rival = base.competitors[0]!;
-		const decision = competitorDecision(base, [
+		// Pin the target rival to a universal brand so the product-focus effect
+		// stays brand-compatible regardless of rival-generation draws.
+		const brandedBase = {
+			...base,
+			competitors: base.competitors.map((competitor) =>
+				competitor.id === base.competitors[0]?.id
+					? { ...competitor, brandIds: ['common-ground' as const] }
+					: competitor
+			)
+		};
+		const rival = brandedBase.competitors[0]!;
+		const decision = competitorDecision(brandedBase, [
 			{ kind: 'competitor-status-set', status: 'closed' },
 			{ kind: 'competitor-price-posture-set', pricePosture: 'premium' },
 			{ kind: 'competitor-product-focus-set', productFocus: ['grocery-food', 'beverages'] }
 		]);
-		const game = withDecision(base, decision);
+		const game = withDecision(brandedBase, decision);
 
 		const result = resolveDecision(game, decision.id, 'accept');
 

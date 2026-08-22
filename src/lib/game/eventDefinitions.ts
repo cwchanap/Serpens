@@ -1,15 +1,17 @@
 import { cloneTimedEffect } from './eventModifiers';
-import type {
-	EventCondition,
-	EventImmediateEffect,
-	EventModifierTemplate,
-	EventSelectionPolicy,
-	CompanyPolicy,
-	EventTargetSelector,
-	EventTimedEffect,
-	ProductFamilyId,
-	ScoreKey,
-	StructuredCopyRef
+import { compareCodeUnits } from './eventTargets';
+import {
+	ALL_PRODUCT_FAMILIES,
+	PRICING_POSTURES,
+	type EventCondition,
+	type EventImmediateEffect,
+	type EventModifierTemplate,
+	type EventSelectionPolicy,
+	type EventTargetSelector,
+	type EventTimedEffect,
+	type ProductFamilyId,
+	type ScoreKey,
+	type StructuredCopyRef
 } from './types';
 
 export type EventFinanceBorrowAmount = number | 'available-credit-clamped';
@@ -72,19 +74,6 @@ const SCORE_KEYS: readonly ScoreKey[] = [
 	'customerSatisfaction',
 	'staffMorale',
 	'marketPosition'
-];
-const COMPETITOR_PRICE_POSTURES: readonly CompanyPolicy['pricing'][] = [
-	'discount',
-	'competitive',
-	'standard',
-	'premium'
-];
-const PRODUCT_FAMILY_IDS: readonly ProductFamilyId[] = [
-	'beverages',
-	'convenience-goods',
-	'fashion',
-	'electronics',
-	'grocery-food'
 ];
 
 export function validateAndNormalizeEventCatalog(
@@ -325,7 +314,7 @@ function validateOption(
 				if (targetKind !== 'competitor') {
 					add(`${effectPath}.kind`, 'must target a competitor');
 				}
-				if (!COMPETITOR_PRICE_POSTURES.includes(effect.pricePosture)) {
+				if (!PRICING_POSTURES.includes(effect.pricePosture)) {
 					add(`${effectPath}.pricePosture`, 'must be a supported competitor price posture');
 				}
 				break;
@@ -453,7 +442,7 @@ function validateProductFocus(
 		return;
 	}
 	for (const [index, familyId] of value.entries()) {
-		if (!PRODUCT_FAMILY_IDS.includes(familyId)) {
+		if (!ALL_PRODUCT_FAMILIES.includes(familyId)) {
 			add(`${path}[${index}]`, 'must be a supported product family');
 		}
 	}
@@ -494,10 +483,6 @@ function sortDiagnostics(diagnostics: readonly EventCatalogDiagnostic[]): EventC
 		(first, second) =>
 			compareCodeUnits(first.eventId, second.eventId) || compareCodeUnits(first.path, second.path)
 	);
-}
-
-function compareCodeUnits(first: string, second: string): number {
-	return first < second ? -1 : first > second ? 1 : 0;
 }
 
 function cloneDefinition(definition: EventDefinition): EventDefinition {

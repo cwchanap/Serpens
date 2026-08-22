@@ -48,6 +48,9 @@ export function resolveProductMarketShare(
 		const focusMultiplier = competitor.productFocus.includes(product.familyId) ? 1.2 : 0.85;
 		const postureBase = POSTURE_BASE[competitor.pricePosture];
 		const priceMultiplier = clamp(0.5, 1.5, 1 + (postureBase - 1) * product.priceSensitivity);
+		// Arithmetic mean is intentional: a rival stocking a weak brand alongside
+		// a specialist dilutes its market attraction rather than saturating at
+		// the strongest brand.
 		const brandMultiplier =
 			compatibleBrands.reduce(
 				(total, brand) => total + brand.loyaltyMultiplier * brand.availabilityMultiplier,

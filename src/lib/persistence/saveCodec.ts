@@ -34,6 +34,7 @@ import { FINANCE_TRANSACTION_LIMIT, getInstallmentCount } from '$lib/game/financ
 import { EVENT_SELECTION_SCHEMA_VERSION } from '$lib/game/eventSelection';
 import { EVENT_HISTORY_LIMIT } from '$lib/game/eventHistory';
 import { BRANDS, isBrandSupported } from '$lib/game/brands';
+import { COMPETITOR_COUNT } from '$lib/game/competitors';
 import { PRODUCTS } from '$lib/game/products';
 import { calculateStockHealth } from '$lib/game/stock';
 import type {
@@ -867,7 +868,7 @@ function validateCurrentCompetitors(game: GameState): void {
 		}
 
 		const count = (countsByCity.get(competitor.cityId) ?? 0) + 1;
-		if (count > 2) {
+		if (count > COMPETITOR_COUNT) {
 			throw new SaveDataError(`${label} must contain at most two rivals per retail city`);
 		}
 		countsByCity.set(competitor.cityId, count);
@@ -892,7 +893,7 @@ function validateCurrentCompetitors(game: GameState): void {
 	}
 
 	for (const [cityId, count] of countsByCity) {
-		if (count === 1) {
+		if (count > 0 && count < COMPETITOR_COUNT) {
 			throw new SaveDataError(
 				`Saved game competitors for ${cityId} must contain both canonical rivals or none`
 			);
@@ -902,14 +903,32 @@ function validateCurrentCompetitors(game: GameState): void {
 
 function validateSavedCompetitor(value: unknown, label: string): MarketCompetitor {
 	const competitor = requireRecord(value, label);
+	requireExactKeys(
+		competitor,
+		[
+			'id',
+			'cityId',
+			'name',
+			'location',
+			'reputation',
+			'archetypeId',
+			'pricePosture',
+			'productFocus',
+			'brandIds',
+			'status'
+		],
+		label
+	);
 	const id = requireString(competitor.id, `${label} id`);
 	const cityId = requireOneOf(competitor.cityId, `${label} cityId`, WORLD_CITY_IDS) as WorldCityId;
 	const expectedPrefix = `competitor-${cityId}-`;
 	if (!id.startsWith(expectedPrefix)) {
 		throw new SaveDataError(`${label} id must use the canonical ${expectedPrefix}<ordinal> form`);
 	}
-	const ordinal = Number(id.slice(expectedPrefix.length));
-	if (!Number.isSafeInteger(ordinal) || ordinal < 1 || ordinal > 2) {
+	// generatedIdSequence is the canonical numeric-suffix parser: it rejects
+	// non-canonical spellings like "01", "+1", or "1e0" that Number() accepts.
+	const ordinal = generatedIdSequence(id, expectedPrefix);
+	if (ordinal < 1 || ordinal > COMPETITOR_COUNT) {
 		throw new SaveDataError(`${label} id must use canonical ordinal 1 or 2`);
 	}
 	const name = requireString(competitor.name, `${label} name`);
@@ -3092,7 +3111,7 @@ function validateEventTarget(
 	value: unknown,
 	label: string,
 	nextRouteSequence: number,
-	knownCompetitorIds?: ReadonlySet<string>
+	knownCompetitorIds: ReadonlySet<string>
 ): ValidatedEventTarget {
 	const target = requireRecord(value, label);
 	const kind = requireOneOf(target.kind, `${label} kind`, [
@@ -3107,7 +3126,7 @@ function validateEventTarget(
 	if (kind === 'competitor') {
 		requireExactKeys(target, ['kind', 'competitorId'], label);
 		const competitorId = requireString(target.competitorId, `${label} competitorId`);
-		if (knownCompetitorIds && !knownCompetitorIds.has(competitorId)) {
+		if (!knownCompetitorIds.has(competitorId)) {
 			throw new SaveDataError(`${label} competitorId must reference a persisted competitor`);
 		}
 		return { kind: 'competitor', competitorId };
@@ -3495,10 +3514,13 @@ function validateSavedModifierTargetEffect(
 	// check target and effect independently, so without this pairing check a
 	// mismatched pending modifier could decode cleanly and only fail at
 	// resolution.
-	if (
-		target.kind === 'recurring-route' &&
-		(effectKind === 'import-cost-multiplier' || effectKind === 'competitor-attraction-multiplier')
-	) {
+	const ROUTE_EFFECT_KINDS: readonly SavedTimedEffectKind[] = [
+		'route-lead-time-adjustment',
+		'route-capacity-multiplier',
+		'route-transport-cost-multiplier',
+		'route-dispatch-suspension'
+	];
+	if (target.kind === 'recurring-route' && !ROUTE_EFFECT_KINDS.includes(effectKind)) {
 		throw new SaveDataError(
 			`${label} effect must be a route effect for a recurring-route target`,
 			'invariant-event-runtime'

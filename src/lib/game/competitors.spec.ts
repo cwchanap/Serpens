@@ -26,7 +26,7 @@ function cityTileForCompetitor(game: GameState, competitor: MarketCompetitor) {
 }
 
 describe('sandbox competitor generation', () => {
-	test('creates two deterministic Harbor rivals without advancing the game RNG', () => {
+	test('creates two deterministic Harbor rivals and persists the advanced RNG state', () => {
 		const first = createNewGame('convenience', 20260820);
 		const second = createNewGame('convenience', 20260820);
 
@@ -40,15 +40,15 @@ describe('sandbox competitor generation', () => {
 		expect(first.competitors.every((competitor) => competitor.cityId === 'harbor-city')).toBe(true);
 	});
 
-	test('does not mutate the current RNG state while generating deterministic competitors', () => {
+	test('advances the game RNG deterministically while generating competitors', () => {
 		const current = { ...createNewGame('convenience', 20260820), competitors: [] };
 		const initialRngState = current.rngState;
 		const first = ensureCompetitorsForRetailCity(current, 'harbor-city');
 		const second = ensureCompetitorsForRetailCity({ ...current, competitors: [] }, 'harbor-city');
 
 		expect(current.rngState).toBe(initialRngState);
-		expect(first.rngState).toBe(initialRngState);
-		expect(second.rngState).toBe(initialRngState);
+		expect(first.rngState).not.toBe(initialRngState);
+		expect(first.rngState).toBe(second.rngState);
 		expect(first.competitors).toEqual(second.competitors);
 	});
 

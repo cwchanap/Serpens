@@ -72,8 +72,7 @@ describe('city map render snapshot', () => {
 				name: activeRival.name,
 				archetypeId: activeRival.archetypeId,
 				x: activeRival.location.x,
-				y: activeRival.location.y,
-				status: 'active'
+				y: activeRival.location.y
 			}
 		]);
 		expect(snapshot.competitors).toHaveLength(1);

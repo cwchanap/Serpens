@@ -62,7 +62,6 @@ export interface CityMapCompetitorRender {
 	archetypeId: ArchetypeId;
 	x: number;
 	y: number;
-	status: MarketCompetitor['status'];
 }
 
 export interface CityMapSnapshot {
@@ -230,7 +229,6 @@ function createCompetitorRender(competitor: MarketCompetitor): CityMapCompetitor
 		name: competitor.name,
 		archetypeId: competitor.archetypeId,
 		x: competitor.location.x,
-		y: competitor.location.y,
-		status: competitor.status
+		y: competitor.location.y
 	};
 }

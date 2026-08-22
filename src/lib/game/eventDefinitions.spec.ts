@@ -687,6 +687,9 @@ describe('validateAndNormalizeEventCatalog', () => {
 			productFocus: focus
 		});
 		expect(normalized.options[0]?.effects[2]).not.toBe(authored.options[0]?.effects[2]);
+		expect((normalized.options[0]?.effects[2] as { productFocus: unknown }).productFocus).not.toBe(
+			(authored.options[0]?.effects[2] as { productFocus: unknown }).productFocus
+		);
 		expect(normalized.options[0]?.modifiers[0]?.effect).toEqual({
 			kind: 'competitor-attraction-multiplier',
 			multiplier: 1.18
