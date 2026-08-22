@@ -4766,7 +4766,7 @@ function validateSavedStoreProduct(value: unknown, label: string, gameDay: numbe
 	) as StoreProduct['brandId'];
 	if (PRODUCT_ID_SET.has(productId) && !isBrandSupported(productId, brandId)) {
 		throw new SaveDataError(
-			`${label} brandId ${brandId} does not support product family ${PRODUCTS[productId]?.familyId ?? 'unknown'}`,
+			`${label} brandId ${brandId} does not support product family ${PRODUCTS[productId].familyId}`,
 			'invariant-products'
 		);
 	}

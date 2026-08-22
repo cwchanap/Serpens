@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { PRODUCTS } from './products';
 import {
+	baseSellerScore,
 	brandedSellerScore,
 	getBrandDefinition,
 	getBrandDefaultSellingPrice,
@@ -153,7 +154,7 @@ describe('brand catalog', () => {
 	});
 
 	test('multiplies the seller score without a hidden competition term', () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const game = createNewGame('boutique', 20260820);
 		const store = {
 			...game.stores[0]!,
@@ -176,5 +177,8 @@ describe('brand catalog', () => {
 		expect(brandedSellerScore(store, 'apparel')).toBeGreaterThan(
 			brandedSellerScore(commonGroundStore, 'apparel')
 		);
+		// Non-finite inputs fall back to the reputation baseline and zero staff
+		// capacity instead of poisoning the score with NaN.
+		expect(baseSellerScore(Number.NaN, Number.NaN, 1)).toBe(baseSellerScore(50, 0, 1));
 	});
 });
