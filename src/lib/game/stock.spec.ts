@@ -218,7 +218,7 @@ describe('stock rules', () => {
 		expect(product.brandId).toBe('common-ground');
 	});
 
-	test('changes a supported brand without repricing unless a price is provided', () => {
+	test('writes the new brand default price once on a brand switch and leaves later manual prices untouched', () => {
 		expect.assertions(7);
 		const game = withOneStoreProducts([createStoreProduct('apparel')]);
 
@@ -227,9 +227,12 @@ describe('stock rules', () => {
 		});
 		const brandedProduct = branded.stores[0]!.products[0]!;
 		expect(brandedProduct.brandId).toBe('northstar-select');
-		// The brand switch preserves the shelf price instead of writing the
-		// northstar-select default (45).
-		expect(brandedProduct.sellingPrice).toBe(38);
+		// A brand switch without an explicit price writes the new brand default
+		// once (northstar-select default = 45) instead of preserving the prior
+		// shelf price.
+		expect(brandedProduct.sellingPrice).toBe(
+			getBrandDefaultSellingPrice(getProductDefinition('apparel'), 'northstar-select')
+		);
 
 		const priceEdited = updateStoreProduct(branded, 'store-1', 'apparel', {
 			sellingPrice: 39

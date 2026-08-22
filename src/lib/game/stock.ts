@@ -110,11 +110,16 @@ export function updateStoreProduct(
 	if (brandChanged && !isBrandSupported(productId, nextBrandId)) {
 		return game;
 	}
-	// A brand switch alone never reprices the shelf: only an explicit price
-	// patch (or none at all, preserving the current price) updates it.
+	// A brand switch writes the new brand's default shelf price once: when the
+	// patch omits an explicit sellingPrice alongside a brand change, fall back to
+	// the new brand default instead of preserving the prior price. Later price
+	// edits mutate sellingPrice directly and are never multiplied again.
+	const fallbackSellingPrice = brandChanged
+		? getBrandDefaultSellingPrice(productDefinition, nextBrandId)
+		: product.sellingPrice;
 	const sellingPrice = Math.max(
 		1,
-		roundedFiniteOrFallback(patch.sellingPrice, product.sellingPrice)
+		roundedFiniteOrFallback(patch.sellingPrice, fallbackSellingPrice)
 	);
 	const reorderThreshold = Math.max(
 		0,

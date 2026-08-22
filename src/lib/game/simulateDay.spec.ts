@@ -1444,7 +1444,7 @@ describe('daily simulation', () => {
 				{
 					day: 8,
 					cashBefore: 30_734,
-					cashAfter: 30_068,
+					cashAfter: 30_071,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1453,7 +1453,7 @@ describe('daily simulation', () => {
 				{
 					day: 15,
 					cashBefore: 28_856,
-					cashAfter: 28_179,
+					cashAfter: 28_176,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1473,7 +1473,7 @@ describe('daily simulation', () => {
 				{
 					day: 8,
 					cashBefore: 37_612,
-					cashAfter: 39_555,
+					cashAfter: 39_251,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1482,7 +1482,7 @@ describe('daily simulation', () => {
 				{
 					day: 15,
 					cashBefore: 37_471,
-					cashAfter: 39_338,
+					cashAfter: 39_300,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1491,7 +1491,7 @@ describe('daily simulation', () => {
 				{
 					day: 22,
 					cashBefore: 37_330,
-					cashAfter: 39_123,
+					cashAfter: 39_047,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1502,7 +1502,7 @@ describe('daily simulation', () => {
 				{
 					day: 8,
 					cashBefore: 44_954,
-					cashAfter: 46_493,
+					cashAfter: 47_117,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1511,7 +1511,7 @@ describe('daily simulation', () => {
 				{
 					day: 15,
 					cashBefore: 43_841,
-					cashAfter: 45_478,
+					cashAfter: 45_814,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1520,7 +1520,7 @@ describe('daily simulation', () => {
 				{
 					day: 22,
 					cashBefore: 42_730,
-					cashAfter: 44_417,
+					cashAfter: 44_705,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1531,7 +1531,7 @@ describe('daily simulation', () => {
 				{
 					day: 8,
 					cashBefore: 40_472,
-					cashAfter: 39_318,
+					cashAfter: 39_314,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1540,7 +1540,7 @@ describe('daily simulation', () => {
 				{
 					day: 15,
 					cashBefore: 37_826,
-					cashAfter: 36_663,
+					cashAfter: 36_659,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1549,7 +1549,7 @@ describe('daily simulation', () => {
 				{
 					day: 22,
 					cashBefore: 35_183,
-					cashAfter: 34_014,
+					cashAfter: 34_018,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,

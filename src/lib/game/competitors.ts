@@ -2,7 +2,7 @@ import { getArchetype } from './archetypes';
 import { isTileBuildable } from './city';
 import { BRANDS } from './brands';
 import { getProductDefinition } from './products';
-import { createRngFromState, randomInt, type Rng } from './rng';
+import { createRng, normalizeSeed, randomInt, type Rng } from './rng';
 import { createCityTileLookup, getOccupiedStoreTileIds } from './storeFootprint';
 import { getWorldCityDefinition } from './worldCatalog';
 import type {
@@ -60,7 +60,12 @@ export function ensureCompetitorsForRetailCity(
 		return game;
 	}
 
-	const rng = createRngFromState(game.rngState);
+	// Sandbox rival generation consumes a derived local RNG only; the gameplay
+	// RNG stream (GameState.rngState) is never advanced. Rival identity depends
+	// solely on the world seed and the city seed, so opening another retail city
+	// cannot perturb subsequent gameplay randomness and authored scenarios stay
+	// rival-free without inheriting sandbox RNG churn.
+	const rng = createRng(normalizeSeed(game.seed + worldCity.seed * 37 + 39_039));
 	const cityLookup = createCityTileLookup(city);
 	const occupiedTileIds = getOccupiedStoreTileIds(
 		city,
@@ -108,7 +113,6 @@ export function ensureCompetitorsForRetailCity(
 
 	return {
 		...game,
-		rngState: rng.getState(),
 		competitors: [
 			...game.competitors.filter((competitor) => competitor.cityId !== worldCity.id),
 			...generated
