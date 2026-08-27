@@ -26,6 +26,8 @@ describe('ControlDesk time controls', () => {
 		await expect.element(page.getByRole('button', { name: /^1×$/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /^2×$/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /^5×$/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /^advance day$/i })).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole('button', { name: /^advance day$/i }))
+			.not.toBeInTheDocument();
 	});
 });
