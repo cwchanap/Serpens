@@ -14,10 +14,18 @@
 		 * panels are open. Rendering resumes automatically when this is false.
 		 */
 		paused?: boolean;
+		keyboardEnabled?: boolean;
 		i18n: I18nBundle;
 	}
 
-	let { snapshot, onTileSelected, active = true, paused = false, i18n }: Props = $props();
+	let {
+		snapshot,
+		onTileSelected,
+		active = true,
+		paused = false,
+		keyboardEnabled = true,
+		i18n
+	}: Props = $props();
 
 	let container: HTMLDivElement | undefined = $state();
 	let loadFailed = $state(false);
@@ -39,6 +47,10 @@
 
 	$effect(() => {
 		scene?.updateSnapshot(snapshot);
+	});
+
+	$effect(() => {
+		scene?.setKeyboardEnabled(keyboardEnabled);
 	});
 
 	// Pause/resume the render loop with the overlay state. The game instance is

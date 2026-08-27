@@ -5,6 +5,7 @@
 
 	type ShortcutActionKey =
 		| 'build'
+		| 'cameraPan'
 		| 'mapViews'
 		| 'dashboard'
 		| 'policies'
@@ -15,7 +16,7 @@
 		| 'productChains'
 		| 'finance'
 		| 'logistics'
-		| 'advanceDay'
+		| 'pauseResume'
 		| 'escape'
 		| 'cheatSheet';
 
@@ -28,17 +29,18 @@
 
 	const shortcuts: Array<{ keys: string; actionKey: ShortcutActionKey }> = [
 		{ keys: 'B', actionKey: 'build' },
+		{ keys: 'W / A / S / D', actionKey: 'cameraPan' },
 		{ keys: '1 / 2 / 3', actionKey: 'mapViews' },
-		{ keys: 'D', actionKey: 'dashboard' },
+		{ keys: 'O', actionKey: 'dashboard' },
 		{ keys: 'P', actionKey: 'policies' },
-		{ keys: 'S', actionKey: 'staff' },
+		{ keys: 'H', actionKey: 'staff' },
 		{ keys: 'T', actionKey: 'stores' },
 		{ keys: 'C', actionKey: 'decisions' },
 		{ keys: 'R', actionKey: 'reports' },
 		{ keys: 'G', actionKey: 'productChains' },
 		{ keys: 'F', actionKey: 'finance' },
 		{ keys: 'L', actionKey: 'logistics' },
-		{ keys: 'Space', actionKey: 'advanceDay' },
+		{ keys: 'Space', actionKey: 'pauseResume' },
 		{ keys: 'Esc', actionKey: 'escape' },
 		{ keys: '?', actionKey: 'cheatSheet' }
 	];

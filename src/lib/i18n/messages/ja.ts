@@ -32,6 +32,9 @@ export const ja = {
 		build: '建設',
 		management: '管理',
 		shortcuts: 'ショートカット',
+		pause: '一時停止',
+		resume: '再開',
+		simulationSpeed: 'シミュレーション速度',
 		advanceDay: '次の日へ'
 	},
 	audioSettings: {
@@ -855,6 +858,7 @@ export const ja = {
 		close: 'ショートカットを閉じる',
 		actions: {
 			build: '建設メニューを切り替え',
+			cameraPan: 'カメラを移動',
 			mapViews: '小売 / 工業 / 世界ビュー',
 			dashboard: 'ダッシュボードを切り替え',
 			policies: 'ポリシーを切り替え',
@@ -865,7 +869,7 @@ export const ja = {
 			productChains: '商品チェーンを切り替え',
 			finance: '財務を切り替え',
 			logistics: '物流を切り替え',
-			advanceDay: '日を進める',
+			pauseResume: '時間を一時停止・再開',
 			escape: 'メニューを開く、または閉じる / キャンセル',
 			cheatSheet: 'このチートシートを切り替え'
 		}

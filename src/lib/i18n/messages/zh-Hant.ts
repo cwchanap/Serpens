@@ -32,6 +32,9 @@ export const zhHant = {
 		build: '建設',
 		management: '管理',
 		shortcuts: '快捷鍵',
+		pause: '暫停',
+		resume: '繼續',
+		simulationSpeed: '模擬速度',
 		advanceDay: '推進一天'
 	},
 	audioSettings: {
@@ -852,6 +855,7 @@ export const zhHant = {
 		close: '關閉快捷鍵',
 		actions: {
 			build: '切換建設選單',
+			cameraPan: '平移鏡頭',
 			mapViews: '零售 / 工業 / 世界檢視',
 			dashboard: '切換儀表板',
 			policies: '切換政策',
@@ -862,7 +866,7 @@ export const zhHant = {
 			productChains: '切換商品鏈',
 			finance: '切換財務',
 			logistics: '切換物流',
-			advanceDay: '推進一天',
+			pauseResume: '暫停或繼續時間',
 			escape: '開啟選單，或關閉 / 取消',
 			cheatSheet: '切換此快捷鍵表'
 		}

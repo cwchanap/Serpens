@@ -1139,8 +1139,7 @@ export class GameRouteController {
 	advanceDay(): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
 			transition: (game) => simulateDay(game!),
-			scenarioCommand: { kind: 'advanceDay' },
-			cueId: 'sfx.time.advance-day'
+			scenarioCommand: { kind: 'advanceDay' }
 		});
 	}
 

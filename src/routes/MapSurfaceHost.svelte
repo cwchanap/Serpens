@@ -103,6 +103,7 @@
 				onTileSelected={onSelectRetailTile}
 				active={activeMapView === 'retail'}
 				paused={isMapPaused}
+				keyboardEnabled={railKeyboardEnabled}
 				{i18n}
 			/>
 		</div>

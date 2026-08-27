@@ -18,7 +18,10 @@ describe('ControlDesk time controls', () => {
 			i18n: createI18n('en'),
 			onBuild: vi.fn(),
 			onOpenManagement: vi.fn(),
-			onAdvanceDay: vi.fn(),
+			paused: false,
+			simulationSpeed: 1,
+			onTogglePause: vi.fn(),
+			onSelectSpeed: vi.fn(),
 			onOpenShortcuts: vi.fn()
 		});
 

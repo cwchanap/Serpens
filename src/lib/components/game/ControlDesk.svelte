@@ -9,6 +9,8 @@
 		shortcut?: string;
 	}
 
+	type SimulationSpeed = 1 | 2 | 5;
+
 	interface Props {
 		managementItems: ManagementItem[];
 		buildDisabled: boolean;
@@ -18,7 +20,10 @@
 		i18n: I18nBundle;
 		onBuild: () => void;
 		onOpenManagement: (id: ManagementPanelId) => void;
-		onAdvanceDay: () => void;
+		paused?: boolean;
+		simulationSpeed?: SimulationSpeed;
+		onTogglePause?: () => void;
+		onSelectSpeed?: (speed: SimulationSpeed) => void;
 		onOpenShortcuts: () => void;
 		/** Shows the rail-build toggle next to Build — industry map only. */
 		showRailBuild?: boolean;
@@ -35,7 +40,10 @@
 		i18n,
 		onBuild,
 		onOpenManagement,
-		onAdvanceDay,
+		paused = false,
+		simulationSpeed = 1,
+		onTogglePause = () => {},
+		onSelectSpeed = () => {},
 		onOpenShortcuts,
 		showRailBuild = false,
 		railBuildActive = false,
@@ -93,12 +101,28 @@
 		<button
 			type="button"
 			class="btn-primary advance"
-			aria-label={i18n.t('controlDesk.advanceDay')}
+			aria-label={paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}
 			disabled={advanceDisabled}
-			onclick={onAdvanceDay}
+			onclick={onTogglePause}
 		>
-			{i18n.t('controlDesk.advanceDay')} <kbd class="keycap">Space</kbd>
+			{paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}
+			<kbd class="keycap">Space</kbd>
 		</button>
+		<div class="speed-controls" role="group" aria-label={i18n.t('controlDesk.simulationSpeed')}>
+			{#each [1, 2, 5] as speed}
+				<button
+					type="button"
+					class="speed-button"
+					class:active={simulationSpeed === speed}
+					aria-label={`${speed}×`}
+					aria-pressed={simulationSpeed === speed}
+					disabled={advanceDisabled}
+					onclick={() => onSelectSpeed(speed as SimulationSpeed)}
+				>
+					{speed}×
+				</button>
+			{/each}
+		</div>
 	</div>
 </footer>
 
@@ -178,6 +202,28 @@
 	.advance {
 		display: inline-flex;
 		align-items: center;
+		gap: 0.35rem;
+	}
+
+	.speed-controls {
+		display: inline-flex;
+		gap: 0.2rem;
+	}
+
+	.speed-button {
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.82rem;
+		font-weight: 700;
+		padding: 0.45rem 0.55rem;
+	}
+
+	.speed-button.active {
+		border-color: var(--brass-500);
+		background: var(--paper-200);
 	}
 
 	.desk-shortcuts {
