@@ -32,7 +32,7 @@ export interface ShortcutContext {
 	hasModifier: boolean;
 	/** Hard modal overlays (save panel, cheat sheet, store detail, supply advisor, alerts popover, game-menu hamburger, placement) suppress every shortcut. */
 	hasBlockingOverlay: boolean;
-	/** A soft menu (build menu or a management panel) is open — suppresses navigation keys, but menu-toggle keys still switch/close it. */
+	/** A soft menu (build menu or a management panel) is open — suppresses view navigation, but menu/time toggles remain active. */
 	isMenuOpen: boolean;
 	activeMapView: MapViewId;
 	hasGame: boolean;
@@ -86,14 +86,18 @@ export function resolveShortcutAction(context: ShortcutContext): ShortcutAction 
 		return context.activeMapView === 'world' ? null : { type: 'toggle-build' };
 	}
 
-	// Navigation keys are suppressed while a soft menu (build / panel) is open.
+	// Space is a simulation control, not view navigation, so keep it available
+	// while a soft panel is open. Native controls still own Space via the guard above.
+	if (key === ' ') {
+		return context.hasGame ? { type: 'toggle-pause' } : null;
+	}
+
+	// View navigation is suppressed while a soft menu (build / panel) is open.
 	if (context.isMenuOpen) {
 		return null;
 	}
 
 	switch (key) {
-		case ' ':
-			return context.hasGame ? { type: 'toggle-pause' } : null;
 		case '1':
 			return { type: 'view', view: 'retail' };
 		case '2':
