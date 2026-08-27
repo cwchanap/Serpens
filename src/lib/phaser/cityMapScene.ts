@@ -30,6 +30,7 @@ export type CityMapEventHandler = (event: CityMapEvent) => void;
 const TILE_SIZE = 32;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
+const KEYBOARD_PAN_SPEED = 420;
 const TERRAIN_BASE_DEPTH = 0;
 const TERRAIN_OVERLAY_DEPTH = 1;
 const TERRAIN_FEATURE_DEPTH = 2;
@@ -47,6 +48,8 @@ const PLACEMENT_PREVIEW_INVALID_COLOR = 0x8e2a1f;
 const PLACEMENT_PREVIEW_ALPHA = 0.28;
 /** Classic prime multiplier (cf. Java's String.hashCode) used to derive a stable, well-distributed variant index per tile coordinate. */
 const TERRAIN_VARIANT_HASH_PRIME = 31;
+
+type CameraPanKeys = Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
 
 interface StoreSpriteRender {
 	sprite: Phaser.GameObjects.Image;
@@ -86,6 +89,8 @@ export class CityMapScene extends Phaser.Scene {
 	private dragStartPoint: { x: number; y: number } | null = null;
 	private lastDragPoint: { x: number; y: number } | null = null;
 	private hasUserAdjustedCamera = false;
+	private panKeys: CameraPanKeys | null = null;
+	private keyboardEnabled = true;
 
 	constructor() {
 		super({ key: 'CityMapScene' });
@@ -108,6 +113,7 @@ export class CityMapScene extends Phaser.Scene {
 		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 		this.markerGraphics = this.add.graphics().setDepth(STORE_MARKER_DEPTH);
 		this.cameras.main.setZoom(1);
+		this.panKeys = (this.input.keyboard?.addKeys('W,A,S,D') as CameraPanKeys | undefined) ?? null;
 		this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 		this.input.on('pointermove', this.handlePointerMove, this);
 		this.input.on('pointerup', this.handlePointerUp, this);
@@ -116,13 +122,18 @@ export class CityMapScene extends Phaser.Scene {
 		this.renderSnapshot();
 	}
 
-	update(time: number): void {
+	update(time: number, delta = 0): void {
+		this.updateKeyboardPan(delta);
 		this.drawStoreMarkers(time);
 		this.updateCanvasCameraAttributes();
 	}
 
 	setEventHandler(handler: CityMapEventHandler | null): void {
 		this.eventHandler = handler;
+	}
+
+	setKeyboardEnabled(enabled: boolean): void {
+		this.keyboardEnabled = enabled;
 	}
 
 	updateSnapshot(snapshot: CityMapSnapshot): void {
@@ -340,6 +351,26 @@ export class CityMapScene extends Phaser.Scene {
 				this.drawInteractionOutlines();
 			}
 		}
+	}
+
+	private updateKeyboardPan(deltaMs: number): void {
+		if (!this.keyboardEnabled || !this.panKeys || deltaMs <= 0) {
+			return;
+		}
+
+		const horizontal = Number(this.panKeys.D.isDown) - Number(this.panKeys.A.isDown);
+		const vertical = Number(this.panKeys.S.isDown) - Number(this.panKeys.W.isDown);
+		if (horizontal === 0 && vertical === 0) {
+			return;
+		}
+
+		const magnitude = Math.hypot(horizontal, vertical);
+		const camera = this.cameras.main;
+		const distance = (KEYBOARD_PAN_SPEED * (deltaMs / 1000)) / (camera.zoom || 1);
+		this.hasUserAdjustedCamera = true;
+		camera.scrollX += (horizontal / magnitude) * distance;
+		camera.scrollY += (vertical / magnitude) * distance;
+		this.updateCanvasCameraAttributes();
 	}
 
 	private handlePointerUp(): void {

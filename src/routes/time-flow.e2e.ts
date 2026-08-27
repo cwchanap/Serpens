@@ -24,6 +24,9 @@ test('simulation advances automatically at the selected speed and stops while pa
 		value: sandboxSave()
 	});
 	await page.goto('/');
+	await page.getByRole('button', { name: /^menu$/i }).click();
+	await page.getByRole('button', { name: /^saves$/i }).click();
+	await page.getByRole('button', { name: /^resume$/i }).click();
 
 	const day = page.getByText(/^Day \d+$/);
 	await expect(day).toHaveText('Day 1');

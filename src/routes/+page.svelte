@@ -203,7 +203,10 @@
 		shortcut: string;
 	}
 
+	type SimulationSpeed = 1 | 2 | 5;
 	type SaveFeedbackKind = 'status' | 'error';
+
+	const SIMULATION_DAY_MS = 5_000;
 
 	interface SaveFeedback {
 		kind: SaveFeedbackKind;
@@ -336,6 +339,9 @@
 	let scenarioOperationError = $state<ScenarioOperationError | null>(null);
 	let retryScenarioOperation = $state<(() => Promise<void>) | null>(null);
 	let playMode = $state<'sandbox' | 'scenario'>('sandbox');
+	let simulationPaused = $state(false);
+	let simulationSpeed = $state<SimulationSpeed>(1);
+	let simulationTickPending = $state(false);
 	let scenarioCommandPending = $state(false);
 	let scenariosReady = $state(false);
 	const gameRouteController = new GameRouteController({
@@ -1063,6 +1069,21 @@
 
 	$effect(() => {
 		audioController?.setActiveBgm(bgmCueByMapView[activeMapView]);
+	});
+
+	$effect(() => {
+		const currentGame = game;
+		const paused = simulationPaused;
+		const speed = simulationSpeed;
+		const canAdvance = mutationAvailability.advanceDay;
+		const tickPending = simulationTickPending;
+
+		if (!currentGame || paused || !canAdvance || tickPending) {
+			return;
+		}
+
+		const timer = globalThis.setTimeout(() => void runSimulationTick(), SIMULATION_DAY_MS / speed);
+		return () => globalThis.clearTimeout(timer);
 	});
 
 	function changeLocale(locale: SupportedLocale): void {
@@ -2071,10 +2092,26 @@
 		void handoffSupplyPlannerAction(action, currentResult, plannerHandoffHost());
 	}
 
-	function advanceDay() {
-		if (game && mutationAvailability.advanceDay) {
-			void gameRouteController.advanceDay();
+	async function runSimulationTick(): Promise<void> {
+		if (!game || simulationPaused || simulationTickPending || !mutationAvailability.advanceDay) {
+			return;
 		}
+
+		simulationTickPending = true;
+		try {
+			await gameRouteController.advanceDay();
+		} finally {
+			simulationTickPending = false;
+		}
+	}
+
+	function toggleSimulationPause(): void {
+		if (!game) return;
+		simulationPaused = !simulationPaused;
+	}
+
+	function setSimulationSpeed(speed: SimulationSpeed): void {
+		simulationSpeed = speed;
 	}
 
 	function changePolicy(patch: Partial<CompanyPolicy>) {
@@ -2734,8 +2771,8 @@
 				if (action.panel === 'logistics') openLogisticsManagement();
 				else openManagementPanel(action.panel);
 			}
-		} else if (action.type === 'advance-day') {
-			advanceDay();
+		} else if (action.type === 'toggle-pause') {
+			toggleSimulationPause();
 		} else if (action.type === 'view') {
 			if (action.view === 'retail') {
 				showRetailMap();
@@ -2881,7 +2918,10 @@
 			onBuild={openBuildMenu}
 			onOpenManagement={(id) =>
 				id === 'logistics' ? openLogisticsManagement() : openManagementPanel(id)}
-			onAdvanceDay={advanceDay}
+			paused={simulationPaused}
+			{simulationSpeed}
+			onTogglePause={toggleSimulationPause}
+			onSelectSpeed={setSimulationSpeed}
 			onOpenShortcuts={() => (isCheatSheetOpen = true)}
 			showRailBuild={activeMapView === 'industry' && game !== null}
 			railBuildActive={railBuildMode.step !== 'idle'}

@@ -6,7 +6,7 @@ import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 import ControlDesk from './ControlDesk.svelte';
 
 const managementItems: { id: ManagementPanelId; label: string; shortcut: string }[] = [
-	{ id: 'dashboard', label: 'Dashboard', shortcut: 'D' },
+	{ id: 'dashboard', label: 'Dashboard', shortcut: 'O' },
 	{ id: 'policies', label: 'Policies', shortcut: 'P' },
 	{ id: 'finance', label: 'Finance', shortcut: 'F' }
 ];
@@ -19,7 +19,10 @@ function baseProps() {
 		i18n: createI18n('en'),
 		onBuild: vi.fn(),
 		onOpenManagement: vi.fn(),
-		onAdvanceDay: vi.fn(),
+		paused: false,
+		simulationSpeed: 1 as const,
+		onTogglePause: vi.fn(),
+		onSelectSpeed: vi.fn(),
 		onOpenShortcuts: vi.fn()
 	};
 }
@@ -32,18 +35,18 @@ describe('ControlDesk', () => {
 		await page.viewport(1280, 800);
 	});
 
-	it('renders build, management launchers, and advance day', async () => {
+	it('renders build, management launchers, and time controls', async () => {
 		expect.assertions(3);
 		render(ControlDesk, baseProps());
 		await expect.element(page.getByRole('button', { name: /^build$/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /dashboard/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /^advance day$/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /^pause$/i })).toBeVisible();
 	});
 
 	it('shows each management panel with its hotkey', async () => {
 		expect.assertions(3);
 		render(ControlDesk, baseProps());
-		await expect.element(page.getByRole('button', { name: /dashboard\s*d/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /dashboard\s*o/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /policies\s*p/i })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: /finance\s*f/i })).toBeVisible();
 	});
@@ -54,16 +57,16 @@ describe('ControlDesk', () => {
 		await expect.element(page.getByRole('button', { name: /^menu$/i })).not.toBeInTheDocument();
 	});
 
-	it('invokes build, management and advance callbacks on interaction', async () => {
+	it('invokes build, management and pause callbacks on interaction', async () => {
 		expect.assertions(3);
 		const props = baseProps();
 		render(ControlDesk, props);
 		await page.getByRole('button', { name: /^build$/i }).click();
 		await page.getByRole('button', { name: /dashboard/i }).click();
-		await page.getByRole('button', { name: /^advance day$/i }).click();
+		await page.getByRole('button', { name: /^pause$/i }).click();
 		expect(props.onBuild).toHaveBeenCalledTimes(1);
 		expect(props.onOpenManagement).toHaveBeenCalledWith('dashboard');
-		expect(props.onAdvanceDay).toHaveBeenCalledTimes(1);
+		expect(props.onTogglePause).toHaveBeenCalledTimes(1);
 	});
 
 	it('disables build when buildDisabled is set', async () => {
@@ -83,10 +86,10 @@ describe('ControlDesk', () => {
 		expect(props.onOpenShortcuts).toHaveBeenCalledTimes(1);
 	});
 
-	it('disables advance day when advanceDisabled is set', async () => {
+	it('disables time controls when advanceDisabled is set', async () => {
 		expect.assertions(1);
 		render(ControlDesk, { ...baseProps(), advanceDisabled: true });
-		await expect.element(page.getByRole('button', { name: /^advance day$/i })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: /^pause$/i })).toBeDisabled();
 	});
 
 	it('omits the keycap for management items that have no shortcut', async () => {
@@ -96,7 +99,7 @@ describe('ControlDesk', () => {
 			managementItems: [{ id: 'dashboard', label: 'Dashboard' }]
 		});
 		await expect.element(page.getByRole('button', { name: /^dashboard$/i })).toBeVisible();
-		await expect.element(page.getByText('D', { exact: true })).not.toBeInTheDocument();
+		await expect.element(page.getByText('O', { exact: true })).not.toBeInTheDocument();
 	});
 
 	it('renders an empty management cluster without launchers', async () => {
@@ -170,10 +173,10 @@ describe('ControlDesk', () => {
 		});
 
 		const build = page.getByRole('button', { name: /^build$/i });
-		const advance = page.getByRole('button', { name: /^advance day$/i });
+		const pause = page.getByRole('button', { name: /^pause$/i });
 		const rail = page.getByRole('button', { name: /build rail/i });
 		await expect.element(build).toBeDisabled();
-		await expect.element(advance).toBeDisabled();
+		await expect.element(pause).toBeDisabled();
 		await expect.element(rail).toBeDisabled();
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 		await page.getByRole('button', { name: /dashboard/i }).click();

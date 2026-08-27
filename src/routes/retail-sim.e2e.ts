@@ -68,6 +68,19 @@ test.beforeEach(async ({ page }) => {
 	);
 });
 
+async function advanceSimulationDay(page: Page): Promise<void> {
+	const day = page.getByText(/^Day \d+$/);
+	const label = (await day.textContent()) ?? '';
+	const currentDay = Number(label.match(/\d+/)?.[0] ?? 0);
+	const resume = page.getByRole('button', { name: /^resume$/i });
+	if (await resume.isVisible().catch(() => false)) {
+		await resume.click();
+	}
+	await page.getByRole('button', { name: /^5×$/i }).click();
+	await expect(day).toHaveText(`Day ${currentDay + 1}`, { timeout: 2_500 });
+	await page.getByRole('button', { name: /^pause$/i }).click();
+}
+
 const FIRST_PROFIT_REFERENCE_OPENING: ScenarioCommand[] = [
 	{
 		kind: 'updatePolicy',
@@ -1645,7 +1658,7 @@ test('living market sandbox persists a brand edit and reports market evidence', 
 	).toHaveValue('3');
 	await reloadedDetails.getByRole('button', { name: /close store details/i }).click();
 
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	const saved = await waitForAutoSaveDay(page, seededGame.day + 1);
 	const latest = getLatestReport(saved);
 	expect(latest.storeReports[0]?.productReports[0]).toMatchObject({
@@ -1707,7 +1720,7 @@ test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly
 		});
 	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
 
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	await waitForAutoSaveDay(page, seededGame.day + 1);
 	let saved = await waitForSavedReportDay(page, seededGame.day);
 	const activeReport = getLatestReport(saved);
@@ -1723,7 +1736,7 @@ test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly
 
 	let expiryReport: SavedDailyReport | undefined;
 	for (const day of [3, 4, 5]) {
-		await page.getByRole('button', { name: /^advance day$/i }).click();
+		await advanceSimulationDay(page);
 		await waitForAutoSaveDay(page, day);
 		saved = await waitForSavedReportDay(page, day - 1);
 		if (day === 4) {
@@ -2287,7 +2300,7 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	const policies = await openManagementPanel(page, /policies/i);
 	await policies.getByLabel(/pricing/i).selectOption('premium');
 	await policies.getByRole('button', { name: /close policies/i }).click();
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	const reports = await openManagementPanel(page, /reports/i);
 
 	await expect(
@@ -2725,7 +2738,7 @@ test('player builds convenience production and refills from city inventory', asy
 	const industryCanvas = await expectIndustryMapReady(page);
 
 	for (let day = 1; day < 6; day += 1) {
-		await page.getByRole('button', { name: /^advance day$/i }).click();
+		await advanceSimulationDay(page);
 		await waitForAutoSaveDay(page, day + 1);
 	}
 
@@ -2782,7 +2795,7 @@ test('player builds convenience production and refills from city inventory', asy
 	await expect(railStatus).toHaveCount(0);
 	await expect(industryCanvas).toHaveAttribute('data-rail-cell-count', /^[1-9]\d*$/);
 
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	await waitForAutoSaveDay(page, 7);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '3');
 	await clickCanvasTile(
@@ -2816,7 +2829,7 @@ test('player builds convenience production and refills from city inventory', asy
 		targetStock: 25
 	});
 	const preWeeklyBottledWater = getSavedProduct(preWeeklyGame, 'bottled-water');
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	const postWeeklyGame = await waitForAutoSaveDay(page, 8);
 	const latestReport = getLatestReport(postWeeklyGame);
 	const storeReport = latestReport.storeReports[0];
@@ -3440,7 +3453,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await expect(storeModal).toHaveCount(0);
 
 	for (let day = 0; day < 7; day += 1) {
-		await page.getByRole('button', { name: /^advance day$/i }).click();
+		await advanceSimulationDay(page);
 	}
 
 	const reports = await openManagementPanel(page, /reports/i);
@@ -3456,7 +3469,7 @@ test('grocery product pressure surfaces produce waste and surviving stock', asyn
 	const store = seededGame.stores[0]!;
 
 	await installSandboxAutoSave(page, seededGame);
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	await waitForAutoSaveDay(page, seededGame.day + 1);
 	await clickMapTile(page, store.mapX, store.mapY);
 
@@ -4008,7 +4021,7 @@ test('rail-fed production connects two industrial buildings and records a rail s
 	// Day 1 production: pantry-works has no local flour, no rail connection,
 	// and nothing in the shared city inventory, so its whole flour need (6
 	// units/day) is imported.
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	let game = await waitForAutoSaveDay(page, 2);
 
 	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
@@ -4057,7 +4070,7 @@ test('rail-fed production connects two industrial buildings and records a rail s
 	// 'produced'. This is the brief's documented fallback: assert the rail
 	// cell count, a nonzero rail shipment, and a drop in imports instead of a
 	// full status flip.
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	game = await waitForAutoSaveDay(page, 3);
 
 	const postRailReport = getLatestReport(game);
@@ -4126,7 +4139,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 
 	// Day 7 is the weekly cadence. Harbor's 0/10 bottled-water position pulls
 	// the 6 local units from Industry City, then imports the 4-unit shortfall.
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	const postCycle = await waitForAutoSaveDay(page, 8);
 	const harborStore = getSavedStoreInCity(postCycle, 'harbor-city');
 	const campusStore = getSavedStoreInCity(postCycle, 'campus-junction');
@@ -4356,7 +4369,7 @@ test('logistics manual inter-city transfer completes with inline validation and 
 
 	await logistics.getByRole('button', { name: 'Close Logistics' }).click();
 	for (let day = 0; day < 3; day += 1) {
-		await page.getByRole('button', { name: /^advance day$/i }).click();
+		await advanceSimulationDay(page);
 	}
 	const deliveredGame = await waitForAutoSaveDay(page, 10);
 	expect(getSavedCityInventory(deliveredGame, 'industry-city')).toEqual({
@@ -4428,7 +4441,7 @@ test('logistics recurring route dispatches, delivers, and exposes active/paused 
 
 	// The route is due on day 7. Its first dispatch is visible in transit on day 8;
 	// day 9 closes without a second dispatch because the route frequency is 7 days.
-	await page.getByRole('button', { name: /^advance day$/i }).click();
+	await advanceSimulationDay(page);
 	await waitForAutoSaveDay(page, 8);
 	const afterDispatch = await openManagementPanel(page, /logistics/i);
 	const dispatchedRow = afterDispatch.locator('#logistics-route-route-1');
@@ -4438,7 +4451,7 @@ test('logistics recurring route dispatches, delivers, and exposes active/paused 
 	await afterDispatch.getByRole('button', { name: 'Close Logistics' }).click();
 
 	for (let day = 0; day < 2; day += 1) {
-		await page.getByRole('button', { name: /^advance day$/i }).click();
+		await advanceSimulationDay(page);
 	}
 	const afterDelivery = await waitForAutoSaveDay(page, 10);
 	expect(getSavedCityInventory(afterDelivery, 'industry-city')).toEqual({

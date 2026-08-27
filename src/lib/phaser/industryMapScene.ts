@@ -83,6 +83,7 @@ const RAIL_PREVIEW_REUSED_COLOR = 0x94a3b8;
 const TILE_SIZE = 32;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
+const KEYBOARD_PAN_SPEED = 420;
 const TERRAIN_DEPTH = 0;
 const OCCUPANCY_OUTLINE_DEPTH = TERRAIN_DEPTH + 2;
 const MARKER_DEPTH = 10;
@@ -100,6 +101,7 @@ const STATUS_COLORS: Record<IndustryMapBuildingRender['status'], number> = {
 	blocked: 0xef4444
 };
 
+type CameraPanKeys = Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
 type BuildingStage = 'raw' | 'process' | 'final' | 'warehouse';
 
 const STAGE_OUTLINE_COLORS: Record<BuildingStage, number> = {
@@ -159,6 +161,7 @@ export class IndustryMapScene extends Phaser.Scene {
 	private dragStartPoint: { x: number; y: number } | null = null;
 	private lastDragPoint: { x: number; y: number } | null = null;
 	private hasUserAdjustedCamera = false;
+	private panKeys: CameraPanKeys | null = null;
 	// When false, the always-on keydown-ESC listener is suppressed so Escape
 	// presses that close a page-level overlay (save panel, build menu, etc.)
 	// do not also fire buildCancelled behind the overlay and silently pop a
@@ -187,6 +190,7 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.markerGraphics = this.add.graphics().setDepth(MARKER_DEPTH + 1);
 		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 		this.cameras.main.setZoom(1);
+		this.panKeys = (this.input.keyboard?.addKeys('W,A,S,D') as CameraPanKeys | undefined) ?? null;
 		this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 		this.input.on('pointermove', this.handlePointerMove, this);
 		this.input.on('pointerup', this.handlePointerUp, this);
@@ -196,7 +200,8 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.renderSnapshot();
 	}
 
-	update(time: number): void {
+	update(time: number, delta = 0): void {
+		this.updateKeyboardPan(delta);
 		this.updateBuildingSprites(time);
 		this.drawMarkerGraphics(time);
 		this.updateCanvasCameraAttributes();
@@ -207,8 +212,8 @@ export class IndustryMapScene extends Phaser.Scene {
 	}
 
 	/**
-	 * Enables or disables the scene's keyboard shortcuts (currently only the
-	 * Escape-to-cancel-build listener). Called by IndustryMap.svelte based on
+	 * Enables or disables the scene's keyboard controls (WASD camera pan and
+	 * Escape-to-cancel-build). Called by IndustryMap.svelte based on
 	 * whether a page-level overlay is open, so Escape that closes an overlay
 	 * does not also fire buildCancelled behind it.
 	 */
@@ -845,6 +850,26 @@ export class IndustryMapScene extends Phaser.Scene {
 				this.drawInteractionOutlines();
 			}
 		}
+	}
+
+	private updateKeyboardPan(deltaMs: number): void {
+		if (!this.keyboardEnabled || !this.panKeys || deltaMs <= 0) {
+			return;
+		}
+
+		const horizontal = Number(this.panKeys.D.isDown) - Number(this.panKeys.A.isDown);
+		const vertical = Number(this.panKeys.S.isDown) - Number(this.panKeys.W.isDown);
+		if (horizontal === 0 && vertical === 0) {
+			return;
+		}
+
+		const magnitude = Math.hypot(horizontal, vertical);
+		const camera = this.cameras.main;
+		const distance = (KEYBOARD_PAN_SPEED * (deltaMs / 1000)) / (camera.zoom || 1);
+		this.hasUserAdjustedCamera = true;
+		camera.scrollX += (horizontal / magnitude) * distance;
+		camera.scrollY += (vertical / magnitude) * distance;
+		this.updateCanvasCameraAttributes();
 	}
 
 	private handlePointerUp(): void {

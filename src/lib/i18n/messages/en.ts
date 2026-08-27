@@ -32,6 +32,9 @@ export const en = {
 		build: 'Build',
 		management: 'Management',
 		shortcuts: 'Shortcuts',
+		pause: 'Pause',
+		resume: 'Resume',
+		simulationSpeed: 'Simulation speed',
 		advanceDay: 'Advance day'
 	},
 	audioSettings: {
@@ -861,6 +864,7 @@ export const en = {
 		close: 'Close shortcuts',
 		actions: {
 			build: 'Toggle build menu',
+			cameraPan: 'Pan camera',
 			mapViews: 'Retail / Industry / World view',
 			dashboard: 'Toggle Dashboard',
 			policies: 'Toggle Policies',
@@ -871,7 +875,7 @@ export const en = {
 			productChains: 'Toggle Product Chains',
 			finance: 'Toggle Finance',
 			logistics: 'Toggle Logistics',
-			advanceDay: 'Advance day',
+			pauseResume: 'Pause or resume time',
 			escape: 'Open menu, or close / cancel',
 			cheatSheet: 'Toggle this cheat sheet'
 		}

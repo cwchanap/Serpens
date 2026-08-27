@@ -13,7 +13,7 @@ export type ManagementPanelId =
 
 export type ShortcutAction =
 	| { type: 'toggle-build' }
-	| { type: 'advance-day' }
+	| { type: 'toggle-pause' }
 	| { type: 'view'; view: MapViewId }
 	| { type: 'toggle-panel'; panel: ManagementPanelId };
 
@@ -40,9 +40,9 @@ export interface ShortcutContext {
 
 /** Mnemonic letter keys that open/toggle each management panel. */
 export const MANAGEMENT_PANEL_SHORTCUTS: Record<string, ManagementPanelId> = {
-	d: 'dashboard',
+	o: 'dashboard',
 	p: 'policies',
-	s: 'staff',
+	h: 'staff',
 	t: 'stores',
 	c: 'decisions',
 	r: 'reports',
@@ -93,7 +93,7 @@ export function resolveShortcutAction(context: ShortcutContext): ShortcutAction 
 
 	switch (key) {
 		case ' ':
-			return context.hasGame ? { type: 'advance-day' } : null;
+			return context.hasGame ? { type: 'toggle-pause' } : null;
 		case '1':
 			return { type: 'view', view: 'retail' };
 		case '2':
