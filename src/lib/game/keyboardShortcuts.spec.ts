@@ -113,6 +113,7 @@ describe('resolveShortcutAction', () => {
 	});
 
 	it('leaves WASD unclaimed for the active Phaser map', () => {
+		// Route-level shortcuts must not shadow continuous camera movement.
 		expect.assertions(4);
 		expect(resolveShortcutAction(context({ key: 'w' }))).toBeNull();
 		expect(resolveShortcutAction(context({ key: 'a' }))).toBeNull();
