@@ -77,15 +77,14 @@ vi.mock('phaser', () => {
 		load = { image: vi.fn() };
 		game = { canvas: { dataset: {} as Record<string, string> } };
 
-		constructor(_config: unknown) {}
+		constructor() {}
 	}
 
 	return {
 		default: {
 			Scene: MockScene,
 			Math: {
-				Clamp: (value: number, min: number, max: number) =>
-					Math.min(Math.max(value, min), max)
+				Clamp: (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 			},
 			Scale: { Events: { RESIZE: 'resize' } },
 			Scenes: { Events: { SHUTDOWN: 'shutdown' } },
