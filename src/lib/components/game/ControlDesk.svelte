@@ -109,7 +109,7 @@
 			<kbd class="keycap">Space</kbd>
 		</button>
 		<div class="speed-controls" role="group" aria-label={i18n.t('controlDesk.simulationSpeed')}>
-			{#each [1, 2, 5] as speed}
+			{#each [1, 2, 5] as speed (speed)}
 				<button
 					type="button"
 					class="speed-button"
