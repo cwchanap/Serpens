@@ -30,6 +30,7 @@ test('simulation advances automatically at the selected speed and stops while pa
 
 	const day = page.getByText(/^Day \d+$/);
 	await expect(day).toHaveText('Day 1');
+	await page.keyboard.press('Escape');
 
 	await page.getByRole('button', { name: '5×', exact: true }).click();
 	await expect(day).toHaveText('Day 2', { timeout: 2_500 });
