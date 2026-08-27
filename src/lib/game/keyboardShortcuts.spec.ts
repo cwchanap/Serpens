@@ -131,10 +131,12 @@ describe('resolveShortcutAction', () => {
 		expect(resolveShortcutAction(context({ key: '3' }))).toEqual({ type: 'view', view: 'world' });
 	});
 
-	it('suppresses navigation keys while a soft menu is open', () => {
+	it('suppresses view navigation but keeps the time toggle while a soft menu is open', () => {
 		expect.assertions(2);
 		expect(resolveShortcutAction(context({ key: '2', isMenuOpen: true }))).toBeNull();
-		expect(resolveShortcutAction(context({ key: ' ', isMenuOpen: true }))).toBeNull();
+		expect(resolveShortcutAction(context({ key: ' ', isMenuOpen: true }))).toEqual({
+			type: 'toggle-pause'
+		});
 	});
 
 	it('ignores every shortcut while typing or when a modal overlay is open', () => {
