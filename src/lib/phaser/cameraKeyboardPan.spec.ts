@@ -83,7 +83,10 @@ vi.mock('phaser', () => {
 	return {
 		default: {
 			Scene: MockScene,
-			Math: { Clamp: (value: number, min: number, max: number) => Math.min(Math.max(value, min), max) },
+			Math: {
+				Clamp: (value: number, min: number, max: number) =>
+					Math.min(Math.max(value, min), max)
+			},
 			Scale: { Events: { RESIZE: 'resize' } },
 			Scenes: { Events: { SHUTDOWN: 'shutdown' } },
 			Input: { Pointer: class {} },
