@@ -490,8 +490,8 @@ replace_once(
 # New E2E loads the autosave explicitly before asserting automatic progression.
 replace_once(
     "src/routes/time-flow.e2e.ts",
-    "\t\tawait page.goto('/');\n\n\t\tconst day = page.getByText(/^Day \\d+$/);\n",
-    "\t\tawait page.goto('/');\n\t\tawait page.getByRole('button', { name: /^menu$/i }).click();\n\t\tawait page.getByRole('button', { name: /^saves$/i }).click();\n\t\tawait page.getByRole('button', { name: /^resume$/i }).click();\n\n\t\tconst day = page.getByText(/^Day \\d+$/);\n",
+    "\tawait page.goto('/');\n\n\tconst day = page.getByText(/^Day \\d+$/);\n",
+    "\tawait page.goto('/');\n\tawait page.getByRole('button', { name: /^menu$/i }).click();\n\tawait page.getByRole('button', { name: /^saves$/i }).click();\n\tawait page.getByRole('button', { name: /^resume$/i }).click();\n\n\tconst day = page.getByText(/^Day \\d+$/);\n",
 )
 
 # Existing E2E cases that need an exact one-day step use 5× briefly, then pause.
