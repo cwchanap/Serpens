@@ -15,6 +15,7 @@
 		managementItems: ManagementItem[];
 		buildDisabled: boolean;
 		advanceDisabled: boolean;
+		pauseDisabled?: boolean;
 		railBuildDisabled?: boolean;
 		disabledReason?: string | null;
 		i18n: I18nBundle;
@@ -35,6 +36,7 @@
 		managementItems,
 		buildDisabled,
 		advanceDisabled,
+		pauseDisabled = advanceDisabled,
 		railBuildDisabled = false,
 		disabledReason = null,
 		i18n,
@@ -102,7 +104,7 @@
 			type="button"
 			class="btn-primary advance"
 			aria-label={paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}
-			disabled={advanceDisabled}
+			disabled={pauseDisabled}
 			onclick={onTogglePause}
 		>
 			{paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}

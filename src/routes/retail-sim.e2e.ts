@@ -68,17 +68,58 @@ test.beforeEach(async ({ page }) => {
 	);
 });
 
+async function pauseSimulation(page: Page): Promise<void> {
+	const pause = page.getByRole('button', { name: /^pause$/i });
+	if ((await pause.isVisible().catch(() => false)) && (await pause.isEnabled())) {
+		await pause.focus();
+		await pause.press('Space');
+		const resume = page.getByRole('button', { name: /^resume$/i });
+		const terminalResults = page.getByRole('dialog', { name: 'Challenge results' });
+		await expect
+			.poll(
+				async () =>
+					(await resume.isVisible().catch(() => false)) ||
+					(await terminalResults.isVisible().catch(() => false)),
+				{ timeout: 2_500 }
+			)
+			.toBe(true);
+	}
+}
+
+async function pauseActiveSimulation(page: Page): Promise<void> {
+	await expect(page.getByRole('button', { name: /^(pause|resume)$/i })).toBeEnabled({
+		timeout: 2_500
+	});
+	await pauseSimulation(page);
+}
+
 async function advanceSimulationDay(page: Page): Promise<void> {
+	await page.clock.pauseAt(Date.now());
+	await pauseActiveSimulation(page);
 	const day = page.getByText(/^Day \d+$/);
 	const label = (await day.textContent()) ?? '';
 	const currentDay = Number(label.match(/\d+/)?.[0] ?? 0);
-	const resume = page.getByRole('button', { name: /^resume$/i });
-	if (await resume.isVisible().catch(() => false)) {
-		await resume.click();
-	}
+	const nextDay = `Day ${currentDay + 1}`;
+	const terminalResults = page.getByRole('dialog', { name: 'Challenge results' });
 	await page.getByRole('button', { name: /^5×$/i }).click();
-	await expect(day).toHaveText(`Day ${currentDay + 1}`, { timeout: 2_500 });
-	await page.getByRole('button', { name: /^pause$/i }).click();
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page.clock.runFor(1_000);
+	if (
+		!(await terminalResults.isVisible().catch(() => false)) &&
+		!(await day.allTextContents()).includes(nextDay)
+	) {
+		await page.clock.runFor(1_000);
+	}
+	await expect
+		.poll(
+			async () =>
+				(await terminalResults.isVisible().catch(() => false)) ||
+				(await day.allTextContents()).includes(nextDay),
+			{ timeout: 2_500 }
+		)
+		.toBe(true);
+	await pauseSimulation(page);
+	await page.clock.resume();
 }
 
 const FIRST_PROFIT_REFERENCE_OPENING: ScenarioCommand[] = [
@@ -1090,6 +1131,7 @@ async function expectRetailMapReady(page: Page): Promise<Locator> {
 	await expect(canvas).toHaveAttribute('data-store-sprite-count', /\d+/);
 	await expect(canvas).toHaveAttribute('data-terrain-asset-mode', 'image');
 	await expectMapCameraReady(canvas);
+	await pauseSimulation(page);
 
 	return canvas;
 }
@@ -1102,6 +1144,7 @@ async function expectIndustryMapReady(page: Page): Promise<Locator> {
 	await expect(canvas).toHaveAttribute('data-industry-terrain-asset-mode', 'image');
 	await expect(canvas).toHaveAttribute('data-industry-terrain-sprite-count', /^[1-9]\d*$/);
 	await expectMapCameraReady(canvas);
+	await pauseSimulation(page);
 
 	return canvas;
 }
@@ -1204,10 +1247,12 @@ async function buildRetailStoreAt(
 	const canvas = await expectRetailMapReady(page);
 	await chooseRetailBuildTool(page, input.storeTypeName);
 	await clickCanvasTile(page, canvas, input.x, input.y);
+	await pauseActiveSimulation(page);
 	await expect(page.getByRole('dialog', { name: /confirm store opening/i })).toHaveCount(0);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 	await expect(canvas).toHaveAttribute('data-store-sprite-count', String(input.expectedStoreCount));
 	await expect(canvas).toHaveAttribute('data-placement-preview-mode', 'inactive');
+	await pauseSimulation(page);
 }
 
 function escapeRegExp(value: string): string {
@@ -1391,6 +1436,7 @@ async function installSandboxAutoSave(page: Page, game: GameState): Promise<void
 		.getByRole('dialog', { name: /saves/i })
 		.getByRole('button', { name: /^close$/i })
 		.click();
+	await pauseActiveSimulation(page);
 	await expectRetailMapReady(page);
 }
 
@@ -1428,6 +1474,7 @@ async function revealCityAndGrantFunds(
 		.getByRole('dialog', { name: /saves/i })
 		.getByRole('button', { name: /^close$/i })
 		.click();
+	await pauseActiveSimulation(page);
 }
 
 async function waitForAutoSaveDay(page: Page, day: number): Promise<SavedGame> {
@@ -1544,6 +1591,7 @@ async function startFirstProfitChallenge(page: Page): Promise<void> {
 	await challengeCard(page, 'First Profit')
 		.getByRole('button', { name: 'Start First Profit', exact: true })
 		.click();
+	await pauseActiveSimulation(page);
 	await expectChallengeReady(page, { day: 1, eligibility: 'Ranked' });
 }
 
@@ -1579,6 +1627,7 @@ async function resumeFirstProfitChallenge(
 	await challengeCard(page, 'First Profit')
 		.getByRole('button', { name: 'Resume First Profit', exact: true })
 		.click();
+	await pauseActiveSimulation(page);
 	await expectChallengeReady(page, input);
 }
 
@@ -1591,7 +1640,7 @@ async function readChallengeSnapshot(page: Page): Promise<ScenarioStoreSnapshot>
 }
 
 async function advanceChallengeDay(page: Page): Promise<void> {
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-command-pending', 'false');
 }
 
@@ -1851,7 +1900,7 @@ test('production supplier bulk discount stays active through its final import an
 	).toContainText('3 days remaining');
 	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
 
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	let saved = await waitForAutoSaveDay(page, 6);
 	expect(saved.events.activeModifiers.map((modifier) => modifier.id)).toEqual([modifierId]);
 	expect(getLatestReport(saved)).toMatchObject({
@@ -1865,7 +1914,7 @@ test('production supplier bulk discount stays active through its final import an
 	).toContainText('2 days remaining');
 	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
 
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 7);
 	expect(saved.events.activeModifiers.map((modifier) => modifier.id)).toEqual([modifierId]);
 	expect(getLatestReport(saved)).toMatchObject({
@@ -1879,7 +1928,7 @@ test('production supplier bulk discount stays active through its final import an
 	).toContainText('1 day remaining');
 	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
 
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 8);
 	const finalReport = getLatestReport(saved);
 	expect(saved.events.activeModifiers).toEqual([]);
@@ -1932,7 +1981,7 @@ test('manager lifecycle preserves manual policy control and records authority ex
 
 	await installSandboxAutoSave(page, seededGame);
 
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	const afterFirstAdvance = await waitForAutoSaveDay(page, 2);
 	expect(afterFirstAdvance.managerActionHistory).toEqual([]);
 	const firstStoreReport = getLatestReport(afterFirstAdvance).storeReports.find(
@@ -1942,7 +1991,7 @@ test('manager lifecycle preserves manual policy control and records authority ex
 	expect(firstStoreReport.revenue).toBeGreaterThan(0);
 	expect(firstStoreReport.grossMargin / firstStoreReport.revenue).toBeLessThan(0.3);
 
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	const afterSecondAdvance = await waitForAutoSaveDay(page, 3);
 	expect(afterSecondAdvance.managerActionHistory).toHaveLength(1);
 	expect(afterSecondAdvance.managerActionHistory[0]).toMatchObject({
@@ -1989,7 +2038,7 @@ test('manager lifecycle preserves manual policy control and records authority ex
 		.toBe('competitive');
 	await manualPolicies.getByRole('button', { name: 'Close Policies', exact: true }).click();
 
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	const afterThirdAdvance = await waitForAutoSaveDay(page, 4);
 	expect(afterThirdAdvance.managerActionHistory.map((record) => record.outcome)).toEqual([
 		'applied',
@@ -2494,7 +2543,7 @@ test('management panels open before founding a store', async ({ page }) => {
 	await expectRetailMapReady(page);
 
 	// No store founded yet — the Dashboard still opens on its empty starter state.
-	await page.keyboard.press('d');
+	await page.keyboard.press('o');
 	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
@@ -2504,14 +2553,14 @@ test('modifier + shortcut key is left to the browser', async ({ page }) => {
 	await page.goto('/');
 	await expectRetailMapReady(page);
 
-	// Ctrl/Cmd + D must NOT open the Dashboard — the browser keeps its own shortcut.
-	await page.keyboard.press('Control+d');
+	// Ctrl/Cmd + O must NOT open the Dashboard — the browser keeps its own shortcut.
+	await page.keyboard.press('Control+o');
 	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
-	await page.keyboard.press('Meta+d');
+	await page.keyboard.press('Meta+o');
 	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
 
-	// A plain "d" still opens it — proving the modifier is the only thing guarding it.
-	await page.keyboard.press('d');
+	// A plain "o" still opens it — proving the modifier is the only thing guarding it.
+	await page.keyboard.press('o');
 	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
 });
 
@@ -2524,10 +2573,10 @@ test('management panel shortcuts toggle their panels', async ({ page }) => {
 		expectedStoreCount: 1
 	});
 
-	// "D" toggles the Dashboard panel open, then closed.
-	await page.keyboard.press('d');
+	// "O" toggles the Dashboard panel open, then closed.
+	await page.keyboard.press('o');
 	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
-	await page.keyboard.press('d');
+	await page.keyboard.press('o');
 	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
 
 	// A different mnemonic switches straight to another panel; Esc closes it.
@@ -3034,6 +3083,7 @@ test('player opens a revealed retail city from the world map and builds there', 
 test('finance flow borrows, reconciles a scheduled payment, focuses its alert, and repays', async ({
 	page
 }) => {
+	test.slow();
 	await page.goto('/');
 	await buildRetailStoreAt(page, {
 		x: 1,
@@ -3077,7 +3127,7 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 
 	// Close days 1 through 8 so the day-8 scheduled payment is recorded.
 	for (let day = 0; day < 8; day += 1) {
-		await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+		await advanceSimulationDay(page);
 	}
 	const afterScheduledPayment = await waitForAutoSaveDay(page, 9);
 	const scheduledReport = afterScheduledPayment.reports.find((report) => report.day === 8);
@@ -3124,7 +3174,7 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 	// Closing days 9–11 leaves the next day-15 payment inside the three-day
 	// alert window while retaining the already-verified payment report above.
 	for (let day = 0; day < 3; day += 1) {
-		await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+		await advanceSimulationDay(page);
 	}
 	const alertWindowGame = await waitForAutoSaveDay(page, 12);
 	const alertWindowLoan = alertWindowGame.finance.loans.find(
@@ -4801,13 +4851,13 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	// Step 4: close through the affected dispatch. The order's arrival day and
 	// cost are fixed at dispatch and the attempt persists modifierImpacts with
 	// the edited baseline.
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 6);
 	expect(getLatestReport(saved).modifierLifecycle).toEqual([
 		{ status: 'activated', modifier: expect.objectContaining({ id: 'event-modifier-1' }) },
 		{ status: 'activated', modifier: expect.objectContaining({ id: 'event-modifier-2' }) }
 	]);
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 7);
 	const affectedReport = getLatestReport(saved);
 	expect(saved.logistics.transferOrders).toEqual([
@@ -4850,7 +4900,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 
 	// Step 6: close through expiry. The in-transit order stays unchanged, the
 	// report records the recovery rows, and the modifier list empties.
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 8);
 	const expiryReport = getLatestReport(saved);
 	expect(expiryReport.modifierLifecycle).toEqual([
@@ -4900,7 +4950,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	// carries no modifier impacts.
 	await openMapMenuItem(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 9);
 	const recoveredAttempt = getLatestReport(saved).logistics.routeDispatchAttempts[0];
 	expect(saved.logistics.transferOrders[1]).toMatchObject({
@@ -4927,7 +4977,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 
 	// The in-transit order from the disruption window still arrives with its
 	// immutable quantity and cost.
-	await page.getByRole('button', { name: 'Advance day', exact: true }).click();
+	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 10);
 	expect(saved.logistics.transferOrders[0]).toMatchObject({
 		id: 'transfer-1',

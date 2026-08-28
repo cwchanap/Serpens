@@ -9,6 +9,7 @@ const i18n: I18nBundle = createI18n('en');
 
 const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
+const mockSetKeyboardEnabled = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
 const mockCanvas = { dataset: {} as Record<string, string> };
@@ -34,6 +35,7 @@ vi.mock('$lib/phaser/cityMapScene', () => {
 		CityMapScene: vi.fn().mockImplementation(function () {
 			return {
 				setEventHandler: mockSetEventHandler,
+				setKeyboardEnabled: mockSetKeyboardEnabled,
 				updateSnapshot: mockUpdateSnapshot
 			};
 		})

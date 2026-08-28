@@ -33,4 +33,25 @@ describe('ControlDesk time controls', () => {
 			.element(page.getByRole('button', { name: /^advance day$/i }))
 			.not.toBeInTheDocument();
 	});
+
+	it('keeps pause responsive while a day advance is pending', async () => {
+		expect.assertions(2);
+		render(ControlDesk, {
+			managementItems: [],
+			buildDisabled: false,
+			advanceDisabled: true,
+			pauseDisabled: false,
+			i18n: createI18n('en'),
+			onBuild: vi.fn(),
+			onOpenManagement: vi.fn(),
+			paused: false,
+			simulationSpeed: 1,
+			onTogglePause: vi.fn(),
+			onSelectSpeed: vi.fn(),
+			onOpenShortcuts: vi.fn()
+		});
+
+		await expect.element(page.getByRole('button', { name: /^pause$/i })).toBeEnabled();
+		await expect.element(page.getByRole('button', { name: /^5×$/i })).toBeDisabled();
+	});
 });
