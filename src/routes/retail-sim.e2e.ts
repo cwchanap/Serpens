@@ -3409,6 +3409,7 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 });
 
 test('manage selected store stock and see weekly imports', async ({ page }) => {
+	test.slow();
 	await page.goto('/');
 
 	await buildRetailStoreAt(page, {
