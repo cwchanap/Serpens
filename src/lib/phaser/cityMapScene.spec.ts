@@ -309,6 +309,90 @@ describe('CityMapScene', () => {
 		});
 	});
 
+	describe('keyboard pan', () => {
+		// `addKeys?.` is the hardened optional-chained lookup; exercise each leg:
+		// keyboard missing, keyboard present but addKeys missing, and addKeys callable.
+		function makePanKeys(
+			overrides: Partial<Record<'W' | 'A' | 'S' | 'D', { isDown: boolean }>> = {}
+		) {
+			return {
+				W: { isDown: false },
+				A: { isDown: false },
+				S: { isDown: false },
+				D: { isDown: false },
+				...overrides
+			};
+		}
+
+		it('sets panKeys to null when keyboard has no addKeys method', () => {
+			expect.assertions(1);
+			s(scene).input.keyboard = {};
+			scene.create();
+			expect(s(scene).panKeys).toBeNull();
+		});
+
+		it('registers panKeys from keyboard.addKeys when available', () => {
+			expect.assertions(2);
+			const keys = makePanKeys();
+			const addKeys = vi.fn(() => keys);
+			s(scene).input.keyboard = { addKeys };
+			scene.create();
+			expect(addKeys).toHaveBeenCalledWith('W,A,S,D');
+			expect(s(scene).panKeys).toBe(keys);
+		});
+
+		it('setKeyboardEnabled toggles keyboard pan', () => {
+			expect.assertions(2);
+			scene.create();
+			scene.setKeyboardEnabled(false);
+			expect(s(scene).keyboardEnabled).toBe(false);
+			scene.setKeyboardEnabled(true);
+			expect(s(scene).keyboardEnabled).toBe(true);
+		});
+
+		it('updateKeyboardPan scrolls the camera when a pan key is held', () => {
+			expect.assertions(3);
+			const keys = makePanKeys({ D: { isDown: true } });
+			s(scene).input.keyboard = { addKeys: vi.fn(() => keys) };
+			scene.create();
+			scene.update(0, 1000);
+			expect(s(scene).cameras.main.scrollX).toBe(420);
+			expect(s(scene).cameras.main.scrollY).toBe(0);
+			expect(s(scene).hasUserAdjustedCamera).toBe(true);
+		});
+
+		it('updateKeyboardPan is a no-op when keyboard pan is disabled', () => {
+			expect.assertions(2);
+			const keys = makePanKeys({ D: { isDown: true } });
+			s(scene).input.keyboard = { addKeys: vi.fn(() => keys) };
+			scene.create();
+			scene.setKeyboardEnabled(false);
+			scene.update(0, 1000);
+			expect(s(scene).cameras.main.scrollX).toBe(0);
+			expect(s(scene).hasUserAdjustedCamera).toBe(false);
+		});
+
+		it('updateKeyboardPan is a no-op when delta is zero even with pan keys held', () => {
+			expect.assertions(2);
+			const keys = makePanKeys({ D: { isDown: true } });
+			s(scene).input.keyboard = { addKeys: vi.fn(() => keys) };
+			scene.create();
+			scene.update(0, 0);
+			expect(s(scene).cameras.main.scrollX).toBe(0);
+			expect(s(scene).hasUserAdjustedCamera).toBe(false);
+		});
+
+		it('updateKeyboardPan is a no-op when no pan keys are held', () => {
+			expect.assertions(2);
+			const keys = makePanKeys();
+			s(scene).input.keyboard = { addKeys: vi.fn(() => keys) };
+			scene.create();
+			scene.update(0, 1000);
+			expect(s(scene).cameras.main.scrollX).toBe(0);
+			expect(s(scene).hasUserAdjustedCamera).toBe(false);
+		});
+	});
+
 	describe('updateSnapshot', () => {
 		it('stores the snapshot and renders', () => {
 			expect.assertions(2);

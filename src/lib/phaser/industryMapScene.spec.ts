@@ -580,6 +580,80 @@ describe('IndustryMapScene', () => {
 		});
 	});
 
+	describe('keyboard pan', () => {
+		// `addKeys?.` is the hardened optional-chained lookup; exercise each leg:
+		// keyboard missing, keyboard present but addKeys missing, and addKeys callable.
+		function makePanKeys(
+			overrides: Partial<Record<'W' | 'A' | 'S' | 'D', { isDown: boolean }>> = {}
+		) {
+			return {
+				W: { isDown: false },
+				A: { isDown: false },
+				S: { isDown: false },
+				D: { isDown: false },
+				...overrides
+			};
+		}
+
+		test('sets panKeys to null when keyboard input is unavailable', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			s(scene).input.keyboard = undefined;
+			scene.create();
+			expect(s(scene).panKeys).toBeNull();
+		});
+
+		test('sets panKeys to null when keyboard has no addKeys method', () => {
+			expect.assertions(1);
+			const { scene } = setupScene();
+			scene.create();
+			expect(s(scene).panKeys).toBeNull();
+		});
+
+		test('registers panKeys from keyboard.addKeys when available', () => {
+			expect.assertions(2);
+			const { scene } = setupScene();
+			const keys = makePanKeys();
+			const addKeys = vi.fn(() => keys);
+			s(scene).input.keyboard.addKeys = addKeys;
+			scene.create();
+			expect(addKeys).toHaveBeenCalledWith('W,A,S,D');
+			expect(s(scene).panKeys).toBe(keys);
+		});
+
+		test('updateKeyboardPan scrolls the camera when a pan key is held', () => {
+			expect.assertions(3);
+			const { scene, cameraMock } = setupScene();
+			s(scene).input.keyboard.addKeys = vi.fn(() => makePanKeys({ D: { isDown: true } }));
+			scene.create();
+			scene.update(0, 1000);
+			expect(cameraMock.scrollX).toBe(420);
+			expect(cameraMock.scrollY).toBe(0);
+			expect(s(scene).hasUserAdjustedCamera).toBe(true);
+		});
+
+		test('updateKeyboardPan is a no-op when keyboard pan is disabled', () => {
+			expect.assertions(2);
+			const { scene, cameraMock } = setupScene();
+			s(scene).input.keyboard.addKeys = vi.fn(() => makePanKeys({ D: { isDown: true } }));
+			scene.create();
+			scene.setKeyboardEnabled(false);
+			scene.update(0, 1000);
+			expect(cameraMock.scrollX).toBe(0);
+			expect(s(scene).hasUserAdjustedCamera).toBe(false);
+		});
+
+		test('updateKeyboardPan is a no-op when no pan keys are held', () => {
+			expect.assertions(2);
+			const { scene, cameraMock } = setupScene();
+			s(scene).input.keyboard.addKeys = vi.fn(() => makePanKeys());
+			scene.create();
+			scene.update(0, 1000);
+			expect(cameraMock.scrollX).toBe(0);
+			expect(s(scene).hasUserAdjustedCamera).toBe(false);
+		});
+	});
+
 	describe('renderSnapshot terrain drawing', () => {
 		test('draws filled rectangles when no terrain texture exists', () => {
 			expect.assertions(2);
