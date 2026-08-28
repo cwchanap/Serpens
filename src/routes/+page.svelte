@@ -2912,6 +2912,7 @@
 			buildDisabled={activeMapView === 'world' ||
 				(activeMapView === 'retail' ? !canStartRetailExpansion : !canStartIndustryExpansion)}
 			advanceDisabled={game === null || !mutationAvailability.advanceDay}
+			pauseDisabled={game === null}
 			railBuildDisabled={!mutationAvailability.buildRail}
 			disabledReason={mutationDisabledReason}
 			{i18n}

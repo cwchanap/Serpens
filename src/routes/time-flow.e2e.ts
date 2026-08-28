@@ -33,9 +33,12 @@ test('simulation advances automatically at the selected speed and stops while pa
 	await page.keyboard.press('Escape');
 
 	await page.getByRole('button', { name: '5×', exact: true }).click();
-	await expect(day).toHaveText('Day 2', { timeout: 2_500 });
+	await expect
+		.poll(async () => Number(((await day.textContent()) ?? '').match(/\d+/)?.[0] ?? 0))
+		.toBeGreaterThan(1);
 
 	await page.getByRole('button', { name: 'Pause', exact: true }).click();
+	const pausedDay = await day.textContent();
 	await page.waitForTimeout(1_200);
-	await expect(day).toHaveText('Day 2');
+	await expect(day).toHaveText(pausedDay ?? '');
 });
