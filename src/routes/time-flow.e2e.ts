@@ -1,11 +1,30 @@
 import { expect, test } from '@playwright/test';
 import { createNewGame } from '../lib/game/state';
+import { LANGUAGE_PREFERENCE_STORAGE_KEY } from '../lib/i18n/locales';
 import { BROWSER_SAVE_STORAGE_KEY } from '../lib/persistence/browserSaveRepository';
+import { BROWSER_SCENARIO_STORAGE_KEY } from '../lib/persistence/browserScenarioRepository';
 import {
 	createAutoSaveRecord,
 	createEmptySaveStore,
 	validateSaveStoreSnapshot
 } from '../lib/persistence/saveCodec';
+
+test.beforeEach(async ({ page }) => {
+	await page.addInitScript(
+		({ languageKey, scenarioKey }) => {
+			window.localStorage.setItem(languageKey, 'en');
+			const isolationKey = 'serpens.e2e.challenge-storage-isolated';
+			if (window.sessionStorage.getItem(isolationKey) !== 'true') {
+				window.localStorage.removeItem(scenarioKey);
+				window.sessionStorage.setItem(isolationKey, 'true');
+			}
+		},
+		{
+			languageKey: LANGUAGE_PREFERENCE_STORAGE_KEY,
+			scenarioKey: BROWSER_SCENARIO_STORAGE_KEY
+		}
+	);
+});
 
 function sandboxSave(): string {
 	const game = createNewGame('convenience', 20260827);
@@ -81,6 +100,74 @@ test('automatic day clock keeps advancing across a non-day mutation', async ({ p
 	// must still advance despite the mid-interval mutation; if the clock
 	// re-subscribed to `game`, the mutation would have restarted the 1000ms delay
 	// and Day 1 would stall.
+	await page.clock.runFor(200);
+	await expect
+		.poll(async () => (await day.allTextContents()).includes('Day 2'), {
+			timeout: 2_500
+		})
+		.toBe(true);
+
+	await page.clock.resume();
+});
+
+async function startFirstProfitChallenge(page: import('@playwright/test').Page): Promise<void> {
+	const menuTrigger = page.getByTestId('game-menu-trigger');
+	if ((await menuTrigger.getAttribute('aria-expanded')) !== 'true') {
+		await menuTrigger.click();
+	}
+	await page.getByRole('button', { name: 'Challenge catalog', exact: true }).click();
+	const catalog = page.getByRole('dialog', { name: 'Challenge catalog' });
+	await expect(catalog).toBeVisible();
+	await catalog
+		.getByRole('article')
+		.filter({ has: page.getByRole('heading', { name: 'First Profit', exact: true }) })
+		.getByRole('button', { name: 'Start First Profit', exact: true })
+		.click();
+	// Wait for the scenario run to finish persisting so the clock starts from a
+	// settled Day 1 with no command in flight.
+	await expect(page.locator('main.app')).toHaveAttribute('data-play-mode', 'scenario');
+	await expect(page.locator('main.app')).toHaveAttribute('data-scenario-command-pending', 'false');
+}
+
+test('automatic day clock keeps advancing across a non-day mutation in scenario mode', async ({
+	page
+}) => {
+	await page.goto('/');
+	await startFirstProfitChallenge(page);
+
+	const day = page.getByText(/^Day \d+$/);
+	await expect(day).toHaveText('Day 1');
+
+	// Freeze virtual time, then switch to 5x (1000ms/day). Changing speed re-arms
+	// the timer for a fresh, deterministic 1000ms delay at the frozen instant T0.
+	await page.clock.pauseAt(Date.now());
+	await page.getByRole('button', { name: '5×', exact: true }).click();
+	await page.clock.runFor(0);
+
+	// Advance most of the 1000ms interval without crossing the day boundary.
+	await page.clock.runFor(850);
+
+	// Perform a NON-day scenario mutation: change a company policy. In scenario
+	// mode every persisted command flips scenarioCommandPending true for its
+	// duration (via commitMutation's onPendingChange), which toggles
+	// mutationAvailability.advanceDay false. If the auto-tick effect subscribed
+	// to advanceDay, this would clear the pending timeout and restart the 1000ms
+	// day delay — the exact regression the sandbox test pins for snapshot
+	// re-subscription, here scoped to the scenario command-busy flag.
+	await page.getByRole('button', { name: /policies/i }).click();
+	const policies = page.getByRole('dialog', { name: /policies/i });
+	await expect(policies).toBeVisible();
+	await policies.getByLabel(/pricing/i).selectOption('premium');
+	await policies.getByRole('button', { name: /close policies/i }).click();
+	// Wait for the scenario command to finish persisting so advanceDay is true
+	// again before the day timer fires.
+	await expect(page.locator('main.app')).toHaveAttribute('data-scenario-command-pending', 'false');
+	await page.clock.runFor(0);
+
+	// Advance the remainder of the interval (total 1050ms > 1000ms). The day
+	// must still advance despite the mid-interval scenario command; if the
+	// clock re-subscribed to mutationAvailability.advanceDay, the command would
+	// have restarted the 1000ms delay and Day 1 would stall.
 	await page.clock.runFor(200);
 	await expect
 		.poll(async () => (await day.allTextContents()).includes('Day 2'), {

@@ -342,6 +342,12 @@
 	let simulationPaused = $state(false);
 	let simulationSpeed = $state<SimulationSpeed>(1);
 	let simulationTickPending = $state(false);
+	// Bumped when an auto-tick is skipped because a scenario command is in
+	// flight (mutationAvailability.advanceDay is false at fire time). The
+	// auto-tick $effect reads this as a re-arm signal so the clock schedules a
+	// fresh tick instead of stalling until the next user action. See the
+	// effect below for why advanceDay itself is not a lifecycle dependency.
+	let simulationTickRearm = $state(0);
 	let scenarioCommandPending = $state(false);
 	let scenariosReady = $state(false);
 	const gameRouteController = new GameRouteController({
@@ -1082,11 +1088,24 @@
 		const gameExists = hasGame;
 		const paused = simulationPaused;
 		const speed = simulationSpeed;
-		const canAdvance = mutationAvailability.advanceDay;
 		const tickPending = simulationTickPending;
 		const blockedByOverlay = hasBlockingOverlay;
+		// Re-arm signal: bumped by runSimulationTick() when a tick is skipped
+		// because a scenario command is in flight. Reading it here keeps the
+		// effect's timer lifecycle independent of transient command-busy state.
+		void simulationTickRearm;
 
-		if (!gameExists || paused || !canAdvance || tickPending || blockedByOverlay) {
+		// Deliberately NOT reading mutationAvailability.advanceDay here. In
+		// scenario mode that flag flips with every persisted scenario command
+		// (commitMutation sets scenarioCommandPending true for the duration of
+		// each command via onPendingChange), so subscribing the timer lifecycle
+		// to it would clear the armed timeout mid-interval and restart the
+		// SIMULATION_DAY_MS / speed delay each time a policy/build/hire/etc.
+		// action landed. Frequent gameplay could then postpone a day
+		// indefinitely. runSimulationTick() re-checks advanceDay at fire time
+		// and skips (bumping simulationTickRearm to re-arm) if a command is
+		// still pending, so the deadline is preserved across the busy window.
+		if (!gameExists || paused || tickPending || blockedByOverlay) {
 			return;
 		}
 
@@ -2101,7 +2120,18 @@
 	}
 
 	async function runSimulationTick(): Promise<void> {
-		if (!game || simulationPaused || simulationTickPending || !mutationAvailability.advanceDay) {
+		if (!game || simulationPaused || simulationTickPending) {
+			return;
+		}
+		if (!mutationAvailability.advanceDay) {
+			// A scenario command is in flight (scenarioCommandPending is true,
+			// so commitMutation hasn't finished its persist/publish cycle). The
+			// day deadline has already passed; bump the re-arm signal so the
+			// auto-tick effect schedules a fresh tick instead of stalling the
+			// clock until the next user action. runSimulationTick() re-checks
+			// advanceDay when the new timer fires and proceeds once the command
+			// bus clears.
+			simulationTickRearm += 1;
 			return;
 		}
 
