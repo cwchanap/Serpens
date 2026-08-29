@@ -852,6 +852,73 @@ describe('GameRouteController', () => {
 		});
 	});
 
+	describe('scenarioRunSyncEpoch (external snapshot adoption signal)', () => {
+		it('does not bump the epoch on an ordinary local command publish', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const epochBefore = harness.controller.state.scenarioRunSyncEpoch;
+			const result = await harness.controller.advanceDay();
+			expect(result).toEqual({ status: 'committed' });
+			expect(harness.controller.state.scenarioRunSyncEpoch).toBe(epochBefore);
+		});
+
+		it('does not bump the epoch on a no-op resume of a content-identical run', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const epochBefore = harness.controller.state.scenarioRunSyncEpoch;
+			harness.controller.returnToSandbox();
+			const result = await harness.controller.resumeScenarioRun('first-profit');
+			expect(result).toEqual({ status: 'committed' });
+			expect(harness.controller.state.scenarioRunSyncEpoch).toBe(epochBefore);
+		});
+
+		it('bumps the epoch when resume adopts a changed persisted snapshot for the same runId', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller);
+			const epochBefore = harness.controller.state.scenarioRunSyncEpoch;
+			// Another tab advances the same run (same runId, newer snapshot).
+			const other = createHarness({ scenarioRepository });
+			await other.controller.initializeScenarios();
+			await other.controller.advanceDay();
+			// This tab still holds the stale in-memory run. Returning to sandbox
+			// keeps it; resuming loads the now-advanced stored snapshot (same
+			// runId, different content) so the adopt path must fire.
+			harness.controller.returnToSandbox();
+			const result = await harness.controller.resumeScenarioRun('first-profit');
+			expect(result).toEqual({ status: 'committed' });
+			expect(harness.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+			expect(harness.controller.state.scenarioRunSyncEpoch).toBe(epochBefore + 1);
+		});
+
+		it('bumps the epoch when a save conflict surfaces a same-runId replacement', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller);
+			const epochBefore = harness.controller.state.scenarioRunSyncEpoch;
+			// Construct a same-runId, different-content snapshot (another tab
+			// advanced the same run).
+			const advanced: ScenarioRun = {
+				...run,
+				game: { ...run.game, day: run.game.day + 1 }
+			};
+			const conflictOutcome: ScenarioSaveOutcome = {
+				status: 'conflict',
+				activeRun: advanced,
+				revision: 0
+			};
+			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockResolvedValue(conflictOutcome);
+			const result = await harness.controller.advanceDay();
+			expect(result).toEqual({ status: 'confirmation-required' });
+			expect(harness.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+			expect(harness.controller.state.scenarioRunSyncEpoch).toBe(epochBefore + 1);
+		});
+	});
+
 	describe('restartScenarioRun', () => {
 		it('returns unavailable before scenarios are initialized', async () => {
 			const harness = createHarness();
