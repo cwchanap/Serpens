@@ -337,7 +337,7 @@ describe('CityMapScene', () => {
 			const addKeys = vi.fn(() => keys);
 			s(scene).input.keyboard = { addKeys };
 			scene.create();
-			expect(addKeys).toHaveBeenCalledWith('W,A,S,D');
+			expect(addKeys).toHaveBeenCalledWith('W,A,S,D', false);
 			expect(s(scene).panKeys).toBe(keys);
 		});
 

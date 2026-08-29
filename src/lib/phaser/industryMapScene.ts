@@ -190,7 +190,8 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.markerGraphics = this.add.graphics().setDepth(MARKER_DEPTH + 1);
 		this.outlineGraphics = this.add.graphics().setDepth(OUTLINE_DEPTH);
 		this.cameras.main.setZoom(1);
-		this.panKeys = (this.input.keyboard?.addKeys?.('W,A,S,D') as CameraPanKeys | undefined) ?? null;
+		this.panKeys =
+			(this.input.keyboard?.addKeys?.('W,A,S,D', false) as CameraPanKeys | undefined) ?? null;
 		this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 		this.input.on('pointermove', this.handlePointerMove, this);
 		this.input.on('pointerup', this.handlePointerUp, this);

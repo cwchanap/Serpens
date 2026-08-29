@@ -1077,8 +1077,9 @@
 		const speed = simulationSpeed;
 		const canAdvance = mutationAvailability.advanceDay;
 		const tickPending = simulationTickPending;
+		const blockedByOverlay = hasBlockingOverlay;
 
-		if (!currentGame || paused || !canAdvance || tickPending) {
+		if (!currentGame || paused || !canAdvance || tickPending || blockedByOverlay) {
 			return;
 		}
 

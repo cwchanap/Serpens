@@ -115,7 +115,7 @@ describe.each([
 		expect.assertions(1);
 		const scene = createScene() as any;
 		scene.create();
-		expect(addKeys).toHaveBeenCalledWith('W,A,S,D');
+		expect(addKeys).toHaveBeenCalledWith('W,A,S,D', false);
 	});
 
 	it('pans continuously while D is held', () => {
