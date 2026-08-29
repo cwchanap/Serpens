@@ -125,6 +125,19 @@ export interface GameRouteControllerState {
 	playMode: 'sandbox' | 'scenario';
 	scenarioCommandPending: boolean;
 	scenariosReady: boolean;
+	/**
+	 * Monotonic counter bumped only when the controller adopts an
+	 * `activeScenarioRun` from an external/persisted source — i.e. a resume
+	 * that loaded a different persisted snapshot, or a save/terminal conflict
+	 * that surfaced a run advanced/replaced by another tab. Ordinary local
+	 * command publishes (`publishScenarioOutcome`, which spreads `...run` and
+	 * preserves `runId`/`status`) do NOT bump it. The route synchronizer keys
+	 * transient-view-state resets on `runId` + `status` + this epoch so that
+	 * adopting a different persisted snapshot for the *same* `runId`/`status`
+	 * still resets armed placements/inspectors and pauses the auto-tick,
+	 * without resetting on every ordinary scenario command.
+	 */
+	scenarioRunSyncEpoch: number;
 }
 
 export interface MutationAvailability {
@@ -301,7 +314,8 @@ const INITIAL_STATE: GameRouteControllerState = {
 	retryScenarioOperation: null,
 	playMode: 'sandbox',
 	scenarioCommandPending: false,
-	scenariosReady: false
+	scenariosReady: false,
+	scenarioRunSyncEpoch: 0
 };
 
 function scenarioError(code: ScenarioOperationError['code']): ScenarioOperationError {
@@ -336,6 +350,7 @@ export class GameRouteController {
 	private scenarioRepository: ScenarioRepository | null = null;
 	private readonly scenarioCommandGate = new ScenarioCommandGate();
 	private scenarioRetryEpoch = 0;
+	private scenarioRunSyncEpoch = 0;
 	private lastScenarioSummary: ScenarioPersistenceSummary | null = null;
 
 	constructor(private readonly options: GameRouteControllerOptions) {}
@@ -426,7 +441,7 @@ export class GameRouteController {
 					// Leave stagedRun as the summary's run and stagedRevision null.
 				}
 				if (stagedRun) {
-					this.patchState({
+					this.adoptExternalScenarioRun({
 						activeScenarioRun: stagedRun,
 						activeScenarioRevision: stagedRevision,
 						lastScenarioResult: null,
@@ -589,7 +604,7 @@ export class GameRouteController {
 				expectedRevision: casExpectedRevision
 			});
 			if (isSaveConflict(outcome)) {
-				this.patchState({
+				this.adoptExternalScenarioRun({
 					activeScenarioRun: outcome.activeRun,
 					activeScenarioRevision: outcome.revision,
 					scenarioCommandPending: false,
@@ -677,7 +692,7 @@ export class GameRouteController {
 				});
 				return { status: 'committed' };
 			}
-			this.patchState({
+			this.adoptExternalScenarioRun({
 				activeScenarioRun: run,
 				activeScenarioRevision: loaded.revision,
 				lastScenarioResult: null,
@@ -766,7 +781,7 @@ export class GameRouteController {
 				expectedRevision
 			});
 			if (isSaveConflict(outcome)) {
-				this.patchState({
+				this.adoptExternalScenarioRun({
 					activeScenarioRun: outcome.activeRun,
 					activeScenarioRevision: outcome.revision,
 					scenarioCommandPending: false,
@@ -870,7 +885,7 @@ export class GameRouteController {
 				expectedRevision: casExpectedRevision
 			});
 			if (isSaveConflict(outcome)) {
-				this.patchState({
+				this.adoptExternalScenarioRun({
 					activeScenarioRun: outcome.activeRun,
 					activeScenarioRevision: outcome.revision,
 					scenarioCommandPending: false,
@@ -985,7 +1000,7 @@ export class GameRouteController {
 					// runId). Surface the preserved stored run so the UI can
 					// offer Resume instead of silently committing a stale
 					// terminal over newer progress.
-					this.patchState({
+					this.adoptExternalScenarioRun({
 						activeScenarioRun: reloaded.run,
 						activeScenarioRevision: reloaded.revision,
 						lastScenarioResult: null,
@@ -1012,7 +1027,7 @@ export class GameRouteController {
 				// Surface the preserved stored run so the UI can offer Resume
 				// instead of silently clearing it. Mirror the conflict
 				// handling in startScenarioRun and commitMutation.
-				this.patchState({
+				this.adoptExternalScenarioRun({
 					activeScenarioRun: outcome.activeRun,
 					activeScenarioRevision: outcome.revision,
 					lastScenarioResult: null,
@@ -1473,6 +1488,22 @@ export class GameRouteController {
 		this.options.onStateChange?.(this.currentState);
 	}
 
+	/**
+	 * Publish a state patch that adopts an `activeScenarioRun` from an
+	 * external/persisted source — a resume that loaded a different persisted
+	 * snapshot, or a save/terminal conflict that surfaced a run advanced or
+	 * replaced by another tab. Bumps `scenarioRunSyncEpoch` so the route
+	 * synchronizer can distinguish these adoptions from ordinary local command
+	 * publishes (which preserve `runId`/`status` and must NOT reset transient
+	 * view state). Use this instead of `patchState` whenever the patch sets
+	 * `activeScenarioRun` to a snapshot not produced by this tab's own
+	 * `executeScenarioCommand`/lifecycle transition.
+	 */
+	private adoptExternalScenarioRun(patch: Partial<GameRouteControllerState>): void {
+		this.scenarioRunSyncEpoch += 1;
+		this.patchState({ ...patch, scenarioRunSyncEpoch: this.scenarioRunSyncEpoch });
+	}
+
 	private async saveAuto(game: GameState): Promise<void> {
 		if (!this.saveRepository) return;
 		try {
@@ -1818,7 +1849,7 @@ export class GameRouteController {
 							// claiming a successful command commit. Track the
 							// conflict's revision so a subsequent confirmed
 							// write can bind to it.
-							this.patchState({
+							this.adoptExternalScenarioRun({
 								activeScenarioRun: conflictOutcome.activeRun,
 								activeScenarioRevision: conflictOutcome.revision,
 								scenarioOperationError: null,

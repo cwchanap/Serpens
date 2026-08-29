@@ -1812,19 +1812,25 @@
 	}
 
 	let previousPlayMode: 'sandbox' | 'scenario' | undefined = undefined;
-	// Track the active run's persistence identity (`runId`) and lifecycle
-	// status so the transient-state reset fires only on actual lifecycle
-	// transitions — start/restart/import/resume-different-run assign a fresh
-	// `runId`, and a terminal command flips `status` from 'active' to
-	// 'completed'/'failed' (or clears the run). Ordinary scenario commands
-	// (policy/build/hire/etc.) spread `...run` in `executeScenarioCommand`,
-	// preserving both `runId` and `status`, so they must NOT trigger the
-	// reset — otherwise every command pauses the auto-tick and dismisses
-	// open panels/placements mid-interaction. The controller keeps the run
-	// object stable on a no-op resume (see resumeScenarioRun's deep-equality
-	// short-circuit), so resume-same-run preserves `runId` and selections.
+	// Track the active run's persistence identity (`runId`), lifecycle
+	// status, and external-sync epoch so the transient-state reset fires
+	// only on actual lifecycle/external transitions —
+	// start/restart/import/resume-different-run assign a fresh `runId`, a
+	// terminal command flips `status` from 'active' to 'completed'/'failed'
+	// (or clears the run), and adopting a different persisted/another-tab
+	// snapshot for the SAME `runId`/`status` bumps the controller's
+	// `scenarioRunSyncEpoch` (resume loaded a changed run, or a
+	// save/terminal conflict surfaced a run advanced/replaced by another
+	// tab). Ordinary scenario commands (policy/build/hire/etc.) spread
+	// `...run` in `executeScenarioCommand`, preserving `runId`, `status`,
+	// AND the epoch, so they must NOT trigger the reset — otherwise every
+	// command pauses the auto-tick and dismisses open panels/placements
+	// mid-interaction. The controller keeps the run object stable on a
+	// no-op resume (see resumeScenarioRun's deep-equality short-circuit),
+	// so resume-same-run preserves `runId` and selections.
 	let previousScenarioRunId: string | null | undefined = undefined;
 	let previousScenarioRunStatus: ScenarioRunStatus | null | undefined = undefined;
+	let previousScenarioRunSyncEpoch: number | undefined = undefined;
 
 	function resetTransientViewState(): void {
 		selectedTileId = null;
@@ -1862,30 +1868,39 @@
 		}
 		// Reset route-only selections, detail/advisor/build overlays, menu state,
 		// and retail/industry/rail placement modes whenever the active mode or
-		// scenario run identity/lifecycle changes — otherwise an armed placement
-		// or inspector from the previous GameState stays active against the new
-		// one (e.g. a placement armed in sandbox remaining armed inside a
-		// challenge that forbids it). This is keyed on `runId` + `status`, NOT
-		// on the run object reference: every changed scenario command returns a
-		// fresh `ScenarioRun` (`executeScenarioCommand` spreads `...run`), so a
-		// reference check would reset (and pause the auto-tick) after every
-		// policy/build/hire action. `runId` is stable across ordinary commands
-		// and only changes on start/restart/import/resume-different-run; `status`
-		// only changes on a terminal transition. Skip on the first synchronizer
+		// scenario run identity/lifecycle/external-sync changes — otherwise an
+		// armed placement or inspector from the previous GameState stays active
+		// against the new one (e.g. a placement armed in sandbox remaining armed
+		// inside a challenge that forbids it, or a placement armed against a
+		// stale snapshot remaining armed after another tab advanced the same
+		// run). This is keyed on `runId` + `status` + `scenarioRunSyncEpoch`,
+		// NOT on the run object reference: every changed scenario command
+		// returns a fresh `ScenarioRun` (`executeScenarioCommand` spreads
+		// `...run`), so a reference check would reset (and pause the auto-tick)
+		// after every policy/build/hire action. `runId` is stable across
+		// ordinary commands and only changes on start/restart/import/resume-
+		// different-run; `status` only changes on a terminal transition;
+		// `scenarioRunSyncEpoch` only bumps when the controller adopts an
+		// external/persisted snapshot for the same `runId`/`status` (resume
+		// loaded a changed run, or a save/terminal conflict surfaced a run
+		// advanced/replaced by another tab). Skip on the first synchronizer
 		// call (initial state).
 		const runId = state.activeScenarioRun?.runId ?? null;
 		const runStatus = state.activeScenarioRun?.status ?? null;
+		const runSyncEpoch = state.scenarioRunSyncEpoch;
 		if (
 			previousPlayMode !== undefined &&
 			(previousPlayMode !== state.playMode ||
 				previousScenarioRunId !== runId ||
-				previousScenarioRunStatus !== runStatus)
+				previousScenarioRunStatus !== runStatus ||
+				previousScenarioRunSyncEpoch !== runSyncEpoch)
 		) {
 			resetTransientViewState();
 		}
 		previousPlayMode = state.playMode;
 		previousScenarioRunId = runId;
 		previousScenarioRunStatus = runStatus;
+		previousScenarioRunSyncEpoch = runSyncEpoch;
 	}
 
 	async function resumeAutoSave(): Promise<void> {
