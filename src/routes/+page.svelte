@@ -173,7 +173,8 @@
 		ScenarioOperationError,
 		ScenarioPersistenceSummary,
 		ScenarioResult,
-		ScenarioRun
+		ScenarioRun,
+		ScenarioRunStatus
 	} from '$lib/scenarios/types';
 	import {
 		GameRouteController,
@@ -1811,15 +1812,19 @@
 	}
 
 	let previousPlayMode: 'sandbox' | 'scenario' | undefined = undefined;
-	let previousScenarioRunKey: string | null | undefined = undefined;
-	// Track the active run object reference so a restart/import that reuses the
-	// same `scenarioId:seed` key (restartScenario reuses run.seed, and importing
-	// the same seed produces the same key) still triggers a transient-state
-	// reset. The controller keeps the reference stable on a no-op resume (see
-	// resumeScenarioRun's deep-equality short-circuit) so resume-same-run
-	// preserves selections, while start/restart/import/resume-different-run
-	// assign a fresh ScenarioRun and trigger the reset.
-	let previousScenarioRunRef: ScenarioRun | null | undefined = undefined;
+	// Track the active run's persistence identity (`runId`) and lifecycle
+	// status so the transient-state reset fires only on actual lifecycle
+	// transitions — start/restart/import/resume-different-run assign a fresh
+	// `runId`, and a terminal command flips `status` from 'active' to
+	// 'completed'/'failed' (or clears the run). Ordinary scenario commands
+	// (policy/build/hire/etc.) spread `...run` in `executeScenarioCommand`,
+	// preserving both `runId` and `status`, so they must NOT trigger the
+	// reset — otherwise every command pauses the auto-tick and dismisses
+	// open panels/placements mid-interaction. The controller keeps the run
+	// object stable on a no-op resume (see resumeScenarioRun's deep-equality
+	// short-circuit), so resume-same-run preserves `runId` and selections.
+	let previousScenarioRunId: string | null | undefined = undefined;
+	let previousScenarioRunStatus: ScenarioRunStatus | null | undefined = undefined;
 
 	function resetTransientViewState(): void {
 		selectedTileId = null;
@@ -1857,25 +1862,30 @@
 		}
 		// Reset route-only selections, detail/advisor/build overlays, menu state,
 		// and retail/industry/rail placement modes whenever the active mode or
-		// scenario run changes — otherwise an armed placement or inspector from
-		// the previous GameState stays active against the new one (e.g. a
-		// placement armed in sandbox remaining armed inside a challenge that
-		// forbids it). Skip on the first synchronizer call (initial state).
-		const runKey = state.activeScenarioRun
-			? `${state.activeScenarioRun.definition.scenarioId}:${state.activeScenarioRun.seed}`
-			: null;
-		const runRef = state.activeScenarioRun;
+		// scenario run identity/lifecycle changes — otherwise an armed placement
+		// or inspector from the previous GameState stays active against the new
+		// one (e.g. a placement armed in sandbox remaining armed inside a
+		// challenge that forbids it). This is keyed on `runId` + `status`, NOT
+		// on the run object reference: every changed scenario command returns a
+		// fresh `ScenarioRun` (`executeScenarioCommand` spreads `...run`), so a
+		// reference check would reset (and pause the auto-tick) after every
+		// policy/build/hire action. `runId` is stable across ordinary commands
+		// and only changes on start/restart/import/resume-different-run; `status`
+		// only changes on a terminal transition. Skip on the first synchronizer
+		// call (initial state).
+		const runId = state.activeScenarioRun?.runId ?? null;
+		const runStatus = state.activeScenarioRun?.status ?? null;
 		if (
 			previousPlayMode !== undefined &&
 			(previousPlayMode !== state.playMode ||
-				previousScenarioRunKey !== runKey ||
-				previousScenarioRunRef !== runRef)
+				previousScenarioRunId !== runId ||
+				previousScenarioRunStatus !== runStatus)
 		) {
 			resetTransientViewState();
 		}
 		previousPlayMode = state.playMode;
-		previousScenarioRunKey = runKey;
-		previousScenarioRunRef = runRef;
+		previousScenarioRunId = runId;
+		previousScenarioRunStatus = runStatus;
 	}
 
 	async function resumeAutoSave(): Promise<void> {
@@ -2846,6 +2856,7 @@
 	class="app"
 	data-play-mode={playMode}
 	data-scenario-command-pending={scenarioCommandPending}
+	data-simulation-paused={simulationPaused}
 	data-scenario-result={lastScenarioResult?.outcome ?? ''}
 	data-scenario-best-updated={lastScenarioBestUpdated}
 	data-scenario-error={scenarioOperationError?.code ?? ''}

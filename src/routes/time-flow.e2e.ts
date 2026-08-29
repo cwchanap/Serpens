@@ -166,14 +166,24 @@ test('automatic day clock keeps advancing across a non-day mutation in scenario 
 	// to advanceDay, this would clear the pending timeout and restart the 1000ms
 	// day delay — the exact regression the sandbox test pins for snapshot
 	// re-subscription, here scoped to the scenario command-busy flag.
+	//
+	// The First Profit challenge starts with pricing 'premium', so select
+	// 'standard' to ensure the command actually changes the game (a no-op
+	// 'premium'->'premium' publish would not exercise the command-busy path).
+	// This also pins that an ordinary scenario command does NOT pause the
+	// auto-tick: resetTransientViewState() must be keyed on run identity
+	// (runId/status), not the run object reference, which changes on every
+	// command publish.
 	await page.getByRole('button', { name: /policies/i }).click();
 	const policies = page.getByRole('dialog', { name: /policies/i });
 	await expect(policies).toBeVisible();
-	await policies.getByLabel(/pricing/i).selectOption('premium');
+	await policies.getByLabel(/pricing/i).selectOption('standard');
 	await policies.getByRole('button', { name: /close policies/i }).click();
 	// Wait for the scenario command to finish persisting so advanceDay is true
 	// again before the day timer fires.
 	await expect(page.locator('main.app')).toHaveAttribute('data-scenario-command-pending', 'false');
+	// An ordinary scenario command must not pause the auto-tick.
+	await expect(page.locator('main.app')).toHaveAttribute('data-simulation-paused', 'false');
 	await page.clock.runFor(0);
 
 	// Advance the remainder of the interval (total 1050ms > 1000ms). The day
