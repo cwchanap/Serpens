@@ -383,6 +383,13 @@
 		}
 	});
 	let game = $derived(playMode === 'scenario' ? (activeScenarioRun?.game ?? null) : sandboxGame);
+	// Boolean projection of `game` existence. The auto-tick `$effect` reads this
+	// instead of `game` so a new game snapshot (policy edit, build, hire, stock
+	// change, etc.) does not re-trigger the timer lifecycle and reset the
+	// pending day delay. `game` is a new object reference on every mutation, so
+	// subscribing the timer to it would postpone the current day each time; a
+	// primitive boolean only propagates when existence flips.
+	let hasGame = $derived(game !== null);
 	let activeMapView = $state<MapViewId>('retail');
 	let visitedMapViews = $state(createInitialVisitedMapViews('retail'));
 	let selectedWorldCityId = $state<string | null>(null);
@@ -1072,14 +1079,14 @@
 	});
 
 	$effect(() => {
-		const currentGame = game;
+		const gameExists = hasGame;
 		const paused = simulationPaused;
 		const speed = simulationSpeed;
 		const canAdvance = mutationAvailability.advanceDay;
 		const tickPending = simulationTickPending;
 		const blockedByOverlay = hasBlockingOverlay;
 
-		if (!currentGame || paused || !canAdvance || tickPending || blockedByOverlay) {
+		if (!gameExists || paused || !canAdvance || tickPending || blockedByOverlay) {
 			return;
 		}
 
