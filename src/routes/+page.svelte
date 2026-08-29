@@ -1831,6 +1831,10 @@
 		isStoreDetailOpen = false;
 		isBuildMenuOpen = false;
 		isSupplyAdvisorOpen = false;
+		// Pause the auto-tick whenever the active play mode or scenario run
+		// changes (start/restart/import a challenge, return to sandbox, etc.)
+		// so the player can review the new state before time resumes.
+		simulationPaused = true;
 		isGameMenuOpen = false;
 		isAlertsMenuOpen = false;
 		activeManagementPanelId = null;
@@ -1887,6 +1891,9 @@
 			selectedWorldCityId = null;
 			clearLogisticsRouteSelection();
 			cancelPlacement();
+			// Pause the auto-tick so the player can review the loaded state
+			// before time resumes.
+			simulationPaused = true;
 			saveFeedback = { kind: 'status', messageKey: 'route.save.loadedAutoSave' };
 			await refreshSaveSummary();
 		} catch (error) {
@@ -1936,6 +1943,9 @@
 			selectedWorldCityId = null;
 			clearLogisticsRouteSelection();
 			cancelPlacement();
+			// Pause the auto-tick so the player can review the loaded state
+			// before time resumes.
+			simulationPaused = true;
 			saveFeedback = {
 				kind: 'status',
 				messageKey: 'route.save.loadedManualSlot',
@@ -2398,6 +2408,9 @@
 				return;
 			}
 
+			// Pause the auto-tick so the player can review their newly founded
+			// store before time starts flowing.
+			simulationPaused = true;
 			void gameRouteController.foundStore({
 				archetypeId,
 				city: activeCity,

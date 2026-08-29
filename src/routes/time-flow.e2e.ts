@@ -51,6 +51,10 @@ test('simulation advances automatically at the selected speed and stops while pa
 	await expect(day).toHaveText('Day 1');
 	await page.keyboard.press('Escape');
 
+	// Resume the auto-tick (loading a save starts paused so the player can
+	// review the state before time flows).
+	await page.getByRole('button', { name: 'Resume', exact: true }).click();
+
 	await page.getByRole('button', { name: '5×', exact: true }).click();
 	await expect
 		.poll(async () => Number(((await day.textContent()) ?? '').match(/\d+/)?.[0] ?? 0))
@@ -75,6 +79,10 @@ test('automatic day clock keeps advancing across a non-day mutation', async ({ p
 	const day = page.getByText(/^Day \d+$/);
 	await expect(day).toHaveText('Day 1');
 	await page.keyboard.press('Escape');
+
+	// Resume the auto-tick (loading a save starts paused so the player can
+	// review the state before time flows).
+	await page.getByRole('button', { name: 'Resume', exact: true }).click();
 
 	// Freeze virtual time, then switch to 5x (1000ms/day). Changing speed re-arms
 	// the timer for a fresh, deterministic 1000ms delay at the frozen instant T0.
@@ -137,6 +145,10 @@ test('automatic day clock keeps advancing across a non-day mutation in scenario 
 
 	const day = page.getByText(/^Day \d+$/);
 	await expect(day).toHaveText('Day 1');
+
+	// Resume the auto-tick (starting a challenge begins paused so the player
+	// can review the scenario before time flows).
+	await page.getByRole('button', { name: 'Resume', exact: true }).click();
 
 	// Freeze virtual time, then switch to 5x (1000ms/day). Changing speed re-arms
 	// the timer for a fresh, deterministic 1000ms delay at the frozen instant T0.
