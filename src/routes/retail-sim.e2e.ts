@@ -1266,16 +1266,28 @@ async function openStoreDetail(page: Page): Promise<Locator> {
 	return modal;
 }
 
-async function expectActionAboveControlDesk(page: Page, action: Locator): Promise<void> {
+async function expectActionDoesNotOverlapControlDesk(page: Page, action: Locator): Promise<void> {
 	await action.scrollIntoViewIfNeeded();
 	const [actionBox, controlDeskBox] = await Promise.all([
 		action.boundingBox(),
 		page.getByLabel('Control desk').boundingBox()
 	]);
+
 	if (!actionBox || !controlDeskBox) {
 		throw new Error('Inspector action or control desk has no bounding box');
 	}
-	expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(controlDeskBox.y);
+
+	const actionRight = actionBox.x + actionBox.width;
+	const actionBottom = actionBox.y + actionBox.height;
+	const deskRight = controlDeskBox.x + controlDeskBox.width;
+	const deskBottom = controlDeskBox.y + controlDeskBox.height;
+
+	expect(
+		actionRight <= controlDeskBox.x ||
+			actionBox.x >= deskRight ||
+			actionBottom <= controlDeskBox.y ||
+			actionBox.y >= deskBottom
+	).toBe(true);
 }
 
 async function getStoreDetailPanelLayout(page: Page) {
@@ -3432,14 +3444,6 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await expect(inspector.getByRole('table', { name: /Store #1 stock/i })).toHaveCount(0);
 	const openDetails = inspector.getByRole('button', { name: /open details/i });
 	await openDetails.scrollIntoViewIfNeeded();
-	const [openDetailsBox, controlDeskBox] = await Promise.all([
-		openDetails.boundingBox(),
-		page.getByLabel('Control desk').boundingBox()
-	]);
-	if (!openDetailsBox || !controlDeskBox) {
-		throw new Error('Open Details or control desk has no bounding box');
-	}
-	expect(openDetailsBox.y + openDetailsBox.height).toBeLessThan(controlDeskBox.y);
 
 	const storeModal = await openStoreDetail(page);
 	// The modal opens on the Stock tab by default.
@@ -3624,7 +3628,7 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 	await expect(inspector.getByText(/Level 2 \/ 10/i)).toBeVisible();
 });
 
-test('store card Open Details stays reachable above the control desk on a narrow viewport', async ({
+test('store card Open Details stays reachable clear of the control desk on a narrow viewport', async ({
 	page
 }) => {
 	// At <=980px the inspector is a bottom sheet; the fixed control desk must not
@@ -3648,62 +3652,18 @@ test('store card Open Details stays reachable above the control desk on a narrow
 	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
 });
 
-test('store card Open Details clears the three-row control desk just above compact mode', async ({
-	page
-}) => {
-	// At 981–1023px the desktop management launchers remain visible and wrap the
-	// Control Desk to three rows. The inspector must reserve that taller footprint
-	// until the <=980px compact bottom-sheet rule takes over.
-	await page.setViewportSize({ width: 1000, height: 800 });
-	await page.goto('/');
-
-	await buildRetailStoreAt(page, {
-		x: 1,
-		y: 6,
-		storeTypeName: /build convenience store/i,
-		expectedStoreCount: 1
-	});
-
-	await clickMapTile(page, 1, 6);
-	const inspector = page.getByRole('dialog', { name: /tile details/i });
-	await expect(inspector).toBeVisible();
-
-	const openDetails = inspector.getByRole('button', { name: /open details/i });
-	await openDetails.scrollIntoViewIfNeeded();
-	const [openDetailsBox, controlDeskBox] = await Promise.all([
-		openDetails.boundingBox(),
-		page.getByLabel('Control desk').boundingBox()
-	]);
-	if (!openDetailsBox || !controlDeskBox) {
-		throw new Error('Open Details or control desk has no bounding box');
-	}
-	expect(openDetailsBox.y + openDetailsBox.height).toBeLessThanOrEqual(controlDeskBox.y);
-
-	await openDetails.click();
-	const modal = page.locator('[role="dialog"][aria-modal="true"]');
-	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
-});
-
-test('management panels stay reachable from the hamburger menu on a narrow viewport', async ({
-	page
-}) => {
-	// At <=980px the control desk hides the .manage cluster, so the only clickable
-	// path to management panels is the hamburger menu. Regression: the menu used to
-	// only surface Saves + Audio, leaving Dashboard/Reports/etc. unreachable without
-	// keyboard shortcuts on touch/narrow layouts.
-	await page.setViewportSize({ width: 960, height: 800 });
+test('management panels stay reachable from the compact dock', async ({ page }) => {
+	await page.setViewportSize({ width: 960, height: 720 });
 	await page.goto('/');
 	await expectRetailMapReady(page);
 
-	// The desk management launchers are hidden at this width.
-	await expect(page.getByRole('group', { name: /management/i })).not.toBeVisible();
+	const desk = page.getByLabel('Control desk');
+	const management = desk.getByRole('group', { name: /management/i });
+	await expect(management).toBeVisible();
 
-	// The hamburger menu surfaces a Management section that opens the Dashboard.
-	await page.getByRole('button', { name: /^menu$/i }).click();
-	const menuManagement = page.getByRole('group', { name: /management panels/i });
-	await expect(menuManagement).toBeVisible();
-	await menuManagement.getByRole('button', { name: /dashboard/i }).click();
-	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
+	await management.getByRole('button', { name: /^policies$/i }).click();
+	await expect(page.getByRole('dialog', { name: /^policies$/i })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: /^menu$/i })).toHaveCount(0);
 });
 
 test('player upgrades an industrial building from the tile inspector', async ({ page }) => {
@@ -4565,7 +4525,7 @@ test('logistics recurring route dispatches, delivers, and exposes active/paused 
 	await expect(worldRoute.locator('line')).not.toHaveAttribute('stroke-dasharray', '6 4');
 });
 
-test('inspector clearance keeps route, retail, and industry actions above the ninth-launcher desk', async ({
+test('inspector clearance keeps route, retail, and industry actions clear of gameplay controls', async ({
 	page
 }) => {
 	test.setTimeout(90_000);
@@ -4587,7 +4547,7 @@ test('inspector clearance keeps route, retail, and industry actions above the ni
 	const routeInspector = page.getByRole('dialog', { name: /logistics route inspector/i });
 	await expect(routeInspector).toBeVisible();
 	const manageRoute = routeInspector.getByRole('button', { name: /manage route/i });
-	await expectActionAboveControlDesk(page, manageRoute);
+	await expectActionDoesNotOverlapControlDesk(page, manageRoute);
 	await manageRoute.click();
 	await expect(page.getByRole('dialog', { name: /^logistics$/i })).toBeVisible();
 	await page
@@ -4606,7 +4566,7 @@ test('inspector clearance keeps route, retail, and industry actions above the ni
 	const retailInspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(retailInspector).toBeVisible();
 	const openDetails = retailInspector.getByRole('button', { name: /open details/i });
-	await expectActionAboveControlDesk(page, openDetails);
+	await expectActionDoesNotOverlapControlDesk(page, openDetails);
 	await openDetails.click();
 	await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
 	await page.keyboard.press('Escape');
@@ -4624,7 +4584,7 @@ test('inspector clearance keeps route, retail, and industry actions above the ni
 	const closeIndustry = industryInspector.getByRole('button', {
 		name: /close industry tile inspector/i
 	});
-	await expectActionAboveControlDesk(page, closeIndustry);
+	await expectActionDoesNotOverlapControlDesk(page, closeIndustry);
 	await closeIndustry.click();
 	await expect(industryInspector).toHaveCount(0);
 });

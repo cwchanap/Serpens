@@ -28,9 +28,9 @@ function baseProps() {
 }
 
 describe('ControlDesk', () => {
-	// The `.manage` cluster (management launchers) is hidden below the component's
-	// 980px breakpoint. This project's browser tests default to a ~414px viewport, so
-	// widen it here to exercise the desktop layout the brief's tests assert against.
+	// The control desk renders as a left rail on wide screens. This project's
+	// browser tests default to a ~414px viewport, so widen it here to exercise
+	// the desktop rail the brief's tests assert against.
 	beforeEach(async () => {
 		await page.viewport(1280, 800);
 	});
@@ -43,12 +43,27 @@ describe('ControlDesk', () => {
 		await expect.element(page.getByRole('button', { name: /^pause$/i })).toBeVisible();
 	});
 
-	it('shows each management panel with its hotkey', async () => {
-		expect.assertions(3);
+	it('keeps management labels accessible and exposes their hotkeys in titles', async () => {
+		expect.assertions(4);
 		render(ControlDesk, baseProps());
-		await expect.element(page.getByRole('button', { name: /dashboard\s*o/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /policies\s*p/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /finance\s*f/i })).toBeVisible();
+
+		const dashboard = page.getByRole('button', { name: /^dashboard$/i });
+		const policies = page.getByRole('button', { name: /^policies$/i });
+
+		await expect.element(dashboard).toBeVisible();
+		await expect.element(dashboard).toHaveAttribute('title', 'Dashboard (O)');
+		await expect.element(policies).toBeVisible();
+		await expect.element(policies).toHaveAttribute('title', 'Policies (P)');
+	});
+
+	it('keeps management destinations reachable in the compact dock', async () => {
+		expect.assertions(3);
+		await page.viewport(414, 800);
+		render(ControlDesk, baseProps());
+
+		await expect.element(page.getByRole('button', { name: /^dashboard$/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /^policies$/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /^finance$/i })).toBeVisible();
 	});
 
 	it('no longer hosts the map-view menu (moved to the top bar)', async () => {
@@ -75,15 +90,17 @@ describe('ControlDesk', () => {
 		await expect.element(page.getByRole('button', { name: /^build$/i })).toBeDisabled();
 	});
 
-	it('renders a shortcuts launcher with the ? keycap that opens the cheat sheet', async () => {
-		expect.assertions(3);
-		const props = baseProps();
-		render(ControlDesk, props);
-		const shortcuts = page.getByRole('button', { name: /^shortcuts$/i });
-		await expect.element(shortcuts).toBeVisible();
-		await expect.element(page.getByText('?', { exact: true })).toBeVisible();
-		await shortcuts.click();
-		expect(props.onOpenShortcuts).toHaveBeenCalledTimes(1);
+	it('opens shortcut help from the icon launcher', async () => {
+		expect.assertions(2);
+		const onOpenShortcuts = vi.fn();
+		render(ControlDesk, { ...baseProps(), onOpenShortcuts });
+
+		const button = page.getByRole('button', { name: /shortcuts/i });
+		await expect
+			.element(document.querySelector<SVGElement>('svg[data-icon="shortcuts"]'))
+			.toBeVisible();
+		await button.click();
+		expect(onOpenShortcuts).toHaveBeenCalledOnce();
 	});
 
 	it('disables time controls when advanceDisabled is set', async () => {

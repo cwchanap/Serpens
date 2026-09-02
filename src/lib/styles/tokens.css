@@ -41,4 +41,8 @@
 
 	/* Shared shadow */
 	--shadow-paper: 0 16px 36px rgba(15, 10, 3, 0.45);
+
+	/* Gameplay chrome footprint */
+	--control-desk-rail-width: 5rem;
+	--control-desk-compact-height: 5.75rem;
 }

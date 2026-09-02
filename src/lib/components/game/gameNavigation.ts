@@ -42,7 +42,7 @@ export const ICON_PATHS: Record<GameIconName, readonly string[]> = {
 		'M18 16c2.5.4 3 1.8 3 4'
 	],
 	stores: ['M4 9h16l-2-5H6z', 'M5 9v11h14V9', 'M9 20v-6h6v6'],
-	decisions: ['M12 3v6', 'M12 9 5-5', 'M17 4v4', 'M12 9 7 4', 'M19 13v5', 'M19 18l-2 3'],
+	decisions: ['M12 3v6', 'M12 9 5 5', 'M17 4v4', 'M12 9 7 4', 'M19 13v5', 'M19 18l-2 3'],
 	reports: ['M5 20V10', 'M10 20V4', 'M15 20v-7', 'M20 20V7', 'M3 20h19'],
 	productChains: ['M6 6h.01', 'M18 12h.01', 'M7 18h.01', 'M8 7.4 15.8 11', 'M16.2 13.8 9 17'],
 	finance: [

@@ -127,15 +127,18 @@
 </div>
 
 <style>
-	.map-surfaces,
-	.map-surface {
+	.map-surfaces {
 		position: absolute;
-		inset: 0;
+		inset: 0 0 0 var(--control-desk-rail-width, 0);
 		min-width: 0;
 		min-height: 0;
 	}
 
 	.map-surface {
+		position: absolute;
+		inset: 0;
+		min-width: 0;
+		min-height: 0;
 		pointer-events: none;
 		visibility: hidden;
 	}
@@ -143,5 +146,11 @@
 	.active-map-surface {
 		pointer-events: auto;
 		visibility: visible;
+	}
+
+	@media (max-width: 980px) {
+		.map-surfaces {
+			inset: 0 0 var(--control-desk-compact-height, 0) 0;
+		}
 	}
 </style>

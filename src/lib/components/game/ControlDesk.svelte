@@ -3,6 +3,7 @@
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { ManagementPanelMenuItem } from './gameNavigation';
+	import GameIcon from './GameIcon.svelte';
 
 	type SimulationSpeed = 1 | 2 | 5;
 
@@ -48,28 +49,28 @@
 	}: Props = $props();
 </script>
 
-<footer class="control-desk plaque" aria-label={i18n.t('controlDesk.group')}>
+<aside class="control-desk plaque" aria-label={i18n.t('controlDesk.group')}>
 	<div class="cluster">
 		<button
 			type="button"
-			class="desk-build"
+			class="btn-icon btn-icon-primary"
 			aria-label={i18n.t('controlDesk.build')}
 			disabled={buildDisabled}
 			onclick={onBuild}
 		>
-			{i18n.t('controlDesk.build')} <kbd class="keycap">B</kbd>
+			<GameIcon name="build" />
 		</button>
 		{#if showRailBuild}
 			<button
 				type="button"
-				class="desk-build rail-toggle"
+				class="btn-icon rail-toggle"
 				class:active={railBuildActive}
 				aria-pressed={railBuildActive}
 				aria-label={i18n.t('railBuild.toolbar')}
 				disabled={railBuildDisabled}
 				onclick={onToggleRailBuild}
 			>
-				{i18n.t('railBuild.toolbar')}
+				<GameIcon name="rail" />
 			</button>
 		{/if}
 	</div>
@@ -77,11 +78,16 @@
 		<p class="disabled-copy" role="status">{disabledReason}</p>
 	{/if}
 
-	<div class="cluster manage" role="group" aria-label={i18n.t('controlDesk.management')}>
+	<div class="manage" role="group" aria-label={i18n.t('controlDesk.management')}>
 		{#each managementItems as item (item.id)}
-			<button type="button" class="manage-btn" onclick={() => onOpenManagement(item.id)}>
-				{item.label}
-				<kbd class="keycap">{item.shortcut}</kbd>
+			<button
+				type="button"
+				class="btn-icon"
+				aria-label={item.label}
+				title={`${item.label} (${item.shortcut})`}
+				onclick={() => onOpenManagement(item.id)}
+			>
+				<GameIcon name={item.icon} />
 			</button>
 		{/each}
 	</div>
@@ -89,21 +95,20 @@
 	<div class="cluster time">
 		<button
 			type="button"
-			class="desk-shortcuts"
+			class="btn-icon"
 			aria-label={i18n.t('controlDesk.shortcuts')}
 			onclick={onOpenShortcuts}
 		>
-			{i18n.t('controlDesk.shortcuts')} <kbd class="keycap">?</kbd>
+			<GameIcon name="shortcuts" />
 		</button>
 		<button
 			type="button"
-			class="btn-primary advance"
+			class="btn-icon"
 			aria-label={paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}
 			disabled={pauseDisabled}
 			onclick={onTogglePause}
 		>
-			{paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}
-			<kbd class="keycap">Space</kbd>
+			<GameIcon name={paused ? 'resume' : 'pause'} />
 		</button>
 		<div class="speed-controls" role="group" aria-label={i18n.t('controlDesk.simulationSpeed')}>
 			{#each [1, 2, 5] as speed (speed)}
@@ -121,85 +126,51 @@
 			{/each}
 		</div>
 	</div>
-</footer>
+</aside>
 
 <style>
 	.control-desk {
 		position: fixed;
+		top: 5.5rem;
+		bottom: 1rem;
 		left: 0;
-		right: 0;
-		bottom: 0;
+		width: var(--control-desk-rail-width);
+		padding: 0.75rem;
 		z-index: 25;
 		display: flex;
-		flex-wrap: wrap;
+		flex-direction: column;
 		align-items: center;
-		gap: 0.6rem 1rem;
-		padding: 0.6rem 0.85rem;
+		gap: 0.6rem;
+		overflow-y: auto;
+	}
+
+	.control-desk .btn-icon {
+		width: 3.5rem;
+		height: 3.5rem;
+		flex: none;
 	}
 
 	.cluster {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		gap: 0.4rem;
+		gap: 0.6rem;
+		flex: none;
 	}
 
 	.manage {
-		flex-wrap: wrap;
-	}
-
-	.time {
-		margin-left: auto;
-	}
-
-	.desk-build {
-		display: inline-flex;
+		display: flex;
+		flex-direction: column;
 		align-items: center;
-		border: 1.5px solid var(--brass-500);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-weight: 700;
-		padding: 0.55rem 0.85rem;
-	}
-
-	.desk-build:hover:not(:disabled),
-	.desk-build:focus-visible:not(:disabled) {
-		background: var(--paper-200);
-	}
-
-	.desk-build:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+		gap: 0.625rem;
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
 	}
 
 	.rail-toggle.active {
 		background: var(--brass-500);
 		color: var(--paper-50);
-	}
-
-	.manage-btn {
-		display: inline-flex;
-		align-items: center;
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-size: 0.82rem;
-		padding: 0.45rem 0.7rem;
-	}
-
-	.manage-btn:hover,
-	.manage-btn:focus-visible {
-		background: var(--paper-200);
-		border-color: var(--brass-500);
-	}
-
-	.advance {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
 	}
 
 	.speed-controls {
@@ -223,27 +194,31 @@
 		background: var(--paper-200);
 	}
 
-	.desk-shortcuts {
-		display: inline-flex;
-		align-items: center;
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-size: 0.82rem;
-		padding: 0.45rem 0.7rem;
-	}
-
-	.desk-shortcuts:hover,
-	.desk-shortcuts:focus-visible {
-		background: var(--paper-200);
-		border-color: var(--brass-500);
-	}
-
 	@media (max-width: 980px) {
+		.control-desk {
+			top: auto;
+			right: 0;
+			bottom: 0;
+			width: auto;
+			min-height: var(--control-desk-compact-height);
+			padding: 0.75rem;
+			overflow-x: auto;
+			overflow-y: hidden;
+			flex-direction: row;
+			align-items: center;
+		}
+
+		.cluster,
 		.manage {
-			display: none;
+			flex-direction: row;
+		}
+
+		.time {
+			margin-left: auto;
+		}
+
+		.manage {
+			overflow-y: visible;
 		}
 	}
 </style>

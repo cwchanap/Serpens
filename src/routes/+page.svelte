@@ -2923,26 +2923,6 @@
 			bind:alertsOpen={isAlertsMenuOpen}
 		>
 			{#snippet menuContent()}
-				<div class="menu-section">
-					<p class="menu-label">{i18n.t('route.menu.management')}</p>
-					<div
-						class="menu-management"
-						role="group"
-						aria-label={i18n.t('route.menu.managementPanels')}
-					>
-						{#each managementPanelMenuItems as item (item.id)}
-							<button
-								type="button"
-								onclick={() =>
-									item.id === 'logistics'
-										? openLogisticsManagement()
-										: openManagementPanel(item.id)}
-							>
-								{item.label}
-							</button>
-						{/each}
-					</div>
-				</div>
 				{#if playMode === 'scenario' && activeScenarioRun}
 					<ScenarioMenuSection
 						{i18n}
@@ -3271,46 +3251,5 @@
 		font-family: var(--font-body);
 		font-size: 0.9rem;
 		font-style: italic;
-	}
-
-	/* Management launchers surfaced inside the hamburger menu so they remain
-	   reachable on narrow viewports where the control desk hides the .manage
-	   cluster. Mirrors GameMenu's .menu-label and .view-tab look. */
-	.menu-section {
-		display: grid;
-		gap: 0.4rem;
-	}
-
-	.menu-label {
-		margin: 0;
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--brass-700);
-	}
-
-	.menu-management {
-		display: grid;
-		gap: 0.3rem;
-	}
-
-	.menu-management button {
-		width: 100%;
-		text-align: left;
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-size: 0.85rem;
-		padding: 0.45rem 0.6rem;
-	}
-
-	.menu-management button:hover,
-	.menu-management button:focus-visible {
-		background: var(--paper-200);
-		border-color: var(--brass-500);
 	}
 </style>
