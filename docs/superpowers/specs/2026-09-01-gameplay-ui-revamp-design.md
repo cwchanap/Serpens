@@ -290,15 +290,7 @@ The rail uses the same `ManagementPanelMenuItem[]` and `.btn-icon`/`GameIcon` pr
 
 ### In-place switching and HPA-568 override
 
-The route currently wraps the whole host in:
-
-```svelte
-{#key activeManagementPanel.id}
-  <ManagementPanelHost />
-{/key}
-```
-
-HPA-304 removes that route-level key. Keeping it would tear down/recreate the dialog/focus trap on every internal rail click and contradict in-place navigation.
+The route currently wraps the whole host in a `{#key activeManagementPanel.id}` block. HPA-304 removes that route-level key. Keeping it would tear down/recreate the dialog/focus trap on every internal rail click and contradict in-place navigation.
 
 The shell stays mounted while `activeManagementPanelId !== null`. Key **only the complete content/body switch** inside `ManagementPanelHost` by `panelId` so panel-local UI state resets without remounting the rail/header/dialog/focus trap.
 
