@@ -164,11 +164,11 @@
 <style>
 	.inspector-overlay {
 		position: absolute;
-		top: 5.9rem;
+		top: 6rem;
 		right: 1rem;
 		bottom: 1rem;
 		z-index: 10;
-		width: min(360px, calc(100% - 2rem));
+		width: min(24.5rem, calc(100% - 2rem));
 		/* The control desk is a fixed left rail on desktop, and this inspector is
 		   right-anchored, so no bottom reservation is needed above 980px. */
 		overflow: auto;
@@ -180,9 +180,9 @@
 			position: fixed;
 			/* Sit above the fixed compact control dock so the store card's Open
 			   Details button is never covered. */
-			inset: auto 0 var(--control-desk-compact-height) 0;
+			inset: auto 0 calc(var(--control-desk-compact-height) + 0.5rem) 0;
 			width: auto;
-			max-height: 60dvh;
+			max-height: calc(100dvh - var(--control-desk-compact-height) - 6.5rem);
 		}
 	}
 </style>

@@ -4571,6 +4571,26 @@ test('inspector clearance keeps route, retail, and industry actions clear of gam
 	await expect(industryInspector).toHaveCount(0);
 });
 
+test('keeps retail inspector actions clear of the compact gameplay dock', async ({ page }) => {
+	await page.setViewportSize({ width: 760, height: 800 });
+	await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+	const canvas = await expectRetailMapReady(page);
+	const game = await readAutoSaveGame(page);
+	const store = game.stores[0];
+
+	if (!store) throw new Error('Missing starter store for compact inspector test');
+
+	await clickCanvasTile(page, canvas, store.mapX, store.mapY);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	const details = inspector.getByRole('button', { name: /open details/i });
+
+	await expect(details).toBeVisible();
+	await expectActionDoesNotOverlapControlDesk(page, details);
+	await details.click();
+	await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
+});
+
 test('logistics route navigation', async ({ page }) => {
 	test.setTimeout(90_000);
 	await installSandboxAutoSave(page, logisticsRouteNavigationGame());

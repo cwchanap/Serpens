@@ -202,6 +202,17 @@ describe('TileInspector basic card', () => {
 		await expect.element(page.getByText('Staff morale')).toBeVisible();
 	});
 
+	it('renders the selected store art above its three vitals', async () => {
+		expect.assertions(4);
+
+		renderInspector({ store, latestStoreReport });
+
+		await expect.element(page.getByTestId('store-art-convenience')).toBeVisible();
+		await expect.element(page.getByText('Revenue/day')).toBeVisible();
+		await expect.element(page.getByText('Stock health')).toBeVisible();
+		await expect.element(page.getByText('Staff morale')).toBeVisible();
+	});
+
 	it('does not render the stock/chain/staff tabs on the basic card', async () => {
 		expect.assertions(3);
 

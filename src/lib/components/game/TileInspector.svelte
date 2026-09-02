@@ -119,7 +119,7 @@
 		{#if store}
 			<div class="basic-card">
 				{#if storeArt}
-					<div class="store-art">
+					<figure class="store-art">
 						<img
 							src={storeArtSrc}
 							alt=""
@@ -129,10 +129,17 @@
 							loading="lazy"
 							decoding="async"
 						/>
+						<figcaption class="store-identity">
+							<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
+							<p class="location">{formatStoreLocation(store.location, i18n)}</p>
+						</figcaption>
+					</figure>
+				{:else}
+					<div class="store-identity plain">
+						<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
+						<p class="location">{formatStoreLocation(store.location, i18n)}</p>
 					</div>
 				{/if}
-				<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
-				<p class="location">{formatStoreLocation(store.location, i18n)}</p>
 
 				<dl class="gauges" aria-label={i18n.t('tileInspector.storeVitals')}>
 					<div class="gauge">
@@ -380,17 +387,36 @@
 	}
 
 	.store-art {
-		display: grid;
-		place-items: center;
-		padding: 0.5rem;
-		background: var(--paper-50);
+		position: relative;
+		margin: 0;
+		height: 220px;
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
+		background: var(--paper-50);
+		overflow: hidden;
 	}
 
 	.store-art img {
-		width: min(160px, 100%);
-		height: auto;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.store-identity {
+		position: absolute;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		display: grid;
+		gap: 0.1rem;
+		padding: 1.6rem 0.75rem 0.6rem;
+		background: linear-gradient(to top, var(--paper-100) 55%, transparent);
+	}
+
+	.store-identity.plain {
+		position: static;
+		padding: 0;
+		background: none;
 	}
 
 	.store-level {
