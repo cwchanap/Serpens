@@ -581,7 +581,7 @@ Update the `GameMenu` mount in `TopBar` accordingly.
 
 - [ ] **Step 5: Migrate the route map-selection helper in the same task**
 
-The old helper opens the hamburger first. Replace it with a direct HUD helper, for example:
+The old helper opens the hamburger first. Replace it with a direct HUD helper:
 
 ```ts
 async function selectMapView(page: Page, itemName: RegExp): Promise<void> {
@@ -741,12 +741,12 @@ Tune the small gap only if the real dock dimensions require it. Do not copy a se
 
 - [ ] **Step 6: Add compact route evidence using the Task 2 non-overlap helper**
 
-Add a focused route test at a compact but map-usable viewport such as 760×800:
+Add a focused route test at 760×800 using the existing `cityLocalInventoryLifecycleGame()` fixture:
 
 ```ts
 test('compact retail inspector actions stay clear of the control dock', async ({ page }) => {
   await page.setViewportSize({ width: 760, height: 800 });
-  await installSandboxAutoSave(page, /* existing retail fixture */);
+  await installSandboxAutoSave(page, cityLocalInventoryLifecycleGame());
 
   const canvas = await expectRetailMapReady(page);
   const game = await readAutoSaveGame(page);
@@ -761,7 +761,7 @@ test('compact retail inspector actions stay clear of the control dock', async ({
 });
 ```
 
-Use an existing fixture/helper already appropriate to the suite; do not introduce a new game fixture solely for geometry.
+Do not introduce a new game fixture solely for geometry.
 
 - [ ] **Step 7: Verify Task 4**
 
@@ -950,13 +950,18 @@ await expect(
 
 Do not use page-level `getByRole('button', { name: /dashboard|finance/ })` after the workspace is open because the gameplay rail exposes the same labels.
 
-Also assert focus remains within the dialog after switching:
+Also assert focus remains within the dialog after switching. Prefer a descendant check over pinning one exact focused button:
 
 ```ts
-await expect(financeDialog.locator(':focus')).toHaveCount(1);
+await expect
+  .poll(() =>
+    page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]');
+      return Boolean(dialog && document.activeElement && dialog.contains(document.activeElement));
+    })
+  )
+  .toBe(true);
 ```
-
-If the exact focused element differs by browser, assert `page.locator(':focus')` is a descendant of the dialog instead of pinning a specific rail button.
 
 - [ ] **Step 7: Verify Task 5**
 
@@ -1005,7 +1010,7 @@ and scope management workspace locators to the dialog after it is open.
 
 - [ ] **Step 1: Add explicit 1920×1080 and 1280×800 route checks**
 
-Use a focused data-driven E2E test:
+Use the existing `logisticsRouteNavigationGame()` fixture because it already provides a retail store plus opened industry/logistics state used elsewhere in this suite:
 
 ```ts
 for (const viewport of [
@@ -1014,7 +1019,7 @@ for (const viewport of [
 ]) {
   test(`revamped HUD remains usable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
-    await installSandboxAutoSave(page, /* existing suitable sandbox fixture */);
+    await installSandboxAutoSave(page, logisticsRouteNavigationGame());
 
     await expectRetailMapReady(page);
     await expect(page.getByRole('button', { name: /retail city map/i })).toBeVisible();
@@ -1029,11 +1034,11 @@ for (const viewport of [
 }
 ```
 
-Use an existing fixture that already supports the needed map views; do not add new game state solely for viewport testing.
+Do not add a new fixture solely for viewport testing.
 
 - [ ] **Step 2: Extend the existing non-overlap helper checks rather than creating a second layout contract**
 
-At 1280×800, open a retail inspector and call:
+At 1280×800, switch back to retail, open the starter-store inspector from `logisticsRouteNavigationGame()`, and call:
 
 ```ts
 await expectActionDoesNotOverlapControlDesk(
