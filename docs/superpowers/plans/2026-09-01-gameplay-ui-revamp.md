@@ -1,10 +1,10 @@
 # Gameplay HUD and Management Panel Revamp Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Implement all tasks in the single HPA-304 PR.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Implement every task in the single HPA-304 PR.
 
 **Goal:** Ship the approved art-forward Serpens gameplay HUD, map inspector treatment, and parchment management workspace without changing game-domain behavior or introducing a new UI/state framework.
 
-**Architecture:** Keep `+page.svelte` as the route composition/shortcut/command owner, `GameRouteController` as the command/persistence coordinator, the HPA-568 route-local hosts as the presentation boundaries, and Phaser as the map renderer. Add only a small typed inline-SVG icon primitive; reuse one typed management item list in both gameplay and management navigation. HPA-304 removes the old route-level management `{#key}` so the workspace shell remains mounted while only its body changes.
+**Architecture:** Keep `+page.svelte` as the route composition/shortcut/command owner, `GameRouteController` as the command/persistence coordinator, the HPA-568 route-local hosts as the presentation boundaries, and Phaser as the map renderer. Add one small typed inline-SVG icon primitive and one shared management-menu item type. Remove the route-level management `{#key}` so the workspace shell remains mounted while only its body changes.
 
 **Tech Stack:** Svelte 5.55 runes, TypeScript 6, SvelteKit 2.57, Vitest 4 browser mode, Playwright 1.59, Phaser 4.1, existing Serpens i18n and parchment/brass CSS tokens.
 
@@ -12,7 +12,6 @@
 
 ## Global Constraints
 
-- Follow the approved Vitrine/brass-medallion + art-forward direction documented in the spec.
 - One HPA-304 implementation PR only; task commits are checkpoints inside that PR.
 - `GameState` remains authoritative domain state.
 - `GameRouteController` remains the route command/persistence coordinator.
@@ -22,16 +21,14 @@
 - Do not modify simulation rules, persistence/save schema, scenario semantics, game-domain types, or Phaser snapshots for presentation convenience.
 - Do not add historical cash/trend/analytics data solely to imitate decorative mock values.
 - Reuse existing i18n labels before adding translation keys.
-- Reuse existing `tokens.css` values and `frames.css` primitives; no parallel theme system and no runtime HUD-variant selector.
 - Reuse `.btn-icon` as the circular brass medallion and `.seal` as the wax-red badge/attention pill.
 - Preserve existing keyboard shortcuts and route-owned Escape ordering.
-- Keep icon-only actions accessible with localized names and label/hotkey `title` or tooltip text.
 - Preserve `route.mapEyebrow.retail`, `route.mapEyebrow.industry`, and `route.mapEyebrow.world` as the map button accessible labels.
 - Keep `1×`, `2×`, and `5×` as numeric text controls; do not add speed icons.
 - Treat 1920×1080 as reference parity and 1280×800 as the desktop regression target.
-- Add real compact evidence around ~414px rather than inferring compact behavior from a desktop viewport.
-- Run focused tests after each task and `retail-sim.e2e.ts` after every route-visible cutover.
+- Add real compact evidence at 414×800 for management access and 760×800 for map/inspector clearance.
 - Update route E2E helpers in the same task that invalidates their old UI assumptions.
+- Run `retail-sim.e2e.ts` after every route-visible cutover.
 
 ---
 
@@ -59,10 +56,14 @@
 - `src/lib/components/game/ControlDesk.timeControls.svelte.spec.ts`
 - `src/lib/components/game/TileInspector.svelte`
 - `src/lib/components/game/TileInspector.svelte.spec.ts`
-- `src/lib/components/game/IndustryTileInspector.svelte` and its spec only where the shared shell treatment requires it
-- `src/lib/components/game/RailSegmentInspector.svelte` and its spec only where the shared shell treatment requires it
-- `src/lib/components/game/LogisticsRouteInspector.svelte` and its spec only where the shared shell treatment requires it
-- `src/lib/components/game/Scorecard.svelte` and focused coverage
+- `src/lib/components/game/IndustryTileInspector.svelte`
+- `src/lib/components/game/IndustryTileInspector.svelte.spec.ts`
+- `src/lib/components/game/RailSegmentInspector.svelte`
+- `src/lib/components/game/RailSegmentInspector.svelte.spec.ts`
+- `src/lib/components/game/LogisticsRouteInspector.svelte`
+- `src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts`
+- `src/lib/components/game/Scorecard.svelte`
+- `src/lib/components/game/Scorecard.svelte.spec.ts`
 - `src/lib/styles/frames.css`
 
 ### Must remain behaviorally unchanged
@@ -85,13 +86,9 @@
 - Modify: `src/lib/components/game/ControlDesk.svelte`
 - Modify: `src/lib/components/game/ControlDesk.svelte.spec.ts`
 
-**Interfaces:**
-
-Create one closed presentation vocabulary in `gameIcon.ts`:
+**Produces:**
 
 ```ts
-import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
-
 export type GameIconName =
   | 'build'
   | 'dashboard'
@@ -124,19 +121,9 @@ export interface ManagementPanelMenuItem {
 }
 ```
 
-Every current management destination has a shortcut. Remove `ControlDesk`'s local `ManagementItem` interface and its optional-shortcut branch; do not add a third copy of the type later in `ManagementPanelHost`.
-
-`GameIcon.svelte` accepts only:
-
-```ts
-let { name }: { name: GameIconName } = $props();
-```
-
-It renders one inline SVG with `aria-hidden="true"`, `data-icon={name}`, a common `viewBox="0 0 24 24"`, and explicit `{#if}` / `{:else if}` path branches.
-
 - [ ] **Step 1: Write the failing icon contract test**
 
-Create `GameIcon.svelte.spec.ts`:
+Create `src/lib/components/game/GameIcon.svelte.spec.ts`:
 
 ```ts
 import { page } from 'vitest/browser';
@@ -164,18 +151,16 @@ Expected: FAIL because `GameIcon.svelte` does not exist.
 
 - [ ] **Step 2: Implement `gameIcon.ts` and `GameIcon.svelte`**
 
-Use local static SVG paths only. Do not add dynamic imports, an icon class/registry service, external SVG assets, or a package.
+`gameIcon.ts` imports `ManagementPanelId` from `$lib/game/keyboardShortcuts` and exports the exact union/interface above.
 
-The component owns no accessible label and no click behavior.
+`GameIcon.svelte` accepts `{ name: GameIconName }`, renders one inline `<svg viewBox="0 0 24 24" aria-hidden="true" data-icon={name}>`, and uses explicit Svelte branches for the closed union. Keep paths local/static. Do not add dynamic imports, icon classes/registries, external SVG assets, or a package.
 
 - [ ] **Step 3: Type the existing route management config once**
 
-Change the route config to include semantic icons while preserving order, IDs, labels, and shortcuts:
+Delete the route-local `ManagementPanelMenuItem` interface. Type the existing config as:
 
 ```ts
-const managementPanelMenuConfig: Array<
-  Omit<ManagementPanelMenuItem, 'label'>
-> = [
+const managementPanelMenuConfig: Array<Omit<ManagementPanelMenuItem, 'label'>> = [
   { id: 'dashboard', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.dashboard, icon: 'dashboard' },
   { id: 'policies', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.policies, icon: 'policies' },
   { id: 'staff', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.staff, icon: 'staff' },
@@ -190,7 +175,11 @@ const managementPanelMenuConfig: Array<
   { id: 'finance', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.finance, icon: 'finance' },
   { id: 'logistics', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.logistics, icon: 'logistics' }
 ];
+```
 
+Keep the localized derived list:
+
+```ts
 let managementPanelMenuItems = $derived.by<ManagementPanelMenuItem[]>(() =>
   managementPanelMenuConfig.map((item) => ({
     ...item,
@@ -199,24 +188,17 @@ let managementPanelMenuItems = $derived.by<ManagementPanelMenuItem[]>(() =>
 );
 ```
 
-Delete the route-local `ManagementPanelMenuItem` interface.
+- [ ] **Step 4: Make `ControlDesk` consume the shared type**
 
-- [ ] **Step 4: Make `ControlDesk` consume the shared type before visual work**
-
-Replace its local `ManagementItem` with:
+Delete its local `ManagementItem`. Import `ManagementPanelMenuItem` from `./gameIcon` and change only the current property to:
 
 ```ts
-import type { ManagementPanelMenuItem } from './gameIcon';
-
-interface Props {
-  managementItems: ManagementPanelMenuItem[];
-  // existing remaining props unchanged
-}
+managementItems: ManagementPanelMenuItem[];
 ```
 
-Update test fixtures to include icons and delete the test that exists only to prove a missing shortcut can omit a keycap. There is no current shortcut-less destination.
+Every current destination has a shortcut, so remove the optional-shortcut rendering branch and the test that exists solely for a shortcut-less item. Update all fixtures with `icon` fields.
 
-- [ ] **Step 5: Verify the shared type cutover**
+- [ ] **Step 5: Verify Task 1**
 
 Run:
 
@@ -245,7 +227,7 @@ git commit -m "feat(ui): add shared game navigation metadata"
 
 ---
 
-## Task 2: Replace the footer with the gameplay rail and move the clearance E2E contract
+## Task 2: Replace the footer with the gameplay rail and migrate the clearance E2E contract
 
 **Files:**
 - Modify: `src/lib/components/game/ControlDesk.svelte`
@@ -254,39 +236,23 @@ git commit -m "feat(ui): add shared game navigation metadata"
 - Modify: `src/lib/styles/frames.css`
 - Modify: `src/routes/retail-sim.e2e.ts`
 
-**Interfaces:**
+**Consumes:** `GameIcon`, `ManagementPanelMenuItem` from Task 1.  
+**Preserves:** `onBuild`, `onOpenManagement`, `onToggleRailBuild`, `onTogglePause`, `onSelectSpeed`, `onOpenShortcuts`.
 
-Keep every existing callback:
+- [ ] **Step 1: Write failing desktop/compact rail expectations**
 
-```text
-Build -> onBuild
-management item -> onOpenManagement(id)
-Rail Build -> onToggleRailBuild
-Pause/Resume -> onTogglePause
-1×/2×/5× -> onSelectSpeed
-Shortcuts -> onOpenShortcuts
-```
-
-No action or shortcut ownership moves into `ControlDesk`.
-
-- [ ] **Step 1: Write the failing rail/component expectations**
-
-Update `ControlDesk.svelte.spec.ts` so the desktop fixture expects:
+Update the desktop fixture to expect icon navigation and hotkey titles:
 
 ```ts
 const dashboard = page.getByRole('button', { name: /^dashboard$/i });
 await expect.element(dashboard).toBeVisible();
 await expect.element(dashboard).toHaveAttribute('title', 'Dashboard (O)');
+await expect.element(page.locator('svg[data-icon="dashboard"]')).toBeVisible();
 ```
 
-Also assert:
+Keep existing callback/disabled/rail-build assertions.
 
-- Build remains accessible and calls `onBuild`;
-- Dashboard click calls `onOpenManagement('dashboard')`;
-- management icons render via `data-icon`;
-- Rail Build keeps `aria-pressed` and disabled behavior.
-
-Add a real compact test in the same file:
+Add a real compact test:
 
 ```ts
 it('keeps management destinations reachable in the compact dock', async () => {
@@ -299,8 +265,6 @@ it('keeps management destinations reachable in the compact dock', async () => {
 });
 ```
 
-The existing suite-level desktop viewport may stay at 1280×800; this test explicitly overrides it to 414×800.
-
 Run:
 
 ```bash
@@ -310,13 +274,11 @@ bun run test:unit -- \
   --run
 ```
 
-Expected: FAIL on new rail/title/compact expectations.
+Expected: FAIL on the new visual/compact contract.
 
-- [ ] **Step 2: Reuse `.btn-icon` and add only the Build modifier**
+- [ ] **Step 2: Reuse `.btn-icon`; add one primary modifier and one compact-height variable**
 
-Do not add a duplicate medallion style. Use existing `.btn-icon` for icon buttons.
-
-Add one shared modifier in `frames.css`, for example:
+Add to `frames.css` after `.btn-icon`:
 
 ```css
 .btn-icon-primary {
@@ -332,63 +294,38 @@ Add one shared modifier in `frames.css`, for example:
 .btn-icon-primary:focus-visible {
   background-color: var(--moss-2);
 }
-```
 
-Do not change `.seal`; alert counts and inspector attention continue to use it.
-
-- [ ] **Step 3: Implement the desktop left rail**
-
-Change `.control-desk` from a full-width bottom footer into a left-side fixed rail below the top HUD.
-
-Use `GameIcon` for:
-
-- Build;
-- management destinations;
-- Rail Build;
-- Pause/Resume;
-- shortcut help.
-
-Keep speeds as their existing `1×`, `2×`, `5×` text buttons.
-
-Each management button uses the localized label as `aria-label` and:
-
-```svelte
-title={`${item.label} (${item.shortcut})`}
-```
-
-Do not add local active-panel state.
-
-- [ ] **Step 4: Implement compact dock with one shared height contract**
-
-Remove the existing compact rule that hides `.manage`.
-
-At `max-width: 980px`, lay out the same action set as a horizontally scrollable bottom dock. Avoid a second markup tree unless CSS cannot express the layout.
-
-In `frames.css`, define the one cross-component layout constant used later by the inspector host:
-
-```css
 :root {
   --control-desk-compact-height: 5.75rem;
 }
 ```
 
-The compact `.control-desk` uses that value as its occupied/minimum block size. Keep safe-area padding inside that footprint or account for it consistently in the inspector calculation.
+Do not change `.seal`.
 
-- [ ] **Step 5: Replace the old footer-specific E2E helper before running the route suite**
+- [ ] **Step 3: Implement the desktop left rail**
 
-In `retail-sim.e2e.ts`, rename:
+Change `.control-desk` from a full-width bottom footer into a fixed left rail below the top HUD.
 
-```ts
-expectActionAboveControlDesk
+Use `GameIcon` for Build, Rail Build, management destinations, Pause/Resume, and shortcut help. Keep speed buttons as text `1×`, `2×`, `5×`.
+
+Each management button uses:
+
+```svelte
+aria-label={item.label}
+title={`${item.label} (${item.shortcut})`}
 ```
 
-to:
+Build uses `.btn-icon.btn-icon-primary`. Management and utility actions use `.btn-icon`. Do not add local active-panel state.
 
-```ts
-expectActionDoesNotOverlapControlDesk
-```
+- [ ] **Step 4: Implement the compact bottom dock without hiding management**
 
-and replace the y-only assertion with rectangle separation:
+Remove the current `@media (max-width: 980px) { .manage { display: none; } }` rule.
+
+At `max-width: 980px`, place the same action set in a horizontally scrollable fixed bottom dock. Set its occupied/minimum block size from `var(--control-desk-compact-height)`. Keep safe-area padding inside that height contract.
+
+- [ ] **Step 5: Replace the old footer-specific E2E helper before running E2E**
+
+Rename `expectActionAboveControlDesk` to `expectActionDoesNotOverlapControlDesk` and use rectangle separation:
 
 ```ts
 async function expectActionDoesNotOverlapControlDesk(
@@ -419,17 +356,15 @@ async function expectActionDoesNotOverlapControlDesk(
 }
 ```
 
-Update all existing helper call sites.
+Update every existing call site.
 
-Rename the test:
+Rename the current test to:
 
 ```text
 inspector clearance keeps route, retail, and industry actions clear of the gameplay controls
 ```
 
-Keep its current 1000×800 viewport and its assertion that the management group contains all nine destinations. It now verifies rail clearance rather than footer wrapping.
-
-This helper is the geometry contract reused in Tasks 4 and 6; do not create another non-overlap helper later.
+Keep its 1000×800 viewport and its `9` management-button count. It now proves rail clearance rather than footer wrapping.
 
 - [ ] **Step 6: Verify Task 2**
 
@@ -444,7 +379,7 @@ bun run check
 bun run test:e2e -- src/routes/retail-sim.e2e.ts
 ```
 
-Expected: PASS after the helper is migrated with the chrome.
+Expected: PASS.
 
 - [ ] **Step 7: Commit Task 2**
 
@@ -469,29 +404,12 @@ git commit -m "feat(ui): revamp gameplay control rail"
 - Modify: `src/lib/components/game/GameMenu.svelte.spec.ts`
 - Modify: `src/routes/retail-sim.e2e.ts`
 
-**Interfaces:**
+**Preserves in `TopBar`:** `activeMapView`, `onSelectView`, alerts, day, cash, locale/menu wiring.  
+**Removes from `GameMenu`:** `activeMapView`, `onSelectView`, map-view list/markup/CSS.
 
-`TopBar` already receives:
+- [ ] **Step 1: Write failing direct-map tests using current accessible names**
 
-```ts
-activeMapView: MapViewId;
-onSelectView: (view: MapViewId) => void;
-```
-
-Keep and consume them directly.
-
-`GameMenu` loses:
-
-```ts
-activeMapView: MapViewId;
-onSelectView: (view: MapViewId) => void;
-```
-
-It keeps locale selection, route menu content, open state, focus trap, outside-click dismissal, and its local Escape handler.
-
-- [ ] **Step 1: Write failing direct-map tests using the exact existing accessible names**
-
-In `TopBar.svelte.spec.ts`:
+Add to `TopBar.svelte.spec.ts`:
 
 ```ts
 it('switches map views directly from the top HUD', async () => {
@@ -515,29 +433,29 @@ it('switches map views directly from the top HUD', async () => {
 });
 ```
 
-The button labels must come from `route.mapEyebrow.*`; do not substitute short map names.
-
 Run:
 
 ```bash
 bun run test:unit -- src/lib/components/game/TopBar.svelte.spec.ts --run
 ```
 
-Expected: FAIL because map controls are still inside the menu.
+Expected: FAIL because map controls are still inside `GameMenu`.
 
-- [ ] **Step 2: Update the GameMenu test contract before changing it**
+- [ ] **Step 2: Change `GameMenu` tests to the new ownership contract**
 
-Change `GameMenu.svelte.spec.ts` so opening the menu proves:
+Update `GameMenu.svelte.spec.ts` so an open menu still exposes language selection and route-provided menu content, but contains no buttons named `Retail City Map`, `Industry City Map`, or `World Map`.
 
-- locale selector is present;
-- route-provided menu content is present when supplied;
-- no map-view group/buttons are inside the dialog.
+Run:
 
-The test should fail until the old map section is removed.
+```bash
+bun run test:unit -- src/lib/components/game/GameMenu.svelte.spec.ts --run
+```
 
-- [ ] **Step 3: Implement top HUD map buttons with `GameIcon`**
+Expected: FAIL until the map section is removed.
 
-Add three direct buttons using:
+- [ ] **Step 3: Implement direct map buttons in `TopBar`**
+
+Create the three entries with exact current route labels:
 
 ```ts
 const mapViews = [
@@ -547,41 +465,25 @@ const mapViews = [
 ] as const;
 ```
 
-Each button:
+Each button uses `.btn-icon`, `aria-label={view.label}`, `aria-pressed={activeMapView === view.id}`, and `onclick={() => onSelectView(view.id)}`.
 
-- uses `class="btn-icon"`;
-- uses `aria-label={view.label}`;
-- uses `aria-pressed={activeMapView === view.id}`;
-- calls `onSelectView(view.id)`;
-- renders `<GameIcon name={view.icon} />`.
+Use `GameIcon` for each map control, Day, Cash, and Alerts. Day/Cash icons are decorative only; keep existing values/formatters.
 
-Keep current pointer-event behavior so the rest of the map remains interactive.
+- [ ] **Step 4: Remove map switching from `GameMenu` and reuse `GameIcon`**
 
-Add `GameIcon name="day"` / `cash` as decorative readout icons only; do not add new data props.
+Delete `MapViewId`, the map props/list/select function, the view-tab markup, and view-tab CSS. Keep locale selection, `menuContent`, focus trap, outside click, and Escape behavior.
 
-Replace the existing alert inline SVG with `<GameIcon name="alerts" />`.
-
-- [ ] **Step 4: Remove map ownership from `GameMenu` and reuse `GameIcon` for menu**
-
-Delete:
-
-- `MapViewId` import used only by the menu;
-- `activeMapView`/`onSelectView` props;
-- the `views` list;
-- `selectView`;
-- the view-tab section/CSS.
-
-Replace the current hamburger SVG with:
+Replace the existing hamburger SVG with:
 
 ```svelte
 <GameIcon name="menu" />
 ```
 
-Update the `GameMenu` mount in `TopBar` accordingly.
+Update the `GameMenu` mount in `TopBar` to its reduced prop contract.
 
-- [ ] **Step 5: Migrate the route map-selection helper in the same task**
+- [ ] **Step 5: Replace the route map-selection helper in the same task**
 
-The old helper opens the hamburger first. Replace it with a direct HUD helper:
+Replace `openMapMenuItem` with:
 
 ```ts
 async function selectMapView(page: Page, itemName: RegExp): Promise<void> {
@@ -589,13 +491,11 @@ async function selectMapView(page: Page, itemName: RegExp): Promise<void> {
 }
 ```
 
-Update all `openMapMenuItem(...)` call sites to `selectMapView(...)`.
+Rename all current call sites to `selectMapView` and remove comments that say map tabs live in the menu.
 
-Do not leave comments saying map tabs live in a popover.
+- [ ] **Step 6: Rewrite menu/Escape assertions so they do not depend on map-button presence**
 
-- [ ] **Step 6: Rewrite Escape/menu assertions so always-visible map buttons are not used as menu state**
-
-For the number-key test, after pressing `2`, assert the TopBar control directly:
+After the `2` shortcut, assert:
 
 ```ts
 await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
@@ -604,7 +504,7 @@ await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAtt
 );
 ```
 
-For the hamburger Escape test, use the menu trigger/dialog contract:
+For the “Escape toggles hamburger” test, use:
 
 ```ts
 const menu = page.getByRole('button', { name: /^menu$/i });
@@ -619,7 +519,11 @@ await expect(menu).toHaveAttribute('aria-expanded', 'false');
 await expect(page.getByRole('dialog', { name: /^menu$/i })).toHaveCount(0);
 ```
 
-Update logistics navigation that currently finds World inside the menu dialog to call `selectMapView(page, /world map/i)` instead.
+Change the logistics-navigation setup that currently clicks World inside the menu dialog to:
+
+```ts
+await selectMapView(page, /world map/i);
+```
 
 - [ ] **Step 7: Verify Task 3**
 
@@ -634,7 +538,7 @@ bun run check
 bun run test:e2e -- src/routes/retail-sim.e2e.ts
 ```
 
-Expected: PASS with no route test depending on map tabs being inside the menu.
+Expected: PASS.
 
 - [ ] **Step 8: Commit Task 3**
 
@@ -650,24 +554,27 @@ git commit -m "feat(ui): move map navigation into top hud"
 
 ---
 
-## Task 4: Recompose inspectors and make compact clearance follow the dock
+## Task 4: Recompose inspectors and tie compact clearance to the dock
 
 **Files:**
 - Modify: `src/lib/components/game/TileInspector.svelte`
 - Modify: `src/lib/components/game/TileInspector.svelte.spec.ts`
-- Modify: `src/lib/components/game/IndustryTileInspector.svelte` and spec only where shell styling changes it
-- Modify: `src/lib/components/game/RailSegmentInspector.svelte` and spec only where shell styling changes it
-- Modify: `src/lib/components/game/LogisticsRouteInspector.svelte` and spec only where shell styling changes it
+- Modify: `src/lib/components/game/IndustryTileInspector.svelte`
+- Modify: `src/lib/components/game/IndustryTileInspector.svelte.spec.ts`
+- Modify: `src/lib/components/game/RailSegmentInspector.svelte`
+- Modify: `src/lib/components/game/RailSegmentInspector.svelte.spec.ts`
+- Modify: `src/lib/components/game/LogisticsRouteInspector.svelte`
+- Modify: `src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts`
 - Modify: `src/routes/MapInspectorHost.svelte`
 - Modify: `src/routes/retail-sim.e2e.ts`
 
-**Interfaces:**
+**Preserves:** all current inspector props/callbacks and current selected-object ownership.
 
-Do not add store/industry/rail/logistics state. Existing props and callbacks remain authoritative.
+- [ ] **Step 1: Run and strengthen retail inspector characterization**
 
-- [ ] **Step 1: Strengthen existing inspector characterization before restyling**
+Ensure `TileInspector.svelte.spec.ts` asserts the existing store art, revenue, stock health, staff morale, Upgrade, Details, attention, disabled behavior, and callbacks.
 
-In `TileInspector.svelte.spec.ts`, keep or add assertions for the existing behavior the new hierarchy must preserve:
+Use these core assertions:
 
 ```ts
 await expect.element(page.getByTestId(`store-art-${store.archetypeId}`)).toBeVisible();
@@ -678,70 +585,58 @@ await expect.element(page.getByRole('button', { name: /upgrade/i })).toBeVisible
 await expect.element(page.getByRole('button', { name: /open details/i })).toBeVisible();
 ```
 
-Keep callback assertions for upgrade/details/close and existing disabled/attention behavior.
-
 Run:
 
 ```bash
 bun run test:unit -- src/lib/components/game/TileInspector.svelte.spec.ts --run
 ```
 
-Expected: PASS before visual changes; these are characterization tests, not an artificial red step.
+Expected: PASS before restyling.
 
-- [ ] **Step 2: Recompose retail inspector using existing data only**
+- [ ] **Step 2: Recompose the retail inspector using existing data only**
 
-Make store artwork visually primary, then identity/location, three vitals, attention, level/next benefit, and Upgrade/Details actions.
+Make the existing store art visually primary. Follow with store identity/location, three vitals, attention, level/next benefit, then Upgrade + Details. Keep empty-tile demand/rent/foot-traffic/customer-fit behavior.
 
-Do not add cash history, stock projections, new read models, or inspector-local business rules.
+No new read model, stock projection, history, or local business rule.
 
-Keep empty-tile demand/rent/foot-traffic/customer-fit behavior.
+- [ ] **Step 3: Normalize industry/rail/logistics inspector shells**
 
-- [ ] **Step 3: Normalize other inspector shells only where concrete duplication exists**
-
-For industry, rail, and logistics inspectors:
-
-- align paper/header/close spacing;
-- use `GameIcon name="close"` if the close action is converted to icon-only;
-- retain current domain-specific sections and callbacks.
+Apply the same paper/header/action hierarchy to all three existing inspectors. Use `GameIcon name="close"` when their close button becomes icon-only. Preserve every existing domain-specific section, button callback, disabled rule, and accessible dialog name.
 
 Do not extract a generic inspector component.
 
-- [ ] **Step 4: Remove desktop footer-specific `MapInspectorHost` offsets**
+- [ ] **Step 4: Remove desktop footer-wrap offsets from `MapInspectorHost`**
 
-Delete the desktop values that exist for wrapping management rows:
+Delete:
 
 ```css
 bottom: 8.5rem;
 ```
 
-and the 981–1023px special `11.5rem` override.
+and delete the 981–1023px override that sets `bottom: 11.5rem`.
 
-Keep right-side desktop placement with enough ordinary edge spacing for the left rail to remain unrelated to inspector clearance.
+Keep desktop inspector placement at the right side with ordinary top/right/bottom edge spacing.
 
-- [ ] **Step 5: Make compact inspector inset use the compact dock height contract**
+- [ ] **Step 5: Make compact inspector clearance use the dock height variable**
 
-Replace the old hardcoded compact `bottom: 5rem` assumption with the shared value from `frames.css`:
+Replace the compact hardcoded `5rem` bottom inset with:
 
 ```css
 @media (max-width: 980px) {
   .inspector-overlay {
     position: fixed;
-    inset:
-      auto
-      0
-      calc(var(--control-desk-compact-height) + 0.5rem)
-      0;
+    inset: auto 0 calc(var(--control-desk-compact-height) + 0.5rem) 0;
     width: auto;
     max-height: 60dvh;
   }
 }
 ```
 
-Tune the small gap only if the real dock dimensions require it. Do not copy a second independent dock-height number into this file.
+Do not duplicate the `5.75rem` dock height in `MapInspectorHost`.
 
-- [ ] **Step 6: Add compact route evidence using the Task 2 non-overlap helper**
+- [ ] **Step 6: Add compact route evidence using the Task 2 helper**
 
-Add a focused route test at 760×800 using the existing `cityLocalInventoryLifecycleGame()` fixture:
+Add this test using the existing `cityLocalInventoryLifecycleGame()` fixture:
 
 ```ts
 test('compact retail inspector actions stay clear of the control dock', async ({ page }) => {
@@ -761,76 +656,58 @@ test('compact retail inspector actions stay clear of the control dock', async ({
 });
 ```
 
-Do not introduce a new game fixture solely for geometry.
-
 - [ ] **Step 7: Verify Task 4**
 
 Run:
 
 ```bash
-bun run test:unit -- src/lib/components/game/TileInspector.svelte.spec.ts --run
-```
-
-If `IndustryTileInspector.svelte`, `RailSegmentInspector.svelte`, or `LogisticsRouteInspector.svelte` changed in Step 3, run their existing adjacent `*.svelte.spec.ts` files in the same command before continuing.
-
-Then run:
-
-```bash
+bun run test:unit -- \
+  src/lib/components/game/TileInspector.svelte.spec.ts \
+  src/lib/components/game/IndustryTileInspector.svelte.spec.ts \
+  src/lib/components/game/RailSegmentInspector.svelte.spec.ts \
+  src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts \
+  --run
 bun run check
 bun run test:e2e -- src/routes/retail-sim.e2e.ts
 ```
 
-Expected: PASS at desktop and compact clearance paths.
+Expected: PASS.
 
 - [ ] **Step 8: Commit Task 4**
-
-Stage the required retail/host/E2E files:
 
 ```bash
 git add \
   src/lib/components/game/TileInspector.svelte \
   src/lib/components/game/TileInspector.svelte.spec.ts \
+  src/lib/components/game/IndustryTileInspector.svelte \
+  src/lib/components/game/IndustryTileInspector.svelte.spec.ts \
+  src/lib/components/game/RailSegmentInspector.svelte \
+  src/lib/components/game/RailSegmentInspector.svelte.spec.ts \
+  src/lib/components/game/LogisticsRouteInspector.svelte \
+  src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts \
   src/routes/MapInspectorHost.svelte \
   src/routes/retail-sim.e2e.ts
-```
-
-If Step 3 changed an industry, rail, or logistics inspector, add that component and its adjacent spec to the same commit. Then commit:
-
-```bash
 git commit -m "feat(ui): revamp map inspector presentation"
 ```
 
 ---
 
-## Task 5: Build the stable parchment management workspace with body-only remounting
+## Task 5: Build a stable parchment management workspace and key only its body
 
 **Files:**
 - Modify: `src/routes/+page.svelte`
 - Modify: `src/routes/ManagementPanelHost.svelte`
 - Modify: `src/routes/ManagementPanelHost.svelte.spec.ts`
 - Modify: `src/lib/components/game/Scorecard.svelte`
-- Modify: `src/lib/components/game/Scorecard.svelte.spec.ts` if it exists; otherwise create it beside `Scorecard.svelte`
+- Modify: `src/lib/components/game/Scorecard.svelte.spec.ts`
 - Modify: `src/routes/retail-sim.e2e.ts`
 
-**Interfaces:**
+**Consumes:** the `ManagementPanelMenuItem` and `GameIcon` from Task 1.  
+**Produces:** `managementItems: ManagementPanelMenuItem[]` and `onSelectPanel: (id: ManagementPanelId) => void` on `ManagementPanelHost`.
 
-`ManagementPanelHost` adds exactly:
+- [ ] **Step 1: Write failing internal-navigation tests**
 
-```ts
-import type { ManagementPanelMenuItem } from '$lib/components/game/gameIcon';
-
-interface Props {
-  managementItems: ManagementPanelMenuItem[];
-  onSelectPanel: (id: ManagementPanelId) => void;
-  // all current props/callbacks remain
-}
-```
-
-Do not define another management item interface.
-
-- [ ] **Step 1: Write failing management rail tests**
-
-In `ManagementPanelHost.svelte.spec.ts`, add:
+Add to `ManagementPanelHost.svelte.spec.ts`:
 
 ```ts
 it('renders shared management navigation and delegates panel changes', async () => {
@@ -852,7 +729,7 @@ it('renders shared management navigation and delegates panel changes', async () 
 });
 ```
 
-Also retain current shell/backdrop/close, stores/decisions, finance invariant, and callback-forwarding coverage.
+Keep current close/backdrop, stores/decisions, finance invariant, and callback-forwarding tests.
 
 Run:
 
@@ -860,140 +737,82 @@ Run:
 bun run test:unit -- src/routes/ManagementPanelHost.svelte.spec.ts --run
 ```
 
-Expected: FAIL because the host does not yet expose internal navigation.
+Expected: FAIL because internal navigation does not exist.
 
 - [ ] **Step 2: Remove the route-level `{#key activeManagementPanel.id}`**
 
-Change the route from:
+In the current management block, delete only the `{#key activeManagementPanel.id}` and matching `{/key}` wrapper. Keep the existing `{@const panelGame}`, `{@const retailSupplyViews}`, and every existing `ManagementPanelHost` prop/callback.
+
+Add these two props to the existing host mount:
 
 ```svelte
-{#if activeManagementPanel}
-  {#key activeManagementPanel.id}
-    {@const panelGame = game ?? starterMapState}
-    <ManagementPanelHost ... />
-  {/key}
-{/if}
+managementItems={managementPanelMenuItems}
+onSelectPanel={openManagementPanel}
 ```
 
-to a stable host:
+Keep the existing lazy finance derivation:
 
-```svelte
-{#if activeManagementPanel}
-  {@const panelGame = game ?? starterMapState}
-  {@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
-  <ManagementPanelHost
-    panelId={activeManagementPanel.id}
-    panelLabel={activeManagementPanel.label}
-    managementItems={managementPanelMenuItems}
-    onSelectPanel={openManagementPanel}
-    {panelGame}
-    {summary}
-    {financeMetrics}
-    {retailSupplyViews}
-    mutations={mutationAvailability}
-    retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
-    {focusedFinanceLoanId}
-    {focusedRetailSupplyCityId}
-    logisticsView={logisticsPanelView}
-    manageLogistics={mutationAvailability.manageLogistics}
-    {focusedLogisticsRouteId}
-    {logisticsRoutePreset}
-    {i18n}
-    disabledReason={mutationDisabledReason}
-    onClose={closeManagementPanel}
-    onChangePolicy={changePolicy}
-    onSetPolicyOverride={setPolicyOverride}
-    onClearPolicyOverrideField={clearPolicyOverrideField}
-    onResetPolicyOverrideScope={resetPolicyOverrideScope}
-    onSetManagerDelegation={setManagerDelegation}
-    onRemoveManagerDelegation={removeManagerDelegation}
-    onHireStaff={hireStaff}
-    onAssignStaff={assignStaff}
-    onUnassignStaff={unassignStoreStaff}
-    onPromoteStaff={promoteStaffMember}
-    onSetRetailSupplySource={setRetailSupplySource}
-    onChooseDecision={chooseDecision}
-    onBorrow={borrowWorkingCapital}
-    onRepay={repayFinanceLoan}
-    onPayoff={payOffFinanceLoan}
-    onRefinance={refinanceFinanceLoan}
-    onPlanProduct={planSupplyProduct}
-    {plannerProductIds}
-    onDispatchManualTransfer={dispatchManualTransfer}
-    onCreateRecurringRoute={createRecurringRoute}
-    onUpdateRecurringRoute={updateRecurringRoute}
-    onPauseRecurringRoute={pauseRecurringRoute}
-    onResumeRecurringRoute={resumeRecurringRoute}
-    onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
-    onRemoveRecurringRoute={removeRecurringRoute}
-  />
-{/if}
+```ts
+let financeMetrics = $derived(
+  activeManagementPanelId === 'finance' ? getFinanceMetrics(game ?? starterMapState) : null
+);
 ```
 
-Keep the existing `financeMetrics` derivation. It already reacts to `activeManagementPanelId === 'finance'`; do not calculate finance metrics eagerly or introduce a new store.
+Do not make finance metrics eager.
 
 - [ ] **Step 3: Build the stable workspace shell**
 
-Inside `ManagementPanelHost`:
+Add these properties to the current host `Props` interface:
 
-- keep one `role="dialog"`, focus trap, backdrop, and close control mounted;
-- add the left rail from `managementItems` using `.btn-icon` + `GameIcon`;
-- use `aria-pressed={item.id === panelId}`;
-- use `title={`${item.label} (${item.shortcut})`}`;
-- call `onSelectPanel(item.id)`;
-- keep day/cash in the header;
-- use `GameIcon name="close"` if close becomes icon-only.
+```ts
+managementItems: ManagementPanelMenuItem[];
+onSelectPanel: (id: ManagementPanelId) => void;
+```
 
-Do not install a local navigation store or key handler.
+Keep one backdrop, one `role="dialog"`, and one `focusTrap` attachment mounted. Add the left navigation rail from `managementItems` using `.btn-icon` + `GameIcon`.
 
-- [ ] **Step 4: Key only the content region**
+Each rail button uses:
 
-Wrap the existing explicit panel switch, not the dialog shell:
+```svelte
+aria-label={item.label}
+aria-pressed={item.id === panelId}
+title={`${item.label} (${item.shortcut})`}
+onclick={() => onSelectPanel(item.id)}
+```
+
+Keep the existing day/cash header. Convert Close to `GameIcon name="close"` only if the button becomes icon-only; preserve its localized accessible name.
+
+- [ ] **Step 4: Key only the current panel-switch body**
+
+Identify the existing switch that starts with:
+
+```svelte
+{#if panelId === 'dashboard'}
+```
+
+and ends at the matching `{/if}` after the Finance branch. Wrap that complete existing switch with:
 
 ```svelte
 <div class="workspace-body">
   {#key panelId}
-    {#if panelId === 'dashboard'}
-      <Scorecard {i18n} scorecard={panelGame.scorecard} />
-    {:else if panelId === 'policies'}
-      <PolicyPanel
-        {i18n}
-        game={panelGame}
-        onChange={onChangePolicy}
-        onSetPolicyOverride={onSetPolicyOverride}
-        onClearPolicyOverrideField={onClearPolicyOverrideField}
-        onResetPolicyOverrideScope={onResetPolicyOverrideScope}
-        canUpdate={mutations.updatePolicy}
-        canUpdateScoped={mutations.scopedPolicy}
-        {disabledReason}
-      />
-    {:else if panelId === 'staff'}
-      <div class="staff-surfaces">
-        <StaffPanel ... />
-        <ManagerDelegationPanel ... />
-      </div>
-    {:else if panelId === 'finance'}
-      <FinancePanel
-        game={panelGame}
-        metrics={requireFinanceMetrics()}
-        {i18n}
-        focusedLoanId={focusedFinanceLoanId}
-        mutationPending={mutations.pending}
-        {onBorrow}
-        {onRepay}
-        {onPayoff}
-        {onRefinance}
-      />
-    {/if}
+```
+
+before the switch, and:
+
+```svelte
   {/key}
 </div>
 ```
 
-For the unchanged staff/stores/decisions/reports/product-chains/logistics branches, move their existing current markup into this same keyed body without changing props/callbacks. Do not introduce dynamic components.
+after the switch.
 
-- [ ] **Step 5: Upgrade `Scorecard` only with current four values**
+Do not rewrite the panel branches into dynamic components. Do not change branch props/callbacks while moving them inside the keyed body.
 
-Retain:
+- [ ] **Step 5: Upgrade `Scorecard` using only its four current values**
+
+`Scorecard.svelte.spec.ts` already exists. Keep its current meter/value/label coverage and extend it only where the new card/gauge structure needs accessible assertions.
+
+Preserve these values:
 
 ```text
 profit
@@ -1002,17 +821,23 @@ staffMorale
 marketPosition
 ```
 
-Add/adjust `Scorecard.svelte.spec.ts` to assert all four localized labels and values remain represented. Then render richer cards/gauges using the same numeric values. Do not add trend history, chart data, or a new score model.
+Do not add history, trend data, or a new score model.
 
-Run the focused scorecard spec before and after the markup change.
+Run:
 
-- [ ] **Step 6: Add route E2E for in-place rail switching using dialog-scoped locators**
+```bash
+bun run test:unit -- src/lib/components/game/Scorecard.svelte.spec.ts --run
+```
 
-Open the initial panel through the existing page-level management launcher/shortcut. Once the dialog exists, scope all repeated destination names to it:
+Expected: PASS after the visual rewrite.
+
+- [ ] **Step 6: Add route E2E for in-place switching with dialog-scoped locators**
+
+Open Dashboard through the page-level gameplay rail/shortcut. Then scope duplicate labels to the dialog:
 
 ```ts
-const dialog = page.getByRole('dialog', { name: /^dashboard$/i });
-await dialog.getByRole('button', { name: /^finance$/i }).click();
+const dashboardDialog = page.getByRole('dialog', { name: /^dashboard$/i });
+await dashboardDialog.getByRole('button', { name: /^finance$/i }).click();
 
 const financeDialog = page.getByRole('dialog', { name: /^finance$/i });
 await expect(financeDialog).toBeVisible();
@@ -1021,9 +846,7 @@ await expect(
 ).toHaveAttribute('aria-pressed', 'true');
 ```
 
-Do not use page-level `getByRole('button', { name: /dashboard|finance/ })` after the workspace is open because the gameplay rail exposes the same labels.
-
-Also assert focus remains within the dialog after switching. Prefer a descendant check over pinning one exact focused button:
+Assert focus remains inside the stable modal after switching:
 
 ```ts
 await expect
@@ -1036,18 +859,22 @@ await expect
   .toBe(true);
 ```
 
+Do not use unscoped page-level Dashboard/Finance locators once the workspace is open.
+
 - [ ] **Step 7: Verify Task 5**
 
 Run:
 
 ```bash
-bun run test:unit -- src/routes/ManagementPanelHost.svelte.spec.ts --run
-bun run test:unit -- src/lib/components/game/Scorecard.svelte.spec.ts --run
+bun run test:unit -- \
+  src/routes/ManagementPanelHost.svelte.spec.ts \
+  src/lib/components/game/Scorecard.svelte.spec.ts \
+  --run
 bun run check
 bun run test:e2e -- src/routes/retail-sim.e2e.ts
 ```
 
-Expected: PASS with one stable modal shell and route-owned panel state.
+Expected: PASS.
 
 - [ ] **Step 8: Commit Task 5**
 
@@ -1064,26 +891,16 @@ git commit -m "feat(ui): revamp management workspace"
 
 ---
 
-## Task 6: Pin final responsive/integration parity using the migrated helpers
+## Task 6: Pin final responsive and integration parity using the migrated helpers
 
 **Files:**
 - Modify: `src/routes/retail-sim.e2e.ts`
-- Modify focused component/spec files only if final verification exposes a scoped HPA-304 defect
 
-**Interfaces:**
+**Consumes:** `selectMapView` from Task 3 and `expectActionDoesNotOverlapControlDesk` from Task 2. Do not create parallel geometry/navigation helpers.
 
-Do not add new geometry or map-navigation helper systems. Reuse:
+- [ ] **Step 1: Add explicit 1920×1080 and 1280×800 HUD checks**
 
-```text
-selectMapView(...)
-expectActionDoesNotOverlapControlDesk(...)
-```
-
-and scope management workspace locators to the dialog after it is open.
-
-- [ ] **Step 1: Add explicit 1920×1080 and 1280×800 route checks**
-
-Use the existing `logisticsRouteNavigationGame()` fixture because it already provides a retail store plus opened industry/logistics state used elsewhere in this suite:
+Use the existing `logisticsRouteNavigationGame()` fixture:
 
 ```ts
 for (const viewport of [
@@ -1107,11 +924,9 @@ for (const viewport of [
 }
 ```
 
-Do not add a new fixture solely for viewport testing.
+- [ ] **Step 2: Reuse the non-overlap helper at 1280×800**
 
-- [ ] **Step 2: Extend the existing non-overlap helper checks rather than creating a second layout contract**
-
-At 1280×800, switch back to retail, read the existing starter store from the saved `logisticsRouteNavigationGame()` state, click its tile, and call:
+Within the 1280×800 path, switch back to Retail and inspect the fixture's starter store:
 
 ```ts
 await selectMapView(page, /retail city map/i);
@@ -1128,25 +943,20 @@ await expectActionDoesNotOverlapControlDesk(
 );
 ```
 
-Use the same helper for any route-inspector geometry assertion needed here.
+- [ ] **Step 3: Reuse dialog-scoped management navigation**
 
-- [ ] **Step 3: Verify internal management navigation with dialog-scoped locators**
-
-Open Dashboard through the page-level rail, then:
+Open Dashboard through the page-level rail, then switch inside the dialog:
 
 ```ts
-let dialog = page.getByRole('dialog', { name: /^dashboard$/i });
-await dialog.getByRole('button', { name: /^reports$/i }).click();
+const dashboardDialog = page.getByRole('dialog', { name: /^dashboard$/i });
+await dashboardDialog.getByRole('button', { name: /^reports$/i }).click();
 
-dialog = page.getByRole('dialog', { name: /^reports$/i });
-await expect(dialog).toBeVisible();
-await expect(dialog.getByRole('button', { name: /^reports$/i })).toHaveAttribute(
-  'aria-pressed',
-  'true'
-);
+const reportsDialog = page.getByRole('dialog', { name: /^reports$/i });
+await expect(reportsDialog).toBeVisible();
+await expect(
+  reportsDialog.getByRole('button', { name: /^reports$/i })
+).toHaveAttribute('aria-pressed', 'true');
 ```
-
-The page may legitimately contain another Dashboard/Reports launcher outside the dialog; never use an unscoped locator for internal switching.
 
 - [ ] **Step 4: Run the complete focused component suite**
 
@@ -1160,12 +970,13 @@ bun run test:unit -- \
   src/lib/components/game/ControlDesk.svelte.spec.ts \
   src/lib/components/game/ControlDesk.timeControls.svelte.spec.ts \
   src/lib/components/game/TileInspector.svelte.spec.ts \
+  src/lib/components/game/IndustryTileInspector.svelte.spec.ts \
+  src/lib/components/game/RailSegmentInspector.svelte.spec.ts \
+  src/lib/components/game/LogisticsRouteInspector.svelte.spec.ts \
   src/lib/components/game/Scorecard.svelte.spec.ts \
   src/routes/ManagementPanelHost.svelte.spec.ts \
   --run
 ```
-
-If an industry/rail/logistics inspector changed in Task 4, include that component's existing adjacent spec in this focused run.
 
 Expected: PASS.
 
@@ -1182,38 +993,29 @@ bun run test:e2e -- src/routes/retail-sim.e2e.ts
 
 Expected: PASS.
 
-Do not expand HPA-304 to unrelated pre-existing failures. If one appears, capture the exact command/failure in the PR instead of refactoring unrelated code.
+If an unrelated pre-existing failure appears, record the exact command/failure in PR #53 rather than broadening HPA-304.
 
-- [ ] **Step 6: Perform manual visual comparison against both supplied mockups**
+- [ ] **Step 6: Perform manual visual comparison**
 
 At 1920×1080 and 1280×800 verify:
 
-- map remains the dominant surface;
-- the Vitrine `.btn-icon` brass language is consistent between gameplay and management navigation;
+- map remains dominant;
+- `.btn-icon` brass language is consistent between gameplay and management navigation;
 - Build is visually primary/moss;
-- TopBar exposes direct Retail/Industry/World switching, Day, Cash, Alerts, and Menu without text clutter;
+- TopBar exposes Retail/Industry/World, Day, Cash, Alerts, and Menu without text clutter;
 - store inspector is art-led and Upgrade/Details hierarchy is clear;
-- management workspace keeps its shell stable while switching panel bodies;
-- compact behavior was not achieved by hiding management access;
-- no decorative value was invented where current game state lacks data.
+- management workspace shell remains stable while panel bodies switch;
+- compact management access is not hidden;
+- no mock-only analytics/value was invented.
 
-Fix only HPA-304 scope defects.
-
-- [ ] **Step 7: Commit final integration if verification changed tracked files**
-
-Stage the route E2E if Step 1–3 changed it:
+- [ ] **Step 7: Commit Task 6**
 
 ```bash
 git add src/routes/retail-sim.e2e.ts
-```
-
-If final verification required a scoped HPA-304 fix in a component/spec, stage that exact file too. Then commit:
-
-```bash
 git commit -m "test(ui): pin gameplay revamp integration"
 ```
 
-If verification produces no tracked changes after the previous task commits, skip this commit.
+If Tasks 1–5 already left the final E2E file in the required state and Step 1–3 produce no additional tracked changes, skip this empty commit.
 
 ---
 
@@ -1222,18 +1024,18 @@ If verification produces no tracked changes after the previous task commits, ski
 - [ ] HPA-304 is the only Linear ticket for this implementation.
 - [ ] All implementation commits stay on the same HPA-304 branch/PR.
 - [ ] No new domain state, save fields, migration, controller, store, registry, or icon dependency was added.
-- [ ] `GameIconName` is closed and includes every icon actually mounted by HPA-304; speeds remain numeric text.
+- [ ] `GameIconName` is closed and includes every icon HPA-304 renders; speeds remain numeric text.
 - [ ] `ControlDesk`, route config, and `ManagementPanelHost` use one `ManagementPanelMenuItem` type.
 - [ ] `.btn-icon` is the brass medallion; `.seal` remains the wax-red badge.
-- [ ] `ControlDesk` keeps all existing actions and exposes management at a real ~414px compact viewport.
-- [ ] The old footer-specific E2E geometry helper is replaced in Task 2, before route verification.
+- [ ] `ControlDesk` exposes all management destinations at 414×800.
+- [ ] The old footer-specific E2E geometry helper is replaced in Task 2 before route verification.
 - [ ] `GameMenu` no longer owns map switching.
 - [ ] TopBar map controls keep `route.mapEyebrow.*` accessible names.
 - [ ] Route E2E no longer opens the hamburger to switch maps or treats map-tab absence as menu state.
-- [ ] `MapInspectorHost` removes desktop footer-wrap offsets and derives compact clearance from the compact dock height.
-- [ ] Compact inspector actions are proven not to overlap the dock.
+- [ ] `MapInspectorHost` removes desktop footer-wrap offsets and derives compact clearance from the dock-height variable.
+- [ ] Compact inspector actions are proven not to overlap the dock at 760×800.
 - [ ] Route-level `{#key activeManagementPanel.id}` is removed.
-- [ ] `ManagementPanelHost` stays mounted; only its panel body may be keyed by `panelId`.
+- [ ] `ManagementPanelHost` stays mounted; only its complete panel body switch is keyed by `panelId`.
 - [ ] Internal workspace navigation uses dialog-scoped locators in tests.
 - [ ] Existing panel bodies remain behavior owners; only `Scorecard` receives a deliberate body-level visual upgrade.
 - [ ] 1920×1080 and 1280×800 layouts are manually reviewed against the supplied references.
