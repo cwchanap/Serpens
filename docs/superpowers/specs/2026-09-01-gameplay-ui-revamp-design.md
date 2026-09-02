@@ -97,7 +97,7 @@ The existing CSS remains the source of truth:
 
 Reuse `.btn-icon` as the circular brass medallion. Do not create a competing medallion class with duplicate border/radius/shadow rules.
 
-Add only a small moss/primary modifier needed by Build (and only other states actually required by the approved mock). `.seal` remains the wax-red count/attention pill; it is not repurposed as a navigation medallion.
+Add only a small moss/primary modifier needed by Build. `.seal` remains the wax-red count/attention pill; it is not repurposed as a navigation medallion.
 
 ### Local icon primitive
 
@@ -201,9 +201,9 @@ No shortcut listener moves into `ControlDesk`.
 
 At widths below the existing compact breakpoint, do not hide management navigation. The same actions become a horizontally scrollable bottom dock/strip.
 
-The dock uses one explicit shared CSS custom property for its occupied height/clearance (for example `--control-desk-compact-height`) in shared frame CSS. `ControlDesk` and `MapInspectorHost` both consume that same value. This is a layout constant, not a state abstraction.
+The dock uses one explicit shared CSS custom property for its occupied height/clearance (`--control-desk-compact-height`) in shared frame CSS. `ControlDesk` and `MapInspectorHost` both consume that same value. This is a layout constant, not a state abstraction.
 
-A real compact component test uses a ~414px viewport and proves management destinations remain reachable.
+A real compact component test uses a 414×800 viewport and proves management destinations remain reachable.
 
 ## E2E contracts that must move with the HUD
 
@@ -233,7 +233,7 @@ Rename the helper/test to describe non-overlap rather than “above the desk”.
 
 ### Map-view helper and Escape assertions
 
-The current `openMapMenuItem` helper opens the hamburger and then clicks a map tab. Once map views move to `TopBar`, rewrite the helper/call sites to click the always-visible top HUD map button directly.
+The current `openMapMenuItem` helper opens the hamburger and then clicks a map tab. Once map views move to `TopBar`, replace it with `selectMapView`, which clicks the always-visible top HUD map button directly.
 
 Likewise, Escape tests must stop using map-tab presence/absence as evidence that the hamburger is open. Assert the menu trigger's `aria-expanded` state or the menu dialog itself.
 
@@ -268,7 +268,7 @@ Empty-tile inspection keeps demand, rent, foot traffic, and customer fit.
 
 Compact behavior remains bottom-sheet-like, but its bottom inset is derived from the same explicit compact dock height/clearance used by `ControlDesk`, not the old hardcoded `5rem` assumption.
 
-Add compact regression evidence that an inspector action and the dock do not overlap.
+Add compact regression evidence at a 760×800 route viewport that an inspector action and the dock do not overlap.
 
 ## Management workspace
 
@@ -294,25 +294,13 @@ The route currently wraps the whole host in:
 
 ```svelte
 {#key activeManagementPanel.id}
-  <ManagementPanelHost ... />
+  <ManagementPanelHost />
 {/key}
 ```
 
 HPA-304 removes that route-level key. Keeping it would tear down/recreate the dialog/focus trap on every internal rail click and contradict in-place navigation.
 
-The shell stays mounted while `activeManagementPanelId !== null`. If a clean per-panel reset is still desirable, key **only the content/body region** inside `ManagementPanelHost`:
-
-```svelte
-<div class="workspace-body">
-  {#key panelId}
-    {#if panelId === 'dashboard'}
-      ...
-    {:else if ...}
-      ...
-    {/if}
-  {/key}
-</div>
-```
+The shell stays mounted while `activeManagementPanelId !== null`. Key **only the complete content/body switch** inside `ManagementPanelHost` by `panelId` so panel-local UI state resets without remounting the rail/header/dialog/focus trap.
 
 The route continues to own `activeManagementPanelId`. The host receives:
 
@@ -355,8 +343,8 @@ Use the shared E2E non-overlap helper for geometry checks.
 
 Use real compact evidence rather than desktop-only assertions:
 
-- component test at ~414px proves all management actions remain accessible in the dock;
-- inspector clearance is exercised at a compact route viewport after the dock/inspector geometry is updated.
+- component test at 414×800 proves all management actions remain accessible in the dock;
+- inspector clearance is exercised at 760×800 after the dock/inspector geometry is updated.
 
 Do not create a separate mobile component tree or mobile state architecture.
 
@@ -381,13 +369,13 @@ No component adds a global key listener.
 ### Component tests
 
 - `GameIcon.svelte.spec.ts`: closed icon primitive, decorative SVG semantics.
-- `ControlDesk.svelte.spec.ts`: icon navigation, callbacks, hotkey titles, disabled states, rail build, and a real ~414px compact dock assertion.
+- `ControlDesk.svelte.spec.ts`: icon navigation, callbacks, hotkey titles, disabled states, rail build, and 414×800 compact dock access.
 - `ControlDesk.timeControls.svelte.spec.ts`: pause/resume and numeric speed semantics unchanged.
 - `TopBar.svelte.spec.ts`: direct map controls with `route.mapEyebrow.*` names, active `aria-pressed`, day/cash, alerts/menu.
 - `GameMenu.svelte.spec.ts`: no map controls; locale/menu content/focus behavior retained.
 - inspector specs: art/shell changes preserve current callbacks and data.
 - `ManagementPanelHost.svelte.spec.ts`: shared rail, active state, `onSelectPanel`, dialog/focus/close behavior, concrete panel composition.
-- `Scorecard` coverage: four existing score values remain represented/accessibly named.
+- `Scorecard.svelte.spec.ts`: four existing score values remain represented and accessible.
 
 ### Route E2E
 
@@ -396,53 +384,29 @@ No component adds a global key listener.
 Update old helper contracts in the task that changes their UI owner:
 
 - ControlDesk task: rectangle non-overlap helper + ninth-launcher test;
-- TopBar task: direct map-view helper/call sites + Escape assertions + logistics World navigation;
-- Inspector task: compact dock/inspector clearance;
-- Workspace task: internal rail switch scoped to the dialog and shell remains open.
+- TopBar task: direct `selectMapView` helper/call sites + Escape assertions + logistics World navigation;
+- Inspector task: compact dock/inspector clearance at 760×800;
+- Workspace task: internal rail switch scoped to the dialog and stable modal focus.
 
-Final 1920/1280 checks build on those helpers; do not introduce parallel geometry helpers.
-
-## Implementation surface
-
-### Create
-
-- `src/lib/components/game/gameIcon.ts`
-- `src/lib/components/game/GameIcon.svelte`
-- `src/lib/components/game/GameIcon.svelte.spec.ts`
-
-### Modify
-
-- `src/lib/components/game/TopBar.svelte` and spec;
-- `src/lib/components/game/GameMenu.svelte` and spec;
-- `src/lib/components/game/ControlDesk.svelte` and specs;
-- `src/lib/components/game/TileInspector.svelte` and spec;
-- focused industry/rail/logistics inspector files/specs where the shared shell changes them;
-- `src/lib/components/game/Scorecard.svelte` and focused coverage;
-- `src/routes/MapInspectorHost.svelte` and spec if needed for geometry/shell assertions;
-- `src/routes/ManagementPanelHost.svelte` and spec;
-- `src/routes/+page.svelte`;
-- `src/routes/retail-sim.e2e.ts`;
-- `src/lib/styles/frames.css`.
-
-Translation files change only if implementation discovers genuinely new user-facing copy. Reuse current labels wherever possible.
+Final 1920/1280 checks build on those helpers; do not introduce parallel geometry/navigation helpers.
 
 ## Risks and controls
 
 ### Existing E2E encodes old chrome
 
-**Control:** update the footer-geometry helper in the ControlDesk task and the menu-map helper/Escape assertions in the TopBar task before demanding a green route suite.
+**Control:** migrate the footer-geometry helper in the ControlDesk task and the menu-map helper/Escape assertions in the TopBar task before demanding a green route suite.
 
 ### Compact dock covers inspector actions
 
-**Control:** one shared compact dock-height/clearance custom property plus a compact route non-overlap assertion.
+**Control:** one shared compact dock-height custom property plus a 760×800 route non-overlap assertion.
 
 ### Workspace remount defeats in-place navigation
 
-**Control:** remove the route-level `{#key}`; key only the body if per-panel reset is required. Keep focus trap on the stable shell.
+**Control:** remove the route-level `{#key}`; key only the complete body switch. Keep the focus trap on the stable shell.
 
 ### Icon vocabulary drifts
 
-**Control:** one closed `GameIconName` union containing every icon mounted by Tasks 2–5. Speeds stay text. Alerts/menu use the same primitive.
+**Control:** one closed `GameIconName` union containing every icon mounted by HPA-304. Speeds stay text. Alerts/menu use the same primitive.
 
 ### Mock-only data leaks into domain scope
 
@@ -450,7 +414,7 @@ Translation files change only if implementation discovers genuinely new user-fac
 
 ### Route becomes a UI detail owner again
 
-**Control:** route changes are limited to shared management metadata, callback wiring, and removal of the shell-remount key. CSS stays with presentation components/hosts.
+**Control:** route changes are limited to shared management metadata, callback wiring, E2E-owned helper migrations, and removal of the shell-remount key. CSS stays with presentation components/hosts.
 
 ## Non-goals
 
@@ -470,13 +434,13 @@ Translation files change only if implementation discovers genuinely new user-fac
 - [ ] Retail / Industry / World controls are directly available in `TopBar` with existing `route.mapEyebrow.*` accessible names.
 - [ ] Existing route E2E no longer opens the hamburger to switch maps or uses map-tab presence as menu-open state.
 - [ ] Build and every current management destination remain reachable with existing keyboard shortcuts.
-- [ ] Compact (~414px) ControlDesk still exposes management destinations.
+- [ ] ControlDesk exposes management destinations at 414×800.
 - [ ] Inspector actions do not overlap the desktop rail or compact dock using one shared non-overlap contract.
 - [ ] Pause/resume, numeric simulation speed, shortcut help, conditional rail build, alerts, menu, and localization still work.
 - [ ] Retail inspector is art-forward and uses only existing data.
 - [ ] Industry, rail, and logistics inspectors share the revised presentation language without behavior regressions.
 - [ ] Management workspace uses the parchment shell + left rail and switches panels without remounting the shell/focus trap.
-- [ ] Route-level `{#key activeManagementPanel.id}` is removed; any key is limited to the panel body.
+- [ ] Route-level `{#key activeManagementPanel.id}` is removed; only the complete panel-body switch is keyed by `panelId`.
 - [ ] `ControlDesk` and `ManagementPanelHost` consume one shared `ManagementPanelMenuItem` type/list.
 - [ ] `.btn-icon` remains the brass medallion primitive; `.seal` remains the wax-red badge.
 - [ ] Existing panel components remain behavior owners; only `Scorecard` receives a deliberate body-level visual upgrade.
