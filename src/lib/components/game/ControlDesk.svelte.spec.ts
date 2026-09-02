@@ -2,13 +2,13 @@ import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
-import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
+import type { ManagementPanelMenuItem } from './gameNavigation';
 import ControlDesk from './ControlDesk.svelte';
 
-const managementItems: { id: ManagementPanelId; label: string; shortcut: string }[] = [
-	{ id: 'dashboard', label: 'Dashboard', shortcut: 'O' },
-	{ id: 'policies', label: 'Policies', shortcut: 'P' },
-	{ id: 'finance', label: 'Finance', shortcut: 'F' }
+const managementItems: ManagementPanelMenuItem[] = [
+	{ id: 'dashboard', label: 'Dashboard', shortcut: 'O', icon: 'dashboard' },
+	{ id: 'policies', label: 'Policies', shortcut: 'P', icon: 'policies' },
+	{ id: 'finance', label: 'Finance', shortcut: 'F', icon: 'finance' }
 ];
 
 function baseProps() {
@@ -90,16 +90,6 @@ describe('ControlDesk', () => {
 		expect.assertions(1);
 		render(ControlDesk, { ...baseProps(), advanceDisabled: true });
 		await expect.element(page.getByRole('button', { name: /^pause$/i })).toBeDisabled();
-	});
-
-	it('omits the keycap for management items that have no shortcut', async () => {
-		expect.assertions(2);
-		render(ControlDesk, {
-			...baseProps(),
-			managementItems: [{ id: 'dashboard', label: 'Dashboard' }]
-		});
-		await expect.element(page.getByRole('button', { name: /^dashboard$/i })).toBeVisible();
-		await expect.element(page.getByText('O', { exact: true })).not.toBeInTheDocument();
 	});
 
 	it('renders an empty management cluster without launchers', async () => {

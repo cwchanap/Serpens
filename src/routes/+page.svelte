@@ -3,6 +3,7 @@
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
+	import type { ManagementPanelMenuItem } from '$lib/components/game/gameNavigation';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
 	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
@@ -198,12 +199,6 @@
 	import MapInspectorHost from './MapInspectorHost.svelte';
 	import MapSurfaceHost from './MapSurfaceHost.svelte';
 
-	interface ManagementPanelMenuItem {
-		id: ManagementPanelId;
-		label: string;
-		shortcut: string;
-	}
-
 	type SimulationSpeed = 1 | 2 | 5;
 	type SaveFeedbackKind = 'status' | 'error';
 
@@ -255,16 +250,20 @@
 		return languages;
 	}
 
-	const managementPanelMenuConfig: Array<{ id: ManagementPanelId; shortcut: string }> = [
-		{ id: 'dashboard', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.dashboard },
-		{ id: 'policies', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.policies },
-		{ id: 'staff', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.staff },
-		{ id: 'stores', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.stores },
-		{ id: 'decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions },
-		{ id: 'reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports },
-		{ id: 'productChains', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains },
-		{ id: 'finance', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.finance },
-		{ id: 'logistics', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.logistics }
+	const managementPanelMenuConfig: Array<Omit<ManagementPanelMenuItem, 'label'>> = [
+		{ id: 'dashboard', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.dashboard, icon: 'dashboard' },
+		{ id: 'policies', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.policies, icon: 'policies' },
+		{ id: 'staff', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.staff, icon: 'staff' },
+		{ id: 'stores', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.stores, icon: 'stores' },
+		{ id: 'decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions, icon: 'decisions' },
+		{ id: 'reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports, icon: 'reports' },
+		{
+			id: 'productChains',
+			shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains,
+			icon: 'productChains'
+		},
+		{ id: 'finance', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.finance, icon: 'finance' },
+		{ id: 'logistics', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.logistics, icon: 'logistics' }
 	];
 
 	const starterCity = generateCity({

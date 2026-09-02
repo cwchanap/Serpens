@@ -2,17 +2,12 @@
 <script lang="ts">
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { I18nBundle } from '$lib/i18n';
-
-	interface ManagementItem {
-		id: ManagementPanelId;
-		label: string;
-		shortcut?: string;
-	}
+	import type { ManagementPanelMenuItem } from './gameNavigation';
 
 	type SimulationSpeed = 1 | 2 | 5;
 
 	interface Props {
-		managementItems: ManagementItem[];
+		managementItems: ManagementPanelMenuItem[];
 		buildDisabled: boolean;
 		advanceDisabled: boolean;
 		pauseDisabled?: boolean;
@@ -86,7 +81,7 @@
 		{#each managementItems as item (item.id)}
 			<button type="button" class="manage-btn" onclick={() => onOpenManagement(item.id)}>
 				{item.label}
-				{#if item.shortcut}<kbd class="keycap">{item.shortcut}</kbd>{/if}
+				<kbd class="keycap">{item.shortcut}</kbd>
 			</button>
 		{/each}
 	</div>
