@@ -43,6 +43,42 @@ describe('ControlDesk', () => {
 		await expect.element(page.getByRole('button', { name: /^pause$/i })).toBeVisible();
 	});
 
+	it('keeps the speed buttons inside the desktop rail without horizontal overflow', async () => {
+		expect.assertions(4);
+		// Component specs don't load layout.css, so pin the rail-width token the
+		// app provides; without it the rail shrink-wraps and overflow goes unseen.
+		document.documentElement.style.setProperty('--control-desk-rail-width', '5rem');
+		try {
+			render(ControlDesk, baseProps());
+
+			const deskBox = document.querySelector<HTMLElement>('.control-desk')?.getBoundingClientRect();
+			// The rail's content column is one 3.5rem icon button wide; the speed
+			// cluster must fit it (three text buttons in a row would not).
+			const columnWidth = document
+				.querySelector<HTMLElement>('.btn-icon')
+				?.getBoundingClientRect().width;
+			const groupBox = document
+				.querySelector<HTMLElement>('.speed-controls')
+				?.getBoundingClientRect();
+			for (const speed of ['1×', '2×', '5×']) {
+				const box = page
+					.getByRole('button', { name: new RegExp(`^${speed}$`, 'i') })
+					.element()
+					.getBoundingClientRect();
+				expect(
+					deskBox && box.left >= deskBox.left && box.right <= deskBox.right,
+					`${speed} button overflows the control desk`
+				).toBe(true);
+			}
+			expect(
+				groupBox && columnWidth && groupBox.width <= columnWidth,
+				'speed cluster is wider than the rail content column'
+			).toBe(true);
+		} finally {
+			document.documentElement.style.removeProperty('--control-desk-rail-width');
+		}
+	});
+
 	it('keeps management labels accessible and exposes their hotkeys in titles', async () => {
 		expect.assertions(4);
 		render(ControlDesk, baseProps());

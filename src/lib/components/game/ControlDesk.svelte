@@ -173,8 +173,11 @@
 		color: var(--paper-50);
 	}
 
+	/* Column stack: three ~35px text buttons (~110px in a row) cannot fit the
+	   rail's 3.5rem content column; vertically they sit under Pause/Resume. */
 	.speed-controls {
 		display: inline-flex;
+		flex-direction: column;
 		gap: 0.2rem;
 	}
 
@@ -209,7 +212,8 @@
 		}
 
 		.cluster,
-		.manage {
+		.manage,
+		.speed-controls {
 			flex-direction: row;
 		}
 
