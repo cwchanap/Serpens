@@ -190,10 +190,10 @@ let managementPanelMenuItems = $derived.by<ManagementPanelMenuItem[]>(() =>
 
 - [ ] **Step 4: Make `ControlDesk` consume the shared type**
 
-Delete its local `ManagementItem`. Import `ManagementPanelMenuItem` from `./gameIcon` and change only the current property to:
+Delete its local `ManagementItem`. Import `ManagementPanelMenuItem` from `./gameIcon` and change the existing `managementItems` property type to:
 
 ```ts
-managementItems: ManagementPanelMenuItem[];
+ManagementPanelMenuItem[]
 ```
 
 Every current destination has a shortcut, so remove the optional-shortcut rendering branch and the test that exists solely for a shortcut-less item. Update all fixtures with `icon` fields.
@@ -1015,7 +1015,7 @@ git add src/routes/retail-sim.e2e.ts
 git commit -m "test(ui): pin gameplay revamp integration"
 ```
 
-If Tasks 1–5 already left the final E2E file in the required state and Step 1–3 produce no additional tracked changes, skip this empty commit.
+If Tasks 1–5 already leave `retail-sim.e2e.ts` in the required final state and Steps 1–3 produce no additional tracked change, skip the empty Task 6 commit.
 
 ---
 
