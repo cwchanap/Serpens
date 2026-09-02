@@ -769,7 +769,13 @@ Run:
 
 ```bash
 bun run test:unit -- src/lib/components/game/TileInspector.svelte.spec.ts --run
-# Add the existing industry/rail/logistics inspector spec paths here only if those files changed.
+```
+
+If `IndustryTileInspector.svelte`, `RailSegmentInspector.svelte`, or `LogisticsRouteInspector.svelte` changed in Step 3, run their existing adjacent `*.svelte.spec.ts` files in the same command before continuing.
+
+Then run:
+
+```bash
 bun run check
 bun run test:e2e -- src/routes/retail-sim.e2e.ts
 ```
@@ -778,13 +784,19 @@ Expected: PASS at desktop and compact clearance paths.
 
 - [ ] **Step 8: Commit Task 4**
 
+Stage the required retail/host/E2E files:
+
 ```bash
 git add \
   src/lib/components/game/TileInspector.svelte \
   src/lib/components/game/TileInspector.svelte.spec.ts \
   src/routes/MapInspectorHost.svelte \
   src/routes/retail-sim.e2e.ts
-# Add industry/rail/logistics inspector files/specs only if they were actually changed.
+```
+
+If Step 3 changed an industry, rail, or logistics inspector, add that component and its adjacent spec to the same commit. Then commit:
+
+```bash
 git commit -m "feat(ui): revamp map inspector presentation"
 ```
 
@@ -797,7 +809,7 @@ git commit -m "feat(ui): revamp map inspector presentation"
 - Modify: `src/routes/ManagementPanelHost.svelte`
 - Modify: `src/routes/ManagementPanelHost.svelte.spec.ts`
 - Modify: `src/lib/components/game/Scorecard.svelte`
-- Add/modify focused `Scorecard` spec if current coverage is insufficient
+- Modify: `src/lib/components/game/Scorecard.svelte.spec.ts` if it exists; otherwise create it beside `Scorecard.svelte`
 - Modify: `src/routes/retail-sim.e2e.ts`
 
 **Interfaces:**
@@ -875,7 +887,45 @@ to a stable host:
     managementItems={managementPanelMenuItems}
     onSelectPanel={openManagementPanel}
     {panelGame}
-    ...
+    {summary}
+    {financeMetrics}
+    {retailSupplyViews}
+    mutations={mutationAvailability}
+    retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
+    {focusedFinanceLoanId}
+    {focusedRetailSupplyCityId}
+    logisticsView={logisticsPanelView}
+    manageLogistics={mutationAvailability.manageLogistics}
+    {focusedLogisticsRouteId}
+    {logisticsRoutePreset}
+    {i18n}
+    disabledReason={mutationDisabledReason}
+    onClose={closeManagementPanel}
+    onChangePolicy={changePolicy}
+    onSetPolicyOverride={setPolicyOverride}
+    onClearPolicyOverrideField={clearPolicyOverrideField}
+    onResetPolicyOverrideScope={resetPolicyOverrideScope}
+    onSetManagerDelegation={setManagerDelegation}
+    onRemoveManagerDelegation={removeManagerDelegation}
+    onHireStaff={hireStaff}
+    onAssignStaff={assignStaff}
+    onUnassignStaff={unassignStoreStaff}
+    onPromoteStaff={promoteStaffMember}
+    onSetRetailSupplySource={setRetailSupplySource}
+    onChooseDecision={chooseDecision}
+    onBorrow={borrowWorkingCapital}
+    onRepay={repayFinanceLoan}
+    onPayoff={payOffFinanceLoan}
+    onRefinance={refinanceFinanceLoan}
+    onPlanProduct={planSupplyProduct}
+    {plannerProductIds}
+    onDispatchManualTransfer={dispatchManualTransfer}
+    onCreateRecurringRoute={createRecurringRoute}
+    onUpdateRecurringRoute={updateRecurringRoute}
+    onPauseRecurringRoute={pauseRecurringRoute}
+    onResumeRecurringRoute={resumeRecurringRoute}
+    onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
+    onRemoveRecurringRoute={removeRecurringRoute}
   />
 {/if}
 ```
@@ -904,21 +954,42 @@ Wrap the existing explicit panel switch, not the dialog shell:
 <div class="workspace-body">
   {#key panelId}
     {#if panelId === 'dashboard'}
-      <Scorecard ... />
+      <Scorecard {i18n} scorecard={panelGame.scorecard} />
     {:else if panelId === 'policies'}
-      <PolicyPanel ... />
+      <PolicyPanel
+        {i18n}
+        game={panelGame}
+        onChange={onChangePolicy}
+        onSetPolicyOverride={onSetPolicyOverride}
+        onClearPolicyOverrideField={onClearPolicyOverrideField}
+        onResetPolicyOverrideScope={onResetPolicyOverrideScope}
+        canUpdate={mutations.updatePolicy}
+        canUpdateScoped={mutations.scopedPolicy}
+        {disabledReason}
+      />
     {:else if panelId === 'staff'}
-      ...
+      <div class="staff-surfaces">
+        <StaffPanel ... />
+        <ManagerDelegationPanel ... />
+      </div>
     {:else if panelId === 'finance'}
-      <FinancePanel ... />
+      <FinancePanel
+        game={panelGame}
+        metrics={requireFinanceMetrics()}
+        {i18n}
+        focusedLoanId={focusedFinanceLoanId}
+        mutationPending={mutations.pending}
+        {onBorrow}
+        {onRepay}
+        {onPayoff}
+        {onRefinance}
+      />
     {/if}
   {/key}
 </div>
 ```
 
-This preserves a clean body reset while keeping the focus trap, rail, header, and rail scroll position stable.
-
-Keep the explicit switch. Do not introduce dynamic components.
+For the unchanged staff/stores/decisions/reports/product-chains/logistics branches, move their existing current markup into this same keyed body without changing props/callbacks. Do not introduce dynamic components.
 
 - [ ] **Step 5: Upgrade `Scorecard` only with current four values**
 
@@ -931,7 +1002,9 @@ staffMorale
 marketPosition
 ```
 
-Render richer cards/gauges using the same numeric values and accessible labels. Do not add trend history, chart data, or a new score model.
+Add/adjust `Scorecard.svelte.spec.ts` to assert all four localized labels and values remain represented. Then render richer cards/gauges using the same numeric values. Do not add trend history, chart data, or a new score model.
+
+Run the focused scorecard spec before and after the markup change.
 
 - [ ] **Step 6: Add route E2E for in-place rail switching using dialog-scoped locators**
 
@@ -969,7 +1042,7 @@ Run:
 
 ```bash
 bun run test:unit -- src/routes/ManagementPanelHost.svelte.spec.ts --run
-# Run the Scorecard spec if added/modified.
+bun run test:unit -- src/lib/components/game/Scorecard.svelte.spec.ts --run
 bun run check
 bun run test:e2e -- src/routes/retail-sim.e2e.ts
 ```
@@ -984,8 +1057,8 @@ git add \
   src/routes/ManagementPanelHost.svelte \
   src/routes/ManagementPanelHost.svelte.spec.ts \
   src/lib/components/game/Scorecard.svelte \
+  src/lib/components/game/Scorecard.svelte.spec.ts \
   src/routes/retail-sim.e2e.ts
-# Add Scorecard spec only if changed/created.
 git commit -m "feat(ui): revamp management workspace"
 ```
 
@@ -1038,16 +1111,24 @@ Do not add a new fixture solely for viewport testing.
 
 - [ ] **Step 2: Extend the existing non-overlap helper checks rather than creating a second layout contract**
 
-At 1280×800, switch back to retail, open the starter-store inspector from `logisticsRouteNavigationGame()`, and call:
+At 1280×800, switch back to retail, read the existing starter store from the saved `logisticsRouteNavigationGame()` state, click its tile, and call:
 
 ```ts
+await selectMapView(page, /retail city map/i);
+const retailCanvas = await expectRetailMapReady(page);
+const game = await readAutoSaveGame(page);
+const store = game.stores[0];
+if (!store) throw new Error('Missing starter store for HUD layout verification');
+
+await clickCanvasTile(page, retailCanvas, store.mapX, store.mapY);
+const inspector = page.getByRole('dialog', { name: /tile details/i });
 await expectActionDoesNotOverlapControlDesk(
   page,
   inspector.getByRole('button', { name: /open details/i })
 );
 ```
 
-Use the same helper for any management/route inspector geometry assertion needed here.
+Use the same helper for any route-inspector geometry assertion needed here.
 
 - [ ] **Step 3: Verify internal management navigation with dialog-scoped locators**
 
@@ -1079,11 +1160,12 @@ bun run test:unit -- \
   src/lib/components/game/ControlDesk.svelte.spec.ts \
   src/lib/components/game/ControlDesk.timeControls.svelte.spec.ts \
   src/lib/components/game/TileInspector.svelte.spec.ts \
+  src/lib/components/game/Scorecard.svelte.spec.ts \
   src/routes/ManagementPanelHost.svelte.spec.ts \
   --run
 ```
 
-Add existing focused inspector/Scorecard spec paths only if those files were actually modified.
+If an industry/rail/logistics inspector changed in Task 4, include that component's existing adjacent spec in this focused run.
 
 Expected: PASS.
 
@@ -1119,13 +1201,19 @@ Fix only HPA-304 scope defects.
 
 - [ ] **Step 7: Commit final integration if verification changed tracked files**
 
+Stage the route E2E if Step 1–3 changed it:
+
 ```bash
 git add src/routes/retail-sim.e2e.ts
-# Add only focused HPA-304 files legitimately adjusted during final verification.
+```
+
+If final verification required a scoped HPA-304 fix in a component/spec, stage that exact file too. Then commit:
+
+```bash
 git commit -m "test(ui): pin gameplay revamp integration"
 ```
 
-If verification produces no changes, skip the empty commit.
+If verification produces no tracked changes after the previous task commits, skip this commit.
 
 ---
 
