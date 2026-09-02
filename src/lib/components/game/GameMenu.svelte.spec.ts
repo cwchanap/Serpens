@@ -6,8 +6,6 @@ import GameMenu from './GameMenu.svelte';
 
 function baseProps() {
 	return {
-		activeMapView: 'retail' as const,
-		onSelectView: vi.fn(),
 		i18n: createI18n('en'),
 		activeLocale: 'en' as const,
 		onSelectLocale: vi.fn()
@@ -15,56 +13,36 @@ function baseProps() {
 }
 
 describe('GameMenu', () => {
-	it('keeps the map-view tabs hidden until the menu is opened', async () => {
-		expect.assertions(2);
+	it('keeps map switching out of the menu dialog', async () => {
+		expect.assertions(5);
 		render(GameMenu, baseProps());
-		await expect
-			.element(page.getByRole('button', { name: /industry city map/i }))
-			.not.toBeInTheDocument();
 		await page.getByRole('button', { name: /^menu$/i }).click();
-		await expect.element(page.getByRole('button', { name: /industry city map/i })).toBeVisible();
+		const menu = page.getByRole('dialog', { name: /^menu$/i });
+		await expect.element(menu).toBeVisible();
+		await expect.element(menu.getByLabelText('Language')).toBeVisible();
+		await expect
+			.element(menu.getByRole('button', { name: /retail city map/i }))
+			.not.toBeInTheDocument();
+		await expect
+			.element(menu.getByRole('button', { name: /industry city map/i }))
+			.not.toBeInTheDocument();
+		await expect.element(menu.getByRole('button', { name: /world map/i })).not.toBeInTheDocument();
 	});
 
 	it('renders open when the open prop is set (controlled)', async () => {
 		expect.assertions(1);
 		render(GameMenu, { ...baseProps(), open: true });
-		await expect.element(page.getByRole('button', { name: /industry city map/i })).toBeVisible();
-	});
-
-	it('marks the active view and switches on selection', async () => {
-		expect.assertions(2);
-		const props = baseProps();
-		render(GameMenu, props);
-		await page.getByRole('button', { name: /^menu$/i }).click();
-		await expect
-			.element(page.getByRole('button', { name: /retail city map/i }))
-			.toHaveAttribute('aria-pressed', 'true');
-		await page.getByRole('button', { name: /world map/i }).click();
-		expect(props.onSelectView).toHaveBeenCalledWith('world');
-	});
-
-	it('closes the popover after a view is selected', async () => {
-		expect.assertions(2);
-		render(GameMenu, baseProps());
-		await page.getByRole('button', { name: /^menu$/i }).click();
-		const industryTab = page.getByRole('button', { name: /industry city map/i });
-		await expect.element(industryTab).toBeVisible();
-		await industryTab.click();
-		await expect
-			.element(page.getByRole('button', { name: /industry city map/i }))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByLabelText('Language')).toBeVisible();
 	});
 
 	it('dismisses the popover on an outside pointer press', async () => {
 		expect.assertions(2);
 		render(GameMenu, baseProps());
 		await page.getByRole('button', { name: /^menu$/i }).click();
-		await expect.element(page.getByRole('button', { name: /industry city map/i })).toBeVisible();
+		await expect.element(page.getByLabelText('Language')).toBeVisible();
 		// A pointer press anywhere outside the menu closes it (standard dropdown behaviour).
 		document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-		await expect
-			.element(page.getByRole('button', { name: /industry city map/i }))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByLabelText('Language')).not.toBeInTheDocument();
 	});
 
 	it('closes the popover on Escape and ignores other keys', async () => {

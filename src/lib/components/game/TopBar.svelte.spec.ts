@@ -15,6 +15,22 @@ const alerts: LocalizedGameAlert[] = [
 	}
 ];
 
+function baseProps() {
+	return {
+		eyebrow: 'Retail City Map',
+		title: 'Harbor City',
+		day: 1,
+		cash: 0,
+		alerts: [] as LocalizedGameAlert[],
+		i18n: createI18n('en'),
+		activeLocale: 'en' as const,
+		onSelectAlert: vi.fn(),
+		activeMapView: 'retail' as const,
+		onSelectView: vi.fn(),
+		onSelectLocale: vi.fn()
+	};
+}
+
 describe('TopBar', () => {
 	it('renders the location, day and cash', async () => {
 		expect.assertions(4);
@@ -80,27 +96,19 @@ describe('TopBar', () => {
 		await expect.element(page.getByRole('group', { name: /alerts list/i })).not.toBeInTheDocument();
 	});
 
-	it('hosts the map-view menu and switches views', async () => {
-		expect.assertions(2);
+	it('switches map views directly from the top HUD', async () => {
+		expect.assertions(4);
 		const onSelectView = vi.fn();
-		render(TopBar, {
-			eyebrow: 'Retail City Map',
-			title: 'Harbor City',
-			day: 1,
-			cash: 0,
-			alerts: [],
-			i18n: createI18n('en'),
-			activeLocale: 'en' as const,
-			onSelectAlert: vi.fn(),
-			activeMapView: 'retail',
-			onSelectView,
-			onSelectLocale: vi.fn()
-		});
-		await expect
-			.element(page.getByRole('button', { name: /industry city map/i }))
-			.not.toBeInTheDocument();
-		await page.getByRole('button', { name: /^menu$/i }).click();
-		await page.getByRole('button', { name: /industry city map/i }).click();
+		render(TopBar, { ...baseProps(), activeMapView: 'retail', onSelectView });
+
+		const retail = page.getByRole('button', { name: /retail city map/i });
+		const industry = page.getByRole('button', { name: /industry city map/i });
+		const world = page.getByRole('button', { name: /world map/i });
+
+		await expect.element(retail).toHaveAttribute('aria-pressed', 'true');
+		await expect.element(industry).toHaveAttribute('aria-pressed', 'false');
+		await expect.element(world).toBeVisible();
+		await industry.click();
 		expect(onSelectView).toHaveBeenCalledWith('industry');
 	});
 

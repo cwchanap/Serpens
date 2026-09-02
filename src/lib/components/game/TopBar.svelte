@@ -5,6 +5,7 @@
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle, SupportedLocale } from '$lib/i18n';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
+	import GameIcon from './GameIcon.svelte';
 	import GameMenu from './GameMenu.svelte';
 
 	interface Props {
@@ -68,6 +69,12 @@
 			count
 		});
 	}
+
+	const mapViews = $derived([
+		{ id: 'retail', icon: 'retail', label: i18n.t('route.mapEyebrow.retail') },
+		{ id: 'industry', icon: 'industry', label: i18n.t('route.mapEyebrow.industry') },
+		{ id: 'world', icon: 'world', label: i18n.t('route.mapEyebrow.world') }
+	] as const);
 </script>
 
 <header class="top-bar" aria-label={i18n.t('topBar.statusBar')}>
@@ -77,14 +84,32 @@
 	</div>
 
 	<div class="readouts plaque">
+		<div class="map-controls" role="group" aria-label={i18n.t('gameMenu.mapView')}>
+			{#each mapViews as view (view.id)}
+				<button
+					type="button"
+					class="btn-icon map-button"
+					class:active={activeMapView === view.id}
+					aria-label={view.label}
+					aria-pressed={activeMapView === view.id}
+					onclick={() => onSelectView(view.id)}
+				>
+					<GameIcon name={view.icon} />
+				</button>
+			{/each}
+		</div>
 		{#if day !== null}
-			<span class="ticker" aria-label={i18n.t('topBar.day', { day: i18n.format.integer(day) })}>
-				{i18n.t('topBar.day', { day: i18n.format.integer(day) })}
+			<span class="ticker">
+				<GameIcon name="day" />
+				<span aria-label={i18n.t('topBar.day', { day: i18n.format.integer(day) })}>
+					{i18n.t('topBar.day', { day: i18n.format.integer(day) })}
+				</span>
 			</span>
 		{/if}
 		{#if cash !== null}
-			<span class="ticker" aria-label={i18n.t('topBar.cash')} data-testid="cash-readout">
-				{i18n.format.currency(cash)}
+			<span class="ticker" data-testid="cash-readout">
+				<GameIcon name="cash" />
+				<span aria-label={i18n.t('topBar.cash')}>{i18n.format.currency(cash)}</span>
 			</span>
 		{/if}
 
@@ -96,10 +121,7 @@
 				aria-expanded={alertsOpen}
 				onclick={toggleAlerts}
 			>
-				<svg aria-hidden="true" viewBox="0 0 24 24">
-					<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" />
-					<path d="M10 20a2 2 0 0 0 4 0" />
-				</svg>
+				<GameIcon name="alerts" />
 				{#if alerts.length > 0}
 					<span class="seal alert-count" data-urgent="true">{alerts.length}</span>
 				{/if}
@@ -125,15 +147,7 @@
 			{/if}
 		</div>
 
-		<GameMenu
-			{activeMapView}
-			{i18n}
-			{activeLocale}
-			{onSelectView}
-			{onSelectLocale}
-			{menuContent}
-			bind:open={menuOpen}
-		/>
+		<GameMenu {i18n} {activeLocale} {onSelectLocale} {menuContent} bind:open={menuOpen} />
 	</div>
 </header>
 
@@ -181,11 +195,24 @@
 	}
 
 	.ticker {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		font-size: 0.9rem;
 		color: var(--ink-700);
 		white-space: nowrap;
+	}
+
+	.map-controls {
+		display: flex;
+		gap: 0.35rem;
+	}
+
+	.map-button.active {
+		background: var(--brass-500);
+		color: var(--paper-50);
 	}
 
 	.alerts {

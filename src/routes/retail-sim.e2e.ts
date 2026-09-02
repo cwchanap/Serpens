@@ -1313,10 +1313,7 @@ async function getStoreDetailPanelLayout(page: Page) {
 	});
 }
 
-async function openMapMenuItem(page: Page, itemName: RegExp) {
-	// Map-view tabs live inside the control-desk hamburger popover; open it first.
-	// Selecting a view auto-closes the popover.
-	await page.getByRole('button', { name: /^menu$/i }).click();
+async function selectMapView(page: Page, itemName: RegExp): Promise<void> {
 	await page.getByRole('button', { name: itemName }).click();
 }
 
@@ -2458,13 +2455,6 @@ test('tile popup can be closed from the map', async ({ page }) => {
 test('management panels open from the map menu and close as overlays', async ({ page }) => {
 	await page.goto('/');
 
-	// The map-view tabs are tucked inside the control-desk hamburger popover.
-	await page.getByRole('button', { name: /^menu$/i }).click();
-	await expect(page.getByRole('button', { name: /world map/i })).toBeEnabled();
-	await expect(page.getByRole('button', { name: /retail city map/i })).toBeEnabled();
-	await expect(page.getByRole('button', { name: /industry city map/i })).toBeEnabled();
-	await page.getByRole('button', { name: /^menu$/i }).click();
-
 	await buildRetailStoreAt(page, {
 		x: 1,
 		y: 6,
@@ -2481,9 +2471,7 @@ test('management panels open from the map menu and close as overlays', async ({ 
 	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
 });
 
-test('keyboard shortcuts toggle build, switch views, and Esc closes the hamburger', async ({
-	page
-}) => {
+test('keyboard shortcuts toggle build and switch views', async ({ page }) => {
 	await page.goto('/');
 	// Wait for the scene to boot so the window keydown handler is mounted before
 	// dispatching shortcuts, otherwise the first keypress races hydration.
@@ -2497,16 +2485,10 @@ test('keyboard shortcuts toggle build, switch views, and Esc closes the hamburge
 
 	// Number keys still switch views.
 	await page.keyboard.press('2');
-	// The view tabs now live in the hamburger popover; open it to read the pressed state.
-	await page.getByRole('button', { name: /^menu$/i }).click();
 	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
 		'aria-pressed',
 		'true'
 	);
-
-	// Escape closes the hamburger menu.
-	await page.keyboard.press('Escape');
-	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveCount(0);
 });
 
 test('Escape toggles the hamburger menu when nothing else is open', async ({ page }) => {
@@ -2514,16 +2496,16 @@ test('Escape toggles the hamburger menu when nothing else is open', async ({ pag
 	await expectRetailMapReady(page);
 
 	// With no overlay or selection active, Escape opens the hamburger menu.
-	await expect(page.getByRole('button', { name: /^menu$/i })).toHaveAttribute(
-		'aria-expanded',
-		'false'
-	);
-	await page.keyboard.press('Escape');
-	await expect(page.getByRole('button', { name: /retail city map/i })).toBeVisible();
+	const menu = page.getByRole('button', { name: /^menu$/i });
+	await expect(menu).toHaveAttribute('aria-expanded', 'false');
 
-	// A second Escape closes it again — the key toggles the menu.
 	await page.keyboard.press('Escape');
-	await expect(page.getByRole('button', { name: /retail city map/i })).toHaveCount(0);
+	await expect(menu).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('dialog', { name: /^menu$/i })).toBeVisible();
+
+	await page.keyboard.press('Escape');
+	await expect(menu).toHaveAttribute('aria-expanded', 'false');
+	await expect(page.getByRole('dialog', { name: /^menu$/i })).toHaveCount(0);
 });
 
 test('Escape closes the alerts popover', async ({ page }) => {
@@ -2657,7 +2639,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 		expectedStoreCount: 1
 	});
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
@@ -2735,7 +2717,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await expectIndustryMapReady(page);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '1');
 
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await expectRetailMapReady(page);
 	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
@@ -2746,7 +2728,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 test('industry build menu shows construction status before founding a store', async ({ page }) => {
 	await page.goto('/');
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
 
@@ -2794,7 +2776,7 @@ test('player builds convenience production and refills from city inventory', asy
 	// cash; grant funds up front like the other industrial-build tests.
 	await injectCashAndReload(page, 1_000_000);
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 
@@ -2871,7 +2853,7 @@ test('player builds convenience production and refills from city inventory', asy
 	);
 	expect(visibleCityInventoryBottledWater).toBeGreaterThan(0);
 
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await expectRetailMapReady(page);
 	await clickMapTile(page, 1, 6);
@@ -3070,17 +3052,17 @@ test('player opens a revealed retail city from the world map and builds there', 
 		expectedStoreCount: 1
 	});
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await expect(page.getByRole('region', { name: /world map/i })).toBeVisible();
 	await expect(page.getByRole('button', { name: /harbor city/i })).toBeVisible();
 
 	await revealCityAndGrantFunds(page, 'campus-junction');
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await page.getByRole('button', { name: /campus junction/i }).click();
 	await page.getByRole('button', { name: /open for/i }).click();
 	await page.getByRole('button', { name: /campus junction/i }).click();
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
 
 	await buildRetailStoreAt(page, {
@@ -3280,7 +3262,7 @@ test('financed expansion opens one city with its exact shortfall and no cash-out
 	await revealCityAndGrantFunds(page, 'campus-junction', 17_000);
 
 	const beforeFinancing = await readAutoSaveGame(page);
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await page.getByRole('button', { name: /campus junction/i }).click();
 	await page.getByRole('button', { name: 'Finance opening', exact: true }).click();
 	const review = page.getByRole('dialog', { name: 'Review financing' });
@@ -3360,11 +3342,11 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 	await revealCityAndGrantFunds(page, 'campus-junction');
 
 	// Open campus-junction and build a store there.
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await page.getByRole('button', { name: /campus junction/i }).click();
 	await page.getByRole('button', { name: /open for/i }).click();
 	await page.getByRole('button', { name: /campus junction/i }).click();
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
 
 	await buildRetailStoreAt(page, {
@@ -3682,7 +3664,7 @@ test('player upgrades an industrial building from the tile inspector', async ({ 
 		expectedStoreCount: 1
 	});
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 
@@ -3695,7 +3677,7 @@ test('player upgrades an industrial building from the tile inspector', async ({ 
 
 	await injectCashAndReload(page, 1_000_000);
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	const reloadedCanvas = await expectIndustryMapReady(page);
 
 	await clickCanvasTile(page, reloadedCanvas, GRAIN_FIELD_TILE.x, GRAIN_FIELD_TILE.y);
@@ -3753,12 +3735,12 @@ test('camera zoom and scroll persist across map view switches', async ({ page })
 
 	// Switch to the industry city map. The retail scene stays alive (keep-alive)
 	// so its camera state should be preserved on the hidden canvas.
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
 
 	// Switch back to the retail city map.
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	const restoredCanvas = await expectRetailMapReady(page);
 
@@ -3782,7 +3764,7 @@ test('supply advisor recommends and arms a starter build', async ({ page }) => {
 	});
 	await waitForAutoSaveDay(page, 1);
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
 
@@ -3807,7 +3789,7 @@ test('supply planner warehouse', async ({ page }) => {
 	await page.setViewportSize({ width: 1200, height: 1000 });
 	await installSandboxAutoSave(page, warehousePressurePlannerGame());
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 
@@ -3879,7 +3861,7 @@ test('supply planner logistics lifecycle hands off a route recommendation withou
 	await page.setViewportSize({ width: 1200, height: 1000 });
 	await installSandboxAutoSave(page, supplyPlannerLogisticsLifecycleGame());
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
 
@@ -4009,7 +3991,7 @@ test('rail-fed production connects two industrial buildings and records a rail s
 	// industrial-upgrade tests do.
 	await injectCashAndReload(page, 1_000_000);
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 
@@ -4482,7 +4464,7 @@ test('logistics recurring route dispatches, delivers, and exposes active/paused 
 	await expect(deliveredRow).toContainText(/Transport cost\s+\$4/i);
 	await deliveredLogistics.getByRole('button', { name: 'Close Logistics' }).click();
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
 	const routeButton = worldMap.getByRole('button', {
@@ -4536,7 +4518,7 @@ test('inspector clearance keeps route, retail, and industry actions clear of gam
 	const managementLaunchers = desk.getByRole('group', { name: /management/i });
 	await expect(managementLaunchers.getByRole('button')).toHaveCount(9);
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
 	const routeButton = worldMap.getByRole('button', {
@@ -4597,11 +4579,7 @@ test('logistics route navigation', async ({ page }) => {
 	// inspector before the route selection replaces it.
 	await revealCityAndGrantFunds(page, 'garden-borough');
 
-	await page.getByRole('button', { name: /^menu$/i }).click();
-	await page
-		.getByRole('dialog', { name: /^menu$/i })
-		.getByRole('button', { name: /world map/i })
-		.click();
+	await selectMapView(page, /world map/i);
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
 
@@ -4734,7 +4712,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	await expect(capacityCard).toContainText('Capacity: 2 → 1 units');
 	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
 	const worldRoute = worldMap.getByTestId('world-logistics-route-route-1');
@@ -4758,7 +4736,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	// Step 5 (second half): edit the base route while the modifier is active,
 	// then resume. The Active Modifiers card re-derives against the edited
 	// base, and the next dispatch combines edited base × still-active modifier.
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	const editedLogistics = await openManagementPanel(page, /logistics/i);
 	const editedRow = editedLogistics.locator('#logistics-route-route-1');
@@ -4899,7 +4877,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	await reports.getByRole('button', { name: 'Close Reports', exact: true }).click();
 
 	// The disrupted marker clears once no route modifier contributes.
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await expect(worldMap).toBeVisible();
 	await expect(worldMap.getByTestId('world-logistics-route-route-1')).toHaveAttribute(
 		'data-disrupted',
@@ -4909,7 +4887,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	// The current route returns to the edited base behavior with no stale
 	// restoration: the next dispatch uses capacity 4 / lead 2 / cost 2 and
 	// carries no modifier impacts.
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 9);
