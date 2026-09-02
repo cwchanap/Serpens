@@ -1,7 +1,7 @@
 # Gameplay HUD and Management Panel Revamp Design
 
 **Date:** 2026-09-01  
-**Status:** Approved direction, ready for implementation planning  
+**Status:** Revised after design-plan review  
 **Linear:** HPA-304 — Revamp gameplay HUD and management panels from approved mockups  
 **Design references:** `Serpens UI Revamp HUD.html` and `Serpens UI Revamp Panels.html` supplied with HPA-304 planning.
 
@@ -9,7 +9,7 @@
 
 HPA-304 is a presentation-only revamp of the existing Serpens gameplay shell.
 
-The approved visual direction is the **Vitrine / brass-medallion, art-forward language** from the HUD mock combined with the **parchment management workspace and left navigation rail** from the management-panel mock. The goal is to make the game read more like a cohesive management simulation: the map stays visually dominant, frequently used actions become icon-forward, selected stores become art-led inspector cards, and management screens gain stronger hierarchy without changing their behavior.
+The approved visual direction is the **Vitrine / brass-medallion, art-forward language** from the HUD mock combined with the **parchment management workspace and left navigation rail** from the management-panel mock. The map stays dominant, frequent actions become icon-forward, selected stores become art-led inspector cards, and management screens gain stronger hierarchy without changing game-domain behavior.
 
 This is not a new UI architecture. HPA-568 already established the correct presentation boundaries:
 
@@ -22,44 +22,50 @@ src/routes/+page.svelte
 └─ ManagementPanelHost.svelte
 ```
 
-Those boundaries remain authoritative. `GameState` remains the domain state owner, `GameRouteController` remains the route command/persistence coordinator, and Phaser remains responsible for map rendering.
+Those boundaries remain authoritative. `GameState` remains the domain state owner, `GameRouteController` remains the route command/persistence coordinator, Phaser remains responsible for map rendering, and `+page.svelte` remains the shortcut/Escape/state composition owner.
+
+HPA-304 intentionally supersedes one HPA-568 implementation detail: the route-level `{#key activeManagementPanel.id}` remount. The new workspace must stay mounted while its panel body changes so rail navigation is genuinely in-place.
 
 No simulation, persistence, scenario, save-schema, or game-domain changes are required.
 
-## Source direction and approved interpretation
+## Decisions locked by this revision
 
-The HUD reference describes two icon/art-forward directions using the existing parchment, brass, walnut, wax-red, moss, and typography tokens. The approved treatment takes the Vitrine direction's circular brass medallions and art-led inspector as the visual vocabulary.
-
-For the shipped desktop composition, those medallions are arranged as a **left-side gameplay management rail** rather than introducing a second selectable HUD theme. This aligns the gameplay shell with the management-panel reference, removes the current bottom management-launcher wrap pressure, and frees the bottom edge for compact time controls without changing any command ownership.
-
-This is a single canonical UI direction. There is no runtime 1a/1b switch and no alternate theme state.
+1. Ship one visual direction only: Vitrine circular brass controls + parchment workspace. No runtime 1a/1b theme.
+2. Keep the HPA-568 hosts. Do not add `MapWorkspace`, a UI controller, global Svelte store, context state, event bus, panel registry, or inspector registry.
+3. Use one route-owned management destination list and one shared `ManagementPanelMenuItem` type.
+4. Keep the explicit `if`/`else-if` management-panel switch. No dynamic component registry.
+5. Only `Scorecard` receives a deliberate panel-body visual redesign. Other panel bodies keep behavior and receive shell/spacing normalization only where needed.
+6. Do not create cash history, trends, or analytics merely to fill decorative mock charts.
+7. Keep all keyboard shortcuts and global Escape priority in `+page.svelte`.
+8. Treat 1920×1080 as the reference composition, 1280×800 as the desktop regression size, and compact access as more important than pixel parity.
+9. Route-visible chrome changes must update existing E2E helpers in the same task that invalidates them. A task is not complete while `retail-sim.e2e.ts` still encodes the old UI ownership.
 
 ## Existing architecture to preserve
 
-### Route composition
+### `src/routes/+page.svelte`
 
-`src/routes/+page.svelte` remains responsible for:
+Keeps:
 
-- creating and synchronizing `GameRouteController`;
+- `GameRouteController` construction and synchronization;
 - canonical route/game state and cross-feature derivations;
-- active map view and active management-panel ID;
+- `activeMapView` and `activeManagementPanelId`;
 - selected map objects and inspector visibility;
 - command handlers and mutation availability;
 - global keyboard shortcuts and Escape priority;
-- save/scenario/audio/locale orchestration;
-- mounting the concrete HUD, inspector host, and management host.
+- save, scenario, audio, and locale orchestration;
+- mounting the HUD, map inspector host, and management host.
 
-The revamp may add presentation props to those existing mounts, but it must not move command or state ownership into the visual components.
+The route may add presentation metadata and pass callbacks to the revised surfaces, but no UI component becomes a second state owner.
 
 ### Map rendering
 
-`MapSurfaceHost.svelte`, `CityMap.svelte`, `IndustryMap.svelte`, `WorldMap.svelte`, and the Phaser scenes remain behaviorally unchanged except for any surrounding layout space needed by the new HUD.
+`MapSurfaceHost.svelte`, `CityMap.svelte`, `IndustryMap.svelte`, `WorldMap.svelte`, and the Phaser scenes remain behaviorally unchanged except for normal resizing caused by surrounding HUD composition.
 
-No game rules move into Phaser or into HUD components.
+No game rules move into Phaser or HUD components.
 
 ### Management composition
 
-`ManagementPanelHost.svelte` continues to compose the existing concrete panels:
+`ManagementPanelHost.svelte` continues to compose:
 
 - Dashboard / `Scorecard`;
 - Policies;
@@ -71,74 +77,72 @@ No game rules move into Phaser or into HUD components.
 - Logistics;
 - Finance.
 
-The host receives the active panel and callbacks from the route. The panel components remain authoritative for their internal actions.
+The host receives the active panel and callbacks from the route. Existing panel components remain authoritative for their internal actions.
 
-## Shared visual vocabulary
+## Shared presentation vocabulary
 
-The existing CSS tokens remain the design source of truth:
+The existing CSS remains the source of truth:
 
 - parchment: `--paper-*`;
 - ink: `--ink-*`;
-- stage: `--walnut-*`;
+- walnut stage: `--walnut-*`;
 - brass: `--brass-*`;
-- warning/accent: `--wax-red*`, `--moss*`, `--royal-ink`;
+- wax/moss/royal state accents;
 - existing display/body/UI/mono font stacks;
 - existing paper grain and paper shadow.
 
-`frames.css` already provides `.paper`, `.plaque`, `.seal`, `.btn-*`, `.btn-icon`, `.keycap`, and reduced-motion behavior. HPA-304 extends those primitives only where a repeated motif is real.
+`frames.css` already provides `.paper`, `.plaque`, `.seal`, `.btn-*`, `.btn-icon`, `.keycap`, and reduced-motion behavior.
 
-### Icon primitive
+### Brass medallion
 
-Add one small local `GameIcon.svelte` backed by inline SVG paths and a typed `GameIconName` vocabulary. It exists to avoid duplicating the same SVG markup across `TopBar`, `ControlDesk`, and `ManagementPanelHost`.
+Reuse `.btn-icon` as the circular brass medallion. Do not create a competing medallion class with duplicate border/radius/shadow rules.
 
-The vocabulary covers only icons needed by this ticket: map views, Build, the current management destinations, rail build, pause/resume, simulation speed, shortcuts, alerts, menu, and close where needed.
+Add only a small moss/primary modifier needed by Build (and only other states actually required by the approved mock). `.seal` remains the wax-red count/attention pill; it is not repurposed as a navigation medallion.
 
-Do not add an icon package, icon registry service, runtime asset loader, or generic design-system dependency.
+### Local icon primitive
 
-## Gameplay HUD
+Add one small local `GameIcon.svelte`, backed by inline SVG paths and a closed `GameIconName` union in `gameIcon.ts`.
 
-### Top status bar
-
-`TopBar.svelte` remains the owner of the map-level status header.
-
-The new desktop composition contains:
-
-1. **Location plaque** — current eyebrow + map/city title.
-2. **Direct map-view selector** — Retail, Industry, World are first-class icon controls in the top HUD.
-3. **Day and cash readouts** — compact icon-led readouts using the existing formatted values.
-4. **Alerts** — the existing alert button/count/popover behavior.
-5. **Menu** — hamburger remains the home for locale and route-provided menu content.
-
-The map-view selector moves out of `GameMenu.svelte`. `GameMenu` no longer owns map switching after this change.
-
-Do not add a cash trend, historical delta, or other mock-only metric unless it already exists in the current route model. Current cash is sufficient for HPA-304.
-
-### Gameplay management rail
-
-`ControlDesk.svelte` keeps its name and behavioral responsibility but changes presentation.
-
-On desktop it becomes a left-side rail with:
-
-- Build as the primary moss action;
-- one icon button for every current management destination;
-- current keyboard shortcuts shown in tooltip/title treatment and preserved in keyboard handling;
-- conditional Rail Build on the industry map;
-- pause/resume, simulation speed, and shortcut help grouped separately at the lower edge of the rail or adjacent compact control area.
-
-The exact visual treatment uses the Vitrine circular brass-medallion language for management actions. Build retains stronger moss emphasis.
-
-The rail remains a dumb callback surface. It does not own active management state, map state, or keyboard listeners.
-
-### Shared management item data
-
-The route's existing `managementPanelMenuConfig` / `managementPanelMenuItems` remains the source of the destination list and labels. Add an icon identifier to that existing presentation config, then pass the same item shape to both `ControlDesk` and `ManagementPanelHost`.
-
-This prevents a second hardcoded panel menu without introducing a registry or new state abstraction.
-
-Conceptually:
+Freeze the vocabulary to icons HPA-304 will actually render:
 
 ```ts
-interface ManagementPanelMenuItem {
+export type GameIconName =
+  | 'build'
+  | 'dashboard'
+  | 'policies'
+  | 'staff'
+  | 'stores'
+  | 'decisions'
+  | 'reports'
+  | 'productChains'
+  | 'finance'
+  | 'logistics'
+  | 'retail'
+  | 'industry'
+  | 'world'
+  | 'rail'
+  | 'pause'
+  | 'resume'
+  | 'shortcuts'
+  | 'alerts'
+  | 'menu'
+  | 'day'
+  | 'cash'
+  | 'close';
+```
+
+Simulation speeds remain the current numeric text controls (`1×`, `2×`, `5×`). Do not create decorative speed icons.
+
+`TopBar` and `GameMenu` replace their existing ad-hoc alert/menu SVG markup with `GameIcon`, so there is one icon vocabulary rather than two parallel styles.
+
+`GameIcon` never owns accessible naming. Its SVG is decorative (`aria-hidden="true"`); the owning button/span retains the localized label.
+
+### Shared management item type
+
+Export exactly one presentation shape beside `GameIconName`:
+
+```ts
+export interface ManagementPanelMenuItem {
   id: ManagementPanelId;
   label: string;
   shortcut: string;
@@ -146,277 +150,335 @@ interface ManagementPanelMenuItem {
 }
 ```
 
+The route's existing `managementPanelMenuConfig` remains the only destination list. It gains `icon`; the localized `managementPanelMenuItems` derived value uses the shared type. `ControlDesk` and `ManagementPanelHost` consume that type instead of defining local variants.
+
+Every current management destination has a shortcut, so `shortcut` is required. Do not preserve an optional shortcut branch solely for a hypothetical future item.
+
+## Gameplay HUD
+
+### Top status bar
+
+`TopBar.svelte` remains the map-level status header.
+
+Desktop composition contains:
+
+1. current location/map plaque;
+2. direct Retail / Industry / World controls;
+3. Day and Cash readouts;
+4. Alerts;
+5. Menu.
+
+The direct map buttons use `GameIcon` and preserve the **existing route eyebrow accessible names**:
+
+```text
+route.mapEyebrow.retail
+route.mapEyebrow.industry
+route.mapEyebrow.world
+```
+
+That means the button names remain “Retail City Map”, “Industry City Map”, and “World Map” in English rather than switching tests/accessibility to the shorter `Retail` / `Industry` / `World` labels.
+
+The map-view selector moves out of `GameMenu.svelte`. `GameMenu` keeps locale selection, route-provided menu content, focus trap, outside-click dismissal, and Escape behavior.
+
+Day/Cash may use decorative `day`/`cash` icons but do not gain historical values or trend props.
+
+### Gameplay management rail
+
+`ControlDesk.svelte` keeps its behavioral responsibility but changes presentation.
+
+Desktop becomes a fixed left rail using `.btn-icon`:
+
+- Build is primary/moss;
+- conditional Rail Build remains available on the industry map;
+- every current management destination is an icon button;
+- pause/resume, numeric speed controls, and shortcut help remain available;
+- localized labels stay as accessible names;
+- label + shortcut remain discoverable through `title`/tooltip treatment.
+
+No shortcut listener moves into `ControlDesk`.
+
+### Compact dock
+
+At widths below the existing compact breakpoint, do not hide management navigation. The same actions become a horizontally scrollable bottom dock/strip.
+
+The dock uses one explicit shared CSS custom property for its occupied height/clearance (for example `--control-desk-compact-height`) in shared frame CSS. `ControlDesk` and `MapInspectorHost` both consume that same value. This is a layout constant, not a state abstraction.
+
+A real compact component test uses a ~414px viewport and proves management destinations remain reachable.
+
+## E2E contracts that must move with the HUD
+
+The existing route E2E contains two helpers/contracts tied to the old chrome. HPA-304 updates them at the same cutover that invalidates them.
+
+### Inspector clearance helper
+
+The current helper assumes the Control Desk is a bottom footer and asserts:
+
+```text
+action bottom <= control desk top
+```
+
+That is invalid for a left rail. Replace it during the ControlDesk task with rectangle non-overlap:
+
+```ts
+const separated =
+  actionRight <= deskLeft ||
+  actionLeft >= deskRight ||
+  actionBottom <= deskTop ||
+  actionTop >= deskBottom;
+
+expect(separated).toBe(true);
+```
+
+Rename the helper/test to describe non-overlap rather than “above the desk”. The existing ninth-launcher test remains valuable but becomes a rail/dock clearance test. Later 1280×800 checks reuse this helper rather than creating a second geometry contract.
+
+### Map-view helper and Escape assertions
+
+The current `openMapMenuItem` helper opens the hamburger and then clicks a map tab. Once map views move to `TopBar`, rewrite the helper/call sites to click the always-visible top HUD map button directly.
+
+Likewise, Escape tests must stop using map-tab presence/absence as evidence that the hamburger is open. Assert the menu trigger's `aria-expanded` state or the menu dialog itself.
+
+The logistics-navigation test that currently finds World inside the menu dialog also switches through the top HUD after this cutover.
+
 ## Map inspector revamp
 
 ### Retail store inspector
 
-`TileInspector.svelte` already has the data needed for the approved art-forward card:
+`TileInspector.svelte` already has all required data:
 
-- existing store artwork from `getStoreArt`;
-- store name and location;
+- existing store artwork;
+- store name/location;
 - daily revenue;
 - stock health;
 - staff morale;
 - attention/warning copy;
-- level, next benefit, upgrade cost/state;
+- level/next benefit/upgrade state;
 - Details action.
 
-HPA-304 recomposes those existing values into a stronger hierarchy:
+Recompose those values into the approved art-forward hierarchy. Do not add a new store read model.
 
-```text
-store artwork
-store identity + location
-three compact vitals / gauges
-attention callout when present
-level / next benefit
-Upgrade + Details actions
-```
-
-No new store read model is needed.
-
-Empty-tile inspection retains its existing demand/rent/foot-traffic/customer-fit information, restyled to the same shell rather than acquiring new behavior.
+Empty-tile inspection keeps demand, rent, foot traffic, and customer fit.
 
 ### Other inspectors
 
-`IndustryTileInspector`, `RailSegmentInspector`, and `LogisticsRouteInspector` receive the same outer presentation language: consistent paper frame, compact header/close treatment, spacing, metric cards, and action hierarchy.
+`IndustryTileInspector`, `RailSegmentInspector`, and `LogisticsRouteInspector` receive the same presentation language—paper frame, compact header/close treatment, metric/action hierarchy—without a generic inspector framework or callback changes.
 
-Their domain-specific internals and callback contracts stay intact. Do not rewrite all inspector markup into a generic inspector framework.
+### Inspector geometry
 
-### Inspector host geometry
+`MapInspectorHost.svelte` currently reserves large desktop bottom offsets because the old footer can wrap. Remove those desktop footer-specific offsets after the left rail lands.
 
-`MapInspectorHost.svelte` currently reserves large bottom offsets because the desktop `ControlDesk` can wrap into multiple rows. After management navigation moves to the left rail, remove the desktop offsets that exist only for that wrapping footer.
+Compact behavior remains bottom-sheet-like, but its bottom inset is derived from the same explicit compact dock height/clearance used by `ControlDesk`, not the old hardcoded `5rem` assumption.
 
-The host still owns inspector placement. `+page.svelte` does not gain per-inspector CSS.
+Add compact regression evidence that an inspector action and the dock do not overlap.
 
 ## Management workspace
 
 ### Shell
 
-`ManagementPanelHost.svelte` changes from a centered generic control-tower dialog into a larger parchment workspace matching the supplied panel reference.
-
-Desktop structure:
+`ManagementPanelHost.svelte` becomes the parchment workspace from the supplied panel mock:
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │ left icon rail │ panel header + day/cash + close           │
 │                ├────────────────────────────────────────────┤
-│                │                                            │
-│                │ existing active management panel content   │
-│                │                                            │
+│                │ active panel body                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-The existing backdrop, modal semantics, focus trap, close button, and Escape ownership remain.
+The backdrop, `aria-modal="true"`, focus trap, close behavior, and route-owned Escape priority remain.
 
-### In-place panel switching
+The rail uses the same `ManagementPanelMenuItem[]` and `.btn-icon`/`GameIcon` presentation as `ControlDesk`.
 
-The host receives the same management item list as `ControlDesk` plus one new callback:
+### In-place switching and HPA-568 override
+
+The route currently wraps the whole host in:
+
+```svelte
+{#key activeManagementPanel.id}
+  <ManagementPanelHost ... />
+{/key}
+```
+
+HPA-304 removes that route-level key. Keeping it would tear down/recreate the dialog/focus trap on every internal rail click and contradict in-place navigation.
+
+The shell stays mounted while `activeManagementPanelId !== null`. If a clean per-panel reset is still desirable, key **only the content/body region** inside `ManagementPanelHost`:
+
+```svelte
+<div class="workspace-body">
+  {#key panelId}
+    {#if panelId === 'dashboard'}
+      ...
+    {:else if ...}
+      ...
+    {/if}
+  {/key}
+</div>
+```
+
+The route continues to own `activeManagementPanelId`. The host receives:
 
 ```ts
 managementItems: ManagementPanelMenuItem[];
 onSelectPanel: (id: ManagementPanelId) => void;
 ```
 
-Clicking another rail icon updates the route-owned active panel ID and keeps the management workspace open.
+and calls the existing route `openManagementPanel` callback.
 
-`+page.svelte` remains the state owner. `ManagementPanelHost` does not introduce local navigation state.
+The current lazy `financeMetrics` derivation remains valid because it already derives metrics only when `activeManagementPanelId === 'finance'`; no host remount is required for that invariant.
+
+After the workspace is open, tests scope duplicate destination names to the management dialog (`dialog.getByRole(...)`) rather than page-level locators.
 
 ### Panel bodies
 
-The existing panel components remain mounted by the current explicit `if`/`else-if` switch. Do not introduce dynamic component registries.
+Keep the explicit `if`/`else-if` switch. No dynamic components.
 
-The shell change may normalize panel spacing and cards where necessary for visual coherence, but HPA-304 does not require rewriting every panel internally.
-
-### Dashboard
-
-`Scorecard.svelte` is the only panel body that intentionally receives a focused visual upgrade in this ticket. Its four existing score values become richer gauge/card summaries consistent with the mock.
-
-Do not fabricate time-series data or financial history for decorative charts. Existing Reports data remains in `ReportsPanel` unless a current value can be reused without changing domain/read-model ownership.
+`Scorecard.svelte` gets the focused body-level visual upgrade. Existing Reports/Finance/etc. data remains where it is; do not fabricate mock-only history.
 
 ## Responsive behavior
 
-### Desktop reference
+### Desktop
 
-Use two explicit verification sizes:
+Verify:
 
-- **1920×1080** — mock/reference composition;
-- **1280×800** — practical laptop regression target.
+- 1920×1080 reference composition;
+- 1280×800 practical laptop composition.
 
 At both sizes:
 
-- the map remains the dominant background surface;
-- top HUD controls do not collide with the left rail;
-- inspectors remain fully usable and do not sit underneath controls;
-- management workspace fits within the viewport and scrolls its content region when necessary.
+- map remains dominant;
+- top HUD and left rail do not collide;
+- inspector actions do not overlap the Control Desk;
+- management workspace fits the viewport and scrolls its content region as necessary.
 
-### Compact layout
+Use the shared E2E non-overlap helper for geometry checks.
 
-Below the existing compact breakpoint, preserving access is more important than matching desktop composition.
+### Compact
 
-The management rail may become a horizontally scrollable bottom dock or equivalent compact strip. Time controls remain reachable. Inspector positioning may remain bottom-sheet-like as today.
+Use real compact evidence rather than desktop-only assertions:
 
-Do not build a separate mobile architecture or duplicate action set.
+- component test at ~414px proves all management actions remain accessible in the dock;
+- inspector clearance is exercised at a compact route viewport after the dock/inspector geometry is updated.
+
+Do not create a separate mobile component tree or mobile state architecture.
 
 ## Accessibility and keyboard behavior
-
-The redesign changes visible composition, not interaction ownership.
 
 Requirements:
 
 - every icon-only button has a localized accessible name;
-- management buttons continue to expose their label and hotkey through `title`/tooltip treatment;
-- existing keyboard shortcuts still resolve through the route's central shortcut handler;
-- `TopBar` alerts keep current outside-click dismissal and live status behavior;
-- `GameMenu` keeps its focus trap and Escape behavior;
-- `ManagementPanelHost` remains `aria-modal="true"` and focus trapped;
-- map inspectors remain non-modal dialogs;
-- global Escape priority remains in `+page.svelte`;
-- `prefers-reduced-motion` behavior remains respected.
+- management buttons expose label + hotkey through `title`/tooltip treatment;
+- map buttons keep `route.mapEyebrow.*` accessible names;
+- existing keyboard shortcuts stay in the route's central handler;
+- alerts and menu keep current dismissal/focus behavior;
+- management workspace stays modal/focus trapped while switching bodies;
+- map inspectors stay non-modal;
+- global Escape priority stays in `+page.svelte`;
+- reduced-motion behavior remains respected.
 
-No component in this ticket adds a new global key listener.
-
-## Data flow
-
-The intended flow stays one-way:
-
-```text
-GameState / route derived state
-          │
-          ▼
-      +page.svelte
-       │   │   │
-       │   │   ├── TopBar / ControlDesk
-       │   ├────── MapInspectorHost
-       └────────── ManagementPanelHost
-                      │
-                      └── existing panel components
-
-user action
-   │
-   ▼
-existing callback
-   │
-   ▼
-+page.svelte command handler
-   │
-   ▼
-GameRouteController / pure game modules
-```
-
-No mutable game state is copied into a UI store or context.
+No component adds a global key listener.
 
 ## Testing strategy
 
 ### Component tests
 
-Update focused browser component specs for changed ownership and presentation contracts:
-
-- `TopBar.svelte.spec.ts` — direct map-view controls, existing alerts/menu/readouts;
-- `GameMenu.svelte.spec.ts` — map-view tabs removed, locale/menu-content behavior retained;
-- `ControlDesk.svelte.spec.ts` and `ControlDesk.timeControls.svelte.spec.ts` — icon navigation, hotkeys/accessibility, disabled states, rail build, pause/speed;
-- `TileInspector.svelte.spec.ts` — store art, vitals, attention, upgrade/details behavior;
-- existing industry/rail/logistics inspector specs — shell changes do not alter action callbacks;
-- `ManagementPanelHost.svelte.spec.ts` — rail, active state, in-place switch callback, modal/focus/close behavior, existing child composition;
-- `Scorecard.svelte` coverage — four current scores remain represented and accessible.
-
-Tests should assert behavior and accessible structure, not brittle CSS implementation details.
+- `GameIcon.svelte.spec.ts`: closed icon primitive, decorative SVG semantics.
+- `ControlDesk.svelte.spec.ts`: icon navigation, callbacks, hotkey titles, disabled states, rail build, and a real ~414px compact dock assertion.
+- `ControlDesk.timeControls.svelte.spec.ts`: pause/resume and numeric speed semantics unchanged.
+- `TopBar.svelte.spec.ts`: direct map controls with `route.mapEyebrow.*` names, active `aria-pressed`, day/cash, alerts/menu.
+- `GameMenu.svelte.spec.ts`: no map controls; locale/menu content/focus behavior retained.
+- inspector specs: art/shell changes preserve current callbacks and data.
+- `ManagementPanelHost.svelte.spec.ts`: shared rail, active state, `onSelectPanel`, dialog/focus/close behavior, concrete panel composition.
+- `Scorecard` coverage: four existing score values remain represented/accessibly named.
 
 ### Route E2E
 
-Use existing route E2E as the integration boundary. Add only assertions required to prove the new composition:
+`retail-sim.e2e.ts` remains the cross-feature integration boundary.
 
-- direct Retail / Industry / World switching from the top HUD;
-- management rail opens a panel;
-- management workspace switches panel in place;
-- an inspector remains interactable at desktop laptop size;
-- existing keyboard shortcut path still opens the expected destination.
+Update old helper contracts in the task that changes their UI owner:
 
-`retail-sim.e2e.ts` remains the primary cross-feature smoke. Existing time-flow E2E remains authoritative for automatic simulation timing; HPA-304 must not rewrite it just because controls move visually.
+- ControlDesk task: rectangle non-overlap helper + ninth-launcher test;
+- TopBar task: direct map-view helper/call sites + Escape assertions + logistics World navigation;
+- Inspector task: compact dock/inspector clearance;
+- Workspace task: internal rail switch scoped to the dialog and shell remains open.
+
+Final 1920/1280 checks build on those helpers; do not introduce parallel geometry helpers.
 
 ## Implementation surface
 
 ### Create
 
-Expected minimal new presentation files:
-
+- `src/lib/components/game/gameIcon.ts`
 - `src/lib/components/game/GameIcon.svelte`
-- `src/lib/components/game/gameIcon.ts` — `GameIconName` type only, if needed for cross-component typing.
-
-Do not add additional wrappers unless duplication becomes concrete during implementation.
+- `src/lib/components/game/GameIcon.svelte.spec.ts`
 
 ### Modify
 
-Primary files:
-
-- `src/lib/components/game/TopBar.svelte`
-- `src/lib/components/game/TopBar.svelte.spec.ts`
-- `src/lib/components/game/GameMenu.svelte`
-- `src/lib/components/game/GameMenu.svelte.spec.ts`
-- `src/lib/components/game/ControlDesk.svelte`
-- `src/lib/components/game/ControlDesk.svelte.spec.ts`
-- `src/lib/components/game/ControlDesk.timeControls.svelte.spec.ts`
-- `src/lib/components/game/TileInspector.svelte`
-- `src/lib/components/game/TileInspector.svelte.spec.ts`
-- focused industry/rail/logistics inspector files/specs as required by the shared shell changes;
-- `src/lib/components/game/Scorecard.svelte`
-- `src/routes/MapInspectorHost.svelte`
-- `src/routes/ManagementPanelHost.svelte`
-- `src/routes/ManagementPanelHost.svelte.spec.ts`
-- `src/routes/+page.svelte`
-- `src/routes/retail-sim.e2e.ts`
-- `src/lib/styles/frames.css`
+- `src/lib/components/game/TopBar.svelte` and spec;
+- `src/lib/components/game/GameMenu.svelte` and spec;
+- `src/lib/components/game/ControlDesk.svelte` and specs;
+- `src/lib/components/game/TileInspector.svelte` and spec;
+- focused industry/rail/logistics inspector files/specs where the shared shell changes them;
+- `src/lib/components/game/Scorecard.svelte` and focused coverage;
+- `src/routes/MapInspectorHost.svelte` and spec if needed for geometry/shell assertions;
+- `src/routes/ManagementPanelHost.svelte` and spec;
+- `src/routes/+page.svelte`;
+- `src/routes/retail-sim.e2e.ts`;
+- `src/lib/styles/frames.css`.
 
 Translation files change only if implementation discovers genuinely new user-facing copy. Reuse current labels wherever possible.
 
 ## Risks and controls
 
-### Icon-only controls reduce discoverability
+### Existing E2E encodes old chrome
 
-**Control:** keep localized accessible labels, hover/focus title/tooltips, and the existing shortcut cheat sheet. Build remains visually stronger than management destinations.
+**Control:** update the footer-geometry helper in the ControlDesk task and the menu-map helper/Escape assertions in the TopBar task before demanding a green route suite.
 
-### HUD rail collides with Phaser content
+### Compact dock covers inspector actions
 
-**Control:** the rail overlays the map presentation without changing snapshots or tile coordinates. Verify 1920×1080 and 1280×800; do not add game-world padding or mutate map generation.
+**Control:** one shared compact dock-height/clearance custom property plus a compact route non-overlap assertion.
 
-### Inspector geometry regresses at laptop widths
+### Workspace remount defeats in-place navigation
 
-**Control:** remove only bottom offsets tied to the old wrapping footer, then exercise the inspector at 1280×800 in E2E.
+**Control:** remove the route-level `{#key}`; key only the body if per-panel reset is required. Keep focus trap on the stable shell.
 
-### Management panel rewrite grows too large
+### Icon vocabulary drifts
 
-**Control:** revamp the shell first. Keep existing panel bodies and mutation contracts. Only `Scorecard` gets a deliberate body-level visual upgrade in this ticket.
+**Control:** one closed `GameIconName` union containing every icon mounted by Tasks 2–5. Speeds stay text. Alerts/menu use the same primitive.
 
 ### Mock-only data leaks into domain scope
 
-**Control:** render only values already exposed by current state/read models. Omit decorative trend/history values that do not exist.
+**Control:** render only values already exposed by current state/read models.
 
 ### Route becomes a UI detail owner again
 
-**Control:** route changes are limited to shared management item metadata and callback wiring. CSS stays with `TopBar`, `ControlDesk`, `MapInspectorHost`, and `ManagementPanelHost`.
+**Control:** route changes are limited to shared management metadata, callback wiring, and removal of the shell-remount key. CSS stays with presentation components/hosts.
 
 ## Non-goals
 
 - simulation, balance, economy, or event-rule changes;
 - persistence/save-schema changes or migrations;
 - Phaser map-renderer rewrite;
-- a UI framework, runtime theme selector, generic component registry, or global state store;
-- a new icon dependency;
+- UI framework, runtime theme selector, generic registry, or global state store;
+- external icon dependency;
 - fabricated chart history or cash trends;
 - full internal redesign of every management panel;
-- a separate mobile UI system;
+- separate mobile UI architecture;
 - backward-compatibility work.
 
 ## Acceptance criteria
 
 - [ ] Gameplay HUD follows the approved Vitrine/art-forward language at 1920×1080 and remains usable at 1280×800.
-- [ ] Retail / Industry / World switching is directly available from the top HUD and preserves existing map behavior.
+- [ ] Retail / Industry / World controls are directly available in `TopBar` with existing `route.mapEyebrow.*` accessible names.
+- [ ] Existing route E2E no longer opens the hamburger to switch maps or uses map-tab presence as menu-open state.
 - [ ] Build and every current management destination remain reachable with existing keyboard shortcuts.
-- [ ] Pause/resume, simulation speed, shortcut help, conditional rail build, alerts, menu, and localization still work.
-- [ ] Retail inspector is art-forward and uses only existing store state/read data.
+- [ ] Compact (~414px) ControlDesk still exposes management destinations.
+- [ ] Inspector actions do not overlap the desktop rail or compact dock using one shared non-overlap contract.
+- [ ] Pause/resume, numeric simulation speed, shortcut help, conditional rail build, alerts, menu, and localization still work.
+- [ ] Retail inspector is art-forward and uses only existing data.
 - [ ] Industry, rail, and logistics inspectors share the revised presentation language without behavior regressions.
-- [ ] Management overlay uses the parchment workspace + left icon rail and switches panels in place.
-- [ ] Existing management panel components remain the behavior owners; no replacement framework is introduced.
-- [ ] Existing parchment/brass tokens remain authoritative; no parallel theme system is added.
+- [ ] Management workspace uses the parchment shell + left rail and switches panels without remounting the shell/focus trap.
+- [ ] Route-level `{#key activeManagementPanel.id}` is removed; any key is limited to the panel body.
+- [ ] `ControlDesk` and `ManagementPanelHost` consume one shared `ManagementPanelMenuItem` type/list.
+- [ ] `.btn-icon` remains the brass medallion primitive; `.seal` remains the wax-red badge.
+- [ ] Existing panel components remain behavior owners; only `Scorecard` receives a deliberate body-level visual upgrade.
 - [ ] Accessible names, focus handling, Escape/backdrop close behavior, and keyboard shortcuts remain covered.
-- [ ] Targeted component tests and critical route E2E cover the new shell/navigation interactions.
-- [ ] `bun run check`, `bun run lint`, relevant focused unit/component tests, and targeted E2E pass.
+- [ ] `bun run check`, `bun run lint`, focused component tests, full unit tests, and targeted route E2E pass.
