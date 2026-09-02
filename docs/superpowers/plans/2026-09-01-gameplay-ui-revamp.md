@@ -160,7 +160,7 @@ Expected: FAIL because `GameIcon.svelte` and `gameNavigation.ts` do not exist.
 
 - [ ] **Step 2: Create `gameNavigation.ts` with an exhaustive path table**
 
-Create the file exactly around the closed union and shared menu type:
+Create:
 
 ```ts
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
@@ -218,17 +218,11 @@ export const ICON_PATHS: Record<GameIconName, readonly string[]> = {
   menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'],
   day: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 7v5l3 2'],
   cash: ['M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3Z', 'M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7', 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'],
-  close: ['M6 6l12 12', 'M18 6 6 18']
+  close: ['M6 6l12 12', 'M18 6L6 18']
 };
 ```
 
-Correct the final `close` path before committing: it must be `M18 6 6 18` only if SVG parses it as an implicit line; prefer the unambiguous form below in the implementation:
-
-```ts
-close: ['M6 6l12 12', 'M18 6L6 18']
-```
-
-The final source file must contain the unambiguous version. The `Record` annotation is the exhaustiveness guarantee.
+The `Record` annotation is the exhaustiveness guarantee.
 
 - [ ] **Step 3: Create `GameIcon.svelte` with base styling**
 
@@ -360,7 +354,7 @@ it('opens shortcut help from the icon launcher', async () => {
   render(ControlDesk, { ...baseProps(), onOpenShortcuts });
 
   const button = page.getByRole('button', { name: /shortcuts/i });
-  await expect.element(button.locator('svg[data-icon="shortcuts"]')).toBeVisible();
+  await expect.element(page.locator('svg[data-icon="shortcuts"]')).toBeVisible();
   await button.click();
   expect(onOpenShortcuts).toHaveBeenCalledOnce();
 });
@@ -569,11 +563,10 @@ Keep the existing 960×720 `store card Open Details stays reachable above contro
 
 - [ ] **Step 9: Rewrite the 960px hamburger-management fallback test as dock reachability**
 
-Replace the old expectation that `.manage` is hidden and Management appears in Menu with:
+Replace the old test with:
 
 ```ts
-it('keeps management panels reachable from the compact dock', async () => {
-  expect.assertions(3);
+test('keeps management panels reachable from the compact dock', async ({ page }) => {
   await page.setViewportSize({ width: 960, height: 720 });
   await page.goto('/');
   await expectRetailMapReady(page);
@@ -771,7 +764,7 @@ git commit -m "feat(ui): move map navigation into top hud"
 
 For `TileInspector.svelte.spec.ts`, retain current callback/disabled/detail assertions and add evidence that a selected store renders its existing art and its three existing vitals. Use existing store fixtures/read data; do not add a mock history model.
 
-For industry/rail/logistics specs, preserve all existing action/callback assertions. Add shell-level assertions only for markup that is actually introduced, such as the shared close control accessible name or a stable region heading.
+For industry/rail/logistics specs, preserve all existing action/callback assertions. Add shell-level assertions only for markup actually introduced, such as the shared close control accessible name or stable region heading.
 
 Run these four focused specs before markup changes and record the green characterization baseline.
 
@@ -829,12 +822,13 @@ Do not introduce another compact-height constant.
 
 - [ ] **Step 5: Add one compact route clearance journey at 760×800**
 
-Reuse the existing sandbox/store fixture and the Task 2 helper:
+Reuse `logisticsRouteNavigationGame()` so the fixture definitely contains a retail store:
 
 ```ts
-it('keeps retail inspector actions clear of the compact gameplay dock', async () => {
+test('keeps retail inspector actions clear of the compact gameplay dock', async ({ page }) => {
   await page.setViewportSize({ width: 760, height: 800 });
-  await page.goto('/');
+  await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
   const canvas = await expectRetailMapReady(page);
   const game = await readAutoSaveGame(page);
   const store = game.stores[0];
@@ -852,7 +846,7 @@ it('keeps retail inspector actions clear of the compact gameplay dock', async ()
 });
 ```
 
-If the default `/` fixture does not contain a store at that point in the current suite, use the same existing autosave fixture already used by the nearby inspector-clearance test; do not create a geometry-only game model.
+Do not create a geometry-only game fixture.
 
 - [ ] **Step 6: Verify Task 4**
 
@@ -924,7 +918,7 @@ it('delegates shared workspace navigation without owning panel state', async () 
   await expect.element(dashboard).toHaveAttribute('aria-pressed', 'true');
   await finance.click();
   expect(onSelectPanel).toHaveBeenCalledWith('finance');
-  await expect.element(finance.locator('svg[data-icon="finance"]')).toBeVisible();
+  await expect.element(page.locator('svg[data-icon="finance"]')).toBeVisible();
 });
 ```
 
