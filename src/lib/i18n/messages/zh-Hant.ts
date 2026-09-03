@@ -14,7 +14,13 @@ export const zhHant = {
 			one: '{count} 則警示',
 			other: '{count} 則警示'
 		},
-		alertsList: '警示列表'
+		alertsList: '警示列表',
+		cashTrend: {
+			up: '上升{percent}',
+			down: '下降{percent}',
+			upOnly: '上升',
+			downOnly: '下降'
+		}
 	},
 	gameMenu: {
 		menu: '選單',

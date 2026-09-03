@@ -14,7 +14,13 @@ export const en = {
 			one: '{count} alert',
 			other: '{count} alerts'
 		},
-		alertsList: 'Alerts list'
+		alertsList: 'Alerts list',
+		cashTrend: {
+			up: 'Up {percent}',
+			down: 'Down {percent}',
+			upOnly: 'Up',
+			downOnly: 'Down'
+		}
 	},
 	gameMenu: {
 		menu: 'Menu',

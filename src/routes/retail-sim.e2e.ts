@@ -2406,7 +2406,9 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 700 });
 	await page.goto('/');
 
-	await clickMapTile(page, 6, 6);
+	// The top HUD wraps onto two rows below ~600px viewports, so pick a tile
+	// below the wrapped HUD (column 6 rows 5-14 are all residential ground).
+	await clickMapTile(page, 6, 9);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 	await expectOverlayToCoverMap(page);
 	await expect(page.getByRole('button', { name: /open .* here/i })).toHaveCount(0);
@@ -2416,7 +2418,7 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 	const mapCanvas = await expectRetailMapReady(page);
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '0');
 	await chooseRetailBuildTool(page, /build boutique goods/i);
-	await clickCanvasTile(page, mapCanvas, 6, 6);
+	await clickCanvasTile(page, mapCanvas, 6, 9);
 	await expect(page.getByRole('dialog', { name: /confirm store opening/i })).toHaveCount(0);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 

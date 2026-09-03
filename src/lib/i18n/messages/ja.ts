@@ -14,7 +14,13 @@ export const ja = {
 			one: '通知 {count} 件',
 			other: '通知 {count} 件'
 		},
-		alertsList: '通知一覧'
+		alertsList: '通知一覧',
+		cashTrend: {
+			up: '{percent}増加',
+			down: '{percent}減少',
+			upOnly: '増加',
+			downOnly: '減少'
+		}
 	},
 	gameMenu: {
 		menu: 'メニュー',

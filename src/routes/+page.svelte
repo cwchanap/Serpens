@@ -687,6 +687,23 @@
 				? i18n.labels.worldCity(industryCity.id).name
 				: i18n.labels.worldCity(activeCity.id).name
 	);
+	// Day-over-day cash trend for the HUD delta chip. % change of cash between the
+	// last two reports; with fewer than two reports there is no baseline, so only
+	// the direction is reported (sign of the latest net cash change). No chip when
+	// nothing moved or no report exists yet.
+	let cashTrend = $derived.by((): { direction: 'up' | 'down'; percent: number | null } | null => {
+		const reports = game?.reports ?? [];
+		if (reports.length === 0) return null;
+		const latest = reports[reports.length - 1];
+		const prior = reports.length > 1 ? reports[reports.length - 2] : null;
+		const change = prior ? latest.cashAfter - prior.cashAfter : latest.netCashChange;
+		if (change === 0) return null;
+		const direction = change > 0 ? 'up' : 'down';
+		return {
+			direction,
+			percent: prior && prior.cashAfter > 0 ? Math.abs(change) / prior.cashAfter : null
+		};
+	});
 	let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
 		const currentGame: GameState | null = game;
 		return WORLD_CITY_CATALOG.map((city) =>
@@ -2903,6 +2920,7 @@
 			title={mapTitle}
 			day={game?.day ?? null}
 			cash={game?.cash ?? null}
+			{cashTrend}
 			{alerts}
 			{i18n}
 			{activeLocale}

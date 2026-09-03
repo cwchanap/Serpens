@@ -112,8 +112,8 @@ describe('TopBar', () => {
 		expect(onSelectView).toHaveBeenCalledWith('industry');
 	});
 
-	it('omits the day and cash readouts when they are null', async () => {
-		expect.assertions(2);
+	it('shows muted placeholders for day and cash when no game exists yet', async () => {
+		expect.assertions(4);
 		render(TopBar, {
 			eyebrow: 'Retail City Map',
 			title: 'Harbor City',
@@ -129,6 +129,74 @@ describe('TopBar', () => {
 		});
 		await expect.element(page.getByText(/day \d/i)).not.toBeInTheDocument();
 		await expect.element(page.getByText(/\$/)).not.toBeInTheDocument();
+		await expect.element(page.getByText(/^Day —$/)).toBeVisible();
+		await expect.element(page.getByTestId('cash-readout')).toHaveTextContent('—');
+	});
+
+	it('shows a brass medallion for the active map view', async () => {
+		expect.assertions(5);
+		render(TopBar, { ...baseProps(), activeMapView: 'retail' });
+		const medallionIcon = (icon: string) => {
+			const nodes = document.querySelectorAll('.location .medallion');
+			const node = nodes[nodes.length - 1]?.querySelector(`svg[data-icon="${icon}"]`);
+			return page.elementLocator(node as HTMLElement);
+		};
+		const medallion = () => {
+			const nodes = document.querySelectorAll('.location .medallion');
+			return page.elementLocator(nodes[nodes.length - 1] as HTMLElement);
+		};
+		await expect.element(medallion()).toBeVisible();
+		await expect.element(medallion()).toHaveAttribute('aria-hidden', 'true');
+		await expect.element(medallionIcon('retail')).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
+
+		render(TopBar, { ...baseProps(), activeMapView: 'industry' });
+		await expect.element(medallionIcon('industry')).toBeVisible();
+	});
+
+	it('shows a moss up-arrow cash trend chip with a one-decimal percent', async () => {
+		expect.assertions(3);
+		render(TopBar, {
+			...baseProps(),
+			cash: 248310,
+			cashTrend: { direction: 'up', percent: 0.062 }
+		});
+		const chip = page.getByTestId('cash-trend');
+		await expect.element(chip).toBeVisible();
+		await expect.element(chip).toHaveAttribute('aria-label', 'Up 6.2%');
+		await expect.element(chip).toHaveTextContent('▲ 6.2%');
+	});
+
+	it('shows a wax-red down-arrow cash trend chip when cash fell', async () => {
+		expect.assertions(3);
+		render(TopBar, {
+			...baseProps(),
+			cash: 100000,
+			cashTrend: { direction: 'down', percent: 0.034 }
+		});
+		const chip = page.getByTestId('cash-trend');
+		await expect.element(chip).toBeVisible();
+		await expect.element(chip).toHaveAttribute('aria-label', 'Down 3.4%');
+		await expect.element(chip).toHaveTextContent('▼ 3.4%');
+	});
+
+	it('shows a sign-only chip when the trend has no baseline report', async () => {
+		expect.assertions(3);
+		render(TopBar, {
+			...baseProps(),
+			cashTrend: { direction: 'down', percent: null }
+		});
+		const chip = page.getByTestId('cash-trend');
+		await expect.element(chip).toBeVisible();
+		await expect.element(chip).toHaveAttribute('aria-label', 'Down');
+		await expect.element(chip).toHaveTextContent('▼');
+	});
+
+	it('omits the cash trend chip when no trend is known', async () => {
+		expect.assertions(2);
+		render(TopBar, { ...baseProps(), cashTrend: null });
+		await expect.element(page.getByTestId('cash-trend')).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('cash-readout')).toBeVisible();
 	});
 
 	it('shows a "No alerts" message when the popover is opened with zero alerts', async () => {

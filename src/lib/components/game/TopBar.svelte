@@ -8,11 +8,18 @@
 	import GameIcon from './GameIcon.svelte';
 	import GameMenu from './GameMenu.svelte';
 
+	interface CashTrend {
+		direction: 'up' | 'down';
+		/** Cash change as a ratio (e.g. 0.062); null when only the direction is known. */
+		percent: number | null;
+	}
+
 	interface Props {
 		eyebrow: string;
 		title: string;
 		day: number | null;
 		cash: number | null;
+		cashTrend?: CashTrend | null;
 		alerts: LocalizedGameAlert[];
 		i18n: I18nBundle;
 		activeLocale: SupportedLocale;
@@ -30,6 +37,7 @@
 		title,
 		day,
 		cash,
+		cashTrend = null,
 		alerts,
 		i18n,
 		activeLocale,
@@ -79,8 +87,13 @@
 
 <header class="top-bar" aria-label={i18n.t('topBar.statusBar')}>
 	<div class="location plaque">
-		<p class="eyebrow">{eyebrow}</p>
-		<h1>{title}</h1>
+		<span class="medallion" aria-hidden="true">
+			<GameIcon name={activeMapView} />
+		</span>
+		<div>
+			<p class="eyebrow">{eyebrow}</p>
+			<h1>{title}</h1>
+		</div>
 	</div>
 
 	<div class="readouts plaque">
@@ -98,20 +111,45 @@
 				</button>
 			{/each}
 		</div>
-		{#if day !== null}
-			<span class="ticker">
-				<GameIcon name="day" />
+		<span class="ticker">
+			<GameIcon name="day" />
+			{#if day !== null}
 				<span aria-label={i18n.t('topBar.day', { day: i18n.format.integer(day) })}>
 					{i18n.t('topBar.day', { day: i18n.format.integer(day) })}
 				</span>
-			</span>
-		{/if}
-		{#if cash !== null}
-			<span class="ticker" data-testid="cash-readout">
-				<GameIcon name="cash" />
+			{:else}
+				<span class="placeholder">{i18n.t('topBar.day', { day: '—' })}</span>
+			{/if}
+		</span>
+		<span class="ticker" data-testid="cash-readout">
+			<GameIcon name="cash" />
+			{#if cash !== null}
 				<span aria-label={i18n.t('topBar.cash')}>{i18n.format.currency(cash)}</span>
-			</span>
-		{/if}
+			{:else}
+				<span class="placeholder" aria-label={i18n.t('topBar.cash')}>—</span>
+			{/if}
+			{#if cashTrend}
+				<span
+					class="trend-chip"
+					class:up={cashTrend.direction === 'up'}
+					class:down={cashTrend.direction === 'down'}
+					data-testid="cash-trend"
+					aria-label={cashTrend.percent !== null
+						? i18n.t(
+								cashTrend.direction === 'up' ? 'topBar.cashTrend.up' : 'topBar.cashTrend.down',
+								{ percent: i18n.format.percent1(cashTrend.percent) }
+							)
+						: i18n.t(
+								cashTrend.direction === 'up'
+									? 'topBar.cashTrend.upOnly'
+									: 'topBar.cashTrend.downOnly'
+							)}
+				>
+					{cashTrend.direction === 'up' ? '▲' : '▼'}
+					{cashTrend.percent !== null ? i18n.format.percent1(cashTrend.percent) : ''}
+				</span>
+			{/if}
+		</span>
 
 		<div class="alerts" {@attach alertsOpen && dismissAlertsOnOutsidePointer}>
 			<button
@@ -159,9 +197,10 @@
 		right: 0.75rem;
 		z-index: 30;
 		display: flex;
+		flex-wrap: wrap;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: 1rem;
+		gap: 0.5rem 1rem;
 		pointer-events: none;
 	}
 
@@ -172,6 +211,27 @@
 
 	.location {
 		pointer-events: none;
+		display: flex;
+		align-items: center;
+		gap: 0.7rem;
+	}
+
+	.medallion {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		color: var(--walnut-900);
+		background: radial-gradient(
+			circle at 32% 28%,
+			var(--brass-100) 0%,
+			var(--brass-500) 62%,
+			var(--brass-700) 100%
+		);
+		border: 1.5px solid var(--brass-700);
+		border-radius: 999px;
+		box-shadow: inset 0 0 0 2px var(--brass-100);
 	}
 
 	.location h1 {
@@ -203,6 +263,31 @@
 		font-size: 0.9rem;
 		color: var(--ink-700);
 		white-space: nowrap;
+	}
+
+	.placeholder {
+		color: var(--ink-400);
+	}
+
+	.trend-chip {
+		padding: 0.12rem 0.45rem;
+		border: 1px solid var(--ink-900);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-variant-numeric: tabular-nums lining-nums;
+		line-height: 1.1;
+		color: var(--paper-50);
+	}
+
+	.trend-chip.up {
+		background: var(--moss);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
+	}
+
+	.trend-chip.down {
+		background: var(--wax-red);
+		box-shadow: inset 0 0 0 1px var(--wax-red-2);
 	}
 
 	.map-controls {
