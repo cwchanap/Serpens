@@ -140,7 +140,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.6rem;
+		gap: 0.625rem;
 		overflow-y: auto;
 	}
 
@@ -154,7 +154,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.6rem;
+		gap: 0.625rem;
 		flex: none;
 	}
 

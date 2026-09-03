@@ -232,11 +232,6 @@
 		white-space: nowrap;
 	}
 
-	.alerts-bell {
-		width: 2.4rem;
-		height: 2.4rem;
-	}
-
 	.alert-count {
 		position: absolute;
 		top: -0.35rem;
