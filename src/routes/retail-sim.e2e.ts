@@ -1208,11 +1208,12 @@ async function expectMapToFillViewport(page: Page) {
 	expect(box.height).toBeGreaterThanOrEqual(viewport.height - 2);
 }
 
-async function openManagementPanel(page: Page, panelName: string | RegExp): Promise<Locator> {
-	await page.getByRole('button', { name: panelName }).click();
-	const panel = page.getByRole('dialog', { name: panelName });
-	await expect(panel).toBeVisible();
-	return panel;
+async function openManagementPanel(page: Page, panelName: RegExp): Promise<Locator> {
+	const desk = page.getByLabel('Control desk');
+	await desk.getByRole('button', { name: panelName }).click();
+	const dialog = page.getByRole('dialog', { name: panelName });
+	await expect(dialog).toBeVisible();
+	return dialog;
 }
 
 async function openSaves(page: Page) {

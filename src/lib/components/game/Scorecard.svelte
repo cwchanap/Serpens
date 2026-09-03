@@ -27,19 +27,21 @@
 			{@const value = scorecard[item.key]}
 			<article class="gauge-card">
 				<h3>{label}</h3>
-				<svg class="dial" viewBox="0 0 72 46" aria-hidden="true">
-					<path class="dial-track" d="M8 40a28 28 0 0 1 56 0" />
-					{#if value > 0}
-						<path
-							class="dial-value"
-							style:stroke={gaugeColor(value)}
-							d="M8 40a28 28 0 0 1 56 0"
-							pathLength="100"
-							stroke-dasharray={`${value} 100`}
-						/>
-					{/if}
-					<text x="36" y="40" text-anchor="middle">{value}</text>
-				</svg>
+				<div class="dial-wrap">
+					<svg class="dial" viewBox="0 0 72 46" aria-hidden="true">
+						<path class="dial-track" d="M8 40a28 28 0 0 1 56 0" />
+						{#if value > 0}
+							<path
+								class="dial-value"
+								style:stroke={gaugeColor(value)}
+								d="M8 40a28 28 0 0 1 56 0"
+								pathLength="100"
+								stroke-dasharray={`${value} 100`}
+							/>
+						{/if}
+					</svg>
+					<strong class="dial-value-text">{i18n.format.integer(value)}</strong>
+				</div>
 				<meter aria-label={label} min="0" max="100" {value}>{value}</meter>
 			</article>
 		{/each}
@@ -100,6 +102,24 @@
 		stroke-linecap: round;
 	}
 
+	.dial-wrap {
+		position: relative;
+		width: 6.25rem;
+	}
+
+	.dial-value-text {
+		position: absolute;
+		inset-inline: 0;
+		bottom: 0.5rem;
+		text-align: center;
+		line-height: 1;
+		color: var(--ink-700);
+		font-family: var(--font-mono);
+		font-size: 0.95rem;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums lining-nums;
+	}
+
 	.dial-track {
 		stroke: var(--paper-200);
 		stroke-width: 7;
@@ -107,13 +127,6 @@
 
 	.dial-value {
 		stroke-width: 7;
-	}
-
-	.dial text {
-		fill: var(--ink-700);
-		font-family: var(--font-mono);
-		font-size: 15px;
-		font-weight: 700;
 	}
 
 	meter {
