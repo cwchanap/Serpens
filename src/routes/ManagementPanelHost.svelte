@@ -281,7 +281,9 @@
 									>
 								</article>
 							</div>
-							<Scorecard {i18n} scorecard={panelGame.scorecard} />
+							<div class="workspace-scorecard">
+								<Scorecard {i18n} scorecard={panelGame.scorecard} />
+							</div>
 						</div>
 					{:else if panelId === 'policies'}
 						<PolicyPanel
@@ -441,6 +443,7 @@
 		position: relative;
 		z-index: 1;
 		width: min(74rem, calc(100vw - 2rem));
+		height: calc(100vh - 2rem);
 		max-height: calc(100vh - 2rem);
 		display: flex;
 		flex-direction: column;
@@ -452,6 +455,7 @@
 	.workspace-grid {
 		display: grid;
 		grid-template-columns: 5rem minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr);
 		gap: 0.75rem;
 		flex: 1 1 auto;
 		min-height: 0;
@@ -482,15 +486,16 @@
 			var(--shadow-paper);
 	}
 
-	.workspace-rail .btn-icon.active {
-		background: var(--paper-200);
-	}
-
+	/* Active rail tab: the mock's clearly-filled brass/gold stamp (same fill +
+	 * ink border + inset-ring family as .btn-icon-primary, in brass). */
 	.workspace-rail .btn-icon.rail-stamp.active {
+		background: var(--brass-500);
+		border-color: var(--ink-900);
+		color: var(--ink-900);
 		border-radius: 6px;
 		box-shadow:
 			inset 0 0 0 1px var(--paper-100),
-			inset 0 0 0 2px var(--brass-500),
+			inset 0 0 0 2px var(--ink-700),
 			var(--shadow-paper);
 	}
 
@@ -502,22 +507,34 @@
 	}
 
 	.workspace-dashboard {
+		display: flex;
+		flex-direction: column;
+		gap: 1.1rem;
+		min-height: 100%;
+	}
+
+	/* Scorecard stretch wrapper: a grid row so the child panel fills the
+	   dashboard's leftover height and its gauge cards grow with it. */
+	.workspace-scorecard {
+		flex: 1 1 auto;
+		min-height: 0;
 		display: grid;
-		gap: 1rem;
+		grid-template-rows: minmax(0, 1fr);
 	}
 
 	.summary-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
-		gap: 0.7rem;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+		gap: 1rem;
 	}
 
 	.summary-card {
 		display: grid;
 		justify-items: center;
-		gap: 0.5rem;
+		align-content: center;
+		gap: 0.6rem;
 		min-width: 0;
-		padding: 0.8rem 0.6rem 0.7rem;
+		padding: 1.3rem 0.9rem 1.2rem;
 		border: 1px solid var(--brass-300);
 		border-radius: 2px;
 		background: var(--paper-50);
@@ -531,15 +548,15 @@
 		margin: 0;
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.66rem;
+		font-size: 0.74rem;
 		font-weight: 700;
-		letter-spacing: 0.14em;
+		letter-spacing: 0.16em;
 		text-transform: uppercase;
 		text-align: center;
 	}
 
 	.summary-thumb {
-		width: 4.5rem;
+		width: 6.25rem;
 		height: auto;
 		border: 1px solid var(--brass-500);
 		border-radius: 2px;
@@ -548,10 +565,11 @@
 	.summary-value {
 		color: var(--ink-700);
 		font-family: var(--font-mono);
-		font-size: 1.3rem;
+		font-size: 1.9rem;
 		font-weight: 700;
 		font-variant-numeric: tabular-nums lining-nums;
 		text-align: center;
+		overflow-wrap: anywhere;
 	}
 
 	.decisions-surfaces,

@@ -128,6 +128,12 @@
 	</div>
 </aside>
 
+<!-- Compact-mode horizontal-scroll affordance: a fixed paper fade over the
+	right edge of the full-bleed bottom dock (pointer-events none), so a
+	clipped tail control reads as "more content" instead of a dead cut.
+	Rendered only at <=980px by the media query below. -->
+<div class="dock-edge-fade" aria-hidden="true"></div>
+
 <style>
 	.control-desk {
 		position: fixed;
@@ -197,6 +203,26 @@
 		background: var(--paper-200);
 	}
 
+	/* Paper fade pinned over the dock's right edge: starts transparent past
+	   the end-padding zone so fully scrolled content clears it, and ghosts
+	   whatever is clipped under the edge while there is more to scroll. */
+	.dock-edge-fade {
+		position: fixed;
+		right: 0;
+		bottom: 0;
+		z-index: 26;
+		width: 3rem;
+		height: calc(var(--control-desk-compact-height) - 1px);
+		display: none;
+		pointer-events: none;
+		background: linear-gradient(
+			to left,
+			transparent,
+			color-mix(in srgb, var(--paper-50) 74%, transparent) 62%,
+			var(--paper-50)
+		);
+	}
+
 	@media (max-width: 980px) {
 		.control-desk {
 			top: auto;
@@ -204,11 +230,17 @@
 			bottom: 0;
 			width: auto;
 			min-height: var(--control-desk-compact-height);
+			/* End padding keeps the last control clear of the fade at full scroll. */
 			padding: 0.75rem;
+			padding-right: 3.25rem;
 			overflow-x: auto;
 			overflow-y: hidden;
 			flex-direction: row;
 			align-items: center;
+		}
+
+		.dock-edge-fade {
+			display: block;
 		}
 
 		.cluster,

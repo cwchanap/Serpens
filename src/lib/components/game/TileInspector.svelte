@@ -157,7 +157,7 @@
 	{:else}
 		<div class="heading">
 			<div>
-				<p>{i18n.labels.neighborhood(tile.neighborhood)}</p>
+				{#if !store}<p>{i18n.labels.neighborhood(tile.neighborhood)}</p>{/if}
 				<h2>{i18n.t('tileInspector.tileHeading', { x: tile.x, y: tile.y })}</h2>
 			</div>
 			<span>{tileLabel}</span>
@@ -177,6 +177,7 @@
 							decoding="async"
 						/>
 						<figcaption class="store-identity">
+							{#if tile}<p class="district">{i18n.labels.neighborhood(tile.neighborhood)}</p>{/if}
 							<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
 							{@render levelPipRow()}
 							<p class="location">{formatStoreLocation(store.location, i18n)}</p>
@@ -184,6 +185,7 @@
 					</figure>
 				{:else}
 					<div class="store-identity plain">
+						{#if tile}<p class="district">{i18n.labels.neighborhood(tile.neighborhood)}</p>{/if}
 						<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
 						{@render levelPipRow()}
 						<p class="location">{formatStoreLocation(store.location, i18n)}</p>
@@ -517,17 +519,17 @@
 
 	.gauges {
 		grid-template-columns: repeat(3, 1fr);
-		gap: 0.5rem;
+		gap: 0.6rem;
 	}
 
 	.gauge {
 		display: grid;
 		justify-items: center;
-		gap: 0.35rem;
+		gap: 0.4rem;
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
 		background: var(--paper-50);
-		padding: 0.55rem 0.35rem 0.5rem;
+		padding: 0.7rem 0.4rem 0.65rem;
 		text-align: center;
 	}
 
@@ -535,9 +537,9 @@
 		order: 2;
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.6rem;
+		font-size: 0.68rem;
 		font-weight: 700;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.12em;
 		text-transform: uppercase;
 	}
 
@@ -545,10 +547,10 @@
 		position: relative;
 		display: grid;
 		place-items: center;
-		width: 4.3rem;
-		height: 4.3rem;
+		width: 4.9rem;
+		height: 4.9rem;
 		margin: 0;
-		border: 1.5px solid var(--brass-500);
+		border: 2px solid var(--brass-500);
 		border-radius: 999px;
 		background: var(--paper-100);
 		box-shadow: inset 0 0 0 2px var(--paper-50);
@@ -564,7 +566,7 @@
 	.medallion .track,
 	.medallion .arc {
 		fill: none;
-		stroke-width: 3.5;
+		stroke-width: 6;
 		stroke-linecap: round;
 	}
 
@@ -577,7 +579,7 @@
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		font-weight: 700;
-		font-size: 0.82rem;
+		font-size: 1.08rem;
 		color: var(--ink-700);
 	}
 
@@ -585,7 +587,7 @@
 	.medallion.dial .value {
 		align-self: end;
 		justify-self: center;
-		margin-bottom: 0.55rem;
+		margin-bottom: 0.62rem;
 	}
 
 	/* --- Wax-red attention band ----------------------------------------------- */
@@ -634,10 +636,13 @@
 		position: relative;
 		margin: 0;
 		height: 220px;
-		border: 1px solid var(--paper-edge);
+		border: 1px solid var(--ink-700);
 		border-radius: 2px;
-		background: var(--paper-50);
+		background: radial-gradient(130% 90% at 50% 8%, var(--walnut-700) 0%, var(--walnut-900) 82%);
 		overflow: hidden;
+		box-shadow:
+			inset 0 0 0 2px var(--walnut-800),
+			inset 0 -3rem 3.5rem rgba(10, 7, 3, 0.38);
 	}
 
 	.store-art img {
@@ -646,6 +651,16 @@
 		object-fit: cover;
 	}
 
+	.store-art::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		background: linear-gradient(to bottom, rgba(16, 12, 7, 0.26), transparent 42%);
+	}
+
+	/* Dark ink hero plate: the identity reads pale-on-dark over the art
+	   instead of the old pale paper banner. */
 	.store-identity {
 		position: absolute;
 		right: 0;
@@ -654,18 +669,44 @@
 		display: grid;
 		grid-template-columns: 1fr;
 		justify-items: start;
-		gap: 0.1rem;
-		padding: 1.6rem 0.75rem 0.6rem;
-		background: linear-gradient(to top, var(--paper-100) 55%, transparent);
+		gap: 0.14rem;
+		padding: 2.6rem 0.85rem 0.72rem;
+		background: linear-gradient(
+			to top,
+			rgba(14, 10, 5, 0.96) 24%,
+			rgba(14, 10, 5, 0.78) 52%,
+			rgba(14, 10, 5, 0) 100%
+		);
+	}
+
+	.district {
+		margin: 0;
+		color: var(--brass-300);
+		font-family: var(--font-ui);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.24em;
+		text-transform: uppercase;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+	}
+
+	.store-identity h3 {
+		color: var(--paper-50);
+		font-size: 1.5rem;
+		line-height: 1.04;
+		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 	}
 
 	.store-identity .pips {
-		grid-row: 2;
+		margin-top: 0.24rem;
 	}
 
 	.store-identity .location {
-		grid-row: 3;
-		margin-top: 0.15rem;
+		margin-top: 0.2rem;
+		color: var(--paper-200);
+		font-family: var(--font-body);
+		font-size: 0.84rem;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 	}
 
 	.store-identity.plain {
@@ -674,17 +715,33 @@
 		background: none;
 	}
 
+	.store-identity.plain h3 {
+		color: var(--ink-700);
+		font-size: 1.15rem;
+		text-shadow: none;
+	}
+
+	.store-identity.plain .district {
+		color: var(--brass-700);
+		text-shadow: none;
+	}
+
+	.store-identity.plain .location {
+		color: var(--ink-500);
+		text-shadow: none;
+	}
+
 	.pips {
 		display: flex;
-		gap: 0.28rem;
+		gap: 0.3rem;
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
 
 	.pip {
-		width: 0.5rem;
-		height: 0.5rem;
+		width: 0.58rem;
+		height: 0.58rem;
 		border: 1px solid var(--brass-700);
 		border-radius: 999px;
 		background: var(--paper-100);
@@ -692,6 +749,21 @@
 
 	.pip.filled {
 		background: var(--brass-500);
+	}
+
+	/* On the dark hero the pips switch to the pale palette (larger dots,
+	   bright gold fill vs. open dark ring) so the level row stays legible. */
+	.store-identity:not(.plain) .pip {
+		width: 0.68rem;
+		height: 0.68rem;
+		border-color: var(--paper-300);
+		background: transparent;
+		box-shadow: inset 0 0 0 1px rgba(251, 243, 220, 0.18);
+	}
+
+	.store-identity:not(.plain) .pip.filled {
+		background: var(--brass-300);
+		border-color: var(--brass-300);
 	}
 
 	/* --- Level + actions ------------------------------------------------------- */

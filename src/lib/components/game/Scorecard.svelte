@@ -51,10 +51,12 @@
 <style>
 	.panel {
 		padding: 1.1rem 1.2rem;
+		display: flex;
+		flex-direction: column;
 	}
 
 	h2 {
-		margin: 0 0 0.75rem;
+		margin: 0 0 0.9rem;
 		font-family: var(--font-display);
 		font-size: 1.1rem;
 		font-weight: 400;
@@ -64,16 +66,20 @@
 	.score-grid {
 		display: grid;
 		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 1rem;
+		grid-template-rows: minmax(0, 1fr);
+		flex: 1 1 auto;
+		gap: 1.4rem;
 	}
 
 	.gauge-card {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.55rem;
+		justify-content: center;
+		gap: 0.7rem;
 		min-width: 0;
-		padding: 0.8rem 0.6rem 0.65rem;
+		min-height: 0;
+		padding: 1.3rem 0.75rem 1.1rem;
 		border: 1px solid var(--brass-300);
 		border-radius: 2px;
 		background: var(--paper-50);
@@ -87,16 +93,16 @@
 		margin: 0;
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.68rem;
+		font-size: 0.74rem;
 		font-weight: 700;
-		letter-spacing: 0.14em;
+		letter-spacing: 0.16em;
 		text-transform: uppercase;
 		text-align: center;
 	}
 
 	.dial {
 		display: block;
-		width: 6.25rem;
+		width: min(11rem, 100%);
 		height: auto;
 		fill: none;
 		stroke-linecap: round;
@@ -104,40 +110,54 @@
 
 	.dial-wrap {
 		position: relative;
-		width: 6.25rem;
+		width: min(11rem, 100%);
+		flex: none;
 	}
 
 	.dial-value-text {
 		position: absolute;
 		inset-inline: 0;
-		bottom: 0.5rem;
+		bottom: 0.85rem;
 		text-align: center;
 		line-height: 1;
 		color: var(--ink-700);
 		font-family: var(--font-mono);
-		font-size: 0.95rem;
+		font-size: 1.5rem;
 		font-weight: 700;
 		font-variant-numeric: tabular-nums lining-nums;
 	}
 
 	.dial-track {
 		stroke: var(--paper-200);
-		stroke-width: 7;
+		stroke-width: 9;
 	}
 
 	.dial-value {
-		stroke-width: 7;
+		stroke-width: 9;
 	}
 
 	meter {
-		width: 100%;
-		height: 0.45rem;
+		width: min(9rem, 100%);
+		height: 0.5rem;
 		border-radius: 0;
+		flex: none;
 	}
 
 	@media (max-width: 760px) {
 		.score-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	@media (max-width: 560px) {
+		.dial,
+		.dial-wrap {
+			width: min(8rem, 100%);
+		}
+
+		.dial-value-text {
+			font-size: 1.1rem;
+			bottom: 0.5rem;
 		}
 	}
 </style>

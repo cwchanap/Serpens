@@ -410,11 +410,14 @@
 								? `${i18n.format.apr(offer.annualInterestRateBps)} ${i18n.t('financePanel.ui.apr')}`
 								: '—'}</span
 						>
-						<span class="term-credit"
-							>{live
-								? `${i18n.t('financePanel.ui.availableCredit')} ${i18n.format.currency(offer.availableCredit)}`
-								: '—'}</span
-						>
+						<span class="term-credit">
+							{#if live}
+								<span class="term-credit-label">{i18n.t('financePanel.ui.availableCredit')}</span
+								><strong class="term-credit-value"
+									>{i18n.format.currency(offer.availableCredit)}</strong
+								>
+							{:else}<span class="placeholder">—</span>{/if}
+						</span>
 					</button>
 				{/each}
 			</div>
@@ -738,6 +741,25 @@
 		grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
 	}
 
+	/* Label/value cells: never run a small-caps label into its figure.
+	   Every label/value pair stacks (label row above value row) and long
+	   labels wrap inside their cell instead of colliding with the value. */
+	.credit-grid > div {
+		display: grid;
+		align-content: start;
+		gap: 0.22rem;
+		min-width: 0;
+	}
+
+	.credit-grid > div > span,
+	.stat-card > span,
+	.health-tile > span,
+	.ledger-cell > span,
+	.term-credit-label {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+
 	/* Mock dossier: stat cards on top, term offers left, loan register right. */
 	.dossier {
 		display: grid;
@@ -859,27 +881,42 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	.term-card.active {
-		background: var(--ink-700);
-		border-color: var(--ink-900);
-		color: var(--paper-50);
-	}
-
-	.term-card.active .term-rate {
-		color: var(--paper-200);
-	}
-
 	.term-credit {
+		display: grid;
+		min-width: 0;
+		gap: 0.12rem;
 		letter-spacing: normal;
 		text-transform: none;
-		color: var(--ink-700);
-		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		font-variant-numeric: tabular-nums;
 	}
 
-	.term-card.active .term-credit {
-		color: var(--paper-200);
+	.term-credit-label {
+		font-family: var(--font-ui);
+		font-size: 0.58rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--brass-700);
+	}
+
+	.term-credit-value {
+		color: var(--ink-700);
+		font-size: 0.72rem;
+	}
+
+	/* Selected offer = the mock's filled brass/gold emphasis (same fill +
+	   ink border + inset-ring family as .btn-icon-primary, in brass). */
+	.term-card.active {
+		background: var(--brass-500);
+		border-color: var(--ink-900);
+		color: var(--ink-900);
+		box-shadow: inset 0 0 0 1px var(--paper-100);
+	}
+
+	.term-card.active .term-name,
+	.term-card.active .term-rate,
+	.term-card.active .term-credit-label,
+	.term-card.active .term-credit-value {
+		color: var(--ink-900);
 	}
 
 	.borrow-row {
