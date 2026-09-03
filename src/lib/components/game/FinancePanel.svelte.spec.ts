@@ -33,6 +33,7 @@ function renderPanel(
 		game: GameState;
 		i18n: I18nBundle;
 		mutationPending: boolean;
+		live: boolean;
 		focusedLoanId: string | null;
 		onBorrow: (amount: number, term: LoanTermDays) => Promise<GameRouteCommitResult>;
 		onRepay: (id: string, amount: number) => Promise<GameRouteCommitResult>;
@@ -66,7 +67,7 @@ describe('FinancePanel', () => {
 			'Next payment',
 			'Debt-service coverage',
 			'Cash runway',
-			'84-day available credit',
+			'Available credit',
 			'Operating cash flow',
 			'Principal headroom',
 			'Service headroom',
@@ -390,6 +391,39 @@ describe('FinancePanel', () => {
 			.toBeVisible();
 	});
 
+	it('shows the real per-term available credit on each offer card', async () => {
+		expect.assertions(3);
+		const props = renderPanel();
+		for (const term of [28, 56, 84] as const) {
+			const card = page.getByRole('button', {
+				name: props.i18n.labels.loanTerm(term),
+				exact: true
+			});
+			const expected = props.i18n.format.currency(assessCredit(props.game, term).availableCredit);
+			await expect.element(card).toHaveTextContent(expected);
+		}
+	});
+
+	it('renders muted placeholders instead of synthetic figures before a game exists', async () => {
+		renderPanel({ game: creditworthyGame(), live: false });
+
+		await vi.waitFor(() => {
+			const statCards = [...document.querySelectorAll<HTMLElement>('.stat-card')];
+			expect(statCards).toHaveLength(4);
+			expect(statCards.every((card) => card.textContent?.includes('—'))).toBe(true);
+			expect(
+				[...document.querySelectorAll<HTMLElement>('.term-card')].every((card) =>
+					card.textContent?.includes('—')
+				)
+			).toBe(true);
+		});
+		const surfaces = [
+			...document.querySelectorAll<HTMLElement>('.stat-card, .term-card, .credit-grid')
+		];
+		expect(surfaces.every((surface) => !/\$[0-9]/.test(surface.textContent ?? ''))).toBe(true);
+		await expect.element(page.getByText('No report yet')).not.toBeInTheDocument();
+	});
+
 	it('renders each loan card with a ledger strip of payment facts', async () => {
 		const game = gameWithLoan();
 		renderPanel({ game });
@@ -418,9 +452,7 @@ describe('FinancePanel', () => {
 			Number.parseFloat(bar.style.height)
 		);
 		expect(
-			heights.every(
-				(height, index) => height === Math.max(8, Math.round((series[index]! / peak) * 100))
-			)
+			heights.every((height, index) => height === Math.round((series[index]! / peak) * 100))
 		).toBe(true);
 	});
 

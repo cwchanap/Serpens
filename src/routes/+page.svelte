@@ -693,21 +693,21 @@
 				? i18n.labels.worldCity(industryCity.id).name
 				: i18n.labels.worldCity(activeCity.id).name
 	);
-	// Day-over-day cash trend for the HUD delta chip. % change of cash between the
-	// last two reports; with fewer than two reports there is no baseline, so only
-	// the direction is reported (sign of the latest net cash change). No chip when
-	// nothing moved or no report exists yet.
+	// Day-over-day cash trend for the HUD delta chip. Direction and magnitude
+	// come from the latest report's own net cash change, so the first report
+	// already yields a percent against its opening cash (cashBefore). When the
+	// percent is not meaningful (no positive opening cash) only the sign chip is
+	// shown; no chip before the first report or when cash did not move.
 	let cashTrend = $derived.by((): { direction: 'up' | 'down'; percent: number | null } | null => {
 		const reports = game?.reports ?? [];
-		if (reports.length === 0) return null;
 		const latest = reports[reports.length - 1];
-		const prior = reports.length > 1 ? reports[reports.length - 2] : null;
-		const change = prior ? latest.cashAfter - prior.cashAfter : latest.netCashChange;
+		if (!latest) return null;
+		const change = latest.netCashChange;
 		if (change === 0) return null;
 		const direction = change > 0 ? 'up' : 'down';
 		return {
 			direction,
-			percent: prior && prior.cashAfter > 0 ? Math.abs(change) / prior.cashAfter : null
+			percent: latest.cashBefore > 0 ? Math.abs(change) / latest.cashBefore : null
 		};
 	});
 	let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
@@ -3129,6 +3129,7 @@
 			managementItems={managementPanelMenuItems}
 			onSelectPanel={openManagementPanel}
 			{panelGame}
+			live={game !== null}
 			{summary}
 			{financeMetrics}
 			chainSummaries={dashboardChainSummaries}

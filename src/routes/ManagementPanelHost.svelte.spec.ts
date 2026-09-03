@@ -40,6 +40,7 @@ interface ManagementPanelHostProps {
 	panelId: ManagementPanelId;
 	panelLabel: string;
 	panelGame: GameState;
+	live: boolean;
 	summary: ReportSummary;
 	financeMetrics: FinanceMetrics | null;
 	chainSummaries: ProductChainCategorySummary[] | null;
@@ -165,6 +166,7 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		panelId: 'dashboard',
 		panelLabel: 'Dashboard',
 		panelGame,
+		live: true,
 		summary: summarizeReports(panelGame.reports),
 		financeMetrics: null,
 		chainSummaries: buildStoreCategoryChainSummaries(panelGame),
@@ -281,6 +283,20 @@ describe('ManagementPanelHost', () => {
 				props.i18n.format.integer(0),
 				`${props.i18n.format.integer(healthy)} / ${props.i18n.format.integer(summaries.length)}`
 			]);
+		});
+	});
+
+	it('renders muted placeholders on dashboard cards and the header before a game exists', async () => {
+		const props = hostProps({ live: false });
+		render(ManagementPanelHost, props);
+
+		await expect.element(page.getByText('Day —')).toBeVisible();
+		await vi.waitFor(() => {
+			const values = [...document.querySelectorAll<HTMLElement>('.summary-value')].map(
+				(element) => element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+			);
+			expect(values).toEqual(['—', '—', '—', '—']);
+			expect(document.querySelector('.tower-actions strong.ticker')?.textContent).toBe('—');
 		});
 	});
 

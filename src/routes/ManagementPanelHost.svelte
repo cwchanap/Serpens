@@ -45,6 +45,7 @@
 		managementItems: ManagementPanelMenuItem[];
 		onSelectPanel: (panelId: ManagementPanelId) => void;
 		panelGame: GameState;
+		live: boolean;
 		summary: ReportSummary;
 		financeMetrics: FinanceMetrics | null;
 		chainSummaries: ProductChainCategorySummary[] | null;
@@ -100,6 +101,7 @@
 		managementItems,
 		onSelectPanel,
 		panelGame,
+		live,
 		summary,
 		financeMetrics,
 		chainSummaries,
@@ -195,10 +197,14 @@
 				role="group"
 				aria-label={i18n.t('route.controlTower.panelStatus', { panel: panelLabel })}
 			>
-				<span class="ticker"
-					>{i18n.t('topBar.day', { day: i18n.format.integer(panelGame.day) })}</span
+				<span class="ticker" class:placeholder={!live}
+					>{i18n.t('topBar.day', {
+						day: live ? i18n.format.integer(panelGame.day) : '—'
+					})}</span
 				>
-				<strong class="ticker">{i18n.format.currency(panelGame.cash)}</strong>
+				<strong class="ticker" class:placeholder={!live}
+					>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
+				>
 				<button
 					type="button"
 					class="close-tower"
@@ -238,7 +244,7 @@
 							<div class="summary-grid">
 								<article class="summary-card">
 									<h3>{i18n.t('workspaceSummary.stores')}</h3>
-									{#if panelGame.stores.length > 0}
+									{#if live && panelGame.stores.length > 0}
 										{@const storeArt = getStoreArt(panelGame.stores[0]!.archetypeId)}
 										<img
 											class="summary-thumb"
@@ -248,26 +254,30 @@
 											height="72"
 										/>
 									{/if}
-									<strong class="summary-value"
-										>{i18n.format.integer(panelGame.stores.length)}</strong
+									<strong class="summary-value" class:placeholder={!live}
+										>{live ? i18n.format.integer(panelGame.stores.length) : '—'}</strong
 									>
 								</article>
 								<article class="summary-card">
 									<h3>{i18n.t('workspaceSummary.cash')}</h3>
-									<strong class="summary-value">{i18n.format.currency(panelGame.cash)}</strong>
+									<strong class="summary-value" class:placeholder={!live}
+										>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
+									>
 								</article>
 								<article class="summary-card">
 									<h3>{i18n.t('workspaceSummary.activeRoutes')}</h3>
-									<strong class="summary-value"
-										>{i18n.format.integer(activeLogisticsRouteCount(panelGame))}</strong
+									<strong class="summary-value" class:placeholder={!live}
+										>{live
+											? i18n.format.integer(activeLogisticsRouteCount(panelGame))
+											: '—'}</strong
 									>
 								</article>
 								<article class="summary-card">
 									<h3>{i18n.t('workspaceSummary.chainHealth')}</h3>
-									<strong class="summary-value"
-										>{i18n.format.integer(healthyChains)} / {i18n.format.integer(
-											summaries.length
-										)}</strong
+									<strong class="summary-value" class:placeholder={!live}
+										>{live
+											? `${i18n.format.integer(healthyChains)} / ${i18n.format.integer(summaries.length)}`
+											: '—'}</strong
 									>
 								</article>
 							</div>
@@ -370,6 +380,7 @@
 						<FinancePanel
 							game={panelGame}
 							metrics={requireFinanceMetrics()}
+							{live}
 							{i18n}
 							focusedLoanId={focusedFinanceLoanId}
 							mutationPending={mutations.pending}
@@ -399,6 +410,12 @@
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		color: var(--ink-700);
+	}
+
+	.placeholder,
+	.summary-value.placeholder,
+	.tower-actions .placeholder {
+		color: var(--ink-400);
 	}
 
 	.tower-backdrop {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
-	import { PRODUCT_ART, getStoreArt, type ProductArt } from '$lib/assets/gameArt';
+	import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
 	import { getStoreProductStatus } from '$lib/game/stock';
 	import { getStoreOrdinal } from '$lib/game/state';
 	import {
@@ -14,7 +14,7 @@
 	} from '$lib/game/leveling';
 	import { formatStoreLocation, localizeStockTrouble, storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
-	import type { CityTile, DailyStoreReport, GameState, ProductId, Store } from '$lib/game/types';
+	import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 
@@ -74,17 +74,18 @@
 		store ? store.products.filter((product) => getStoreProductStatus(product) !== 'Healthy') : []
 	);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
-	const weekRevenue = $derived.by(() => {
-		if (!store) return 0;
+	// Same real series the LAST 7 DAYS total sums: this store's daily revenue over
+	// the trailing 7 reports, oldest first.
+	const weekSeries = $derived.by(() => {
+		if (!store) return [] as number[];
 		const storeId = store.id;
 		return game.reports
 			.slice(-7)
-			.reduce(
-				(sum, report) =>
-					sum + (report.storeReports.find((entry) => entry.storeId === storeId)?.revenue ?? 0),
-				0
+			.map(
+				(report) => report.storeReports.find((entry) => entry.storeId === storeId)?.revenue ?? 0
 			);
 	});
+	const weekRevenue = $derived(weekSeries.reduce((sum, value) => sum + value, 0));
 
 	const levelPips = $derived.by(() => {
 		if (!store) return [] as boolean[];
@@ -101,10 +102,6 @@
 			(_, index) => index < level - previousMilestone
 		);
 	});
-
-	function productArtFor(productId: ProductId): ProductArt | null {
-		return productId in PRODUCT_ART ? PRODUCT_ART[productId] : null;
-	}
 
 	function vitalArcColor(value: number): string {
 		if (value >= 70) return 'var(--moss)';
@@ -195,6 +192,17 @@
 
 				<p class="week" data-testid="week-revenue">
 					<span class="week-label">{i18n.t('tileInspector.last7Days')}</span>
+					{#if weekSeries.length > 0}
+						{@const peak = Math.max(...weekSeries)}
+						<span class="week-spark" aria-hidden="true" data-testid="week-spark">
+							{#each weekSeries as value, index (index)}
+								<span
+									class="week-spark-bar"
+									style:height={`${peak > 0 ? Math.round((value / peak) * 100) : 0}%`}
+								></span>
+							{/each}
+						</span>
+					{/if}
 					<span class="week-value">{i18n.format.currency(weekRevenue)}</span>
 				</p>
 
@@ -213,36 +221,36 @@
 					</div>
 					<div class="gauge" data-testid="gauge-stock-health">
 						<dt>{i18n.t('tileInspector.stockHealth')}</dt>
-						<dd class="medallion">
+						<dd class="medallion dial">
 							<svg viewBox="0 0 44 44" aria-hidden="true" data-testid="gauge-arc-stock-health">
-								<circle class="track" cx="22" cy="22" r="19" pathLength="100"></circle>
-								<circle
-									class="arc"
-									cx="22"
-									cy="22"
-									r="19"
-									pathLength="100"
-									style:stroke-dasharray="{store.stockHealth} 100"
-									style:stroke={vitalArcColor(store.stockHealth)}
-								></circle>
+								<path class="track" d="M6 26a16 16 0 0 1 32 0" pathLength="100"></path>
+								{#if store.stockHealth > 0}
+									<path
+										class="arc"
+										d="M6 26a16 16 0 0 1 32 0"
+										pathLength="100"
+										style:stroke-dasharray="{store.stockHealth} 100"
+										style:stroke={vitalArcColor(store.stockHealth)}
+									></path>
+								{/if}
 							</svg>
 							<span class="value">{store.stockHealth}</span>
 						</dd>
 					</div>
 					<div class="gauge" data-testid="gauge-staff-morale">
 						<dt>{i18n.t('tileInspector.staffMorale')}</dt>
-						<dd class="medallion">
+						<dd class="medallion dial">
 							<svg viewBox="0 0 44 44" aria-hidden="true" data-testid="gauge-arc-staff-morale">
-								<circle class="track" cx="22" cy="22" r="19" pathLength="100"></circle>
-								<circle
-									class="arc"
-									cx="22"
-									cy="22"
-									r="19"
-									pathLength="100"
-									style:stroke-dasharray="{store.staffMorale} 100"
-									style:stroke={vitalArcColor(store.staffMorale)}
-								></circle>
+								<path class="track" d="M6 26a16 16 0 0 1 32 0" pathLength="100"></path>
+								{#if store.staffMorale > 0}
+									<path
+										class="arc"
+										d="M6 26a16 16 0 0 1 32 0"
+										pathLength="100"
+										style:stroke-dasharray="{store.staffMorale} 100"
+										style:stroke={vitalArcColor(store.staffMorale)}
+									></path>
+								{/if}
 							</svg>
 							<span class="value">{store.staffMorale}</span>
 						</dd>
@@ -258,23 +266,15 @@
 						{#if troubleProducts.length > 0}
 							<ul class="attention-products" data-testid="attention-products">
 								{#each troubleProducts as product (product.productId)}
-									{@const art = productArtFor(product.productId)}
+									{@const art = getProductArt(product.productId)}
 									<li>
-										{#if art}
-											<img
-												src={asset(art.path)}
-												alt=""
-												data-testid={`attention-product-art-${product.productId}`}
-												loading="lazy"
-												decoding="async"
-											/>
-										{:else}
-											<span
-												class="thumb-placeholder"
-												aria-hidden="true"
-												data-testid={`attention-product-placeholder-${product.productId}`}
-											></span>
-										{/if}
+										<img
+											src={asset(art.path)}
+											alt=""
+											data-testid={`attention-product-art-${product.productId}`}
+											loading="lazy"
+											decoding="async"
+										/>
 									</li>
 								{/each}
 							</ul>
@@ -468,11 +468,11 @@
 		gap: 0.85rem;
 	}
 
-	/* --- LAST 7 DAYS revenue row -------------------------------------------- */
+	/* --- LAST 7 DAYS revenue row + spark ------------------------------------ */
 
 	.week {
 		display: flex;
-		align-items: baseline;
+		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
 		margin: 0;
@@ -480,6 +480,21 @@
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
 		background: var(--paper-50);
+	}
+
+	.week-spark {
+		flex: none;
+		display: flex;
+		align-items: flex-end;
+		gap: 0.15rem;
+		height: 1.7rem;
+	}
+
+	.week-spark-bar {
+		display: block;
+		flex: 0 0 0.45rem;
+		min-width: 0;
+		background: var(--brass-500);
 	}
 
 	.week-label {
@@ -546,18 +561,15 @@
 		height: 100%;
 	}
 
-	.medallion .track {
-		fill: none;
-		stroke: var(--brass-100);
-		stroke-width: 3.5;
-	}
-
+	.medallion .track,
 	.medallion .arc {
 		fill: none;
 		stroke-width: 3.5;
 		stroke-linecap: round;
-		transform: rotate(-90deg);
-		transform-origin: 50% 50%;
+	}
+
+	.medallion .track {
+		stroke: var(--brass-100);
 	}
 
 	.medallion .value {
@@ -567,6 +579,13 @@
 		font-weight: 700;
 		font-size: 0.82rem;
 		color: var(--ink-700);
+	}
+
+	/* Scorecard-style open-bottom dial arcs: the value sits in the dial mouth. */
+	.medallion.dial .value {
+		align-self: end;
+		justify-self: center;
+		margin-bottom: 0.55rem;
 	}
 
 	/* --- Wax-red attention band ----------------------------------------------- */
@@ -599,8 +618,7 @@
 		list-style: none;
 	}
 
-	.attention-products img,
-	.thumb-placeholder {
+	.attention-products img {
 		display: block;
 		width: 2.5rem;
 		height: 2.5rem;
@@ -608,10 +626,6 @@
 		border: 1px solid var(--wax-red);
 		border-radius: 2px;
 		background: var(--paper-100);
-	}
-
-	.thumb-placeholder {
-		background: linear-gradient(135deg, var(--brass-100), var(--brass-300));
 	}
 
 	/* --- Store art + identity + level pips ------------------------------------ */

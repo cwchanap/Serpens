@@ -420,7 +420,7 @@ describe('TileInspector inspector mock parity', () => {
 	});
 
 	it('sums this store revenue across the last 7 daily reports only', async () => {
-		expect.assertions(2);
+		expect.assertions(5);
 		const reports = [
 			{ day: 0, storeReports: [{ storeId: 'store-1', revenue: 100 }] },
 			...Array.from({ length: 7 }, (_, index) => ({
@@ -437,6 +437,26 @@ describe('TileInspector inspector mock parity', () => {
 		const week = page.getByTestId('week-revenue');
 		await expect.element(week).toBeVisible();
 		await expect.element(week).toHaveTextContent('$70');
+		const spark = page.getByTestId('week-spark');
+		await expect.element(spark).toBeVisible();
+		const bars = [...document.querySelectorAll<HTMLElement>('.week-spark-bar')];
+		expect(bars).toHaveLength(7);
+		expect(bars.every((bar) => bar.style.height === '100%')).toBe(true);
+	});
+
+	it('gives zero-revenue days zero-height bars in the 7-day spark', async () => {
+		expect.assertions(2);
+		const reports = [
+			{ day: 1, storeReports: [{ storeId: 'store-1', revenue: 0 }] },
+			{ day: 2, storeReports: [{ storeId: 'store-1', revenue: 50 }] },
+			{ day: 3, storeReports: [{ storeId: 'store-1', revenue: 25 }] }
+		] as GameState['reports'];
+
+		renderInspector({ game: { ...defaultGame, reports }, store, latestStoreReport });
+
+		const bars = [...document.querySelectorAll<HTMLElement>('.week-spark-bar')];
+		expect(bars.map((bar) => bar.style.height)).toEqual(['0%', '100%', '50%']);
+		await expect.element(page.getByTestId('week-revenue')).toHaveTextContent('$75');
 	});
 
 	it('shows level pips toward the next milestone under the store name', async () => {
@@ -473,30 +493,6 @@ describe('TileInspector inspector mock parity', () => {
 		const thumb = page.getByTestId('attention-product-art-snacks');
 		await expect.element(thumb).toBeVisible();
 		await expect.element(thumb).toHaveAttribute('src', '/assets/game/products/snacks.png');
-	});
-
-	it('renders a brass placeholder for attention products without art', async () => {
-		expect.assertions(1);
-		const mysteryStore: Store = {
-			...store,
-			id: 'store-mystery',
-			products: [
-				{
-					productId: 'mystery-goods' as Store['products'][number]['productId'],
-					brandId: 'common-ground',
-					lots: [],
-					reorderThreshold: 10,
-					targetStock: 50,
-					sellingPrice: 5
-				}
-			]
-		};
-
-		renderInspector({ store: mysteryStore, latestStoreReport });
-
-		await expect
-			.element(page.getByTestId('attention-product-placeholder-mystery-goods'))
-			.toBeVisible();
 	});
 
 	it('hides the attention band when stock is healthy', async () => {

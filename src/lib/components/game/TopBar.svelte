@@ -251,7 +251,8 @@
 		pointer-events: auto;
 		display: flex;
 		align-items: center;
-		gap: 0.85rem;
+		flex-wrap: wrap;
+		gap: 0.3rem 0.85rem;
 	}
 
 	.ticker {
