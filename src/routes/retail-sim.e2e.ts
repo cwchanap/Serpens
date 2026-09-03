@@ -4981,3 +4981,75 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 		expect.objectContaining({ transferOrderId: 'transfer-1', quantity: 3 })
 	);
 });
+
+// --- HPA-304 final viewport parity: 1920x1080 / 1280x800 journeys ---
+
+for (const viewport of [
+	{ width: 1920, height: 1080 },
+	{ width: 1280, height: 800 }
+]) {
+	test(`revamped HUD remains usable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+		await page.setViewportSize(viewport);
+		await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+		await expectRetailMapReady(page);
+		await expect(page.getByRole('button', { name: /retail city map/i })).toBeVisible();
+		await expect(page.getByLabel('Control desk')).toBeVisible();
+
+		await selectMapView(page, /industry city map/i);
+		await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
+			'aria-pressed',
+			'true'
+		);
+	});
+}
+
+test('keeps retail inspector actions clear of the control desk at 1280x800', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+	// Round-trip through the Industry map so the Retail switch-back is itself
+	// exercised at the desktop-regression viewport before the inspector steps.
+	await selectMapView(page, /industry city map/i);
+	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await selectMapView(page, /retail city map/i);
+	await expect(page.getByRole('button', { name: /retail city map/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+
+	const canvas = await expectRetailMapReady(page);
+	const game = await readAutoSaveGame(page);
+	const store = game.stores[0];
+	if (!store) throw new Error('Missing starter store for 1280x800 inspector journey');
+
+	await clickCanvasTile(page, canvas, store.mapX, store.mapY);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	const details = inspector.getByRole('button', { name: /open details/i });
+	await expect(details).toBeVisible();
+	await expectActionDoesNotOverlapControlDesk(page, details);
+	await details.click();
+	await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
+});
+
+test('management workspace switches from Dashboard to Reports inside the dialog', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+	let dialog = await openManagementPanel(page, /^dashboard$/i);
+	await dialog.getByRole('button', { name: /^reports$/i }).click();
+
+	// The same dialog stays mounted while its rail label moves to Reports; the
+	// in-dialog rail button is the one pressed after the switch.
+	dialog = page.getByRole('dialog', { name: /^reports$/i });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole('button', { name: /^reports$/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+});
