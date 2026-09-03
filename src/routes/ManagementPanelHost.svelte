@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { focusTrap } from '$lib/a11y/focusTrap';
+	import GameIcon from '$lib/components/game/GameIcon.svelte';
+	import type { ManagementPanelMenuItem } from '$lib/components/game/gameNavigation';
 	import ActiveModifiers from '$lib/components/game/ActiveModifiers.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
@@ -37,6 +39,8 @@
 	interface Props {
 		panelId: ManagementPanelId;
 		panelLabel: string;
+		managementItems: ManagementPanelMenuItem[];
+		onSelectPanel: (panelId: ManagementPanelId) => void;
 		panelGame: GameState;
 		summary: ReportSummary;
 		financeMetrics: FinanceMetrics | null;
@@ -89,6 +93,8 @@
 	let {
 		panelId,
 		panelLabel,
+		managementItems,
+		onSelectPanel,
 		panelGame,
 		summary,
 		financeMetrics,
@@ -188,114 +194,136 @@
 			</div>
 		</div>
 
-		{#if panelId === 'dashboard'}
-			<Scorecard {i18n} scorecard={panelGame.scorecard} />
-		{:else if panelId === 'policies'}
-			<PolicyPanel
-				{i18n}
-				game={panelGame}
-				onChange={onChangePolicy}
-				{onSetPolicyOverride}
-				{onClearPolicyOverrideField}
-				{onResetPolicyOverrideScope}
-				canUpdate={mutations.updatePolicy}
-				canUpdateScoped={mutations.scopedPolicy}
-				{disabledReason}
-			/>
-		{:else if panelId === 'staff'}
-			<div class="staff-surfaces">
-				<StaffPanel
-					{i18n}
-					stores={panelGame.stores}
-					staff={panelGame.staff}
-					hiringCandidates={panelGame.hiringCandidates}
-					cash={panelGame.cash}
-					onHire={onHireStaff}
-					onAssign={onAssignStaff}
-					onUnassign={onUnassignStaff}
-					onPromote={onPromoteStaff}
-					canHire={mutations.hireStaff}
-					canAssign={mutations.assignStaff}
-					canUnassign={mutations.unassignStaff}
-					canPromote={mutations.promoteStaff}
-					{disabledReason}
-				/>
-				<ManagerDelegationPanel
-					{i18n}
-					game={panelGame}
-					onChange={onSetManagerDelegation}
-					onRemove={onRemoveManagerDelegation}
-					canUpdate={mutations.delegation}
-					{disabledReason}
-				/>
+		<div class="workspace-grid">
+			<div class="workspace-rail" role="group" aria-label={i18n.t('controlDesk.management')}>
+				{#each managementItems as item (item.id)}
+					<button
+						type="button"
+						class="btn-icon"
+						class:active={item.id === panelId}
+						aria-pressed={item.id === panelId}
+						aria-label={item.label}
+						title={`${item.label} (${item.shortcut})`}
+						onclick={() => onSelectPanel(item.id)}
+					>
+						<GameIcon name={item.icon} />
+					</button>
+				{/each}
 			</div>
-		{:else if panelId === 'stores'}
-			<div class="stores-surfaces">
-				<RetailSupplySources
-					retailCities={retailSupplyViews}
-					disabled={retailSupplyDisabled}
-					focusedRetailCityId={focusedRetailSupplyCityId}
-					onChange={onSetRetailSupplySource}
-				/>
-				<StoreOverview
-					{i18n}
-					stores={panelGame.stores}
-					staff={panelGame.staff}
-					latestReports={summary.latest?.storeReports ?? []}
-				/>
+
+			<div class="workspace-content">
+				{#key panelId}
+					{#if panelId === 'dashboard'}
+						<Scorecard {i18n} scorecard={panelGame.scorecard} />
+					{:else if panelId === 'policies'}
+						<PolicyPanel
+							{i18n}
+							game={panelGame}
+							onChange={onChangePolicy}
+							{onSetPolicyOverride}
+							{onClearPolicyOverrideField}
+							{onResetPolicyOverrideScope}
+							canUpdate={mutations.updatePolicy}
+							canUpdateScoped={mutations.scopedPolicy}
+							{disabledReason}
+						/>
+					{:else if panelId === 'staff'}
+						<div class="staff-surfaces">
+							<StaffPanel
+								{i18n}
+								stores={panelGame.stores}
+								staff={panelGame.staff}
+								hiringCandidates={panelGame.hiringCandidates}
+								cash={panelGame.cash}
+								onHire={onHireStaff}
+								onAssign={onAssignStaff}
+								onUnassign={onUnassignStaff}
+								onPromote={onPromoteStaff}
+								canHire={mutations.hireStaff}
+								canAssign={mutations.assignStaff}
+								canUnassign={mutations.unassignStaff}
+								canPromote={mutations.promoteStaff}
+								{disabledReason}
+							/>
+							<ManagerDelegationPanel
+								{i18n}
+								game={panelGame}
+								onChange={onSetManagerDelegation}
+								onRemove={onRemoveManagerDelegation}
+								canUpdate={mutations.delegation}
+								{disabledReason}
+							/>
+						</div>
+					{:else if panelId === 'stores'}
+						<div class="stores-surfaces">
+							<RetailSupplySources
+								retailCities={retailSupplyViews}
+								disabled={retailSupplyDisabled}
+								focusedRetailCityId={focusedRetailSupplyCityId}
+								onChange={onSetRetailSupplySource}
+							/>
+							<StoreOverview
+								{i18n}
+								stores={panelGame.stores}
+								staff={panelGame.staff}
+								latestReports={summary.latest?.storeReports ?? []}
+							/>
+						</div>
+					{:else if panelId === 'decisions'}
+						<div class="decisions-surfaces">
+							<DecisionQueue
+								{i18n}
+								game={panelGame}
+								decisions={panelGame.decisions}
+								onResolve={onChooseDecision}
+								canResolve={mutations.resolveDecision}
+								{disabledReason}
+							/>
+							<ActiveModifiers
+								{i18n}
+								day={panelGame.day}
+								modifiers={panelGame.events.activeModifiers}
+								routes={panelGame.logistics.recurringRoutes}
+								competitors={panelGame.competitors}
+							/>
+						</div>
+					{:else if panelId === 'reports'}
+						<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
+					{:else if panelId === 'productChains'}
+						<ProductChainsPanel {i18n} game={panelGame} {onPlanProduct} {plannerProductIds} />
+					{:else if panelId === 'logistics'}
+						<LogisticsPanel
+							game={panelGame}
+							view={requireLogisticsView()}
+							canMutate={manageLogistics}
+							focusedRouteId={focusedLogisticsRouteId}
+							routePreset={logisticsRoutePreset}
+							{disabledReason}
+							{i18n}
+							{onDispatchManualTransfer}
+							{onCreateRecurringRoute}
+							{onUpdateRecurringRoute}
+							{onPauseRecurringRoute}
+							{onResumeRecurringRoute}
+							{onReprioritizeRecurringRoute}
+							{onRemoveRecurringRoute}
+						/>
+					{:else if panelId === 'finance'}
+						<FinancePanel
+							game={panelGame}
+							metrics={requireFinanceMetrics()}
+							{i18n}
+							focusedLoanId={focusedFinanceLoanId}
+							mutationPending={mutations.pending}
+							{onBorrow}
+							{onRepay}
+							{onPayoff}
+							{onRefinance}
+						/>
+					{/if}
+				{/key}
 			</div>
-		{:else if panelId === 'decisions'}
-			<div class="decisions-surfaces">
-				<DecisionQueue
-					{i18n}
-					game={panelGame}
-					decisions={panelGame.decisions}
-					onResolve={onChooseDecision}
-					canResolve={mutations.resolveDecision}
-					{disabledReason}
-				/>
-				<ActiveModifiers
-					{i18n}
-					day={panelGame.day}
-					modifiers={panelGame.events.activeModifiers}
-					routes={panelGame.logistics.recurringRoutes}
-					competitors={panelGame.competitors}
-				/>
-			</div>
-		{:else if panelId === 'reports'}
-			<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
-		{:else if panelId === 'productChains'}
-			<ProductChainsPanel {i18n} game={panelGame} {onPlanProduct} {plannerProductIds} />
-		{:else if panelId === 'logistics'}
-			<LogisticsPanel
-				game={panelGame}
-				view={requireLogisticsView()}
-				canMutate={manageLogistics}
-				focusedRouteId={focusedLogisticsRouteId}
-				routePreset={logisticsRoutePreset}
-				{disabledReason}
-				{i18n}
-				{onDispatchManualTransfer}
-				{onCreateRecurringRoute}
-				{onUpdateRecurringRoute}
-				{onPauseRecurringRoute}
-				{onResumeRecurringRoute}
-				{onReprioritizeRecurringRoute}
-				{onRemoveRecurringRoute}
-			/>
-		{:else if panelId === 'finance'}
-			<FinancePanel
-				game={panelGame}
-				metrics={requireFinanceMetrics()}
-				{i18n}
-				focusedLoanId={focusedFinanceLoanId}
-				mutationPending={mutations.pending}
-				{onBorrow}
-				{onRepay}
-				{onPayoff}
-				{onRefinance}
-			/>
-		{/if}
+		</div>
 	</div>
 </div>
 
@@ -337,13 +365,46 @@
 	.control-tower-overlay {
 		position: relative;
 		z-index: 1;
-		width: min(1180px, 100%);
+		width: min(74rem, calc(100vw - 2rem));
 		max-height: calc(100vh - 2rem);
-		overflow: auto;
-		display: grid;
+		display: flex;
+		flex-direction: column;
 		gap: 1rem;
 		padding: 1.25rem;
 		animation-delay: 160ms;
+	}
+
+	.workspace-grid {
+		display: grid;
+		grid-template-columns: 5rem minmax(0, 1fr);
+		gap: 0.75rem;
+		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.workspace-rail {
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+		padding: 0.75rem;
+		overflow-y: auto;
+	}
+
+	.workspace-rail .btn-icon {
+		width: 3.25rem;
+		height: 3.25rem;
+		flex: none;
+	}
+
+	.workspace-rail .btn-icon.active {
+		background: var(--paper-200);
+	}
+
+	.workspace-content {
+		min-width: 0;
+		min-height: 0;
+		padding: 1rem;
+		overflow: auto;
 	}
 
 	.decisions-surfaces,
@@ -390,6 +451,15 @@
 		.control-tower-overlay {
 			max-height: calc(100vh - 1rem);
 			padding: 0.85rem;
+		}
+
+		.workspace-rail {
+			flex-direction: row;
+			flex-wrap: wrap;
+		}
+
+		.workspace-content {
+			padding: 0.6rem;
 		}
 
 		.decisions-surfaces,

@@ -1758,7 +1758,7 @@ test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly
 	await installSandboxAutoSave(page, seededGame);
 	await expect(activeMapCanvas(page)).toHaveAttribute('data-competitor-marker-count', '2');
 
-	const decisions = await openManagementPanel(page, 'Decisions');
+	const decisions = await openManagementPanel(page, /^decisions$/i);
 	const promotion = decisions
 		.getByRole('article')
 		.filter({ has: page.getByRole('heading', { name: 'Rival promotion', exact: true }) });
@@ -1861,7 +1861,7 @@ test('production supplier bulk discount stays active through its final import an
 
 	await installSandboxAutoSave(page, seededGame);
 
-	let decisions = await openManagementPanel(page, 'Decisions');
+	let decisions = await openManagementPanel(page, /^decisions$/i);
 	const bulkDiscount = decisions
 		.getByRole('region', { name: 'Decision Queue' })
 		.getByRole('button', { name: /Bulk discount/ });
@@ -1917,7 +1917,7 @@ test('production supplier bulk discount stays active through its final import an
 		modifierImpacts: [],
 		modifierLifecycle: [{ status: 'activated', modifier: { id: modifierId } }]
 	});
-	decisions = await openManagementPanel(page, 'Decisions');
+	decisions = await openManagementPanel(page, /^decisions$/i);
 	await expect(
 		decisions.getByRole('article', { name: 'Supplier terms', exact: true })
 	).toContainText('2 days remaining');
@@ -1931,7 +1931,7 @@ test('production supplier bulk discount stays active through its final import an
 		modifierImpacts: [],
 		modifierLifecycle: []
 	});
-	decisions = await openManagementPanel(page, 'Decisions');
+	decisions = await openManagementPanel(page, /^decisions$/i);
 	await expect(
 		decisions.getByRole('article', { name: 'Supplier terms', exact: true })
 	).toContainText('1 day remaining');
@@ -1959,7 +1959,7 @@ test('production supplier bulk discount stays active through its final import an
 		})
 	]);
 
-	const reports = await openManagementPanel(page, 'Reports');
+	const reports = await openManagementPanel(page, /^reports$/i);
 	await expect(reports.getByRole('region', { name: 'Latest-day modifier impacts' })).toContainText(
 		'Multiplier: ×0.9'
 	);
@@ -1968,7 +1968,7 @@ test('production supplier bulk discount stays active through its final import an
 	).toContainText('Status: Expired');
 	await reports.getByRole('button', { name: 'Close Reports', exact: true }).click();
 
-	decisions = await openManagementPanel(page, 'Decisions');
+	decisions = await openManagementPanel(page, /^decisions$/i);
 	await expect(decisions.getByRole('region', { name: 'Active modifiers' })).toContainText(
 		'No active modifiers.'
 	);
@@ -2014,13 +2014,13 @@ test('manager lifecycle preserves manual policy control and records authority ex
 		values: { pricing: 'premium' }
 	});
 
-	const policies = await openManagementPanel(page, 'Policies');
+	const policies = await openManagementPanel(page, /^policies$/i);
 	await policies.getByLabel('Scope').selectOption('store');
 	await expect(policies.locator('[data-provenance="store"]')).toHaveCount(1);
 	await expect(policies.getByLabel('Pricing')).toHaveValue('premium');
 	await policies.getByRole('button', { name: 'Close Policies', exact: true }).click();
 
-	const staff = await openManagementPanel(page, 'Staff');
+	const staff = await openManagementPanel(page, /^staff$/i);
 	const managerCard = staff.locator('.manager-card').filter({ hasText: manager.name });
 	await expect(managerCard.locator('li[data-outcome="applied"]')).toHaveCount(1);
 	const pricingAuthority = managerCard.getByRole('checkbox', {
@@ -2031,7 +2031,7 @@ test('manager lifecycle preserves manual policy control and records authority ex
 	await expect(pricingAuthority).not.toBeChecked();
 	await staff.getByRole('button', { name: 'Close Staff', exact: true }).click();
 
-	const manualPolicies = await openManagementPanel(page, 'Policies');
+	const manualPolicies = await openManagementPanel(page, /^policies$/i);
 	await manualPolicies.getByLabel('Scope').selectOption('store');
 	const pricing = manualPolicies.getByLabel('Pricing');
 	await expect(pricing).toBeEnabled();
@@ -2064,7 +2064,7 @@ test('manager lifecycle preserves manual policy control and records authority ex
 		values: { pricing: 'competitive' }
 	});
 
-	const finalStaff = await openManagementPanel(page, 'Staff');
+	const finalStaff = await openManagementPanel(page, /^staff$/i);
 	const finalManagerCard = finalStaff.locator('.manager-card').filter({ hasText: manager.name });
 	await expect(finalManagerCard.locator('li[data-outcome="out-of-authority"]')).toHaveCount(1);
 });
@@ -2221,7 +2221,7 @@ test('challenge commits a non-day negative-cash decision before showing failure'
 	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toHaveCount(0);
 	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-result', '');
 
-	const decisions = await openManagementPanel(page, 'Decisions');
+	const decisions = await openManagementPanel(page, /^decisions$/i);
 	await decisions.getByRole('button', { name: /Bulk discount/ }).click();
 
 	const results = page.getByRole('dialog', { name: 'Challenge results' });
@@ -2284,7 +2284,7 @@ test('challenge reload clears transient failed, unranked, and non-best results w
 
 	await installChallengeSnapshot(page, challengeSnapshot({ activeRun: negativeCashDecisionRun() }));
 	await resumeFirstProfitChallenge(page, { day: 1, eligibility: 'Ranked' });
-	const decisions = await openManagementPanel(page, 'Decisions');
+	const decisions = await openManagementPanel(page, /^decisions$/i);
 	await decisions.getByRole('button', { name: /Bulk discount/ }).click();
 	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toContainText(
 		'Challenge failed'
@@ -2452,7 +2452,7 @@ test('tile popup can be closed from the map', async ({ page }) => {
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 });
 
-test('management panels open from the map menu and close as overlays', async ({ page }) => {
+test('management panels open from the control desk and close as overlays', async ({ page }) => {
 	await page.goto('/');
 
 	await buildRetailStoreAt(page, {
@@ -2469,6 +2469,38 @@ test('management panels open from the map menu and close as overlays', async ({ 
 	await openManagementPanel(page, /reports/i);
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
+});
+
+test('management workspace switches panels in place and keeps focus contained', async ({
+	page
+}) => {
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build boutique goods/i,
+		expectedStoreCount: 1
+	});
+
+	let dialog = await openManagementPanel(page, /^dashboard$/i);
+	await dialog.getByRole('button', { name: /^finance$/i }).click();
+
+	dialog = page.getByRole('dialog', { name: /^finance$/i });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole('button', { name: /^finance$/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const modal = document.querySelector('[role="dialog"][aria-modal="true"]');
+				return Boolean(modal && document.activeElement && modal.contains(document.activeElement));
+			})
+		)
+		.toBe(true);
 });
 
 test('keyboard shortcuts toggle build and switch views', async ({ page }) => {
@@ -4676,7 +4708,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 
 	// Step 2: the unresolved decision names the concrete route — origin,
 	// destination, material, and route id are all visible pre-resolution.
-	let decisions = await openManagementPanel(page, 'Decisions');
+	let decisions = await openManagementPanel(page, /^decisions$/i);
 	const freightDecision = freightDecisionArticle(decisions, page);
 	await expect(freightDecision).toContainText(
 		'Shipments of Bottled Water between Industry City and Breadbasket Basin are disrupted.'
@@ -4696,7 +4728,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	await expect(routeRow).toContainText(/Paused/i);
 	await logistics.getByRole('button', { name: 'Close Logistics', exact: true }).click();
 
-	decisions = await openManagementPanel(page, 'Decisions');
+	decisions = await openManagementPanel(page, /^decisions$/i);
 	const pausedTargetDecision = freightDecisionArticle(decisions, page);
 	await expect(pausedTargetDecision).toBeVisible();
 	await expect(pausedTargetDecision.getByRole('button', { name: /^Accept delay/ })).toBeEnabled();
@@ -4801,7 +4833,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 
 	await editedLogistics.getByRole('button', { name: 'Close Logistics', exact: true }).click();
 
-	const resumedDecisions = await openManagementPanel(page, 'Decisions');
+	const resumedDecisions = await openManagementPanel(page, /^decisions$/i);
 	await expect(
 		activeFreightModifierCard(resumedDecisions, 'Capacity ×0.75 on this route for three days.')
 	).toContainText('Capacity: 4 → 3 units');

@@ -10,6 +10,12 @@
 		{ key: 'staffMorale' },
 		{ key: 'marketPosition' }
 	];
+
+	function gaugeColor(value: number): string {
+		if (value >= 70) return 'var(--moss)';
+		if (value >= 40) return 'var(--brass-700)';
+		return 'var(--wax-red)';
+	}
 </script>
 
 <section class="panel paper" aria-labelledby="scorecard-heading">
@@ -18,15 +24,24 @@
 	<div class="score-grid">
 		{#each items as item (item.key)}
 			{@const label = i18n.labels.scoreKey(item.key)}
-			<div class="score-item">
-				<div class="score-label">
-					<span>{label}</span>
-					<strong>{i18n.format.integer(scorecard[item.key])}</strong>
-				</div>
-				<meter aria-label={label} min="0" max="100" value={scorecard[item.key]}>
-					{scorecard[item.key]}
-				</meter>
-			</div>
+			{@const value = scorecard[item.key]}
+			<article class="gauge-card">
+				<h3>{label}</h3>
+				<svg class="dial" viewBox="0 0 72 46" aria-hidden="true">
+					<path class="dial-track" d="M8 40a28 28 0 0 1 56 0" />
+					{#if value > 0}
+						<path
+							class="dial-value"
+							style:stroke={gaugeColor(value)}
+							d="M8 40a28 28 0 0 1 56 0"
+							pathLength="100"
+							stroke-dasharray={`${value} 100`}
+						/>
+					{/if}
+					<text x="36" y="40" text-anchor="middle">{value}</text>
+				</svg>
+				<meter aria-label={label} min="0" max="100" {value}>{value}</meter>
+			</article>
 		{/each}
 	</div>
 </section>
@@ -50,35 +65,55 @@
 		gap: 1rem;
 	}
 
-	.score-item {
-		display: grid;
-		min-width: 0;
-		gap: 0.4rem;
-	}
-
-	.score-label {
+	.gauge-card {
 		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 0.5rem;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.55rem;
+		min-width: 0;
+		padding: 0.8rem 0.6rem 0.65rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 2px;
+		background: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
+		box-shadow: 0 1px 0 rgba(20, 16, 10, 0.08);
 	}
 
-	span {
-		min-width: 0;
+	h3 {
+		margin: 0;
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.7rem;
+		font-size: 0.68rem;
 		font-weight: 700;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
+		text-align: center;
 	}
 
-	strong {
+	.dial {
+		display: block;
+		width: 6.25rem;
+		height: auto;
+		fill: none;
+		stroke-linecap: round;
+	}
+
+	.dial-track {
+		stroke: var(--paper-200);
+		stroke-width: 7;
+	}
+
+	.dial-value {
+		stroke-width: 7;
+	}
+
+	.dial text {
+		fill: var(--ink-700);
 		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums lining-nums;
-		font-size: 1.4rem;
-		color: var(--ink-700);
-		line-height: 1;
+		font-size: 15px;
+		font-weight: 700;
 	}
 
 	meter {

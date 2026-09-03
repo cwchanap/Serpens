@@ -30,6 +30,7 @@ import type {
 import type { I18nBundle } from '$lib/i18n';
 import { createI18n } from '$lib/i18n';
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
+import type { ManagementPanelMenuItem } from '$lib/components/game/gameNavigation';
 import { createMutationAvailability, type MutationAvailability } from './gameRouteController';
 import ManagementPanelHost from './ManagementPanelHost.svelte';
 
@@ -50,6 +51,9 @@ interface ManagementPanelHostProps {
 	logisticsRoutePreset: RecurringRouteInput | null;
 	i18n: I18nBundle;
 	disabledReason: string | null;
+
+	managementItems: ManagementPanelMenuItem[];
+	onSelectPanel: (panelId: ManagementPanelId) => void;
 
 	onClose: () => void;
 	onChangePolicy: (patch: Partial<CompanyPolicy>) => void;
@@ -82,6 +86,18 @@ interface ManagementPanelHostProps {
 	) => Promise<GameRouteCommitResult>;
 	onRemoveRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
 }
+
+const managementItems: ManagementPanelMenuItem[] = [
+	{ id: 'dashboard', label: 'Dashboard', shortcut: 'O', icon: 'dashboard' },
+	{ id: 'policies', label: 'Policies', shortcut: 'P', icon: 'policies' },
+	{ id: 'staff', label: 'Staff', shortcut: 'H', icon: 'staff' },
+	{ id: 'stores', label: 'Stores', shortcut: 'T', icon: 'stores' },
+	{ id: 'decisions', label: 'Decisions', shortcut: 'C', icon: 'decisions' },
+	{ id: 'reports', label: 'Reports', shortcut: 'R', icon: 'reports' },
+	{ id: 'productChains', label: 'Product Chains', shortcut: 'G', icon: 'productChains' },
+	{ id: 'finance', label: 'Finance', shortcut: 'F', icon: 'finance' },
+	{ id: 'logistics', label: 'Logistics', shortcut: 'L', icon: 'logistics' }
+];
 
 function compositionGame(): GameState {
 	const baseGame = createNewGame('convenience', 20_260_808);
@@ -155,6 +171,8 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		focusedRetailSupplyCityId: null,
 		i18n,
 		disabledReason: 'Unavailable in this challenge.',
+		managementItems,
+		onSelectPanel: vi.fn(),
 		logisticsView: buildLogisticsPanelView(panelGame, i18n),
 		manageLogistics: true,
 		focusedLogisticsRouteId: null,
@@ -188,6 +206,26 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 }
 
 describe('ManagementPanelHost', () => {
+	it('delegates shared workspace navigation without owning panel state', async () => {
+		expect.assertions(3);
+		const onSelectPanel = vi.fn();
+		render(
+			ManagementPanelHost,
+			hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard', managementItems, onSelectPanel })
+		);
+
+		const dialog = page.getByRole('dialog', { name: /dashboard/i });
+		const dashboard = dialog.getByRole('button', { name: /^dashboard$/i });
+		const finance = dialog.getByRole('button', { name: /^finance$/i });
+
+		await expect.element(dashboard).toHaveAttribute('aria-pressed', 'true');
+		await finance.click();
+		expect(onSelectPanel).toHaveBeenCalledWith('finance');
+		await expect
+			.element(document.querySelector<SVGElement>('svg[data-icon="finance"]'))
+			.toBeVisible();
+	});
+
 	it('renders the dashboard dialog shell with its label, day, and cash', async () => {
 		expect.assertions(4);
 		const props = hostProps();

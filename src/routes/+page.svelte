@@ -1765,15 +1765,11 @@
 		isGameMenuOpen = false;
 		isSavePanelOpen = false;
 		isBuildMenuOpen = false;
-		if (panelId !== 'logistics') {
-			focusedLogisticsRouteId = null;
-			logisticsRoutePreset = null;
-		}
+		focusedLogisticsRouteId = null;
+		logisticsRoutePreset = null;
 		if (panelId !== 'stores') {
 			focusedRetailSupplyCityId = null;
 		}
-		// Panels open even before a store is founded; they fall back to an empty
-		// starter state and their action handlers no-op until a game exists.
 		activeManagementPanelId = panelId;
 	}
 
@@ -2843,8 +2839,7 @@
 			if (activeManagementPanelId === action.panel) {
 				closeManagementPanel();
 			} else {
-				if (action.panel === 'logistics') openLogisticsManagement();
-				else openManagementPanel(action.panel);
+				openManagementPanel(action.panel);
 			}
 		} else if (action.type === 'toggle-pause') {
 			toggleSimulationPause();
@@ -2973,8 +2968,7 @@
 			disabledReason={mutationDisabledReason}
 			{i18n}
 			onBuild={openBuildMenu}
-			onOpenManagement={(id) =>
-				id === 'logistics' ? openLogisticsManagement() : openManagementPanel(id)}
+			onOpenManagement={openManagementPanel}
 			paused={simulationPaused}
 			{simulationSpeed}
 			onTogglePause={toggleSimulationPause}
@@ -3103,54 +3097,54 @@
 	{/if}
 
 	{#if activeManagementPanel}
-		{#key activeManagementPanel.id}
-			{@const panelGame = game ?? starterMapState}
-			{@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
-			<ManagementPanelHost
-				panelId={activeManagementPanel.id}
-				panelLabel={activeManagementPanel.label}
-				{panelGame}
-				{summary}
-				{financeMetrics}
-				{retailSupplyViews}
-				mutations={mutationAvailability}
-				retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
-				{focusedFinanceLoanId}
-				{focusedRetailSupplyCityId}
-				logisticsView={logisticsPanelView}
-				manageLogistics={mutationAvailability.manageLogistics}
-				{focusedLogisticsRouteId}
-				{logisticsRoutePreset}
-				{i18n}
-				disabledReason={mutationDisabledReason}
-				onClose={closeManagementPanel}
-				onChangePolicy={changePolicy}
-				onSetPolicyOverride={setPolicyOverride}
-				onClearPolicyOverrideField={clearPolicyOverrideField}
-				onResetPolicyOverrideScope={resetPolicyOverrideScope}
-				onSetManagerDelegation={setManagerDelegation}
-				onRemoveManagerDelegation={removeManagerDelegation}
-				onHireStaff={hireStaff}
-				onAssignStaff={assignStaff}
-				onUnassignStaff={unassignStoreStaff}
-				onPromoteStaff={promoteStaffMember}
-				onSetRetailSupplySource={setRetailSupplySource}
-				onChooseDecision={chooseDecision}
-				onBorrow={borrowWorkingCapital}
-				onRepay={repayFinanceLoan}
-				onPayoff={payOffFinanceLoan}
-				onRefinance={refinanceFinanceLoan}
-				onPlanProduct={planSupplyProduct}
-				{plannerProductIds}
-				onDispatchManualTransfer={dispatchManualTransfer}
-				onCreateRecurringRoute={createRecurringRoute}
-				onUpdateRecurringRoute={updateRecurringRoute}
-				onPauseRecurringRoute={pauseRecurringRoute}
-				onResumeRecurringRoute={resumeRecurringRoute}
-				onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
-				onRemoveRecurringRoute={removeRecurringRoute}
-			/>
-		{/key}
+		{@const panelGame = game ?? starterMapState}
+		{@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
+		<ManagementPanelHost
+			panelId={activeManagementPanel.id}
+			panelLabel={activeManagementPanel.label}
+			managementItems={managementPanelMenuItems}
+			onSelectPanel={openManagementPanel}
+			{panelGame}
+			{summary}
+			{financeMetrics}
+			{retailSupplyViews}
+			mutations={mutationAvailability}
+			retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
+			{focusedFinanceLoanId}
+			{focusedRetailSupplyCityId}
+			logisticsView={logisticsPanelView}
+			manageLogistics={mutationAvailability.manageLogistics}
+			{focusedLogisticsRouteId}
+			{logisticsRoutePreset}
+			{i18n}
+			disabledReason={mutationDisabledReason}
+			onClose={closeManagementPanel}
+			onChangePolicy={changePolicy}
+			onSetPolicyOverride={setPolicyOverride}
+			onClearPolicyOverrideField={clearPolicyOverrideField}
+			onResetPolicyOverrideScope={resetPolicyOverrideScope}
+			onSetManagerDelegation={setManagerDelegation}
+			onRemoveManagerDelegation={removeManagerDelegation}
+			onHireStaff={hireStaff}
+			onAssignStaff={assignStaff}
+			onUnassignStaff={unassignStoreStaff}
+			onPromoteStaff={promoteStaffMember}
+			onSetRetailSupplySource={setRetailSupplySource}
+			onChooseDecision={chooseDecision}
+			onBorrow={borrowWorkingCapital}
+			onRepay={repayFinanceLoan}
+			onPayoff={payOffFinanceLoan}
+			onRefinance={refinanceFinanceLoan}
+			onPlanProduct={planSupplyProduct}
+			{plannerProductIds}
+			onDispatchManualTransfer={dispatchManualTransfer}
+			onCreateRecurringRoute={createRecurringRoute}
+			onUpdateRecurringRoute={updateRecurringRoute}
+			onPauseRecurringRoute={pauseRecurringRoute}
+			onResumeRecurringRoute={resumeRecurringRoute}
+			onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
+			onRemoveRecurringRoute={removeRecurringRoute}
+		/>
 	{/if}
 
 	{#if isSavePanelOpen}
