@@ -110,6 +110,7 @@
 		type RouteOperationalSummary
 	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
+	import { buildStoreCategoryChainSummaries } from '$lib/game/productChainTree';
 	import { DEFAULT_POLICY } from '$lib/game/state';
 	import { getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
@@ -655,6 +656,11 @@
 	});
 	let financeMetrics = $derived(
 		activeManagementPanelId === 'finance' ? getFinanceMetrics(game ?? starterMapState) : null
+	);
+	let dashboardChainSummaries = $derived(
+		activeManagementPanelId === 'dashboard'
+			? buildStoreCategoryChainSummaries(game ?? starterMapState)
+			: null
 	);
 	let activeCity = $derived.by(() => {
 		const currentGame: GameState | null = game;
@@ -3125,6 +3131,7 @@
 			{panelGame}
 			{summary}
 			{financeMetrics}
+			chainSummaries={dashboardChainSummaries}
 			{retailSupplyViews}
 			mutations={mutationAvailability}
 			retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}

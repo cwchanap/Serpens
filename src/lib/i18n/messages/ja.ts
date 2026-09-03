@@ -944,7 +944,6 @@ export const ja = {
 		},
 		controlTower: {
 			eyebrow: '管理',
-			close: '閉じる',
 			dismiss: '{panel}を閉じる',
 			closePanel: '{panel}を閉じる',
 			panelStatus: '{panel}の状態'
@@ -1068,7 +1067,10 @@ export const ja = {
 			debtServiceCoverage: '債務返済カバレッジ',
 			cashRunway: '資金余力',
 			availableCredit: '84日間の利用可能枠',
-			noDebtServiceDue: '予定されている債務返済はありません'
+			noDebtServiceDue: '予定されている債務返済はありません',
+			latestProfit: '直近の日次利益',
+			revenueTrend: '日次売上',
+			noReport: 'レポートはまだありません。'
 		},
 		credit: {
 			baseApr: '基本APR',
@@ -1160,6 +1162,7 @@ export const ja = {
 			days: '{days}日',
 			ninetyPlusDays: '90日以上',
 			apr: 'APR',
+			ledger: '台帳',
 			healthAdjustment: '健全性 +{amount}',
 			historyAdjustment: '履歴 +{amount}',
 			principal: '元本',
@@ -1174,6 +1177,12 @@ export const ja = {
 			replacementComparison:
 				'借換後APR {apr} · 初回支払 {firstPayment} · 最大支払 {peakPayment} · 現金受取は含まれません。'
 		}
+	},
+	workspaceSummary: {
+		stores: '店舗',
+		cash: '現金',
+		activeRoutes: '稼働中の物流ルート',
+		chainHealth: '製品チェーンの健全性'
 	},
 	game: {
 		archetypes: {

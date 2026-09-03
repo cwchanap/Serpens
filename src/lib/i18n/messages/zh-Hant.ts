@@ -941,7 +941,6 @@ export const zhHant = {
 		},
 		controlTower: {
 			eyebrow: '管理',
-			close: '關閉',
 			dismiss: '關閉{panel}',
 			closePanel: '關閉{panel}',
 			panelStatus: '{panel}狀態'
@@ -1065,7 +1064,10 @@ export const zhHant = {
 			debtServiceCoverage: '債務償付覆蓋率',
 			cashRunway: '現金續航',
 			availableCredit: '84 天可用信用額度',
-			noDebtServiceDue: '沒有到期債務服務'
+			noDebtServiceDue: '沒有到期債務服務',
+			latestProfit: '最新每日利潤',
+			revenueTrend: '每日營收',
+			noReport: '尚未有報表'
 		},
 		credit: {
 			baseApr: '基本年利率',
@@ -1156,6 +1158,7 @@ export const zhHant = {
 			days: '{days} 天',
 			ninetyPlusDays: '90 天以上',
 			apr: '年利率',
+			ledger: '帳目',
 			healthAdjustment: '健康度 +{amount}',
 			historyAdjustment: '歷史 +{amount}',
 			principal: '本金',
@@ -1170,6 +1173,12 @@ export const zhHant = {
 			replacementComparison:
 				'替換年利率 {apr} · 首次付款 {firstPayment} · 最高付款 {peakPayment} · 不包含現金套現。'
 		}
+	},
+	workspaceSummary: {
+		stores: '商店',
+		cash: '現金',
+		activeRoutes: '運作中的物流路線',
+		chainHealth: '產品鏈健全度'
 	},
 	game: {
 		archetypes: {

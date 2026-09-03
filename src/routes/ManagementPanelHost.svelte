@@ -12,6 +12,8 @@
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import RetailSupplySources from '$lib/components/game/RetailSupplySources.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
+	import { getStoreArt } from '$lib/assets/gameArt';
+	import { asset } from '$app/paths';
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import ManagerDelegationPanel from '$lib/components/game/ManagerDelegationPanel.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
@@ -25,6 +27,7 @@
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { ReportSummary } from '$lib/game/reports';
+	import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
 	import type {
 		CompanyPolicy,
 		GameState,
@@ -44,6 +47,7 @@
 		panelGame: GameState;
 		summary: ReportSummary;
 		financeMetrics: FinanceMetrics | null;
+		chainSummaries: ProductChainCategorySummary[] | null;
 		retailSupplyViews: RetailCitySupplyView[];
 		mutations: MutationAvailability;
 		retailSupplyDisabled: boolean;
@@ -98,6 +102,7 @@
 		panelGame,
 		summary,
 		financeMetrics,
+		chainSummaries,
 		retailSupplyViews,
 		mutations,
 		retailSupplyDisabled,
@@ -144,6 +149,17 @@
 		return financeMetrics;
 	}
 
+	function requireChainSummaries(): ProductChainCategorySummary[] {
+		if (chainSummaries === null) {
+			throw new Error('ManagementPanelHost invariant: chainSummaries required for dashboard panel');
+		}
+		return chainSummaries;
+	}
+
+	function activeLogisticsRouteCount(game: GameState): number {
+		return game.logistics.recurringRoutes.filter((route) => route.state === 'active').length;
+	}
+
 	function requireLogisticsView(): LogisticsPanelView {
 		if (logisticsView === null) {
 			throw new Error('ManagementPanelHost invariant: logisticsView required for logistics panel');
@@ -185,11 +201,11 @@
 				<strong class="ticker">{i18n.format.currency(panelGame.cash)}</strong>
 				<button
 					type="button"
-					class="close-tower btn-danger"
+					class="close-tower"
 					aria-label={i18n.t('route.controlTower.closePanel', { panel: panelLabel })}
 					onclick={onClose}
 				>
-					{i18n.t('route.controlTower.close')}
+					×
 				</button>
 			</div>
 		</div>
@@ -199,7 +215,7 @@
 				{#each managementItems as item (item.id)}
 					<button
 						type="button"
-						class="btn-icon"
+						class="btn-icon rail-stamp"
 						class:active={item.id === panelId}
 						aria-pressed={item.id === panelId}
 						aria-label={item.label}
@@ -214,7 +230,49 @@
 			<div class="workspace-content">
 				{#key panelId}
 					{#if panelId === 'dashboard'}
-						<Scorecard {i18n} scorecard={panelGame.scorecard} />
+						{@const summaries = requireChainSummaries()}
+						{@const healthyChains = summaries.filter(
+							(summary) => summary.health === 'healthy'
+						).length}
+						<div class="workspace-dashboard">
+							<div class="summary-grid">
+								<article class="summary-card">
+									<h3>{i18n.t('workspaceSummary.stores')}</h3>
+									{#if panelGame.stores.length > 0}
+										{@const storeArt = getStoreArt(panelGame.stores[0]!.archetypeId)}
+										<img
+											class="summary-thumb"
+											src={asset(storeArt.path)}
+											alt=""
+											width="96"
+											height="72"
+										/>
+									{/if}
+									<strong class="summary-value"
+										>{i18n.format.integer(panelGame.stores.length)}</strong
+									>
+								</article>
+								<article class="summary-card">
+									<h3>{i18n.t('workspaceSummary.cash')}</h3>
+									<strong class="summary-value">{i18n.format.currency(panelGame.cash)}</strong>
+								</article>
+								<article class="summary-card">
+									<h3>{i18n.t('workspaceSummary.activeRoutes')}</h3>
+									<strong class="summary-value"
+										>{i18n.format.integer(activeLogisticsRouteCount(panelGame))}</strong
+									>
+								</article>
+								<article class="summary-card">
+									<h3>{i18n.t('workspaceSummary.chainHealth')}</h3>
+									<strong class="summary-value"
+										>{i18n.format.integer(healthyChains)} / {i18n.format.integer(
+											summaries.length
+										)}</strong
+									>
+								</article>
+							</div>
+							<Scorecard {i18n} scorecard={panelGame.scorecard} />
+						</div>
 					{:else if panelId === 'policies'}
 						<PolicyPanel
 							{i18n}
@@ -396,8 +454,27 @@
 		flex: none;
 	}
 
+	/* Stamp-style rail tabs: square, with the paper/brass double-frame of the
+	 * parchment framing so the workspace rail reads as ink stamps against the
+	 * gameplay rail's circular buttons. */
+	.workspace-rail .btn-icon.rail-stamp {
+		border-radius: 6px;
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			inset 0 0 0 2px var(--brass-300),
+			var(--shadow-paper);
+	}
+
 	.workspace-rail .btn-icon.active {
 		background: var(--paper-200);
+	}
+
+	.workspace-rail .btn-icon.rail-stamp.active {
+		border-radius: 6px;
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			inset 0 0 0 2px var(--brass-500),
+			var(--shadow-paper);
 	}
 
 	.workspace-content {
@@ -405,6 +482,59 @@
 		min-height: 0;
 		padding: 1rem;
 		overflow: auto;
+	}
+
+	.workspace-dashboard {
+		display: grid;
+		gap: 1rem;
+	}
+
+	.summary-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+		gap: 0.7rem;
+	}
+
+	.summary-card {
+		display: grid;
+		justify-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+		padding: 0.8rem 0.6rem 0.7rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 2px;
+		background: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
+		box-shadow: 0 1px 0 rgba(20, 16, 10, 0.08);
+	}
+
+	.summary-card h3 {
+		margin: 0;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.66rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		text-align: center;
+	}
+
+	.summary-thumb {
+		width: 4.5rem;
+		height: auto;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+	}
+
+	.summary-value {
+		color: var(--ink-700);
+		font-family: var(--font-mono);
+		font-size: 1.3rem;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums lining-nums;
+		text-align: center;
 	}
 
 	.decisions-surfaces,
@@ -444,7 +574,25 @@
 	}
 
 	.close-tower {
-		white-space: nowrap;
+		display: grid;
+		place-items: center;
+		width: 2.4rem;
+		height: 2.4rem;
+		padding: 0;
+		border: 1px solid var(--ink-900);
+		border-radius: 2px;
+		background: var(--wax-red);
+		color: var(--paper-50);
+		font-family: var(--font-ui);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1;
+		box-shadow: inset 0 0 0 1px var(--wax-red-2);
+	}
+
+	.close-tower:hover,
+	.close-tower:focus-visible {
+		background: var(--wax-red-2);
 	}
 
 	@media (max-width: 980px) {

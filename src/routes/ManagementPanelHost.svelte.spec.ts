@@ -10,6 +10,8 @@ import {
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import { decisionContextCashPressure } from '$lib/game/decisionContext';
 import { getFinanceMetrics, type FinanceMetrics } from '$lib/game/financeMetrics';
+import { buildStoreCategoryChainSummaries } from '$lib/game/productChainTree';
+import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
 import { summarizeReports, type ReportSummary } from '$lib/game/reports';
 import { createNewGame } from '$lib/game/state';
@@ -40,6 +42,7 @@ interface ManagementPanelHostProps {
 	panelGame: GameState;
 	summary: ReportSummary;
 	financeMetrics: FinanceMetrics | null;
+	chainSummaries: ProductChainCategorySummary[] | null;
 	retailSupplyViews: RetailCitySupplyView[];
 	mutations: MutationAvailability;
 	retailSupplyDisabled: boolean;
@@ -164,6 +167,7 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		panelGame,
 		summary: summarizeReports(panelGame.reports),
 		financeMetrics: null,
+		chainSummaries: buildStoreCategoryChainSummaries(panelGame),
 		retailSupplyViews: buildRetailCitySupplyViews(panelGame, i18n),
 		mutations: mutationAvailability(),
 		retailSupplyDisabled: false,
@@ -245,8 +249,39 @@ describe('ManagementPanelHost', () => {
 			)
 			.toBeVisible();
 		await expect
-			.element(page.getByText(props.i18n.format.currency(props.panelGame.cash)))
+			.element(page.getByText(props.i18n.format.currency(props.panelGame.cash)).first())
 			.toBeVisible();
+	});
+
+	it('renders real summary cards above the scorecard on the dashboard', async () => {
+		const props = hostProps();
+		render(ManagementPanelHost, props);
+		const dialog = page.getByRole('dialog', { name: props.panelLabel });
+
+		for (const key of ['stores', 'cash', 'activeRoutes', 'chainHealth'] as const) {
+			await expect
+				.element(dialog.getByRole('heading', { name: props.i18n.t(`workspaceSummary.${key}`) }))
+				.toBeVisible();
+		}
+		await expect.element(page.getByRole('heading', { name: /scorecard/i })).toBeVisible();
+		await vi.waitFor(() => {
+			const thumb = document.querySelector<HTMLImageElement>('img.summary-thumb');
+			expect(thumb?.src).toMatch(/\/anime-storefront\.png$/);
+		});
+
+		await vi.waitFor(() => {
+			const values = [...document.querySelectorAll<HTMLElement>('.summary-value')].map(
+				(element) => element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+			);
+			const summaries = buildStoreCategoryChainSummaries(props.panelGame);
+			const healthy = summaries.filter((summary) => summary.health === 'healthy').length;
+			expect(values).toEqual([
+				props.i18n.format.integer(props.panelGame.stores.length),
+				props.i18n.format.currency(props.panelGame.cash),
+				props.i18n.format.integer(0),
+				`${props.i18n.format.integer(healthy)} / ${props.i18n.format.integer(summaries.length)}`
+			]);
+		});
 	});
 
 	it('forwards a backdrop close to the route callback', async () => {

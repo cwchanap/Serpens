@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { assessCredit, borrow } from '$lib/game/finance';
+import { simulateDay } from '$lib/game/simulateDay';
 import { getFinanceMetrics } from '$lib/game/financeMetrics';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import { createNewGame } from '$lib/game/state';
@@ -71,7 +72,7 @@ describe('FinancePanel', () => {
 			'Service headroom',
 			'Loan disbursement'
 		]) {
-			await expect.element(page.getByText(label, { exact: true })).toBeVisible();
+			await expect.element(page.getByText(label, { exact: true }).first()).toBeVisible();
 		}
 	});
 
@@ -175,7 +176,7 @@ describe('FinancePanel', () => {
 		};
 		renderPanel({ game: delinquent });
 		await expect.element(page.getByText('$725').first()).toBeVisible();
-		expect(document.body.textContent).toMatch(/Payoff quote\s+\$725/);
+		expect(document.body.textContent).toMatch(/Payoff quote\s*\$725/);
 	});
 
 	it('shows a matured fractional interest balance as one dollar of arrears', async () => {
@@ -202,7 +203,7 @@ describe('FinancePanel', () => {
 		};
 
 		renderPanel({ game: matured });
-		expect(document.body.textContent).toMatch(/Arrears\s+\$1/);
+		expect(document.body.textContent).toMatch(/Arrears\s*\$1/);
 	});
 
 	it('renders localized finance copy outside English', async () => {
@@ -237,7 +238,9 @@ describe('FinancePanel', () => {
 		const expectedAprBps = assessCredit(creditworthyGame(), 84).annualInterestRateBps;
 		const expectedAprPercent = (expectedAprBps / 100).toFixed(2).replace('.', '\\.');
 		await expect.element(page.getByRole('heading', { name: '信用方案' })).toBeVisible();
-		await expect.element(page.getByText(new RegExp(`${expectedAprPercent}%`))).toBeVisible();
+		await expect
+			.element(page.getByText(new RegExp(`${expectedAprPercent}%`)).first())
+			.toBeVisible();
 	});
 
 	it('focuses the alert-target loan row', async () => {
@@ -365,6 +368,61 @@ describe('FinancePanel', () => {
 			await expect.element(page.getByRole('status')).toHaveTextContent(expected);
 		}
 	);
+
+	it('lays out stat cards, term-offer cards, and the borrow review CTA', async () => {
+		expect.assertions(6);
+		renderPanel();
+		for (const label of ['Cash', 'Outstanding principal', 'Latest daily profit', 'Daily revenue']) {
+			await expect.element(page.getByText(label, { exact: true })).toBeVisible();
+		}
+		await expect.element(page.getByText('No report yet').first()).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: '84 days', exact: true }))
+			.toHaveAttribute('aria-pressed', 'true');
+	});
+
+	it('shows the selected term rate on the matching offer card', async () => {
+		expect.assertions(1);
+		const props = renderPanel();
+		const expectedApr = props.i18n.format.apr(assessCredit(props.game, 84).annualInterestRateBps);
+		await expect
+			.element(page.getByText(`${expectedApr} APR`, { exact: true }).first())
+			.toBeVisible();
+	});
+
+	it('renders each loan card with a ledger strip of payment facts', async () => {
+		const game = gameWithLoan();
+		renderPanel({ game });
+		const loan = game.finance.loans.find((candidate) => candidate.originalPrincipal === 2_000)!;
+		await expect.element(page.getByText('Ledger', { exact: true }).first()).toBeVisible();
+		await vi.waitFor(() => {
+			const article = document.getElementById(`finance-loan-${loan.id}`);
+			expect(article?.textContent).toMatch(/Original principal\s*\$2,000/);
+			expect(article?.textContent).toMatch(/Payoff quote\s*\$[0-9,]+/);
+		});
+	});
+
+	it('draws the revenue spark from the trailing daily reports', async () => {
+		let game = creditworthyGame();
+		for (let day = 0; day < 7; day += 1) {
+			game = simulateDay(game);
+		}
+		renderPanel({ game });
+
+		const series = game.reports.slice(-7).map((report) => report.revenue);
+		const peak = Math.max(...series);
+		await vi.waitFor(() => {
+			expect(document.querySelectorAll('.spark-bar')).toHaveLength(7);
+		});
+		const heights = [...document.querySelectorAll<HTMLElement>('.spark-bar')].map((bar) =>
+			Number.parseFloat(bar.style.height)
+		);
+		expect(
+			heights.every(
+				(height, index) => height === Math.max(8, Math.round((series[index]! / peak) * 100))
+			)
+		).toBe(true);
+	});
 
 	it('shows the no-activity message when there are no transactions', async () => {
 		expect.assertions(1);

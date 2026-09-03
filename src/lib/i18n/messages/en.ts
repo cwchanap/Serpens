@@ -950,7 +950,6 @@ export const en = {
 		},
 		controlTower: {
 			eyebrow: 'Management',
-			close: 'Close',
 			dismiss: 'Dismiss {panel}',
 			closePanel: 'Close {panel}',
 			panelStatus: '{panel} status'
@@ -1074,7 +1073,10 @@ export const en = {
 			debtServiceCoverage: 'Debt-service coverage',
 			cashRunway: 'Cash runway',
 			availableCredit: '84-day available credit',
-			noDebtServiceDue: 'No debt service due'
+			noDebtServiceDue: 'No debt service due',
+			latestProfit: 'Latest daily profit',
+			revenueTrend: 'Daily revenue',
+			noReport: 'No report yet'
 		},
 		credit: {
 			baseApr: 'Base APR',
@@ -1166,6 +1168,7 @@ export const en = {
 			days: '{days} days',
 			ninetyPlusDays: '90+ days',
 			apr: 'APR',
+			ledger: 'Ledger',
 			healthAdjustment: 'Health +{amount}',
 			historyAdjustment: 'History +{amount}',
 			principal: 'Principal',
@@ -1180,6 +1183,12 @@ export const en = {
 			replacementComparison:
 				'Replacement APR {apr} · First payment {firstPayment} · Peak payment {peakPayment} · No cash-out is included.'
 		}
+	},
+	workspaceSummary: {
+		stores: 'Stores',
+		cash: 'Cash',
+		activeRoutes: 'Active logistics routes',
+		chainHealth: 'Product chain health'
 	},
 	game: {
 		archetypes: {
