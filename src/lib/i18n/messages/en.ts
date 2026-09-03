@@ -106,6 +106,7 @@ export const en = {
 		revenuePerDay: 'Revenue/day',
 		stockHealth: 'Stock health',
 		staffMorale: 'Staff morale',
+		last7Days: 'Last 7 days',
 		level: 'Level {level} / {max}',
 		nextLabel: 'Next: {benefit}',
 		nextBenefit: {

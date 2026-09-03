@@ -166,9 +166,12 @@
 		position: absolute;
 		top: 6rem;
 		right: 1rem;
-		bottom: 1rem;
+		/* Hug the card content instead of stretching a parchment slab to the
+		   bottom; max-height keeps the 1rem bottom gap and scrolls tall cards. */
+		bottom: auto;
 		z-index: 10;
 		width: min(24.5rem, calc(100% - 2rem));
+		max-height: calc(100% - 7rem);
 		/* The control desk is a fixed left rail on desktop, and this inspector is
 		   right-anchored, so no bottom reservation is needed above 980px. */
 		overflow: auto;

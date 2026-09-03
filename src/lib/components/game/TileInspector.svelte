@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
-	import { getStoreArt } from '$lib/assets/gameArt';
+	import { PRODUCT_ART, getStoreArt, type ProductArt } from '$lib/assets/gameArt';
+	import { getStoreProductStatus } from '$lib/game/stock';
 	import { getStoreOrdinal } from '$lib/game/state';
 	import {
 		MAX_STORE_LEVEL,
 		STORE_MILESTONE_CAPACITY_BONUS,
+		STORE_MILESTONE_LEVELS,
 		canUpgradeStore,
 		getStoreUpgradeCost,
 		getUnlockedProductCount,
@@ -12,7 +14,7 @@
 	} from '$lib/game/leveling';
 	import { formatStoreLocation, localizeStockTrouble, storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
-	import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
+	import type { CityTile, DailyStoreReport, GameState, ProductId, Store } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 
@@ -68,7 +70,47 @@
 	});
 
 	const attentionMessage = $derived(store ? localizeStockTrouble(store.products, i18n) : null);
+	const troubleProducts = $derived(
+		store ? store.products.filter((product) => getStoreProductStatus(product) !== 'Healthy') : []
+	);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
+	const weekRevenue = $derived.by(() => {
+		if (!store) return 0;
+		const storeId = store.id;
+		return game.reports
+			.slice(-7)
+			.reduce(
+				(sum, report) =>
+					sum + (report.storeReports.find((entry) => entry.storeId === storeId)?.revenue ?? 0),
+				0
+			);
+	});
+
+	const levelPips = $derived.by(() => {
+		if (!store) return [] as boolean[];
+		const level = store.level;
+		if (level >= MAX_STORE_LEVEL) {
+			return Array.from({ length: MAX_STORE_LEVEL }, () => true);
+		}
+		const previousMilestone =
+			[...STORE_MILESTONE_LEVELS].reverse().find((milestone) => milestone <= level) ?? 0;
+		const nextMilestone =
+			STORE_MILESTONE_LEVELS.find((milestone) => milestone > level) ?? MAX_STORE_LEVEL;
+		return Array.from(
+			{ length: nextMilestone - previousMilestone },
+			(_, index) => index < level - previousMilestone
+		);
+	});
+
+	function productArtFor(productId: ProductId): ProductArt | null {
+		return productId in PRODUCT_ART ? PRODUCT_ART[productId] : null;
+	}
+
+	function vitalArcColor(value: number): string {
+		if (value >= 70) return 'var(--moss)';
+		if (value >= 40) return 'var(--brass-500)';
+		return 'var(--wax-red)';
+	}
 
 	function closeInspector(): void {
 		onClickFeedback();
@@ -93,6 +135,14 @@
 		};
 	};
 </script>
+
+{#snippet levelPipRow()}
+	<ul class="pips" data-testid="level-pips" aria-hidden="true">
+		{#each levelPips as filled, index (index)}
+			<li class="pip" class:filled data-testid="level-pip"></li>
+		{/each}
+	</ul>
+{/snippet}
 
 <aside
 	class="inspector"
@@ -131,33 +181,105 @@
 						/>
 						<figcaption class="store-identity">
 							<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
+							{@render levelPipRow()}
 							<p class="location">{formatStoreLocation(store.location, i18n)}</p>
 						</figcaption>
 					</figure>
 				{:else}
 					<div class="store-identity plain">
 						<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
+						{@render levelPipRow()}
 						<p class="location">{formatStoreLocation(store.location, i18n)}</p>
 					</div>
 				{/if}
 
-				<dl class="gauges" aria-label={i18n.t('tileInspector.storeVitals')}>
-					<div class="gauge">
+				<p class="week" data-testid="week-revenue">
+					<span class="week-label">{i18n.t('tileInspector.last7Days')}</span>
+					<span class="week-value">{i18n.format.currency(weekRevenue)}</span>
+				</p>
+
+				<dl
+					class="gauges"
+					aria-label={i18n.t('tileInspector.storeVitals')}
+					data-testid="store-gauges"
+				>
+					<div class="gauge" data-testid="gauge-revenue">
 						<dt>{i18n.t('tileInspector.revenuePerDay')}</dt>
-						<dd>{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}</dd>
+						<dd class="medallion">
+							<span class="value">
+								{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}
+							</span>
+						</dd>
 					</div>
-					<div class="gauge">
+					<div class="gauge" data-testid="gauge-stock-health">
 						<dt>{i18n.t('tileInspector.stockHealth')}</dt>
-						<dd>{store.stockHealth}</dd>
+						<dd class="medallion">
+							<svg viewBox="0 0 44 44" aria-hidden="true" data-testid="gauge-arc-stock-health">
+								<circle class="track" cx="22" cy="22" r="19" pathLength="100"></circle>
+								<circle
+									class="arc"
+									cx="22"
+									cy="22"
+									r="19"
+									pathLength="100"
+									style:stroke-dasharray="{store.stockHealth} 100"
+									style:stroke={vitalArcColor(store.stockHealth)}
+								></circle>
+							</svg>
+							<span class="value">{store.stockHealth}</span>
+						</dd>
 					</div>
-					<div class="gauge">
+					<div class="gauge" data-testid="gauge-staff-morale">
 						<dt>{i18n.t('tileInspector.staffMorale')}</dt>
-						<dd>{store.staffMorale}</dd>
+						<dd class="medallion">
+							<svg viewBox="0 0 44 44" aria-hidden="true" data-testid="gauge-arc-staff-morale">
+								<circle class="track" cx="22" cy="22" r="19" pathLength="100"></circle>
+								<circle
+									class="arc"
+									cx="22"
+									cy="22"
+									r="19"
+									pathLength="100"
+									style:stroke-dasharray="{store.staffMorale} 100"
+									style:stroke={vitalArcColor(store.staffMorale)}
+								></circle>
+							</svg>
+							<span class="value">{store.staffMorale}</span>
+						</dd>
 					</div>
 				</dl>
 
 				{#if attentionMessage}
-					<p class="attention"><span class="seal" data-urgent="true">!</span> {attentionMessage}</p>
+					<div class="attention" data-testid="attention-band">
+						<p class="attention-copy">
+							<span class="seal" data-urgent="true">!</span>
+							{attentionMessage}
+						</p>
+						{#if troubleProducts.length > 0}
+							<ul class="attention-products" data-testid="attention-products">
+								{#each troubleProducts as product (product.productId)}
+									{@const art = productArtFor(product.productId)}
+									<li>
+										{#if art}
+											<img
+												src={asset(art.path)}
+												alt=""
+												data-testid={`attention-product-art-${product.productId}`}
+												loading="lazy"
+												decoding="async"
+											/>
+										{:else}
+											<span
+												class="thumb-placeholder"
+												aria-hidden="true"
+												data-testid={`attention-product-placeholder-${product.productId}`}
+											></span>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
 				{/if}
 
 				<div class="store-level">
@@ -299,6 +421,18 @@
 		text-transform: uppercase;
 	}
 
+	.heading span {
+		flex: 0 0 auto;
+		border: 1px solid var(--brass-500);
+		border-radius: 999px;
+		color: var(--ink-700);
+		background: var(--paper-50);
+		padding: 0.2rem 0.55rem;
+		font-family: var(--font-ui);
+		font-size: 0.74rem;
+		font-weight: 600;
+	}
+
 	.location {
 		color: var(--ink-500);
 		font-family: var(--font-body);
@@ -312,18 +446,6 @@
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		color: var(--brass-700);
-	}
-
-	.heading span {
-		flex: 0 0 auto;
-		border: 1px solid var(--brass-500);
-		border-radius: 999px;
-		color: var(--ink-700);
-		background: var(--paper-50);
-		padding: 0.2rem 0.55rem;
-		font-family: var(--font-ui);
-		font-size: 0.74rem;
-		font-weight: 600;
 	}
 
 	dl {
@@ -346,37 +468,119 @@
 		gap: 0.85rem;
 	}
 
-	.gauges {
-		grid-template-columns: repeat(3, 1fr);
-		gap: 0.5rem;
-	}
+	/* --- LAST 7 DAYS revenue row -------------------------------------------- */
 
-	.gauge {
+	.week {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin: 0;
+		padding: 0.5rem 0.75rem;
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
 		background: var(--paper-50);
-		padding: 0.45rem 0.5rem;
-		text-align: center;
 	}
 
-	.gauge dt {
+	.week-label {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.62rem;
+		font-size: 0.66rem;
 		font-weight: 700;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.12em;
 		text-transform: uppercase;
 	}
 
-	.gauge dd {
-		margin: 0.25rem 0 0;
+	.week-value {
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		font-weight: 700;
 		color: var(--ink-700);
 	}
 
+	/* --- Brass gauge medallions ---------------------------------------------- */
+
+	.gauges {
+		grid-template-columns: repeat(3, 1fr);
+		gap: 0.5rem;
+	}
+
+	.gauge {
+		display: grid;
+		justify-items: center;
+		gap: 0.35rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.55rem 0.35rem 0.5rem;
+		text-align: center;
+	}
+
+	.gauge dt {
+		order: 2;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.medallion {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 4.3rem;
+		height: 4.3rem;
+		margin: 0;
+		border: 1.5px solid var(--brass-500);
+		border-radius: 999px;
+		background: var(--paper-100);
+		box-shadow: inset 0 0 0 2px var(--paper-50);
+	}
+
+	.medallion svg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+	}
+
+	.medallion .track {
+		fill: none;
+		stroke: var(--brass-100);
+		stroke-width: 3.5;
+	}
+
+	.medallion .arc {
+		fill: none;
+		stroke-width: 3.5;
+		stroke-linecap: round;
+		transform: rotate(-90deg);
+		transform-origin: 50% 50%;
+	}
+
+	.medallion .value {
+		padding: 0 0.35rem;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums lining-nums;
+		font-weight: 700;
+		font-size: 0.82rem;
+		color: var(--ink-700);
+	}
+
+	/* --- Wax-red attention band ----------------------------------------------- */
+
 	.attention {
+		display: grid;
+		gap: 0.5rem;
+		padding: 0.6rem 0.7rem;
+		border: 1px solid var(--wax-red);
+		border-radius: 2px;
+		background: color-mix(in srgb, var(--wax-red) 10%, var(--paper-50));
+	}
+
+	.attention-copy {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -385,6 +589,32 @@
 		font-family: var(--font-body);
 		font-size: 0.85rem;
 	}
+
+	.attention-products {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.attention-products img,
+	.thumb-placeholder {
+		display: block;
+		width: 2.5rem;
+		height: 2.5rem;
+		object-fit: cover;
+		border: 1px solid var(--wax-red);
+		border-radius: 2px;
+		background: var(--paper-100);
+	}
+
+	.thumb-placeholder {
+		background: linear-gradient(135deg, var(--brass-100), var(--brass-300));
+	}
+
+	/* --- Store art + identity + level pips ------------------------------------ */
 
 	.store-art {
 		position: relative;
@@ -408,9 +638,20 @@
 		bottom: 0;
 		left: 0;
 		display: grid;
+		grid-template-columns: 1fr;
+		justify-items: start;
 		gap: 0.1rem;
 		padding: 1.6rem 0.75rem 0.6rem;
 		background: linear-gradient(to top, var(--paper-100) 55%, transparent);
+	}
+
+	.store-identity .pips {
+		grid-row: 2;
+	}
+
+	.store-identity .location {
+		grid-row: 3;
+		margin-top: 0.15rem;
 	}
 
 	.store-identity.plain {
@@ -418,6 +659,28 @@
 		padding: 0;
 		background: none;
 	}
+
+	.pips {
+		display: flex;
+		gap: 0.28rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.pip {
+		width: 0.5rem;
+		height: 0.5rem;
+		border: 1px solid var(--brass-700);
+		border-radius: 999px;
+		background: var(--paper-100);
+	}
+
+	.pip.filled {
+		background: var(--brass-500);
+	}
+
+	/* --- Level + actions ------------------------------------------------------- */
 
 	.store-level {
 		display: grid;
@@ -449,19 +712,23 @@
 	}
 
 	.upgrade {
-		padding: 0.45rem 0.85rem;
-		border: 1px solid var(--brass-500);
+		padding: 0.55rem 0.85rem;
+		border: 1px solid var(--ink-900);
 		border-radius: 2px;
-		background: var(--paper-100);
-		color: var(--ink-700);
+		background: var(--moss);
+		color: var(--paper-50);
 		font-family: var(--font-ui);
-		font-size: 0.82rem;
-		font-weight: 600;
+		font-size: 0.85rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
 		cursor: pointer;
+		box-shadow:
+			inset 0 0 0 1px var(--moss-2),
+			var(--shadow-paper);
 	}
 
 	.upgrade:hover:not(:disabled) {
-		background: var(--paper-200);
+		background: var(--moss-2);
 	}
 
 	.upgrade:disabled {

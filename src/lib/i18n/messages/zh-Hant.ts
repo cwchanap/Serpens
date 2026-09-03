@@ -106,6 +106,7 @@ export const zhHant = {
 		revenuePerDay: '每日營收',
 		stockHealth: '庫存健康度',
 		staffMorale: '員工士氣',
+		last7Days: '最近 7 天',
 		level: '等級 {level} / {max}',
 		nextLabel: '下一步：{benefit}',
 		nextBenefit: {

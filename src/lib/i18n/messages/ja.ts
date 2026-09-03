@@ -106,6 +106,7 @@ export const ja = {
 		revenuePerDay: '日次売上',
 		stockHealth: '在庫健全度',
 		staffMorale: '従業員士気',
+		last7Days: '過去7日間',
 		level: 'レベル {level} / {max}',
 		nextLabel: '次: {benefit}',
 		nextBenefit: {

@@ -406,6 +406,108 @@ describe('TileInspector localization', () => {
 	});
 });
 
+describe('TileInspector inspector mock parity', () => {
+	it('renders brass gauge medallions with the real vital values', async () => {
+		expect.assertions(5);
+
+		renderInspector({ store, latestStoreReport });
+
+		await expect.element(page.getByTestId('store-gauges')).toBeVisible();
+		await expect.element(page.getByTestId('gauge-revenue')).toHaveTextContent('$84');
+		await expect.element(page.getByTestId('gauge-stock-health')).toHaveTextContent('80');
+		await expect.element(page.getByTestId('gauge-staff-morale')).toHaveTextContent('75');
+		await expect.element(page.getByTestId('gauge-arc-stock-health')).toBeInTheDocument();
+	});
+
+	it('sums this store revenue across the last 7 daily reports only', async () => {
+		expect.assertions(2);
+		const reports = [
+			{ day: 0, storeReports: [{ storeId: 'store-1', revenue: 100 }] },
+			...Array.from({ length: 7 }, (_, index) => ({
+				day: index + 1,
+				storeReports: [
+					{ storeId: 'store-1', revenue: 10 },
+					{ storeId: 'store-other', revenue: 500 }
+				]
+			}))
+		] as GameState['reports'];
+
+		renderInspector({ game: { ...defaultGame, reports }, store, latestStoreReport });
+
+		const week = page.getByTestId('week-revenue');
+		await expect.element(week).toBeVisible();
+		await expect.element(week).toHaveTextContent('$70');
+	});
+
+	it('shows level pips toward the next milestone under the store name', async () => {
+		expect.assertions(3);
+
+		renderInspector({ store, latestStoreReport });
+
+		await expect.element(page.getByTestId('level-pips')).toBeVisible();
+		const pips = page.getByTestId('level-pip').elements();
+		expect(pips).toHaveLength(4);
+		expect(pips.filter((pip) => pip.classList.contains('filled'))).toHaveLength(1);
+	});
+
+	it('lists attention products with art thumbnails in the wax-red attention band', async () => {
+		expect.assertions(3);
+		const outOfStockStore: Store = {
+			...store,
+			id: 'store-band',
+			products: [
+				{
+					productId: 'snacks',
+					brandId: 'common-ground',
+					lots: [],
+					reorderThreshold: 10,
+					targetStock: 50,
+					sellingPrice: 5
+				}
+			]
+		};
+
+		renderInspector({ store: outOfStockStore, latestStoreReport });
+
+		await expect.element(page.getByTestId('attention-band')).toBeVisible();
+		const thumb = page.getByTestId('attention-product-art-snacks');
+		await expect.element(thumb).toBeVisible();
+		await expect.element(thumb).toHaveAttribute('src', '/assets/game/products/snacks.png');
+	});
+
+	it('renders a brass placeholder for attention products without art', async () => {
+		expect.assertions(1);
+		const mysteryStore: Store = {
+			...store,
+			id: 'store-mystery',
+			products: [
+				{
+					productId: 'mystery-goods' as Store['products'][number]['productId'],
+					brandId: 'common-ground',
+					lots: [],
+					reorderThreshold: 10,
+					targetStock: 50,
+					sellingPrice: 5
+				}
+			]
+		};
+
+		renderInspector({ store: mysteryStore, latestStoreReport });
+
+		await expect
+			.element(page.getByTestId('attention-product-placeholder-mystery-goods'))
+			.toBeVisible();
+	});
+
+	it('hides the attention band when stock is healthy', async () => {
+		expect.assertions(1);
+
+		renderInspector({ store, latestStoreReport });
+
+		await expect.element(page.getByTestId('attention-band')).not.toBeInTheDocument();
+	});
+});
+
 describe('TileInspector capability', () => {
 	it('combines challenge permission with level and affordability guards', async () => {
 		expect.assertions(3);
