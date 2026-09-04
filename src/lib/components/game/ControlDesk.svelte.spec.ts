@@ -28,9 +28,10 @@ function baseProps() {
 }
 
 describe('ControlDesk', () => {
-	// The control desk renders as a left rail on wide screens. This project's
-	// browser tests default to a ~414px viewport, so widen it here to exercise
-	// the desktop rail the brief's tests assert against.
+	// The control desk is a full-width horizontal dock fixed to the bottom at
+	// every viewport. This project's browser tests default to a ~414px viewport,
+	// so widen it here to exercise the desktop arrangement the brief's tests
+	// assert against.
 	beforeEach(async () => {
 		await page.viewport(1280, 800);
 	});
@@ -43,39 +44,53 @@ describe('ControlDesk', () => {
 		await expect.element(page.getByRole('button', { name: /^pause$/i })).toBeVisible();
 	});
 
-	it('keeps the speed buttons inside the desktop rail without horizontal overflow', async () => {
-		expect.assertions(4);
-		// Component specs don't load layout.css, so pin the rail-width token the
-		// app provides; without it the rail shrink-wraps and overflow goes unseen.
-		document.documentElement.style.setProperty('--control-desk-rail-width', '5rem');
+	it('docks horizontally at the bottom with the time controls in one row', async () => {
+		expect.assertions(10);
+		// Component specs don't load layout.css, so pin the dock-height token the
+		// app provides; without it the dock shrink-wraps to its content height.
+		document.documentElement.style.setProperty('--control-desk-compact-height', '5.75rem');
 		try {
 			render(ControlDesk, baseProps());
 
-			const deskBox = document.querySelector<HTMLElement>('.control-desk')?.getBoundingClientRect();
-			// The rail's content column is one 3.5rem icon button wide; the speed
-			// cluster must fit it (three text buttons in a row would not).
-			const columnWidth = document
-				.querySelector<HTMLElement>('.btn-icon')
-				?.getBoundingClientRect().width;
-			const groupBox = document
-				.querySelector<HTMLElement>('.speed-controls')
-				?.getBoundingClientRect();
-			for (const speed of ['1×', '2×', '5×']) {
-				const box = page
+			const desk = document.querySelector<HTMLElement>('.control-desk');
+			// layout.css's global border-box is absent here, so restore the app's
+			// sizing model before measuring (dock height is a border-box contract).
+			desk?.style.setProperty('box-sizing', 'border-box');
+			const deskBox = desk?.getBoundingClientRect();
+			expect(deskBox, 'control desk has a box').toBeTruthy();
+			if (!deskBox) return;
+			// The dock spans the viewport width at the bottom edge.
+			expect(deskBox.left).toBeLessThanOrEqual(2);
+			expect(deskBox.right).toBeGreaterThanOrEqual(1280 - 2);
+			expect(deskBox.y + deskBox.height).toBeGreaterThanOrEqual(800 - 2);
+			expect(deskBox.height).toBeCloseTo(92, 0);
+			expect(getComputedStyle(desk as HTMLElement).flexDirection).toBe('row');
+
+			// Pause and the 1x/2x/5x speeds sit on one horizontal row inside the
+			// dock (the old rail's vertical speed stack is gone).
+			const pauseBox = page
+				.getByRole('button', { name: /^pause$/i })
+				.element()
+				.getBoundingClientRect();
+			const pauseCenter = pauseBox.top + pauseBox.height / 2;
+			const speedBoxes = ['1×', '2×', '5×'].map((speed) =>
+				page
 					.getByRole('button', { name: new RegExp(`^${speed}$`, 'i') })
 					.element()
-					.getBoundingClientRect();
+					.getBoundingClientRect()
+			);
+			for (const box of speedBoxes) {
 				expect(
-					deskBox && box.left >= deskBox.left && box.right <= deskBox.right,
-					`${speed} button overflows the control desk`
+					Math.abs(box.top + box.height / 2 - pauseCenter) <= 2,
+					'speed button is not vertically centered with pause in the dock row'
 				).toBe(true);
 			}
 			expect(
-				groupBox && columnWidth && groupBox.width <= columnWidth,
-				'speed cluster is wider than the rail content column'
+				speedBoxes[0]!.right <= deskBox.right && speedBoxes[2]!.left >= deskBox.left,
+				'speed row overflows the control desk'
 			).toBe(true);
 		} finally {
-			document.documentElement.style.removeProperty('--control-desk-rail-width');
+			document.documentElement.style.removeProperty('--control-desk-compact-height');
 		}
 	});
 

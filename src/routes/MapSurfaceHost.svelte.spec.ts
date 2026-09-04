@@ -158,6 +158,43 @@ function surfaceProps(overrides: Partial<SurfaceProps> = {}): SurfaceProps {
 }
 
 describe('MapSurfaceHost', () => {
+	it('reserves only the bottom control-desk band at desktop and compact widths', async () => {
+		expect.assertions(8);
+		// Component specs don't load layout.css/tokens.css, so pin the dock-height
+		// token the app provides before asserting the used geometry.
+		document.documentElement.style.setProperty('--control-desk-compact-height', '5.75rem');
+		try {
+			await page.viewport(1280, 800);
+			render(MapSurfaceHost, surfaceProps());
+
+			const surfaces = () => {
+				const el = document.querySelector<HTMLElement>('.map-surfaces');
+				if (!el) throw new Error('Map surfaces container did not render');
+				const box = el.getBoundingClientRect();
+				const style = getComputedStyle(el);
+				return { box, style };
+			};
+
+			// Desktop: full-bleed map — no left rail reservation, only the 92px
+			// bottom band the floating dock occupies.
+			const desktop = surfaces();
+			expect(desktop.box.left).toBeLessThanOrEqual(2);
+			expect(desktop.style.left).toBe('0px');
+			expect(desktop.style.bottom).toBe('92px');
+			expect(desktop.style.top).toBe('0px');
+
+			// Compact: the same full-width, bottom-only reservation.
+			await page.viewport(760, 800);
+			const compact = surfaces();
+			expect(compact.box.left).toBeLessThanOrEqual(2);
+			expect(compact.box.width).toBeGreaterThanOrEqual(758);
+			expect(compact.style.left).toBe('0px');
+			expect(compact.style.bottom).toBe('92px');
+		} finally {
+			document.documentElement.style.removeProperty('--control-desk-compact-height');
+		}
+	});
+
 	it('keeps visited surfaces mounted and exposes only the active surface', async () => {
 		expect.assertions(7);
 		const onSelectWorldCity = vi.fn();

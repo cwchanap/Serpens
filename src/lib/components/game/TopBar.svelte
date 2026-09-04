@@ -86,17 +86,18 @@
 </script>
 
 <header class="top-bar" aria-label={i18n.t('topBar.statusBar')}>
-	<div class="location plaque">
-		<span class="medallion" aria-hidden="true">
-			<GameIcon name={activeMapView} />
-		</span>
-		<div>
-			<p class="eyebrow">{eyebrow}</p>
-			<h1>{title}</h1>
+	<div class="location-stack">
+		<div class="location plaque">
+			<span class="medallion" aria-hidden="true">
+				<GameIcon name={activeMapView} />
+			</span>
+			<span class="plaque-divider" aria-hidden="true"></span>
+			<div>
+				<p class="eyebrow">{eyebrow}</p>
+				<h1>{title}</h1>
+			</div>
 		</div>
-	</div>
 
-	<div class="readouts plaque">
 		<div class="map-controls" role="group" aria-label={i18n.t('gameMenu.mapView')}>
 			{#each mapViews as view (view.id)}
 				<button
@@ -111,6 +112,9 @@
 				</button>
 			{/each}
 		</div>
+	</div>
+
+	<div class="readouts plaque">
 		<span class="ticker">
 			<GameIcon name="day" />
 			{#if day !== null}
@@ -209,6 +213,14 @@
 		padding: 0.5rem 0.85rem;
 	}
 
+	.location-stack {
+		pointer-events: none;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 0.85rem;
+	}
+
 	.location {
 		pointer-events: none;
 		display: flex;
@@ -216,12 +228,26 @@
 		gap: 0.7rem;
 	}
 
+	/* Slim vertical divider between the brass medallion and the copy. */
+	.plaque-divider {
+		flex: none;
+		align-self: stretch;
+		width: 1px;
+		background: linear-gradient(
+			to bottom,
+			transparent,
+			var(--brass-500) 22%,
+			var(--brass-500) 78%,
+			transparent
+		);
+	}
+
 	.medallion {
 		flex: none;
 		display: grid;
 		place-items: center;
-		width: 2.5rem;
-		height: 2.5rem;
+		width: 3.5rem;
+		height: 3.5rem;
 		color: var(--walnut-900);
 		background: radial-gradient(
 			circle at 32% 28%,
@@ -237,7 +263,7 @@
 	.location h1 {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: 1.35rem;
+		font-size: 1.7rem;
 		font-weight: 400;
 		line-height: 1.05;
 		color: var(--ink-700);
@@ -245,6 +271,18 @@
 
 	.location .eyebrow {
 		margin: 0;
+	}
+
+	.map-controls {
+		pointer-events: auto;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.map-button.active {
+		background: var(--brass-500);
+		color: var(--paper-50);
 	}
 
 	.readouts {
@@ -289,16 +327,6 @@
 	.trend-chip.down {
 		background: var(--wax-red);
 		box-shadow: inset 0 0 0 1px var(--wax-red-2);
-	}
-
-	.map-controls {
-		display: flex;
-		gap: 0.35rem;
-	}
-
-	.map-button.active {
-		background: var(--brass-500);
-		color: var(--paper-50);
 	}
 
 	.alerts {

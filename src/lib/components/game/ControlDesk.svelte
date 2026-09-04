@@ -49,7 +49,7 @@
 	}: Props = $props();
 </script>
 
-<aside class="control-desk plaque" aria-label={i18n.t('controlDesk.group')}>
+<aside class="control-desk" aria-label={i18n.t('controlDesk.group')}>
 	<div class="cluster">
 		<button
 			type="button"
@@ -93,6 +93,7 @@
 	</div>
 
 	<div class="cluster time">
+		<span class="separator" aria-hidden="true"></span>
 		<button
 			type="button"
 			class="btn-icon"
@@ -128,26 +129,32 @@
 	</div>
 </aside>
 
-<!-- Compact-mode horizontal-scroll affordance: a fixed paper fade over the
-	right edge of the full-bleed bottom dock (pointer-events none), so a
-	clipped tail control reads as "more content" instead of a dead cut.
-	Rendered only at <=980px by the media query below. -->
+<!-- Horizontal-scroll affordance for the bottom dock: a fixed soft veil over
+	the dock's right edge (pointer-events none), so a clipped tail control reads
+	as "more content" instead of a dead cut against the map. -->
 <div class="dock-edge-fade" aria-hidden="true"></div>
 
 <style>
+	/* Mock parity: one horizontal dock of floating circular brass medallions,
+	   full-width at every viewport, over the reserved map band below. No
+	   continuous paper slab behind the buttons — each carries its own frame
+	   and shadow via the shared .btn-icon treatment. */
 	.control-desk {
 		position: fixed;
-		top: 5.5rem;
-		bottom: 1rem;
+		right: 0;
+		bottom: 0;
 		left: 0;
-		width: var(--control-desk-rail-width);
-		padding: 0.75rem;
 		z-index: 25;
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		align-items: center;
 		gap: 0.625rem;
-		overflow-y: auto;
+		min-height: var(--control-desk-compact-height);
+		padding: 0.75rem;
+		/* End padding keeps the trailing time cluster clear of the edge veil. */
+		padding-right: 3.25rem;
+		overflow-x: auto;
+		overflow-y: hidden;
 	}
 
 	.control-desk .btn-icon {
@@ -156,22 +163,13 @@
 		flex: none;
 	}
 
-	.cluster {
+	.cluster,
+	.manage {
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		align-items: center;
 		gap: 0.625rem;
 		flex: none;
-	}
-
-	.manage {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.625rem;
-		flex: 1 1 auto;
-		min-height: 0;
-		overflow-y: auto;
 	}
 
 	.rail-toggle.active {
@@ -179,33 +177,48 @@
 		color: var(--paper-50);
 	}
 
-	/* Column stack: three ~35px text buttons (~110px in a row) cannot fit the
-	   rail's 3.5rem content column; vertically they sit under Pause/Resume. */
+	/* Slim brass hairline that marks the time cluster off from the action
+	   medallions (mock: pause + speeds form their own visual group). */
+	.separator {
+		flex: none;
+		align-self: center;
+		width: 1px;
+		height: 2.25rem;
+		background: color-mix(in srgb, var(--brass-700) 65%, transparent);
+	}
+
+	.time {
+		margin-left: auto;
+	}
+
 	.speed-controls {
 		display: inline-flex;
-		flex-direction: column;
-		gap: 0.2rem;
+		flex-direction: row;
+		align-items: center;
+		gap: 0.3rem;
 	}
 
 	.speed-button {
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
+		border: 1.5px solid var(--brass-500);
+		border-radius: 999px;
 		background: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
 		color: var(--ink-700);
 		font-family: var(--font-ui);
-		font-size: 0.82rem;
+		font-size: 0.9rem;
 		font-weight: 700;
-		padding: 0.45rem 0.55rem;
+		padding: 0.45rem 0.75rem;
 	}
 
 	.speed-button.active {
-		border-color: var(--brass-500);
+		border-color: var(--brass-700);
 		background: var(--paper-200);
 	}
 
-	/* Paper fade pinned over the dock's right edge: starts transparent past
-	   the end-padding zone so fully scrolled content clears it, and ghosts
-	   whatever is clipped under the edge while there is more to scroll. */
+	/* Soft veil pinned over the dock's right edge: transparent at the very
+	   edge (fully scrolled content clears it via the end padding) and a light
+	   walnut shade over whatever is clipped underneath mid-scroll. */
 	.dock-edge-fade {
 		position: fixed;
 		right: 0;
@@ -213,48 +226,12 @@
 		z-index: 26;
 		width: 3rem;
 		height: calc(var(--control-desk-compact-height) - 1px);
-		display: none;
 		pointer-events: none;
 		background: linear-gradient(
 			to left,
 			transparent,
-			color-mix(in srgb, var(--paper-50) 74%, transparent) 62%,
-			var(--paper-50)
+			color-mix(in srgb, var(--walnut-900) 20%, transparent) 55%,
+			color-mix(in srgb, var(--walnut-900) 30%, transparent)
 		);
-	}
-
-	@media (max-width: 980px) {
-		.control-desk {
-			top: auto;
-			right: 0;
-			bottom: 0;
-			width: auto;
-			min-height: var(--control-desk-compact-height);
-			/* End padding keeps the last control clear of the fade at full scroll. */
-			padding: 0.75rem;
-			padding-right: 3.25rem;
-			overflow-x: auto;
-			overflow-y: hidden;
-			flex-direction: row;
-			align-items: center;
-		}
-
-		.dock-edge-fade {
-			display: block;
-		}
-
-		.cluster,
-		.manage,
-		.speed-controls {
-			flex-direction: row;
-		}
-
-		.time {
-			margin-left: auto;
-		}
-
-		.manage {
-			overflow-y: visible;
-		}
 	}
 </style>

@@ -112,6 +112,38 @@ describe('TopBar', () => {
 		expect(onSelectView).toHaveBeenCalledWith('industry');
 	});
 
+	it('floats the map-view cluster beside the plaque, clear of the status readouts', async () => {
+		expect.assertions(6);
+		await page.viewport(1280, 800);
+		render(TopBar, baseProps());
+
+		const plaque = document.querySelector<HTMLElement>('.location.plaque');
+		const group = document.querySelector<HTMLElement>('.map-controls');
+		const readouts = document.querySelector<HTMLElement>('.readouts');
+		const medallion = document.querySelector<HTMLElement>('.location .medallion');
+		if (!plaque || !group || !readouts || !medallion) {
+			throw new Error('TopBar chrome elements did not render');
+		}
+
+		// The three map-view launchers no longer live in the status strip.
+		expect(readouts.contains(group)).toBe(false);
+
+		const plaqueBox = plaque.getBoundingClientRect();
+		const groupBox = group.getBoundingClientRect();
+		const readoutsBox = readouts.getBoundingClientRect();
+		// Mock: the launcher cluster sits beside the plaque (its wrap row lands
+		// under it only when the viewport cannot fit both), clear of the
+		// right-hand readouts strip.
+		expect(groupBox.left).toBeGreaterThanOrEqual(plaqueBox.right - 2);
+		// Same top band: the cluster's vertical span overlaps the plaque's.
+		expect(groupBox.top < plaqueBox.bottom - 8 && groupBox.bottom > plaqueBox.top + 8).toBe(true);
+		expect(groupBox.right).toBeLessThanOrEqual(readoutsBox.left);
+		// The plaque carries the ~56px brass medallion anatomy.
+		const medallionStyle = getComputedStyle(medallion);
+		expect(medallionStyle.width).toBe('56px');
+		expect(medallionStyle.borderRadius).toBe('999px');
+	});
+
 	it('shows muted placeholders for day and cash when no game exists yet', async () => {
 		expect.assertions(4);
 		render(TopBar, {

@@ -2406,10 +2406,10 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 700 });
 	await page.goto('/');
 
-	// The top HUD wraps onto several strips below ~600px viewports (location /
-	// controls / readouts) and reaches y≈189 at 390×700 (probe-measured), so
-	// pick a tile clear of the wrapped HUD: column 6 rows 5-14 are all
-	// residential ground; rows 6-9 still sit under the readouts plaque.
+	// The top HUD stacks the location plaque (and its map-view cluster) onto
+	// the status readouts below ~600px viewports, reaching y≈190 at 390×700
+	// (probe-measured), so pick a tile clear of the wrapped HUD: column 6 rows
+	// 5-14 are all residential ground; rows 6-9 still sit under the chrome.
 	await clickMapTile(page, 6, 11);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 	await expectOverlayToCoverMap(page);
@@ -2796,8 +2796,8 @@ test('player builds convenience production and refills from city inventory', asy
 	// runners the cumulative wait exceeds the default 60s timeout, so allow
 	// extra time.
 	test.setTimeout(120_000);
-	// Width must exceed the control desk's 980px breakpoint so the management
-	// launchers (Reports, Stores, Product Chains) stay on the desk. Height keeps
+	// The dock fits all nine management launchers at this width without
+	// horizontal scroll (scroll is only needed below ~1050px). Height keeps
 	// the industry map tall enough for the build tiles used below.
 	await page.setViewportSize({ width: 1200, height: 1000 });
 	await page.goto('/');

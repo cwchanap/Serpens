@@ -171,9 +171,10 @@
 		bottom: auto;
 		z-index: 10;
 		width: min(24.5rem, calc(100% - 2rem));
-		max-height: calc(100% - 7rem);
-		/* The control desk is a fixed left rail on desktop, and this inspector is
-		   right-anchored, so no bottom reservation is needed above 980px. */
+		/* The floating control desk spans the full bottom edge at every width,
+		   so tall cards must stop above its band (5.75rem dock + 0.5rem gap
+		   + top 6rem anchor). */
+		max-height: calc(100% - var(--control-desk-compact-height) - 6.5rem);
 		overflow: auto;
 		padding: 0;
 	}

@@ -128,8 +128,10 @@
 
 <style>
 	.map-surfaces {
+		/* Mock parity: no left rail — the full-bleed map only reserves the
+		   bottom band the floating control-desk dock sits on. */
 		position: absolute;
-		inset: 0 0 0 var(--control-desk-rail-width, 0);
+		inset: 0 0 var(--control-desk-compact-height, 0) 0;
 		min-width: 0;
 		min-height: 0;
 	}
@@ -146,11 +148,5 @@
 	.active-map-surface {
 		pointer-events: auto;
 		visibility: visible;
-	}
-
-	@media (max-width: 980px) {
-		.map-surfaces {
-			inset: 0 0 var(--control-desk-compact-height, 0) 0;
-		}
 	}
 </style>
