@@ -11,6 +11,19 @@ const managementItems: ManagementPanelMenuItem[] = [
 	{ id: 'finance', label: 'Finance', shortcut: 'F', icon: 'finance' }
 ];
 
+// Mirrors the app's management panel menu config (nine destinations).
+const nineManagementItems: ManagementPanelMenuItem[] = [
+	{ id: 'dashboard', label: 'Dashboard', shortcut: 'O', icon: 'dashboard' },
+	{ id: 'policies', label: 'Policies', shortcut: 'P', icon: 'policies' },
+	{ id: 'staff', label: 'Staff', shortcut: 'S', icon: 'staff' },
+	{ id: 'stores', label: 'Stores', shortcut: 'T', icon: 'stores' },
+	{ id: 'decisions', label: 'Decisions', shortcut: 'D', icon: 'decisions' },
+	{ id: 'reports', label: 'Reports', shortcut: 'R', icon: 'reports' },
+	{ id: 'productChains', label: 'Product chains', shortcut: 'C', icon: 'productChains' },
+	{ id: 'finance', label: 'Finance', shortcut: 'F', icon: 'finance' },
+	{ id: 'logistics', label: 'Logistics', shortcut: 'L', icon: 'logistics' }
+];
+
 function baseProps() {
 	return {
 		managementItems,
@@ -25,6 +38,42 @@ function baseProps() {
 		onSelectSpeed: vi.fn(),
 		onOpenShortcuts: vi.fn()
 	};
+}
+
+// Reveal a dock control by scrolling its overflowing scroll container the
+// minimal amount (Chromium's native scrollIntoViewIfNeeded, the same engine
+// primitive Playwright's locator method wraps). Scrolls every scrollable
+// ancestor only as far as needed to bring the element into view.
+function scrollDockTo(locator: ReturnType<typeof page.getByRole>) {
+	const element = locator.element() as HTMLElement & { scrollIntoViewIfNeeded: () => void };
+	element.scrollIntoViewIfNeeded();
+}
+
+// The dock is a horizontal scrollport: a control is reachable only when its
+// box sits fully inside the dock's scrollport (toBeVisible is too weak —
+// elements clipped by an overflowing ancestor still report visible).
+function expectControlInsideDock(locator: ReturnType<typeof page.getByRole>, label: string) {
+	const element = locator.element();
+	const dock = document.querySelector<HTMLElement>('.control-desk');
+	if (!element || !dock) throw new Error(`missing dock or control for ${label}`);
+	const er = element.getBoundingClientRect();
+	const dr = dock.getBoundingClientRect();
+	expect(
+		er.left >= dr.left - 1 && er.right <= dr.right + 1,
+		`${label} must sit fully inside the dock scrollport`
+	).toBe(true);
+}
+
+function expectControlClippedByDock(locator: ReturnType<typeof page.getByRole>, label: string) {
+	const element = locator.element();
+	const dock = document.querySelector<HTMLElement>('.control-desk');
+	if (!element || !dock) throw new Error(`missing dock or control for ${label}`);
+	const er = element.getBoundingClientRect();
+	const dr = dock.getBoundingClientRect();
+	expect(
+		er.right > dr.right + 1,
+		`${label} must start clipped past the dock's right edge (proving scrolling is needed)`
+	).toBe(true);
 }
 
 describe('ControlDesk', () => {
@@ -107,14 +156,79 @@ describe('ControlDesk', () => {
 		await expect.element(policies).toHaveAttribute('title', 'Policies (P)');
 	});
 
-	it('keeps management destinations reachable in the compact dock', async () => {
+	it('keeps all nine management destinations reachable by scrolling the compact dock', async () => {
+		// At 414px the centered medallion cluster (nine destinations + time
+		// controls) is wider than the viewport. Overflow-safe centering must keep
+		// the row left-anchored at scroll 0 and scrollable to its end, so every
+		// destination is reachable — a justify-content: center dock would clip
+		// the leading medallions past the scroll origin.
+		expect.assertions(11);
+		await page.viewport(414, 800);
+		render(ControlDesk, { ...baseProps(), managementItems: nineManagementItems });
+
+		const desk = document.querySelector<HTMLElement>('.control-desk');
+		expect(desk, 'compact dock overflows the 414px viewport').toBeTruthy();
+		expect(
+			desk!.scrollWidth > desk!.clientWidth,
+			'expected the nine-destination cluster to overflow the compact dock'
+		).toBe(true);
+
+		for (const item of nineManagementItems) {
+			const destination = page.getByRole('button', { name: new RegExp(`^${item.label}$`, 'i') });
+			scrollDockTo(destination);
+			expectControlInsideDock(destination, item.label);
+		}
+	});
+
+	it('reveals pause and the 5× speed by scrolling the compact dock', async () => {
+		// The play control and speeds sit at the end of the overflowing cluster;
+		// they must be reachable by scrolling the dock, never clipped past a
+		// scroll origin. The 5× pill doubles as the tail sentinel: it starts
+		// clipped and must end fully inside the dock scrollport.
+		expect.assertions(6);
+		await page.viewport(414, 800);
+		render(ControlDesk, { ...baseProps(), managementItems: nineManagementItems });
+
+		const desk = document.querySelector<HTMLElement>('.control-desk');
+		expect(desk).toBeTruthy();
+		expect(
+			desk!.scrollWidth > desk!.clientWidth,
+			'expected the nine-destination cluster to overflow the compact dock'
+		).toBe(true);
+
+		const fiveX = page.getByRole('button', { name: /^5×$/i });
+		expectControlClippedByDock(fiveX, '5×');
+		scrollDockTo(fiveX);
+		expectControlInsideDock(fiveX, '5×');
+
+		const pause = page.getByRole('button', { name: /^pause$/i });
+		scrollDockTo(pause);
+		expectControlInsideDock(pause, 'pause');
+
+		// Both edges scrollable: after reaching the tail, the leading Build
+		// medallion must scroll back into the scrollport.
+		const build = page.getByRole('button', { name: /^build$/i });
+		scrollDockTo(build);
+		expectControlInsideDock(build, 'build');
+	});
+
+	it('reveals the resume control by scrolling the paused compact dock', async () => {
 		expect.assertions(3);
 		await page.viewport(414, 800);
-		render(ControlDesk, baseProps());
+		render(ControlDesk, {
+			...baseProps(),
+			managementItems: nineManagementItems,
+			paused: true
+		});
 
-		await expect.element(page.getByRole('button', { name: /^dashboard$/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /^policies$/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /^finance$/i })).toBeVisible();
+		const resume = page.getByRole('button', { name: /^resume$/i });
+		expectControlClippedByDock(resume, 'resume');
+		scrollDockTo(resume);
+		expectControlInsideDock(resume, 'resume');
+
+		const build = page.getByRole('button', { name: /^build$/i });
+		scrollDockTo(build);
+		expectControlInsideDock(build, 'build');
 	});
 
 	it('no longer hosts the map-view menu (moved to the top bar)', async () => {
