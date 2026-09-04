@@ -128,10 +128,12 @@
 
 <style>
 	.map-surfaces {
-		/* Mock parity: no left rail — the full-bleed map only reserves the
-		   bottom band the floating control-desk dock sits on. */
+		/* Mock parity: full-bleed map at every width — no left rail and NO
+		   reserved bottom band. The dock floats over the map as transparent
+		   medallions (the dock band passes clicks through to the map), so the
+		   map reads edge-to-edge behind it. */
 		position: absolute;
-		inset: 0 0 var(--control-desk-compact-height, 0) 0;
+		inset: 0;
 		min-width: 0;
 		min-height: 0;
 	}

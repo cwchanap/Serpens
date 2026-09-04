@@ -83,6 +83,10 @@ const RAIL_PREVIEW_REUSED_COLOR = 0x94a3b8;
 const TILE_SIZE = 32;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 2.2;
+/* Mock-parity default framing: same closer-than-cover default as the retail
+   city scene, applied only when the viewport fits the whole map at native
+   zoom (cover zoom >= 1); smaller viewports keep pure cover-fit framing. */
+const DEFAULT_FRAMING_ZOOM_MULTIPLIER = 1.4;
 const KEYBOARD_PAN_SPEED = 420;
 const TERRAIN_DEPTH = 0;
 const OCCUPANCY_OUTLINE_DEPTH = TERRAIN_DEPTH + 2;
@@ -936,14 +940,23 @@ export class IndustryMapScene extends Phaser.Scene {
 		const worldHeight = Math.max(TILE_SIZE, this.snapshot.height * TILE_SIZE);
 		const viewportWidth = Math.max(1, this.scale.width);
 		const viewportHeight = Math.max(1, this.scale.height);
+		const coverZoom = Math.max(viewportWidth / worldWidth, viewportHeight / worldHeight);
 		const zoom = Phaser.Math.Clamp(
-			Math.max(viewportWidth / worldWidth, viewportHeight / worldHeight),
+			coverZoom >= 1 ? coverZoom * DEFAULT_FRAMING_ZOOM_MULTIPLIER : coverZoom,
 			MIN_ZOOM,
 			MAX_ZOOM
 		);
 
 		this.cameras.main.setZoom(zoom);
-		this.cameras.main.setScroll(0, 0);
+		// Phaser 4 bounds are center-clamped: scrollX = world coordinate of the
+		// viewport CENTER, and clamping keeps it in [(viewW - canvasW)/2, ...].
+		// Scroll to the top-left anchor of the visible world rect so the city
+		// opens at tile (0,0) at every zoom (a plain setScroll(0,0) leaves the
+		// north-west corner off-screen whenever zoom > 1).
+		this.cameras.main.setScroll(
+			(viewportWidth / zoom - viewportWidth) / 2,
+			(viewportHeight / zoom - viewportHeight) / 2
+		);
 		this.updateCanvasCameraAttributes();
 	}
 

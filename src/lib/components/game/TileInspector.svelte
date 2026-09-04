@@ -141,8 +141,14 @@
 	</ul>
 {/snippet}
 
+<!-- Mock anatomy: the close medallion pins the hero art's top-right corner and
+	 the store's identity (eyebrow, name, level pips) lives inside the dark
+	 walnut art band; the parchment body below is LAST 7 DAYS, three compact
+	 semicircular vital dials, the optional wax-red attention band, then ONE
+	 bottom action row (wide moss Upgrade + compact Details pill). -->
 <aside
 	class="inspector"
+	class:has-hero={store !== null && storeArt !== null}
 	aria-label={i18n.t('tileInspector.ariaLabel')}
 	{@attach blockMapInteraction}
 >
@@ -154,192 +160,189 @@
 	>
 	{#if !tile}
 		<h2>{i18n.t('tileInspector.selectTile')}</h2>
-	{:else}
+	{:else if !store}
 		<div class="heading">
 			<div>
-				{#if !store}<p>{i18n.labels.neighborhood(tile.neighborhood)}</p>{/if}
+				<p>{i18n.labels.neighborhood(tile.neighborhood)}</p>
 				<h2>{i18n.t('tileInspector.tileHeading', { x: tile.x, y: tile.y })}</h2>
 			</div>
 			<span>{tileLabel}</span>
 		</div>
-
-		{#if store}
-			<div class="basic-card">
-				{#if storeArt}
-					<figure class="store-art">
-						<img
-							src={storeArtSrc}
-							alt=""
-							data-testid={`store-art-${store.archetypeId}`}
-							width="1024"
-							height="1024"
-							loading="lazy"
-							decoding="async"
-						/>
-						<figcaption class="store-identity">
-							{#if tile}<p class="district">{i18n.labels.neighborhood(tile.neighborhood)}</p>{/if}
-							<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
-							{@render levelPipRow()}
-							<p class="location">{formatStoreLocation(store.location, i18n)}</p>
-						</figcaption>
-					</figure>
-				{:else}
-					<div class="store-identity plain">
-						{#if tile}<p class="district">{i18n.labels.neighborhood(tile.neighborhood)}</p>{/if}
-						<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
-						{@render levelPipRow()}
-						<p class="location">{formatStoreLocation(store.location, i18n)}</p>
-					</div>
-				{/if}
-
-				<p class="week" data-testid="week-revenue">
-					<span class="week-label">{i18n.t('tileInspector.last7Days')}</span>
-					{#if weekSeries.length > 0}
-						{@const peak = Math.max(...weekSeries)}
-						<span class="week-spark" aria-hidden="true" data-testid="week-spark">
-							{#each weekSeries as value, index (index)}
-								<span
-									class="week-spark-bar"
-									style:height={`${peak > 0 ? Math.round((value / peak) * 100) : 0}%`}
-								></span>
-							{/each}
-						</span>
-					{/if}
-					<span class="week-value">{i18n.format.currency(weekRevenue)}</span>
-				</p>
-
-				<dl
-					class="gauges"
-					aria-label={i18n.t('tileInspector.storeVitals')}
-					data-testid="store-gauges"
-				>
-					<div class="gauge" data-testid="gauge-revenue">
-						<dt>{i18n.t('tileInspector.revenuePerDay')}</dt>
-						<dd class="medallion">
-							<span class="value">
-								{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}
-							</span>
-						</dd>
-					</div>
-					<div class="gauge" data-testid="gauge-stock-health">
-						<dt>{i18n.t('tileInspector.stockHealth')}</dt>
-						<dd class="medallion dial">
-							<svg viewBox="0 0 44 44" aria-hidden="true" data-testid="gauge-arc-stock-health">
-								<path class="track" d="M6 26a16 16 0 0 1 32 0" pathLength="100"></path>
-								{#if store.stockHealth > 0}
-									<path
-										class="arc"
-										d="M6 26a16 16 0 0 1 32 0"
-										pathLength="100"
-										style:stroke-dasharray="{store.stockHealth} 100"
-										style:stroke={vitalArcColor(store.stockHealth)}
-									></path>
-								{/if}
-							</svg>
-							<span class="value">{store.stockHealth}</span>
-						</dd>
-					</div>
-					<div class="gauge" data-testid="gauge-staff-morale">
-						<dt>{i18n.t('tileInspector.staffMorale')}</dt>
-						<dd class="medallion dial">
-							<svg viewBox="0 0 44 44" aria-hidden="true" data-testid="gauge-arc-staff-morale">
-								<path class="track" d="M6 26a16 16 0 0 1 32 0" pathLength="100"></path>
-								{#if store.staffMorale > 0}
-									<path
-										class="arc"
-										d="M6 26a16 16 0 0 1 32 0"
-										pathLength="100"
-										style:stroke-dasharray="{store.staffMorale} 100"
-										style:stroke={vitalArcColor(store.staffMorale)}
-									></path>
-								{/if}
-							</svg>
-							<span class="value">{store.staffMorale}</span>
-						</dd>
-					</div>
-				</dl>
-
-				{#if attentionMessage}
-					<div class="attention" data-testid="attention-band">
-						<p class="attention-copy">
-							<span class="seal" data-urgent="true">!</span>
-							{attentionMessage}
-						</p>
-						{#if troubleProducts.length > 0}
-							<ul class="attention-products" data-testid="attention-products">
-								{#each troubleProducts as product (product.productId)}
-									{@const art = getProductArt(product.productId)}
-									<li>
-										<img
-											src={asset(art.path)}
-											alt=""
-											data-testid={`attention-product-art-${product.productId}`}
-											loading="lazy"
-											decoding="async"
-										/>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</div>
-				{/if}
-
-				<div class="store-level">
-					<p class="level-label">
-						{i18n.t('tileInspector.level', {
-							level: i18n.format.integer(store.level),
-							max: i18n.format.integer(MAX_STORE_LEVEL)
-						})}
-					</p>
-					<p class="level-next">{i18n.t('tileInspector.nextLabel', { benefit: nextBenefit })}</p>
-					<button
-						type="button"
-						class="upgrade"
-						disabled={!upgradeAllowed || !storeCanUpgrade || !canAffordUpgrade}
-						onclick={() => {
-							if (upgradeAllowed) onUpgradeStore(store.id);
-						}}
-					>
-						{storeCanUpgrade
-							? i18n.t('tileInspector.upgrade', {
-									cost: i18n.format.currency(upgradeCost)
-								})
-							: i18n.t('tileInspector.maxLevel')}
-					</button>
-					{#if storeCanUpgrade && !canAffordUpgrade}
-						<p class="level-hint">{i18n.t('tileInspector.notEnoughCash')}</p>
-					{/if}
-					{#if !upgradeAllowed && disabledReason}
-						<p class="level-hint">{disabledReason}</p>
-					{/if}
+		<section aria-label={i18n.t('tileInspector.tileStats')}>
+			<dl>
+				<div>
+					<dt>{i18n.t('tileInspector.demand')}</dt>
+					<dd>{tile.demand}</dd>
 				</div>
+				<div>
+					<dt>{i18n.t('tileInspector.rent')}</dt>
+					<dd>{i18n.format.currency(tile.rent)}</dd>
+				</div>
+				<div>
+					<dt>{i18n.t('tileInspector.footTraffic')}</dt>
+					<dd>{tile.footTraffic}</dd>
+				</div>
+				<div>
+					<dt>{i18n.t('tileInspector.customerFit')}</dt>
+					<dd>{tile.customerFit}</dd>
+				</div>
+			</dl>
+		</section>
+	{:else}
+		{#if storeArt}
+			<figure class="store-art">
+				<img
+					src={storeArtSrc}
+					alt=""
+					data-testid={`store-art-${store.archetypeId}`}
+					width="1024"
+					height="1024"
+					loading="lazy"
+					decoding="async"
+				/>
+				<figcaption class="store-identity">
+					<p class="district">{i18n.labels.neighborhood(tile.neighborhood)}</p>
+					<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
+					{@render levelPipRow()}
+					<p class="location">{formatStoreLocation(store.location, i18n)}</p>
+				</figcaption>
+			</figure>
+		{:else}
+			<div class="store-identity plain">
+				<p class="district">{i18n.labels.neighborhood(tile.neighborhood)}</p>
+				<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
+				{@render levelPipRow()}
+				<p class="location">{formatStoreLocation(store.location, i18n)}</p>
+			</div>
+		{/if}
 
+		<p class="week" data-testid="week-revenue">
+			<span class="week-label">{i18n.t('tileInspector.last7Days')}</span>
+			{#if weekSeries.length > 0}
+				{@const peak = Math.max(...weekSeries)}
+				<span class="week-spark" aria-hidden="true" data-testid="week-spark">
+					{#each weekSeries as value, index (index)}
+						<span
+							class="week-spark-bar"
+							style:height={`${peak > 0 ? Math.round((value / peak) * 100) : 0}%`}
+						></span>
+					{/each}
+				</span>
+			{/if}
+			<span class="week-value">{i18n.format.currency(weekRevenue)}</span>
+		</p>
+
+		<dl class="gauges" aria-label={i18n.t('tileInspector.storeVitals')} data-testid="store-gauges">
+			<div class="gauge" data-testid="gauge-revenue">
+				<dt>{i18n.t('tileInspector.revenuePerDay')}</dt>
+				<dd class="dial">
+					<svg viewBox="0 0 72 46" aria-hidden="true">
+						<path class="track" d="M8 40a28 28 0 0 1 56 0" pathLength="100"></path>
+					</svg>
+					<span class="value">
+						{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}
+					</span>
+				</dd>
+			</div>
+			<div class="gauge" data-testid="gauge-stock-health">
+				<dt>{i18n.t('tileInspector.stockHealth')}</dt>
+				<dd class="dial">
+					<svg viewBox="0 0 72 46" aria-hidden="true" data-testid="gauge-arc-stock-health">
+						<path class="track" d="M8 40a28 28 0 0 1 56 0" pathLength="100"></path>
+						{#if store.stockHealth > 0}
+							<path
+								class="arc"
+								d="M8 40a28 28 0 0 1 56 0"
+								pathLength="100"
+								style:stroke-dasharray="{store.stockHealth} 100"
+								style:stroke={vitalArcColor(store.stockHealth)}
+							></path>
+						{/if}
+					</svg>
+					<span class="value">{store.stockHealth}</span>
+				</dd>
+			</div>
+			<div class="gauge" data-testid="gauge-staff-morale">
+				<dt>{i18n.t('tileInspector.staffMorale')}</dt>
+				<dd class="dial">
+					<svg viewBox="0 0 72 46" aria-hidden="true" data-testid="gauge-arc-staff-morale">
+						<path class="track" d="M8 40a28 28 0 0 1 56 0" pathLength="100"></path>
+						{#if store.staffMorale > 0}
+							<path
+								class="arc"
+								d="M8 40a28 28 0 0 1 56 0"
+								pathLength="100"
+								style:stroke-dasharray="{store.staffMorale} 100"
+								style:stroke={vitalArcColor(store.staffMorale)}
+							></path>
+						{/if}
+					</svg>
+					<span class="value">{store.staffMorale}</span>
+				</dd>
+			</div>
+		</dl>
+
+		{#if attentionMessage}
+			<div class="attention" data-testid="attention-band">
+				<p class="attention-copy">
+					<span class="seal" data-urgent="true">!</span>
+					{attentionMessage}
+				</p>
+				{#if troubleProducts.length > 0}
+					<ul class="attention-products" data-testid="attention-products">
+						{#each troubleProducts as product (product.productId)}
+							{@const art = getProductArt(product.productId)}
+							<li>
+								<img
+									src={asset(art.path)}
+									alt=""
+									data-testid={`attention-product-art-${product.productId}`}
+									loading="lazy"
+									decoding="async"
+								/>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
+		{/if}
+
+		<div class="store-level">
+			<div class="level-copy">
+				<p class="level-label">
+					{i18n.t('tileInspector.level', {
+						level: i18n.format.integer(store.level),
+						max: i18n.format.integer(MAX_STORE_LEVEL)
+					})}
+				</p>
+				<p class="level-next">{i18n.t('tileInspector.nextLabel', { benefit: nextBenefit })}</p>
+				{#if storeCanUpgrade && !canAffordUpgrade}
+					<p class="level-hint">{i18n.t('tileInspector.notEnoughCash')}</p>
+				{/if}
+				{#if !upgradeAllowed && disabledReason}
+					<p class="level-hint">{disabledReason}</p>
+				{/if}
+			</div>
+			<div class="action-row">
+				<button
+					type="button"
+					class="upgrade"
+					disabled={!upgradeAllowed || !storeCanUpgrade || !canAffordUpgrade}
+					onclick={() => {
+						if (upgradeAllowed) onUpgradeStore(store.id);
+					}}
+				>
+					{storeCanUpgrade
+						? i18n.t('tileInspector.upgrade', {
+								cost: i18n.format.currency(upgradeCost)
+							})
+						: i18n.t('tileInspector.maxLevel')}
+				</button>
 				<button type="button" class="open-details" onclick={onOpenDetails}
 					>{i18n.t('tileInspector.openDetails')}</button
 				>
 			</div>
-		{:else}
-			<section aria-label={i18n.t('tileInspector.tileStats')}>
-				<dl>
-					<div>
-						<dt>{i18n.t('tileInspector.demand')}</dt>
-						<dd>{tile.demand}</dd>
-					</div>
-					<div>
-						<dt>{i18n.t('tileInspector.rent')}</dt>
-						<dd>{i18n.format.currency(tile.rent)}</dd>
-					</div>
-					<div>
-						<dt>{i18n.t('tileInspector.footTraffic')}</dt>
-						<dd>{tile.footTraffic}</dd>
-					</div>
-					<div>
-						<dt>{i18n.t('tileInspector.customerFit')}</dt>
-						<dd>{tile.customerFit}</dd>
-					</div>
-				</dl>
-			</section>
-		{/if}
+		</div>
 	{/if}
 </aside>
 
@@ -348,7 +351,7 @@
 		position: relative;
 		display: grid;
 		align-content: start;
-		gap: 1rem;
+		gap: 0.85rem;
 		min-width: 0;
 		padding: 1rem 1.1rem 1.1rem;
 		border: 1px solid var(--ink-700);
@@ -364,20 +367,35 @@
 			var(--shadow-paper);
 	}
 
+	/* Circular parchment close pinned to the hero art's top-right corner (store
+	   with art); without a hero it floats in the card's top-right padding. */
 	.close {
 		position: absolute;
 		top: 0.7rem;
 		right: 0.7rem;
+		z-index: 1;
 		width: 1.9rem;
 		height: 1.9rem;
 		padding: 0;
 		border: 1px solid var(--ink-700);
 		border-radius: 999px;
 		background: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
 		color: var(--ink-700);
 		font-family: var(--font-ui);
 		font-weight: 700;
 		text-align: center;
+		box-shadow: var(--shadow-paper);
+	}
+
+	.inspector.has-hero .close {
+		/* 2rem medallion centered on the art corner (art sits 1rem below the
+		   card top and 1.1rem inside the right edge). */
+		top: 0;
+		right: 0.1rem;
+		width: 2rem;
+		height: 2rem;
 	}
 
 	.close:hover {
@@ -450,7 +468,7 @@
 		color: var(--brass-700);
 	}
 
-	dl {
+	section dl {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
 		gap: 0.6rem;
@@ -463,11 +481,6 @@
 		font-weight: 700;
 		color: var(--ink-700);
 		overflow-wrap: anywhere;
-	}
-
-	.basic-card {
-		display: grid;
-		gap: 0.85rem;
 	}
 
 	/* --- LAST 7 DAYS revenue row + spark ------------------------------------ */
@@ -496,7 +509,7 @@
 		display: block;
 		flex: 0 0 0.45rem;
 		min-width: 0;
-		background: var(--brass-500);
+		background: var(--moss);
 	}
 
 	.week-label {
@@ -515,79 +528,68 @@
 		color: var(--ink-700);
 	}
 
-	/* --- Brass gauge medallions ---------------------------------------------- */
+	/* --- Compact vital cards with scorecard-style open-bottom dials ---------- */
 
 	.gauges {
-		grid-template-columns: repeat(3, 1fr);
-		gap: 0.6rem;
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.55rem;
 	}
 
 	.gauge {
 		display: grid;
 		justify-items: center;
-		gap: 0.4rem;
+		gap: 0.35rem;
+		padding: 0.55rem 0.3rem 0.5rem;
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
 		background: var(--paper-50);
-		padding: 0.7rem 0.4rem 0.65rem;
 		text-align: center;
 	}
 
 	.gauge dt {
-		order: 2;
 		color: var(--brass-700);
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
-		font-weight: 700;
+		font-size: 0.62rem;
 		letter-spacing: 0.12em;
-		text-transform: uppercase;
+		line-height: 1.2;
 	}
 
-	.medallion {
+	.dial {
 		position: relative;
-		display: grid;
-		place-items: center;
-		width: 4.9rem;
-		height: 4.9rem;
+		width: min(6.6rem, 100%);
 		margin: 0;
-		border: 2px solid var(--brass-500);
-		border-radius: 999px;
-		background: var(--paper-100);
-		box-shadow: inset 0 0 0 2px var(--paper-50);
 	}
 
-	.medallion svg {
-		position: absolute;
-		inset: 0;
+	.dial svg {
+		display: block;
 		width: 100%;
-		height: 100%;
+		height: auto;
 	}
 
-	.medallion .track,
-	.medallion .arc {
+	.dial .track,
+	.dial .arc {
 		fill: none;
 		stroke-width: 6;
 		stroke-linecap: round;
 	}
 
-	.medallion .track {
-		stroke: var(--brass-100);
+	.dial .track {
+		stroke: var(--paper-200);
 	}
 
-	.medallion .value {
-		padding: 0 0.35rem;
+	/* The value hangs in the open bottom mouth of the half dial. */
+	.dial .value {
+		position: absolute;
+		inset-inline: 0;
+		bottom: 0.6rem;
+		padding: 0 0.25rem;
+		text-align: center;
+		line-height: 1;
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		font-weight: 700;
-		font-size: 1.08rem;
+		font-size: 1.12rem;
 		color: var(--ink-700);
-	}
-
-	/* Scorecard-style open-bottom dial arcs: the value sits in the dial mouth. */
-	.medallion.dial .value {
-		align-self: end;
-		justify-self: center;
-		margin-bottom: 0.62rem;
 	}
 
 	/* --- Wax-red attention band ----------------------------------------------- */
@@ -711,7 +713,7 @@
 
 	.store-identity.plain {
 		position: static;
-		padding: 0;
+		padding: 0.35rem 0 0;
 		background: none;
 	}
 
@@ -766,15 +768,23 @@
 		border-color: var(--brass-300);
 	}
 
-	/* --- Level + actions ------------------------------------------------------- */
+	/* --- Level copy + ONE bottom action row ----------------------------------- */
 
 	.store-level {
 		display: grid;
-		gap: 0.4rem;
-		padding: 0.75rem;
+		gap: 0.6rem;
+		padding: 0.7rem 0.75rem 0.75rem;
 		border: 1px solid var(--brass-500);
 		border-radius: 2px;
 		background: var(--paper-50);
+	}
+
+	.level-copy {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		column-gap: 0.75rem;
+		row-gap: 0.2rem;
 	}
 
 	.level-label {
@@ -792,12 +802,21 @@
 	}
 
 	.level-hint {
+		flex-basis: 100%;
 		font-family: var(--font-body);
 		font-size: 0.78rem;
 		color: var(--ink-500);
 	}
 
+	.action-row {
+		display: flex;
+		align-items: stretch;
+		gap: 0.5rem;
+	}
+
 	.upgrade {
+		flex: 1 1 auto;
+		min-width: 0;
 		padding: 0.55rem 0.85rem;
 		border: 1px solid var(--ink-900);
 		border-radius: 2px;
@@ -807,6 +826,9 @@
 		font-size: 0.85rem;
 		font-weight: 700;
 		letter-spacing: 0.02em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		cursor: pointer;
 		box-shadow:
 			inset 0 0 0 1px var(--moss-2),
@@ -823,14 +845,15 @@
 	}
 
 	.open-details {
-		width: 100%;
-		border: 1px solid var(--brass-500);
-		border-radius: 2px;
+		flex: 0 0 auto;
+		padding: 0.55rem 1rem;
+		border: 1.5px solid var(--brass-500);
+		border-radius: 999px;
 		background: var(--paper-100);
 		color: var(--ink-700);
 		font-family: var(--font-ui);
 		font-weight: 700;
-		padding: 0.55rem 0.75rem;
+		white-space: nowrap;
 	}
 
 	.open-details:hover,

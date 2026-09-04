@@ -50,84 +50,91 @@
 </script>
 
 <aside class="control-desk" aria-label={i18n.t('controlDesk.group')}>
-	<div class="cluster">
-		<button
-			type="button"
-			class="btn-icon btn-icon-primary"
-			aria-label={i18n.t('controlDesk.build')}
-			disabled={buildDisabled}
-			onclick={onBuild}
-		>
-			<GameIcon name="build" />
-		</button>
-		{#if showRailBuild}
+	<!-- One centered floating cluster: action + management medallions, a slim
+		 separator, then the time medallions (shortcuts/pause + 1×/2×/5× pills)
+		 all adjacent — no edge-spread across the viewport. The band itself is
+		 transparent (map shows through; see pointer-events below), so the dock
+		 reads as medallions floating over the map, not a slab. -->
+	<div class="dock-row">
+		<div class="cluster">
 			<button
 				type="button"
-				class="btn-icon rail-toggle"
-				class:active={railBuildActive}
-				aria-pressed={railBuildActive}
-				aria-label={i18n.t('railBuild.toolbar')}
-				disabled={railBuildDisabled}
-				onclick={onToggleRailBuild}
+				class="btn-icon btn-icon-primary"
+				aria-label={i18n.t('controlDesk.build')}
+				disabled={buildDisabled}
+				onclick={onBuild}
 			>
-				<GameIcon name="rail" />
+				<GameIcon name="build" />
 			</button>
-		{/if}
-	</div>
-	{#if disabledReason && (buildDisabled || advanceDisabled || railBuildDisabled)}
-		<p class="disabled-copy" role="status">{disabledReason}</p>
-	{/if}
-
-	<div class="manage" role="group" aria-label={i18n.t('controlDesk.management')}>
-		{#each managementItems as item (item.id)}
-			<button
-				type="button"
-				class="btn-icon"
-				aria-label={item.label}
-				title={`${item.label} (${item.shortcut})`}
-				onclick={() => onOpenManagement(item.id)}
-			>
-				<GameIcon name={item.icon} />
-			</button>
-		{/each}
-	</div>
-
-	<div class="cluster time">
-		<span class="separator" aria-hidden="true"></span>
-		<button
-			type="button"
-			class="btn-icon"
-			aria-label={i18n.t('controlDesk.shortcuts')}
-			onclick={onOpenShortcuts}
-		>
-			<GameIcon name="shortcuts" />
-		</button>
-		<button
-			type="button"
-			class="btn-icon"
-			aria-label={paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}
-			disabled={pauseDisabled}
-			onclick={onTogglePause}
-		>
-			<GameIcon name={paused ? 'resume' : 'pause'} />
-		</button>
-		<div class="speed-controls" role="group" aria-label={i18n.t('controlDesk.simulationSpeed')}>
-			{#each [1, 2, 5] as speed (speed)}
+			{#if showRailBuild}
 				<button
 					type="button"
-					class="speed-button"
-					class:active={simulationSpeed === speed}
-					aria-label={`${speed}×`}
-					aria-pressed={simulationSpeed === speed}
-					disabled={advanceDisabled}
-					onclick={() => onSelectSpeed(speed as SimulationSpeed)}
+					class="btn-icon rail-toggle"
+					class:active={railBuildActive}
+					aria-pressed={railBuildActive}
+					aria-label={i18n.t('railBuild.toolbar')}
+					disabled={railBuildDisabled}
+					onclick={onToggleRailBuild}
 				>
-					{speed}×
+					<GameIcon name="rail" />
+				</button>
+			{/if}
+		</div>
+
+		<div class="manage" role="group" aria-label={i18n.t('controlDesk.management')}>
+			{#each managementItems as item (item.id)}
+				<button
+					type="button"
+					class="btn-icon"
+					aria-label={item.label}
+					title={`${item.label} (${item.shortcut})`}
+					onclick={() => onOpenManagement(item.id)}
+				>
+					<GameIcon name={item.icon} />
 				</button>
 			{/each}
 		</div>
+
+		<div class="cluster time">
+			<span class="separator" aria-hidden="true"></span>
+			<button
+				type="button"
+				class="btn-icon"
+				aria-label={i18n.t('controlDesk.shortcuts')}
+				onclick={onOpenShortcuts}
+			>
+				<GameIcon name="shortcuts" />
+			</button>
+			<button
+				type="button"
+				class="btn-icon"
+				aria-label={paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}
+				disabled={pauseDisabled}
+				onclick={onTogglePause}
+			>
+				<GameIcon name={paused ? 'resume' : 'pause'} />
+			</button>
+			<div class="speed-controls" role="group" aria-label={i18n.t('controlDesk.simulationSpeed')}>
+				{#each [1, 2, 5] as speed (speed)}
+					<button
+						type="button"
+						class="speed-button"
+						class:active={simulationSpeed === speed}
+						aria-label={`${speed}×`}
+						aria-pressed={simulationSpeed === speed}
+						disabled={advanceDisabled}
+						onclick={() => onSelectSpeed(speed as SimulationSpeed)}
+					>
+						{speed}×
+					</button>
+				{/each}
+			</div>
+		</div>
 	</div>
 </aside>
+{#if disabledReason && (buildDisabled || advanceDisabled || railBuildDisabled)}
+	<p class="disabled-copy" role="status">{disabledReason}</p>
+{/if}
 
 <!-- Horizontal-scroll affordance for the bottom dock: a fixed soft veil over
 	the dock's right edge (pointer-events none), so a clipped tail control reads
@@ -148,13 +155,38 @@
 		display: flex;
 		flex-direction: row;
 		align-items: center;
-		gap: 0.625rem;
+		padding: 0.75rem 1rem;
 		min-height: var(--control-desk-compact-height);
-		padding: 0.75rem;
-		/* End padding keeps the trailing time cluster clear of the edge veil. */
-		padding-right: 3.25rem;
+		/* The band carries NO background: the map stays full-bleed beneath the
+		   floating medallions. Empty band space passes clicks through to the
+		   map (only the medallion buttons re-enable pointer events). */
+		pointer-events: none;
 		overflow-x: auto;
 		overflow-y: hidden;
+		/* Scrollable, but no visible bar inside the floating band — the right
+		   edge veil is the overflow affordance. */
+		scrollbar-width: none;
+	}
+
+	.control-desk::-webkit-scrollbar {
+		display: none;
+	}
+
+	.control-desk button {
+		pointer-events: auto;
+	}
+
+	/* The single centered cluster: free space splits evenly on both sides via
+	   auto margins, and when the cluster is wider than the viewport the
+	   margins collapse to zero so the row stays left-scrollable (a
+	   justify-content: center dock would clip its leading medallions). */
+	.dock-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 0.625rem;
+		flex: none;
+		margin-inline: auto;
 	}
 
 	.control-desk .btn-icon {
@@ -172,6 +204,29 @@
 		flex: none;
 	}
 
+	/* Floating status chip: shows above the medallion row (never inside it,
+	   so the centered cluster stays intact) whenever a desk action is
+	   disabled by the current game context. */
+	.disabled-copy {
+		position: fixed;
+		left: 0.75rem;
+		bottom: calc(var(--control-desk-compact-height) - 0.35rem);
+		z-index: 26;
+		margin: 0;
+		padding: 0.4rem 0.75rem;
+		border: 1px solid var(--brass-500);
+		border-radius: 999px;
+		background: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.8rem;
+		font-weight: 700;
+		box-shadow: var(--shadow-paper);
+		pointer-events: none;
+	}
+
 	.rail-toggle.active {
 		background: var(--brass-500);
 		color: var(--paper-50);
@@ -185,10 +240,6 @@
 		width: 1px;
 		height: 2.25rem;
 		background: color-mix(in srgb, var(--brass-700) 65%, transparent);
-	}
-
-	.time {
-		margin-left: auto;
 	}
 
 	.speed-controls {
