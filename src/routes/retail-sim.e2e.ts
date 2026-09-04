@@ -3685,6 +3685,53 @@ test('management panels stay reachable from the compact dock', async ({ page }) 
 	await expect(page.getByRole('dialog', { name: /^menu$/i })).toHaveCount(0);
 });
 
+test('time plaque controls take real clicks at compact viewports', async ({ page }) => {
+	// Regression: at widths where the dock row overflows, the 5× speed sits at
+	// the row tail, whose clickable point is under the dock's right-edge veil
+	// strip at every scroll position where the button is fully visible. The
+	// veil is decorative (pointer-events: none), so a real Playwright click
+	// must pass through it to the button; if the veil or any band layer ever
+	// becomes interactive again, this click fails with an interception error
+	// even though the button is in viewport (visibility-only assertions in the
+	// component specs cannot catch that — they dispatch to the element
+	// directly).
+	for (const [width, tile] of [
+		[760, { x: 1, y: 6 }],
+		[414, { x: 6, y: 11 }]
+	] as const) {
+		await page.setViewportSize({ width, height: 800 });
+		await page.goto('/');
+		await expectRetailMapReady(page);
+		await buildRetailStoreAt(page, {
+			...tile,
+			storeTypeName: /build convenience store/i,
+			expectedStoreCount: 1
+		});
+
+		const desk = page.getByLabel('Control desk');
+		// The veil must stay non-interactive or the tail 5× becomes unhittable.
+		await expect(page.locator('.dock-edge-fade')).toHaveCSS('pointer-events', 'none');
+
+		// Founding pauses the sim (resume label is showing). Click the tail 5×
+		// — Playwright auto-scrolls the dock and must hit the button through
+		// the veil strip — then assert the pressed state actually flipped.
+		const fiveX = desk.getByRole('button', { name: /^5×$/i });
+		await expect(fiveX).toBeEnabled();
+		await fiveX.click();
+		await expect(fiveX).toHaveAttribute('aria-pressed', 'true');
+
+		// Resume (runs at 5×) then pause again: both plaque controls must take
+		// real clicks after scrolling.
+		const resume = desk.getByRole('button', { name: /^resume$/i });
+		await expect(resume).toBeVisible();
+		await resume.click();
+		const pause = desk.getByRole('button', { name: /^pause$/i });
+		await expect(pause).toBeVisible();
+		await pause.click();
+		await expect(desk.getByRole('button', { name: /^resume$/i })).toBeVisible();
+	}
+});
+
 test('player upgrades an industrial building from the tile inspector', async ({ page }) => {
 	// Height must be tall enough that the fixed control-desk footer does not
 	// overlap the tile inspector's Upgrade button; at a short viewport the

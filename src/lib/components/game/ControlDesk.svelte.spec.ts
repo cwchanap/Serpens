@@ -180,37 +180,76 @@ describe('ControlDesk', () => {
 		}
 	});
 
-	it('reveals pause and the 5× speed by scrolling the compact dock', async () => {
-		// The play control and speeds sit at the end of the overflowing cluster;
-		// they must be reachable by scrolling the dock, never clipped past a
-		// scroll origin. The 5× pill doubles as the tail sentinel: it starts
-		// clipped and must end fully inside the dock scrollport.
-		expect.assertions(6);
-		await page.viewport(414, 800);
-		render(ControlDesk, { ...baseProps(), managementItems: nineManagementItems });
+	it.each([414, 760])(
+		'really clicks pause/resume and the 5× speed after scrolling the dock at %ipx',
+		async (width) => {
+			// Regression: the plaque sits at the tail of the overflowing dock, where
+			// the 5× speed is fully visible only under the dock's right-edge veil
+			// strip. Visibility/containment assertions alone let an interactive
+			// veil or band layer block the click while the button still "looks"
+			// reachable — so after scrolling, actually click the controls and assert
+			// the handlers fire / pressed state flips.
+			expect.assertions(12);
+			await page.viewport(width, 800);
+			// Pin the dock-height token (component specs don't load layout.css) so
+			// the dock band and its right-edge veil render at app geometry, then
+			// restore the app's border-box sizing model before measuring.
+			document.documentElement.style.setProperty('--control-desk-compact-height', '5.75rem');
+			try {
+				const props = { ...baseProps(), managementItems: nineManagementItems };
+				const { rerender } = render(ControlDesk, props);
+				document
+					.querySelector<HTMLElement>('.control-desk')
+					?.style.setProperty('box-sizing', 'border-box');
 
-		const desk = document.querySelector<HTMLElement>('.control-desk');
-		expect(desk).toBeTruthy();
-		expect(
-			desk!.scrollWidth > desk!.clientWidth,
-			'expected the nine-destination cluster to overflow the compact dock'
-		).toBe(true);
+				const desk = document.querySelector<HTMLElement>('.control-desk');
+				expect(desk, 'compact dock overflows the narrow viewport').toBeTruthy();
+				expect(
+					desk!.scrollWidth > desk!.clientWidth,
+					'expected the nine-destination cluster to overflow the compact dock'
+				).toBe(true);
 
-		const fiveX = page.getByRole('button', { name: /^5×$/i });
-		expectControlClippedByDock(fiveX, '5×');
-		scrollDockTo(fiveX);
-		expectControlInsideDock(fiveX, '5×');
+				// Tail sentinel: 5× starts clipped past the dock edge; after
+				// scrolling it must sit inside the scrollport AND take a real click
+				// (its center lies under the veil strip at every fully-visible
+				// scroll position, so any veil/band pointer regression fails here).
+				const fiveX = page.getByRole('button', { name: /^5×$/i });
+				expectControlClippedByDock(fiveX, '5×');
+				scrollDockTo(fiveX);
+				expectControlInsideDock(fiveX, '5×');
+				await fiveX.click();
+				expect(props.onSelectSpeed).toHaveBeenCalledWith(5);
+				await rerender({ ...props, simulationSpeed: 5 });
+				await expect.element(fiveX).toHaveAttribute('aria-pressed', 'true');
+				await expect
+					.element(page.getByRole('button', { name: /^1×$/i }))
+					.toHaveAttribute('aria-pressed', 'false');
 
-		const pause = page.getByRole('button', { name: /^pause$/i });
-		scrollDockTo(pause);
-		expectControlInsideDock(pause, 'pause');
+				// The pause square sits just left of the speeds: click it, then
+				// rerender paused so the plaque flips to resume and click that too.
+				const pause = page.getByRole('button', { name: /^pause$/i });
+				scrollDockTo(pause);
+				expectControlInsideDock(pause, 'pause');
+				await pause.click();
+				expect(props.onTogglePause).toHaveBeenCalledTimes(1);
 
-		// Both edges scrollable: after reaching the tail, the leading Build
-		// medallion must scroll back into the scrollport.
-		const build = page.getByRole('button', { name: /^build$/i });
-		scrollDockTo(build);
-		expectControlInsideDock(build, 'build');
-	});
+				await rerender({ ...props, paused: true, simulationSpeed: 5 });
+				const resume = page.getByRole('button', { name: /^resume$/i });
+				scrollDockTo(resume);
+				expectControlInsideDock(resume, 'resume');
+				await resume.click();
+				expect(props.onTogglePause).toHaveBeenCalledTimes(2);
+
+				// Both edges scrollable: after reaching the tail, the leading Build
+				// medallion must scroll back into the scrollport.
+				const build = page.getByRole('button', { name: /^build$/i });
+				scrollDockTo(build);
+				expectControlInsideDock(build, 'build');
+			} finally {
+				document.documentElement.style.removeProperty('--control-desk-compact-height');
+			}
+		}
+	);
 
 	it('reveals the resume control by scrolling the paused compact dock', async () => {
 		expect.assertions(3);
