@@ -218,7 +218,9 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.5rem 0.85rem;
+		/* >=1.5rem column gap keeps the floating map-view medallions clear of
+		   the location plaque (mock: the cluster breathes beside the plaque). */
+		gap: 0.5rem 1.5rem;
 	}
 
 	.location {

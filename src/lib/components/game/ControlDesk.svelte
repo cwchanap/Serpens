@@ -50,16 +50,18 @@
 </script>
 
 <aside class="control-desk" aria-label={i18n.t('controlDesk.group')}>
-	<!-- One centered floating cluster: action + management medallions, a slim
-		 separator, then the time medallions (shortcuts/pause + 1×/2×/5× pills)
-		 all adjacent — no edge-spread across the viewport. The band itself is
-		 transparent (map shows through; see pointer-events below), so the dock
-		 reads as medallions floating over the map, not a slab. -->
+	<!-- One centered floating arrangement: the action medallion group (moss
+		 Build leading, then management destinations and Shortcuts) and, clearly
+		 separated to its right, the time cluster as its own compact parchment
+		 plaque (moss pause square + thin divider + 1×/2×/5× text with brass
+		 fill on the active speed). The band itself is transparent (map shows
+		 through; see pointer-events below), so the dock reads as medallions and
+		 one plaque floating over the map, not a slab. -->
 	<div class="dock-row">
-		<div class="cluster">
+		<div class="cluster lead">
 			<button
 				type="button"
-				class="btn-icon btn-icon-primary"
+				class="btn-icon btn-icon-primary build-medallion"
 				aria-label={i18n.t('controlDesk.build')}
 				disabled={buildDisabled}
 				onclick={onBuild}
@@ -95,8 +97,7 @@
 			{/each}
 		</div>
 
-		<div class="cluster time">
-			<span class="separator" aria-hidden="true"></span>
+		<div class="cluster">
 			<button
 				type="button"
 				class="btn-icon"
@@ -105,15 +106,19 @@
 			>
 				<GameIcon name="shortcuts" />
 			</button>
+		</div>
+
+		<div class="time-plaque">
 			<button
 				type="button"
-				class="btn-icon"
+				class="pause-button"
 				aria-label={paused ? i18n.t('controlDesk.resume') : i18n.t('controlDesk.pause')}
 				disabled={pauseDisabled}
 				onclick={onTogglePause}
 			>
 				<GameIcon name={paused ? 'resume' : 'pause'} />
 			</button>
+			<span class="plaque-divider" aria-hidden="true"></span>
 			<div class="speed-controls" role="group" aria-label={i18n.t('controlDesk.simulationSpeed')}>
 				{#each [1, 2, 5] as speed (speed)}
 					<button
@@ -176,9 +181,9 @@
 		pointer-events: auto;
 	}
 
-	/* The single centered cluster: free space splits evenly on both sides via
-	   auto margins, and when the cluster is wider than the viewport the
-	   margins collapse to zero so the row stays left-scrollable (a
+	/* The centered arrangement: free space splits evenly on both sides via
+	   auto margins, and when the row is wider than the viewport the margins
+	   collapse to zero so the row stays left-scrollable (a
 	   justify-content: center dock would clip its leading medallions). */
 	.dock-row {
 		display: flex;
@@ -195,6 +200,18 @@
 		flex: none;
 	}
 
+	/* The Build medallion leads the group: one step larger than the rest, so
+	   the primary action reads first (mock: moss medallion leads the rail). */
+	.control-desk .btn-icon.build-medallion {
+		width: 3.75rem;
+		height: 3.75rem;
+	}
+
+	:global(.btn-icon.build-medallion svg) {
+		width: 1.5rem;
+		height: 1.5rem;
+	}
+
 	.cluster,
 	.manage {
 		display: flex;
@@ -205,7 +222,7 @@
 	}
 
 	/* Floating status chip: shows above the medallion row (never inside it,
-	   so the centered cluster stays intact) whenever a desk action is
+	   so the centered arrangement stays intact) whenever a desk action is
 	   disabled by the current game context. */
 	.disabled-copy {
 		position: fixed;
@@ -227,44 +244,108 @@
 		pointer-events: none;
 	}
 
+	/* The time cluster gets its own compact parchment plaque (mock Turn-2
+	   strip): paper backing with a fine brass border and shadow, separated
+	   from the floating medallions so the pause/square + speed-text group
+	   reads as one rich control, not more equal-weight medallions. */
+	.time-plaque {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 0.5rem;
+		flex: none;
+		margin-left: 0.75rem;
+		padding: 0.45rem 0.75rem 0.45rem 0.5rem;
+		border: 1px solid var(--brass-700);
+		border-radius: 4px;
+		background-color: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
+		box-shadow: var(--shadow-paper);
+	}
+
+	/* Strong moss pause/resume square inside the plaque. */
+	.pause-button {
+		display: grid;
+		place-items: center;
+		width: 3rem;
+		height: 3rem;
+		padding: 0;
+		flex: none;
+		border: 1px solid var(--ink-900);
+		border-radius: 6px;
+		background: var(--moss);
+		color: var(--paper-50);
+		box-shadow:
+			inset 0 0 0 1px var(--moss-2),
+			var(--shadow-paper);
+	}
+
+	.pause-button:hover:not(:disabled) {
+		background: var(--moss-2);
+	}
+
+	.pause-button:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	/* Thin vertical brass hairline between the pause square and the speeds. */
+	.plaque-divider {
+		flex: none;
+		align-self: stretch;
+		width: 1px;
+		background: linear-gradient(
+			to bottom,
+			transparent,
+			var(--brass-700) 28%,
+			var(--brass-700) 72%,
+			transparent
+		);
+	}
+
 	.rail-toggle.active {
 		background: var(--brass-500);
 		color: var(--paper-50);
 	}
 
-	/* Slim brass hairline that marks the time cluster off from the action
-	   medallions (mock: pause + speeds form their own visual group). */
-	.separator {
-		flex: none;
-		align-self: center;
-		width: 1px;
-		height: 2.25rem;
-		background: color-mix(in srgb, var(--brass-700) 65%, transparent);
-	}
-
+	/* 1×/2×/5× speeds read as brass text on the parchment; the active speed
+	   gets the brass fill (mock: active-speed brass fill). */
 	.speed-controls {
 		display: inline-flex;
 		flex-direction: row;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.2rem;
 	}
 
 	.speed-button {
-		border: 1.5px solid var(--brass-500);
-		border-radius: 999px;
-		background: var(--paper-50);
-		background-image: var(--grain-svg);
-		background-blend-mode: multiply;
-		color: var(--ink-700);
+		min-width: 2rem;
+		padding: 0.25rem 0.4rem;
+		border: 0;
+		border-radius: 3px;
+		background: transparent;
+		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.9rem;
+		font-size: 0.95rem;
 		font-weight: 700;
-		padding: 0.45rem 0.75rem;
+		text-align: center;
+	}
+
+	.speed-button:hover:not(:disabled):not(.active) {
+		background: color-mix(in srgb, var(--brass-300) 35%, transparent);
+		color: var(--ink-700);
 	}
 
 	.speed-button.active {
-		border-color: var(--brass-700);
-		background: var(--paper-200);
+		background: var(--brass-500);
+		color: var(--paper-50);
+		box-shadow: inset 0 0 0 1px var(--brass-700);
+	}
+
+	.speed-button:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
 	}
 
 	/* Soft veil pinned over the dock's right edge: transparent at the very

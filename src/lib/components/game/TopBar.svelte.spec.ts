@@ -113,7 +113,7 @@ describe('TopBar', () => {
 	});
 
 	it('floats the map-view cluster beside the plaque, clear of the status readouts', async () => {
-		expect.assertions(6);
+		expect.assertions(7);
 		await page.viewport(1280, 800);
 		render(TopBar, baseProps());
 
@@ -135,6 +135,9 @@ describe('TopBar', () => {
 		// under it only when the viewport cannot fit both), clear of the
 		// right-hand readouts strip.
 		expect(groupBox.left).toBeGreaterThanOrEqual(plaqueBox.right - 2);
+		// Breathing room: >=1.5rem column gap keeps the medallions from crowding
+		// the location plaque.
+		expect(groupBox.left - plaqueBox.right).toBeGreaterThanOrEqual(23);
 		// Same top band: the cluster's vertical span overlaps the plaque's.
 		expect(groupBox.top < plaqueBox.bottom - 8 && groupBox.bottom > plaqueBox.top + 8).toBe(true);
 		expect(groupBox.right).toBeLessThanOrEqual(readoutsBox.left);

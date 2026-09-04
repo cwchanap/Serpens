@@ -420,7 +420,7 @@ describe('TileInspector inspector mock parity', () => {
 	});
 
 	it('sums this store revenue across the last 7 daily reports only', async () => {
-		expect.assertions(5);
+		expect.assertions(6);
 		const reports = [
 			{ day: 0, storeReports: [{ storeId: 'store-1', revenue: 100 }] },
 			...Array.from({ length: 7 }, (_, index) => ({
@@ -442,6 +442,9 @@ describe('TileInspector inspector mock parity', () => {
 		const bars = [...document.querySelectorAll<HTMLElement>('.week-spark-bar')];
 		expect(bars).toHaveLength(7);
 		expect(bars.every((bar) => bar.style.height === '100%')).toBe(true);
+		// Mock prominence: the sparkline's bars area is ~36-40px tall, not a
+		// squashed strip beside the value.
+		expect(spark.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(32);
 	});
 
 	it('gives zero-revenue days zero-height bars in the 7-day spark', async () => {
@@ -468,6 +471,87 @@ describe('TileInspector inspector mock parity', () => {
 		const pips = page.getByTestId('level-pip').elements();
 		expect(pips).toHaveLength(4);
 		expect(pips.filter((pip) => pip.classList.contains('filled'))).toHaveLength(1);
+	});
+
+	it('shows the real revenue multiplier in the identity eyebrow', async () => {
+		// Mock: brass uppercase meta line "district · <real stat>" over the name.
+		// Level 2 convenience store => the real ×1.1 level curve stat.
+		expect.assertions(1);
+		renderInspector({ store: { ...store, level: 2 }, latestStoreReport });
+
+		const eyebrow = document.querySelector<HTMLElement>('.store-identity .district');
+		expect(eyebrow?.textContent).toContain('Downtown · ×1.1');
+	});
+
+	it('shows the level-1 revenue multiplier in the eyebrow without invention', async () => {
+		expect.assertions(1);
+		renderInspector({ store, latestStoreReport });
+
+		// getStoreRevenueMultiplier(1) = 1.0, which formats as ×1 (no fake
+		// decimals appended).
+		const eyebrow = document.querySelector<HTMLElement>('.store-identity .district');
+		expect(eyebrow?.textContent).toContain('Downtown · ×1');
+	});
+
+	it('caps attention thumbnails at six and seals the real remainder', async () => {
+		expect.assertions(3);
+		const productIds = [
+			'bottled-water',
+			'soft-drinks',
+			'snacks',
+			'essentials',
+			'household',
+			'apparel',
+			'home-goods'
+		] as const;
+		const swampedStore: Store = {
+			...store,
+			id: 'store-swamped',
+			products: productIds.map((productId) => ({
+				productId,
+				brandId: 'common-ground',
+				lots: [],
+				reorderThreshold: 10,
+				targetStock: 50,
+				sellingPrice: 5
+			}))
+		};
+
+		renderInspector({ store: swampedStore, latestStoreReport });
+
+		const thumbs = document.querySelectorAll<HTMLElement>(
+			'[data-testid^="attention-product-art-"]'
+		);
+		expect(thumbs.length).toBe(6);
+		await expect.element(page.getByTestId('attention-more')).toHaveTextContent('+1');
+		await expect.element(page.getByTestId('attention-product-art-bottled-water')).toBeVisible();
+	});
+
+	it('keeps a brass placeholder square for attention products without art', async () => {
+		expect.assertions(2);
+		const oddStore: Store = {
+			...store,
+			id: 'store-odd',
+			products: [
+				{
+					productId: 'faux-goods' as unknown as Store['products'][number]['productId'],
+					brandId: 'common-ground',
+					lots: [],
+					reorderThreshold: 10,
+					targetStock: 50,
+					sellingPrice: 5
+				}
+			]
+		};
+
+		renderInspector({ store: oddStore, latestStoreReport });
+
+		await expect
+			.element(page.getByTestId('attention-product-placeholder-faux-goods'))
+			.toBeVisible();
+		await expect
+			.element(page.getByTestId('attention-product-art-faux-goods'))
+			.not.toBeInTheDocument();
 	});
 
 	it('lists attention products with art thumbnails in the wax-red attention band', async () => {

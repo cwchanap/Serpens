@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
-	import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
+	import { PRODUCT_ART, getStoreArt } from '$lib/assets/gameArt';
 	import { getStoreProductStatus } from '$lib/game/stock';
 	import { getStoreOrdinal } from '$lib/game/state';
 	import {
@@ -8,6 +8,7 @@
 		STORE_MILESTONE_CAPACITY_BONUS,
 		STORE_MILESTONE_LEVELS,
 		canUpgradeStore,
+		getStoreRevenueMultiplier,
 		getStoreUpgradeCost,
 		getUnlockedProductCount,
 		isMilestoneLevel
@@ -73,6 +74,13 @@
 	const troubleProducts = $derived(
 		store ? store.products.filter((product) => getStoreProductStatus(product) !== 'Healthy') : []
 	);
+	// The band frames the offending products; cap the row at six thumbnails and
+	// seal the real remainder (mock: up to ~4 thumbs + a "+N" seal when more).
+	const shownTroubleProducts = $derived(troubleProducts.slice(0, 6));
+	const hiddenTroubleCount = $derived(troubleProducts.length - shownTroubleProducts.length);
+	const districtLabel = $derived(tile ? i18n.labels.neighborhood(tile.neighborhood) : '');
+	// Real level-derived stat for the identity eyebrow (mock: district · numeric).
+	const revenueMultiplier = $derived(store ? getStoreRevenueMultiplier(store.level) : null);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
 	// Same real series the LAST 7 DAYS total sums: this store's daily revenue over
 	// the trailing 7 reports, oldest first.
@@ -141,6 +149,14 @@
 	</ul>
 {/snippet}
 
+{#snippet districtEyebrow()}
+	<p class="district">
+		{districtLabel}{revenueMultiplier !== null
+			? ` · ×${i18n.format.decimal(revenueMultiplier)}`
+			: ''}
+	</p>
+{/snippet}
+
 <!-- Mock anatomy: the close medallion pins the hero art's top-right corner and
 	 the store's identity (eyebrow, name, level pips) lives inside the dark
 	 walnut art band; the parchment body below is LAST 7 DAYS, three compact
@@ -201,7 +217,7 @@
 					decoding="async"
 				/>
 				<figcaption class="store-identity">
-					<p class="district">{i18n.labels.neighborhood(tile.neighborhood)}</p>
+					{@render districtEyebrow()}
 					<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
 					{@render levelPipRow()}
 					<p class="location">{formatStoreLocation(store.location, i18n)}</p>
@@ -209,7 +225,7 @@
 			</figure>
 		{:else}
 			<div class="store-identity plain">
-				<p class="district">{i18n.labels.neighborhood(tile.neighborhood)}</p>
+				{@render districtEyebrow()}
 				<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
 				{@render levelPipRow()}
 				<p class="location">{formatStoreLocation(store.location, i18n)}</p>
@@ -218,6 +234,7 @@
 
 		<p class="week" data-testid="week-revenue">
 			<span class="week-label">{i18n.t('tileInspector.last7Days')}</span>
+			<span class="week-value">{i18n.format.currency(weekRevenue)}</span>
 			{#if weekSeries.length > 0}
 				{@const peak = Math.max(...weekSeries)}
 				<span class="week-spark" aria-hidden="true" data-testid="week-spark">
@@ -229,7 +246,6 @@
 					{/each}
 				</span>
 			{/if}
-			<span class="week-value">{i18n.format.currency(weekRevenue)}</span>
 		</p>
 
 		<dl class="gauges" aria-label={i18n.t('tileInspector.storeVitals')} data-testid="store-gauges">
@@ -290,18 +306,32 @@
 				</p>
 				{#if troubleProducts.length > 0}
 					<ul class="attention-products" data-testid="attention-products">
-						{#each troubleProducts as product (product.productId)}
-							{@const art = getProductArt(product.productId)}
+						{#each shownTroubleProducts as product (product.productId)}
+							{@const art = PRODUCT_ART[product.productId]}
 							<li>
-								<img
-									src={asset(art.path)}
-									alt=""
-									data-testid={`attention-product-art-${product.productId}`}
-									loading="lazy"
-									decoding="async"
-								/>
+								{#if art}
+									<img
+										src={asset(art.path)}
+										alt=""
+										data-testid={`attention-product-art-${product.productId}`}
+										loading="lazy"
+										decoding="async"
+									/>
+								{:else}
+									<!-- Art-less products keep the brass placeholder square. -->
+									<span
+										class="attention-placeholder"
+										data-testid={`attention-product-placeholder-${product.productId}`}
+										aria-hidden="true"
+									></span>
+								{/if}
 							</li>
 						{/each}
+						{#if hiddenTroubleCount > 0}
+							<li class="attention-more" data-testid="attention-more" aria-hidden="true">
+								+{i18n.format.integer(hiddenTroubleCount)}
+							</li>
+						{/if}
 					</ul>
 				{/if}
 			</div>
@@ -483,49 +513,60 @@
 		overflow-wrap: anywhere;
 	}
 
-	/* --- LAST 7 DAYS revenue row + spark ------------------------------------ */
+	/* --- LAST 7 DAYS revenue card: eyebrow, LARGE serif total, prominent
+	   moss sparkline on the right (~66px mock card) ------------------------- */
 
 	.week {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas:
+			'label label'
+			'total spark';
+		align-items: end;
+		column-gap: 0.9rem;
+		row-gap: 0.25rem;
 		margin: 0;
-		padding: 0.5rem 0.75rem;
+		padding: 0.6rem 0.85rem 0.55rem;
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
 		background: var(--paper-50);
 	}
 
-	.week-spark {
-		flex: none;
-		display: flex;
-		align-items: flex-end;
-		gap: 0.15rem;
-		height: 1.7rem;
-	}
-
-	.week-spark-bar {
-		display: block;
-		flex: 0 0 0.45rem;
-		min-width: 0;
-		background: var(--moss);
-	}
-
 	.week-label {
+		grid-area: label;
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.66rem;
+		font-size: 0.62rem;
 		font-weight: 700;
-		letter-spacing: 0.12em;
+		letter-spacing: 0.16em;
 		text-transform: uppercase;
 	}
 
 	.week-value {
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums lining-nums;
-		font-weight: 700;
+		grid-area: total;
+		font-family: var(--font-display);
+		font-size: 1.5rem;
+		font-weight: 400;
+		line-height: 1;
 		color: var(--ink-700);
+		white-space: nowrap;
+	}
+
+	.week-spark {
+		grid-area: spark;
+		align-self: end;
+		display: flex;
+		align-items: flex-end;
+		gap: 0.18rem;
+		height: 2.25rem;
+	}
+
+	.week-spark-bar {
+		display: block;
+		flex: 0 0 0.55rem;
+		min-width: 0;
+		background: var(--moss);
+		border-radius: 1px 1px 0 0;
 	}
 
 	/* --- Compact vital cards with scorecard-style open-bottom dials ---------- */
@@ -592,44 +633,73 @@
 		color: var(--ink-700);
 	}
 
-	/* --- Wax-red attention band ----------------------------------------------- */
+	/* --- Wax-red attention band: one panel = "!" badge + uppercase title +
+	   framed offending-product thumbnails (+N seal when more than six) ------ */
 
 	.attention {
 		display: grid;
-		gap: 0.5rem;
-		padding: 0.6rem 0.7rem;
+		gap: 0.45rem;
+		padding: 0.6rem 0.7rem 0.65rem;
 		border: 1px solid var(--wax-red);
 		border-radius: 2px;
-		background: color-mix(in srgb, var(--wax-red) 10%, var(--paper-50));
+		background: color-mix(in srgb, var(--wax-red) 8%, var(--paper-50));
 	}
 
 	.attention-copy {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.55rem;
 		margin: 0;
 		color: var(--wax-red);
-		font-family: var(--font-body);
-		font-size: 0.85rem;
+		font-family: var(--font-ui);
+		font-size: 0.74rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		line-height: 1.25;
+		/* Uppercased via CSS so the accessible text stays today's copy. */
+		text-transform: uppercase;
 	}
 
 	.attention-products {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.4rem;
+		align-items: center;
+		gap: 0.45rem;
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
 
-	.attention-products img {
+	.attention-products img,
+	.attention-placeholder {
 		display: block;
-		width: 2.5rem;
-		height: 2.5rem;
+		width: 2.85rem;
+		height: 2.85rem;
 		object-fit: cover;
-		border: 1px solid var(--wax-red);
-		border-radius: 2px;
+		border: 1.5px solid var(--wax-red-2);
+		border-radius: 3px;
 		background: var(--paper-100);
+	}
+
+	/* Brass placeholder square for offending products without registered art. */
+	.attention-placeholder {
+		background: radial-gradient(circle at 32% 28%, var(--brass-100) 0%, var(--brass-500) 78%);
+		border-color: var(--brass-700);
+	}
+
+	.attention-more {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.95rem;
+		height: 1.95rem;
+		padding: 0 0.5rem;
+		border-radius: 999px;
+		background: var(--wax-red);
+		color: var(--paper-50);
+		font-family: var(--font-ui);
+		font-size: 0.72rem;
+		font-weight: 700;
 	}
 
 	/* --- Store art + identity + level pips ------------------------------------ */
@@ -662,16 +732,19 @@
 	}
 
 	/* Dark ink hero plate: the identity reads pale-on-dark over the art
-	   instead of the old pale paper banner. */
+	   instead of the old pale paper banner. Two columns: eyebrow/name/location
+	   on the left, the level pips tucked to the band's lower-right (mock). */
 	.store-identity {
 		position: absolute;
 		right: 0;
 		bottom: 0;
 		left: 0;
 		display: grid;
-		grid-template-columns: 1fr;
-		justify-items: start;
-		gap: 0.14rem;
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-rows: auto auto auto;
+		align-items: end;
+		column-gap: 0.9rem;
+		row-gap: 0.16rem;
 		padding: 2.6rem 0.85rem 0.72rem;
 		background: linear-gradient(
 			to top,
@@ -679,6 +752,29 @@
 			rgba(14, 10, 5, 0.78) 52%,
 			rgba(14, 10, 5, 0) 100%
 		);
+	}
+
+	.store-identity .district {
+		grid-column: 1;
+		grid-row: 1;
+	}
+
+	.store-identity h3 {
+		grid-column: 1;
+		grid-row: 2;
+	}
+
+	.store-identity .pips {
+		grid-column: 2;
+		grid-row: 2 / 4;
+		justify-self: end;
+		align-self: end;
+		margin: 0;
+	}
+
+	.store-identity .location {
+		grid-column: 1;
+		grid-row: 3;
 	}
 
 	.district {
@@ -694,13 +790,9 @@
 
 	.store-identity h3 {
 		color: var(--paper-50);
-		font-size: 1.5rem;
-		line-height: 1.04;
+		font-size: 1.9rem;
+		line-height: 1.02;
 		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
-	}
-
-	.store-identity .pips {
-		margin-top: 0.24rem;
 	}
 
 	.store-identity .location {

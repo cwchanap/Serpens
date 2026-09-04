@@ -231,6 +231,49 @@ describe('ControlDesk', () => {
 		expectControlInsideDock(build, 'build');
 	});
 
+	it('keeps time controls inside their own parchment plaque behind a divider', async () => {
+		// Mock Turn-2 anatomy: the pause square + divider + 1x/2x/5x speeds form
+		// one compact parchment plaque, separate from the action medallions.
+		expect.assertions(6);
+		render(ControlDesk, baseProps());
+
+		const plaque = document.querySelector<HTMLElement>('.time-plaque');
+		expect(plaque, 'time plaque renders').toBeTruthy();
+		if (!plaque) return;
+		const pause = page.getByRole('button', { name: /^pause$/i }).element();
+		const speed = page.getByRole('button', { name: /^1×$/i }).element();
+		const divider = plaque.querySelector<HTMLElement>('.plaque-divider');
+		expect(plaque.contains(pause)).toBe(true);
+		expect(plaque.contains(speed)).toBe(true);
+		expect(divider, 'divider sits inside the plaque').toBeTruthy();
+		if (!divider) return;
+		expect(
+			(pause.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+			'divider follows the pause square'
+		).toBe(true);
+		expect(
+			(divider.compareDocumentPosition(speed) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+			'1x speed follows the divider'
+		).toBe(true);
+	});
+
+	it('lets the moss build medallion lead the dock group at a larger size', async () => {
+		// Mock hierarchy: Build is the primary medallion — one step larger than
+		// the equal-weight destinations behind it.
+		expect.assertions(1);
+		render(ControlDesk, baseProps());
+
+		const buildBox = page
+			.getByRole('button', { name: /^build$/i })
+			.element()
+			.getBoundingClientRect();
+		const destinationBox = page
+			.getByRole('button', { name: /dashboard/i })
+			.element()
+			.getBoundingClientRect();
+		expect(buildBox.width).toBeGreaterThan(destinationBox.width);
+	});
+
 	it('no longer hosts the map-view menu (moved to the top bar)', async () => {
 		expect.assertions(1);
 		render(ControlDesk, baseProps());
