@@ -514,6 +514,14 @@ export const en = {
 		candidates: 'Candidates',
 		unassigned: 'Unassigned',
 		storeStaffing: 'Store staffing',
+		storeCoverage: 'Store coverage',
+		manageAssignments: 'Manage assignments',
+		addStaff: 'Add staff to {storeName}',
+		hireCta: 'Hire',
+		ratio: {
+			manager: 'Mgr {assigned}/{required}',
+			general: 'Gen {assigned}/{required}'
+		},
 		assigned: 'Assigned',
 		coverage:
 			'{storeName}: {managerAssigned}/{managerRequired} managers, {generalAssigned}/{generalRequired} general',

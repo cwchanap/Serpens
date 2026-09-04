@@ -513,6 +513,14 @@ export const ja = {
 		candidates: '候補者',
 		unassigned: '未割当',
 		storeStaffing: '店舗の人員配置',
+		storeCoverage: '店舗の充足状況',
+		manageAssignments: '配置を管理',
+		addStaff: '{storeName}に人員を追加',
+		hireCta: '雇用',
+		ratio: {
+			manager: '店長 {assigned}/{required}',
+			general: '一般 {assigned}/{required}'
+		},
 		assigned: '割当済み',
 		coverage:
 			'{storeName}: マネージャー {managerAssigned}/{managerRequired}、一般 {generalAssigned}/{generalRequired}',

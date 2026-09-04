@@ -2016,9 +2016,9 @@ test('manager lifecycle preserves manual policy control and records authority ex
 	});
 
 	const policies = await openManagementPanel(page, /^policies$/i);
-	await policies.getByLabel('Scope').selectOption('store');
+	await policies.getByRole('tab', { name: 'Store' }).click();
 	await expect(policies.locator('[data-provenance="store"]')).toHaveCount(1);
-	await expect(policies.getByLabel('Pricing')).toHaveValue('premium');
+	await expect(policies.getByRole('radio', { name: 'Premium' })).toBeChecked();
 	await policies.getByRole('button', { name: 'Close Policies', exact: true }).click();
 
 	const staff = await openManagementPanel(page, /^staff$/i);
@@ -2033,11 +2033,11 @@ test('manager lifecycle preserves manual policy control and records authority ex
 	await staff.getByRole('button', { name: 'Close Staff', exact: true }).click();
 
 	const manualPolicies = await openManagementPanel(page, /^policies$/i);
-	await manualPolicies.getByLabel('Scope').selectOption('store');
-	const pricing = manualPolicies.getByLabel('Pricing');
+	await manualPolicies.getByRole('tab', { name: 'Store' }).click();
+	const pricing = manualPolicies.getByRole('radio', { name: 'Competitive' });
 	await expect(pricing).toBeEnabled();
-	await pricing.selectOption('competitive');
-	await expect(pricing).toHaveValue('competitive');
+	await pricing.check();
+	await expect(pricing).toBeChecked();
 	await expect
 		.poll(async () => {
 			const saved = await readAutoSaveGame(page);
@@ -2357,7 +2357,7 @@ test('player can found a store from the city map and advance a day', async ({ pa
 
 	await dashboard.getByRole('button', { name: /close dashboard/i }).click();
 	const policies = await openManagementPanel(page, /policies/i);
-	await policies.getByLabel(/pricing/i).selectOption('premium');
+	await policies.getByRole('radio', { name: 'Premium' }).check();
 	await policies.getByRole('button', { name: /close policies/i }).click();
 	await advanceSimulationDay(page);
 	const reports = await openManagementPanel(page, /reports/i);
@@ -3012,7 +3012,7 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 
 	const staffPanel = staffDialog.getByRole('region', { name: 'Staff' });
 	await expect(staffPanel.getByRole('heading', { name: 'Staff' })).toBeVisible();
-	await expect(staffDialog.getByText('Store #1: 1/1 managers, 2/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Gen 2/2')).toBeVisible();
 	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
 	const generalCandidate = candidatesSection
 		.locator('article')
@@ -3027,12 +3027,13 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 	await generalCandidate
 		.getByRole('button', { name: new RegExp(`^Hire ${candidateNamePattern},`) })
 		.click();
+	await staffPanel.getByText('Manage assignments').click();
 	await staffPanel
 		.getByRole('region', { name: 'Unassigned' })
 		.getByLabel(new RegExp(`^Assign ${candidateNamePattern},`))
 		.selectOption({ label: 'Store #1' });
 
-	await expect(staffDialog.getByText('Store #1: 1/1 managers, 3/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Gen 3/2')).toBeVisible();
 });
 
 test('locked map tiles still show inspector feedback', async ({ page }) => {

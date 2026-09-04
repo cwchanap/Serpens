@@ -486,7 +486,7 @@ describe('ManagementPanelHost', () => {
 		});
 		render(ManagementPanelHost, props);
 
-		await expect.element(page.getByRole('combobox', { name: 'Pricing' })).toBeDisabled();
+		await expect.element(page.getByRole('radio', { name: 'Standard' })).toBeDisabled();
 	});
 
 	it('keeps company policy editable while scoped policy controls are unavailable', async () => {
@@ -498,9 +498,9 @@ describe('ManagementPanelHost', () => {
 		});
 		render(ManagementPanelHost, props);
 
-		await expect.element(page.getByLabelText('Pricing')).toBeEnabled();
-		await page.getByLabelText('Policy scope').selectOptions('city');
-		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		await expect.element(page.getByRole('radio', { name: 'Standard' })).toBeEnabled();
+		await page.getByRole('tab', { name: 'City' }).click();
+		await expect.element(page.getByRole('radio', { name: 'Standard' })).toBeDisabled();
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 	});
 
@@ -544,6 +544,10 @@ describe('ManagementPanelHost', () => {
 			})
 		});
 		render(ManagementPanelHost, props);
+
+		// The assignment machinery lives in the compacted "Manage assignments"
+		// disclosure; open it before driving those controls.
+		await page.getByText('Manage assignments').click();
 
 		const candidate = props.panelGame.hiringCandidates[0]!;
 		await expect

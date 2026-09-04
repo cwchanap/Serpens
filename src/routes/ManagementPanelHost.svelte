@@ -189,6 +189,16 @@
 		}
 		return logisticsView;
 	}
+
+	// Combined staff & policies plate: the `policies` destination opens the same
+	// plate anchored on the policies band (staff destination starts at the top).
+	let policiesBandEl = $state<HTMLElement | null>(null);
+
+	$effect(() => {
+		if (panelId === 'policies' && policiesBandEl) {
+			policiesBandEl.scrollIntoView({ block: 'start' });
+		}
+	});
 </script>
 
 <div class="tower-backdrop">
@@ -370,44 +380,49 @@
 								<Scorecard {i18n} scorecard={panelGame.scorecard} />
 							</div>
 						</div>
-					{:else if panelId === 'policies'}
-						<PolicyPanel
-							{i18n}
-							game={panelGame}
-							onChange={onChangePolicy}
-							{onSetPolicyOverride}
-							{onClearPolicyOverrideField}
-							{onResetPolicyOverrideScope}
-							canUpdate={mutations.updatePolicy}
-							canUpdateScoped={mutations.scopedPolicy}
-							{disabledReason}
-						/>
-					{:else if panelId === 'staff'}
-						<div class="staff-surfaces">
-							<StaffPanel
-								{i18n}
-								stores={panelGame.stores}
-								staff={panelGame.staff}
-								hiringCandidates={panelGame.hiringCandidates}
-								cash={panelGame.cash}
-								onHire={onHireStaff}
-								onAssign={onAssignStaff}
-								onUnassign={onUnassignStaff}
-								onPromote={onPromoteStaff}
-								canHire={mutations.hireStaff}
-								canAssign={mutations.assignStaff}
-								canUnassign={mutations.unassignStaff}
-								canPromote={mutations.promoteStaff}
-								{disabledReason}
-							/>
-							<ManagerDelegationPanel
-								{i18n}
-								game={panelGame}
-								onChange={onSetManagerDelegation}
-								onRemove={onRemoveManagerDelegation}
-								canUpdate={mutations.delegation}
-								{disabledReason}
-							/>
+					{:else if panelId === 'staff' || panelId === 'policies'}
+						<div class="staff-policies-plate" class:policies-emphasis={panelId === 'policies'}>
+							<div class="plate-staff">
+								<StaffPanel
+									{i18n}
+									stores={panelGame.stores}
+									staff={panelGame.staff}
+									hiringCandidates={panelGame.hiringCandidates}
+									cash={panelGame.cash}
+									onHire={onHireStaff}
+									onAssign={onAssignStaff}
+									onUnassign={onUnassignStaff}
+									onPromote={onPromoteStaff}
+									canHire={mutations.hireStaff}
+									canAssign={mutations.assignStaff}
+									canUnassign={mutations.unassignStaff}
+									canPromote={mutations.promoteStaff}
+									{disabledReason}
+								/>
+								{#if panelId === 'staff'}
+									<ManagerDelegationPanel
+										{i18n}
+										game={panelGame}
+										onChange={onSetManagerDelegation}
+										onRemove={onRemoveManagerDelegation}
+										canUpdate={mutations.delegation}
+										{disabledReason}
+									/>
+								{/if}
+							</div>
+							<div class="plate-policies" bind:this={policiesBandEl}>
+								<PolicyPanel
+									{i18n}
+									game={panelGame}
+									onChange={onChangePolicy}
+									{onSetPolicyOverride}
+									{onClearPolicyOverrideField}
+									{onResetPolicyOverrideScope}
+									canUpdate={mutations.updatePolicy}
+									canUpdateScoped={mutations.scopedPolicy}
+									{disabledReason}
+								/>
+							</div>
 						</div>
 					{:else if panelId === 'stores'}
 						<div class="stores-surfaces">
@@ -740,12 +755,34 @@
 	}
 
 	.decisions-surfaces,
-	.stores-surfaces,
-	.staff-surfaces {
+	.stores-surfaces {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		align-items: start;
 		gap: 1rem;
+	}
+
+	/* Combined staff & policies plate: glanceable staff band on top, policies
+	 * footer band below. The policies destination anchors on the footer band. */
+	.staff-policies-plate {
+		display: grid;
+		gap: 1rem;
+		align-content: start;
+	}
+
+	.plate-staff {
+		display: grid;
+		gap: 1rem;
+		align-content: start;
+	}
+
+	.plate-policies {
+		scroll-margin-top: 0.75rem;
+	}
+
+	.staff-policies-plate.policies-emphasis .plate-policies {
+		border-top: 1px solid var(--brass-500);
+		padding-top: 0.5rem;
 	}
 
 	.tower-header {
@@ -813,8 +850,7 @@
 		}
 
 		.decisions-surfaces,
-		.stores-surfaces,
-		.staff-surfaces {
+		.stores-surfaces {
 			grid-template-columns: 1fr;
 		}
 

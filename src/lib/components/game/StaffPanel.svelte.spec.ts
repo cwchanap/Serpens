@@ -73,7 +73,7 @@ const hiringCandidates: HiringCandidate[] = [
 	}
 ];
 
-function renderStaffPanel(
+async function renderStaffPanel(
 	overrides: Partial<{
 		stores: Store[];
 		staff: StaffMember[];
@@ -105,20 +105,26 @@ function renderStaffPanel(
 
 	const result = render(StaffPanel, props);
 
+	// The assignment machinery (unassigned list, selects, XP/promotion) lives in
+	// the compacted "Manage assignments" disclosure; open it so the tests below
+	// can drive those controls.
+	await page.getByText('Manage assignments').click();
+
 	return { ...props, result };
 }
 
 describe('StaffPanel', () => {
 	it('renders staff, candidates, unassigned staff, and store coverage', async () => {
-		expect.assertions(6);
+		expect.assertions(7);
 
-		renderStaffPanel();
+		await renderStaffPanel();
 
 		await expect.element(page.getByRole('heading', { name: 'Staff' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Candidates' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Casey Rivera' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Blair Kim' })).toBeVisible();
-		await expect.element(page.getByText('Founding Store: 1/1 managers, 0/2 general')).toBeVisible();
+		await expect.element(page.getByText('Mgr 1/1')).toBeVisible();
+		await expect.element(page.getByText('Gen 0/2')).toBeVisible();
 		await expect.element(page.getByText('2 hired staff')).toBeVisible();
 	});
 
@@ -126,7 +132,7 @@ describe('StaffPanel', () => {
 		expect.assertions(1);
 		const onHire = vi.fn();
 
-		renderStaffPanel({ onHire });
+		await renderStaffPanel({ onHire });
 
 		await page
 			.getByRole('button', { name: 'Hire Casey Rivera, General candidate candidate-casey' })
@@ -139,7 +145,7 @@ describe('StaffPanel', () => {
 		expect.assertions(1);
 		const onAssign = vi.fn();
 
-		renderStaffPanel({ onAssign });
+		await renderStaffPanel({ onAssign });
 
 		await page
 			.getByLabelText('Assign Blair Kim, General staff staff-blair, currently unassigned')
@@ -152,7 +158,7 @@ describe('StaffPanel', () => {
 		expect.assertions(1);
 		const onUnassign = vi.fn();
 
-		renderStaffPanel({ onUnassign });
+		await renderStaffPanel({ onUnassign });
 
 		await page
 			.getByRole('button', {
@@ -169,7 +175,7 @@ describe('StaffPanel', () => {
 		const onAssign = vi.fn();
 		const onUnassign = vi.fn();
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			onHire,
 			onAssign,
 			onUnassign,
@@ -212,7 +218,7 @@ describe('StaffPanel', () => {
 		expect.assertions(1);
 		const onAssign = vi.fn();
 
-		renderStaffPanel({ stores: [store, secondStore], onAssign });
+		await renderStaffPanel({ stores: [store, secondStore], onAssign });
 
 		await page
 			.getByLabelText(
@@ -227,7 +233,7 @@ describe('StaffPanel', () => {
 		expect.assertions(1);
 		const onUnassign = vi.fn();
 
-		renderStaffPanel({ onUnassign });
+		await renderStaffPanel({ onUnassign });
 
 		await page
 			.getByLabelText(
@@ -242,7 +248,7 @@ describe('StaffPanel', () => {
 		expect.assertions(7);
 		const onAssign = vi.fn();
 		const onUnassign = vi.fn();
-		renderStaffPanel({
+		await renderStaffPanel({
 			stores: [store, secondStore],
 			onAssign,
 			onUnassign,
@@ -274,7 +280,7 @@ describe('StaffPanel', () => {
 		expect.assertions(7);
 		const onAssign = vi.fn();
 		const onUnassign = vi.fn();
-		renderStaffPanel({
+		await renderStaffPanel({
 			stores: [store, secondStore],
 			onAssign,
 			onUnassign,
@@ -306,7 +312,7 @@ describe('StaffPanel', () => {
 		expect.assertions(2);
 		const onPromote = vi.fn();
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			cash: 100_000,
 			onPromote,
 			staff: [
@@ -335,7 +341,7 @@ describe('StaffPanel', () => {
 	it('does not render a promote button for staff without enough xp', async () => {
 		expect.assertions(1);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			staff: [
 				{
 					id: 'staff-new',
@@ -360,7 +366,7 @@ describe('StaffPanel', () => {
 	it('disables promote button when staff cannot afford promotion', async () => {
 		expect.assertions(2);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			cash: 100,
 			staff: [
 				{
@@ -386,7 +392,7 @@ describe('StaffPanel', () => {
 	it('shows max level text for staff at maximum level', async () => {
 		expect.assertions(1);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			staff: [
 				{
 					id: 'staff-maxed',
@@ -409,7 +415,7 @@ describe('StaffPanel', () => {
 	it('shows xp progress for staff below maximum level', async () => {
 		expect.assertions(1);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			staff: [
 				{
 					id: 'staff-growing',
@@ -433,7 +439,7 @@ describe('StaffPanel', () => {
 		expect.assertions(1);
 		const onPromote = vi.fn();
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			cash: 100_000,
 			onPromote,
 			staff: [
@@ -460,7 +466,7 @@ describe('StaffPanel', () => {
 	it('renders empty states when there are no candidates and no unassigned staff', async () => {
 		expect.assertions(3);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			hiringCandidates: [],
 			staff: [
 				{
@@ -478,7 +484,7 @@ describe('StaffPanel', () => {
 	it('renders a store with no assigned staff as empty', async () => {
 		expect.assertions(2);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			stores: [store, secondStore],
 			staff: [
 				{
@@ -489,13 +495,32 @@ describe('StaffPanel', () => {
 		});
 
 		await expect.element(page.getByText('No assigned staff')).toBeVisible();
-		await expect.element(page.getByText('Mall Store: 0/1 managers, 0/2 general')).toBeVisible();
+		await expect.element(page.getByText('Mgr 0/1')).toBeVisible();
+	});
+
+	it('expands manage assignments and focuses the store when the coverage add token is used', async () => {
+		expect.assertions(3);
+
+		await renderStaffPanel();
+
+		// Collapse the disclosure again so the add token must re-open it.
+		await page.getByText('Manage assignments').click();
+		expect((document.querySelector('details.manage') as HTMLDetailsElement | null)?.open).toBe(
+			false
+		);
+
+		await page.getByRole('button', { name: 'Add staff to Founding Store' }).click();
+
+		expect((document.querySelector('details.manage') as HTMLDetailsElement | null)?.open).toBe(
+			true
+		);
+		expect(document.activeElement?.id).toBe('manage-store-store-1');
 	});
 
 	it('renders no store cards and only the Unassigned option when there are no stores', async () => {
 		expect.assertions(3);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			stores: [],
 			staff: [
 				{
@@ -517,7 +542,7 @@ describe('StaffPanel', () => {
 	it('does not render a promote button for an assigned staff member without enough xp', async () => {
 		expect.assertions(1);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			staff: [
 				{
 					id: 'staff-assigned-noxp',
@@ -542,7 +567,7 @@ describe('StaffPanel', () => {
 	it('reconciles each-block items when props rerender with the same keys but changed data', async () => {
 		expect.assertions(4);
 
-		const { result } = renderStaffPanel();
+		const { result } = await renderStaffPanel();
 
 		await expect.element(page.getByText('2 hired staff')).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Alex Chen' })).toBeVisible();
@@ -571,7 +596,7 @@ describe('StaffPanel', () => {
 	it('reconciles each-block items across multiple rerenders with swaps and removals', async () => {
 		expect.assertions(3);
 
-		const { result } = renderStaffPanel();
+		const { result } = await renderStaffPanel();
 
 		// Step 1: swap assignments (alex unassigned, blair assigned) to trigger
 		// assigned-staff and unassigned-staff each-block reconciliation.
@@ -628,7 +653,7 @@ describe('StaffPanel', () => {
 		const onAssign = vi.fn();
 		const onUnassign = vi.fn();
 		const onPromote = vi.fn();
-		renderStaffPanel({
+		await renderStaffPanel({
 			staff: staff.map((member) => ({ ...member, xp: 100_000 })),
 			onHire,
 			onAssign,
@@ -656,7 +681,7 @@ describe('StaffPanel', () => {
 	it('does not show the disabled reason when every mutation is still permitted', async () => {
 		expect.assertions(2);
 
-		renderStaffPanel({
+		await renderStaffPanel({
 			staff: staff.map((member) => ({ ...member, xp: 100_000 })),
 			canHire: true,
 			canAssign: true,
@@ -673,7 +698,7 @@ describe('StaffPanel', () => {
 		expect.assertions(1);
 		const onUnassign = vi.fn();
 
-		renderStaffPanel({ onUnassign });
+		await renderStaffPanel({ onUnassign });
 
 		await page
 			.getByLabelText(
@@ -686,7 +711,7 @@ describe('StaffPanel', () => {
 
 	it('disables the assigned-staff select when canUnassign is false and no transfer destinations exist', async () => {
 		expect.assertions(2);
-		renderStaffPanel({
+		await renderStaffPanel({
 			canAssign: true,
 			canUnassign: false,
 			disabledReason: 'Unassignment is unavailable in this challenge.'
@@ -705,7 +730,7 @@ describe('StaffPanel', () => {
 
 	it('shows the disabled reason when only canPromote is false', async () => {
 		expect.assertions(2);
-		renderStaffPanel({
+		await renderStaffPanel({
 			staff: staff.map((member) => ({ ...member, xp: 100_000 })),
 			canHire: true,
 			canAssign: true,
@@ -723,7 +748,7 @@ describe('StaffPanel', () => {
 	it('guards onPromote when a click is dispatched on a disabled promote button', async () => {
 		expect.assertions(2);
 		const onPromote = vi.fn();
-		const { result } = renderStaffPanel({
+		const { result } = await renderStaffPanel({
 			cash: 100_000,
 			canPromote: false,
 			staff: [
@@ -756,7 +781,7 @@ describe('StaffPanel', () => {
 		expect.assertions(2);
 		const onAssign = vi.fn();
 		const onUnassign = vi.fn();
-		renderStaffPanel({
+		await renderStaffPanel({
 			stores: [store, secondStore],
 			onAssign,
 			onUnassign,
@@ -787,7 +812,7 @@ describe('StaffPanel', () => {
 		expect.assertions(2);
 		const onAssign = vi.fn();
 		const onUnassign = vi.fn();
-		renderStaffPanel({
+		await renderStaffPanel({
 			stores: [store, secondStore],
 			onAssign,
 			onUnassign,
@@ -810,7 +835,7 @@ describe('StaffPanel', () => {
 
 	it('shows the disabled reason when only canHire is false', async () => {
 		expect.assertions(2);
-		renderStaffPanel({
+		await renderStaffPanel({
 			canHire: false,
 			canAssign: true,
 			canUnassign: true,
@@ -824,7 +849,7 @@ describe('StaffPanel', () => {
 
 	it('shows the disabled reason when only canAssign is false', async () => {
 		expect.assertions(1);
-		renderStaffPanel({
+		await renderStaffPanel({
 			canHire: true,
 			canAssign: false,
 			canUnassign: true,
@@ -839,7 +864,7 @@ describe('StaffPanel', () => {
 
 	it('shows the disabled reason when only canUnassign is false', async () => {
 		expect.assertions(1);
-		renderStaffPanel({
+		await renderStaffPanel({
 			canHire: true,
 			canAssign: true,
 			canUnassign: false,

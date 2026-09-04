@@ -513,6 +513,14 @@ export const zhHant = {
 		candidates: '候選人',
 		unassigned: '未分派',
 		storeStaffing: '店鋪人力配置',
+		storeCoverage: '店鋪人力',
+		manageAssignments: '管理人力分配',
+		addStaff: '為{storeName}增加人手',
+		hireCta: '僱用',
+		ratio: {
+			manager: '經理 {assigned}/{required}',
+			general: '一般 {assigned}/{required}'
+		},
 		assigned: '已分派',
 		coverage:
 			'{storeName}：經理 {managerAssigned}/{managerRequired}，一般 {generalAssigned}/{generalRequired}',
