@@ -1067,6 +1067,7 @@ export const en = {
 	financePanel: {
 		title: 'Finance',
 		metrics: {
+			outstanding: 'Outstanding',
 			outstandingPrincipal: 'Outstanding principal',
 			amountDue: 'Amount due',
 			nextPayment: 'Next payment',
@@ -1181,7 +1182,10 @@ export const en = {
 			reviewSubmission: '{amount} will be submitted only after confirmation.',
 			refinanceReview: 'Refinance {amount} with {term}. No cash-out is included.',
 			replacementComparison:
-				'Replacement APR {apr} · First payment {firstPayment} · Peak payment {peakPayment} · No cash-out is included.'
+				'Replacement APR {apr} · First payment {firstPayment} · Peak payment {peakPayment} · No cash-out is included.',
+			runwayLeverage: 'Runway · Leverage',
+			leverage: 'Leverage',
+			netPosition: 'Net position'
 		}
 	},
 	workspaceSummary: {

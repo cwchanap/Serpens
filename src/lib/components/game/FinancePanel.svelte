@@ -7,7 +7,7 @@
 		getPayoffAmount,
 		projectLoanSchedule
 	} from '$lib/game/finance';
-	import type { FinanceMetrics } from '$lib/game/financeMetrics';
+	import type { FinanceMetrics, CashRunway } from '$lib/game/financeMetrics';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { FinanceFailureCode } from '$lib/game/finance';
 	import type { GameState, LoanInstrument, LoanTermDays } from '$lib/game/types';
@@ -18,6 +18,9 @@
 		| { kind: 'repay'; loanId: string; amount: number }
 		| { kind: 'payoff'; loanId: string; amount: number }
 		| { kind: 'refinance'; loanId: string; termDays: LoanTermDays; amount: number };
+
+	/** Compact dossier limit for the recent-activity lines below the register. */
+	const RECENT_TRANSACTION_LIMIT = 6;
 
 	let {
 		game,
@@ -65,17 +68,52 @@
 					termDays: selectedTerm
 				})
 	);
-	let transactions = $derived([...game.finance.transactions].reverse());
-
-	// Stat-card series: the trailing city-level daily reports feed the hero
-	// profit figure, the revenue readout, and the 7-bar spark.
-	let recentReports = $derived(game.reports.slice(-7));
-	let latestReport = $derived(
-		recentReports.length > 0 ? recentReports[recentReports.length - 1] : null
+	let recentTransactions = $derived(
+		[...game.finance.transactions].reverse().slice(0, RECENT_TRANSACTION_LIMIT)
 	);
-	let latestDailyProfit = $derived(latestReport?.netIncome ?? null);
-	let latestRevenue = $derived(latestReport?.revenue ?? null);
-	let revenueSeries = $derived(recentReports.map((report) => report.revenue));
+	let transactionsHidden = $derived(
+		game.finance.transactions.length > RECENT_TRANSACTION_LIMIT
+			? game.finance.transactions.length - RECENT_TRANSACTION_LIMIT
+			: 0
+	);
+
+	// Runway/leverage card: the real 90-day cash projection from the trailing
+	// reports plus debt service (cashRunway), and an honest leverage ratio of
+	// outstanding principal over cash. The moss bar maps runway depth onto the
+	// same 90-day horizon the projection already uses (presentational mapping).
+	let runway = $derived(metrics.cashRunway);
+	let runwayBarPercent = $derived(runway.kind === 'ninetyPlus' ? 100 : Math.min(100, runway.days));
+	let leverageRatio = $derived(game.cash > 0 ? metrics.outstandingPrincipal / game.cash : null);
+	let runwayHealthy = $derived(runway.kind === 'ninetyPlus' || runway.days >= 30);
+
+	// Ledger-equation strip: signed real figures only. Positive terms are cash
+	// and the trailing seven-day operating cash flow (moss when non-negative),
+	// liabilities are outstanding principal and the next scheduled payment
+	// (wax). Zero/absent terms are omitted so the strip never implies figures
+	// the game does not have; the net is the plain sum.
+	let ledgerEquation = $derived.by(
+		(): {
+			terms: { text: string; positive: boolean }[];
+			net: string;
+			netPositive: boolean;
+		} | null => {
+			if (!live) return null;
+			const signed = (value: number): string =>
+				(value >= 0 ? '+' : '') + i18n.format.currency(value);
+			const terms: { text: string; positive: boolean }[] = [
+				{ text: signed(game.cash), positive: game.cash >= 0 }
+			];
+			const flow = metrics.trailingSevenDayOperatingCashFlow;
+			if (flow !== 0) terms.push({ text: signed(flow), positive: flow >= 0 });
+			if (metrics.outstandingPrincipal > 0)
+				terms.push({ text: signed(-metrics.outstandingPrincipal), positive: false });
+			const next = metrics.nextLoanPayment;
+			if (next !== null) terms.push({ text: signed(-next.amount), positive: false });
+			const net =
+				game.cash + flow - metrics.outstandingPrincipal - (next === null ? 0 : next.amount);
+			return { terms, net: i18n.format.currency(net), netPositive: net >= 0 };
+		}
+	);
 
 	$effect(() => {
 		const id = focusedLoanId;
@@ -98,14 +136,18 @@
 		return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
 	}
 
-	function formatRunway(): string {
-		return metrics.cashRunway.kind === 'ninetyPlus'
+	function formatRunway(runwayValue: CashRunway): string {
+		return runwayValue.kind === 'ninetyPlus'
 			? i18n.t('financePanel.ui.ninetyPlusDays')
-			: i18n.t('financePanel.ui.days', { days: i18n.format.integer(metrics.cashRunway.days) });
+			: i18n.t('financePanel.ui.days', { days: i18n.format.integer(runwayValue.days) });
 	}
 
 	function loanPayoffQuote(loan: LoanInstrument): number {
 		return getPayoffAmount(loan);
+	}
+
+	function isOpenLoan(loan: LoanInstrument): boolean {
+		return loan.status === 'active' || loan.status === 'delinquent';
 	}
 
 	function fieldIdForLoan(prefix: string, loanId: string): string {
@@ -308,96 +350,76 @@
 	}
 </script>
 
-<section class="panel" aria-labelledby="finance-heading">
-	<h2 id="finance-heading">{i18n.t('financePanel.title')}</h2>
+<section class="finance-panel" aria-labelledby="finance-heading">
+	<h2 id="finance-heading" class="visually-hidden">{i18n.t('financePanel.title')}</h2>
 	<p class="live-status" aria-live="polite" role="status">{statusMessage}</p>
 
-	<div class="stat-cards">
-		<article class="stat-card">
-			<span>{i18n.t('financePanel.ui.cash')}</span><strong class:placeholder={!live}
+	<div class="kpi-row">
+		<article class="kpi-card">
+			<p class="kpi-label">{i18n.t('financePanel.ui.cash')}</p>
+			<strong class="kpi-value" class:wax={live && game.cash < 0} class:placeholder={!live}
 				>{live ? i18n.format.currency(game.cash) : '—'}</strong
 			>
 		</article>
-		<article class="stat-card">
-			<span>{i18n.t('financePanel.metrics.outstandingPrincipal')}</span><strong
-				class:placeholder={!live}
+		<article class="kpi-card">
+			<p class="kpi-label">{i18n.t('financePanel.metrics.outstanding')}</p>
+			<strong class="kpi-value" class:placeholder={!live}
 				>{live ? i18n.format.currency(metrics.outstandingPrincipal) : '—'}</strong
 			>
 		</article>
-		<article class="stat-card">
-			<span>{i18n.t('financePanel.metrics.latestProfit')}</span>
+		<article class="kpi-card">
+			<p class="kpi-label">{i18n.t('financePanel.metrics.nextPayment')}</p>
 			{#if !live}
-				<span class="placeholder">—</span>
-			{:else if latestDailyProfit === null}
-				<span class="no-report">{i18n.t('financePanel.metrics.noReport')}</span>
+				<strong class="kpi-value placeholder">—</strong>
+			{:else if metrics.nextLoanPayment === null}
+				<strong class="kpi-value kpi-muted"
+					>{i18n.t('financePanel.metrics.noDebtServiceDue')}</strong
+				>
 			{:else}
-				<strong class:negative={latestDailyProfit < 0}
-					>{i18n.format.currency(latestDailyProfit)}</strong
+				<strong class="kpi-value wax">{i18n.format.currency(metrics.nextLoanPayment.amount)}</strong
+				>
+				<span class="kpi-note"
+					>{i18n.t('financePanel.ui.day', {
+						day: i18n.format.integer(metrics.nextLoanPayment.day)
+					})}</span
 				>
 			{/if}
 		</article>
-		<article class="stat-card">
-			<span>{i18n.t('financePanel.metrics.revenueTrend')}</span>
+		<article class="kpi-card">
+			<p class="kpi-label">{i18n.t('financePanel.ui.runwayLeverage')}</p>
 			{#if !live}
-				<span class="placeholder">—</span>
-			{:else if latestRevenue === null}
-				<span class="no-report">{i18n.t('financePanel.metrics.noReport')}</span>
+				<strong class="kpi-value placeholder">—</strong>
 			{:else}
-				<strong>{i18n.format.currency(latestRevenue)}</strong>
-				{@const peak = Math.max(...revenueSeries)}
-				<div class="spark" aria-hidden="true">
-					{#each revenueSeries as value, index (index)}
-						<span
-							class="spark-bar"
-							style:height={`${peak > 0 ? Math.round((value / peak) * 100) : 0}%`}
-						></span>
-					{/each}
+				<div class="kpi-value-row">
+					<strong class="kpi-value">{formatRunway(runway)}</strong>
+					{#if leverageRatio !== null}
+						<span class="kpi-leverage" title={i18n.t('financePanel.ui.leverage')}
+							>{leverageRatio.toFixed(2)}×</span
+						>
+					{/if}
 				</div>
+				<span class="runway-bar" aria-hidden="true">
+					<span
+						class:healthy={runwayHealthy}
+						class:stressed={!runwayHealthy}
+						style:width={`${runwayBarPercent}%`}
+					></span>
+				</span>
 			{/if}
 		</article>
 	</div>
 
-	<div class="health-strip">
-		<div class="health-tile">
-			<span>{i18n.t('financePanel.metrics.amountDue')}</span><strong class:placeholder={!live}
-				>{live ? i18n.format.currency(metrics.amountDue) : '—'}</strong
-			>
-		</div>
-		<div class="health-tile">
-			<span>{i18n.t('financePanel.metrics.nextPayment')}</span><strong class:placeholder={!live}
-				>{live
-					? metrics.nextLoanPayment
-						? `${i18n.format.currency(metrics.nextLoanPayment.amount)} · ${i18n.t('financePanel.ui.day', { day: i18n.format.integer(metrics.nextLoanPayment.day) })}`
-						: i18n.t('financePanel.metrics.noDebtServiceDue')
-					: '—'}</strong
-			>
-		</div>
-		<div class="health-tile">
-			<span>{i18n.t('financePanel.metrics.debtServiceCoverage')}</span><strong
-				class:placeholder={!live}
-				>{live
-					? metrics.debtServiceCoverage === null
-						? i18n.t('financePanel.metrics.noDebtServiceDue')
-						: metrics.debtServiceCoverage.toFixed(2)
-					: '—'}</strong
-			>
-		</div>
-		<div class="health-tile">
-			<span>{i18n.t('financePanel.metrics.cashRunway')}</span><strong class:placeholder={!live}
-				>{live ? formatRunway() : '—'}</strong
-			>
-		</div>
-	</div>
-
 	<div class="dossier">
-		<section class="credit" aria-labelledby="credit-heading">
-			<h3 id="credit-heading">{i18n.t('financePanel.ui.creditOffer')}</h3>
-			<div class="term-cards" role="group" aria-label={i18n.t('financePanel.ui.loanTerm')}>
+		<section class="dossier-col credit-col" aria-labelledby="credit-heading">
+			<h3 id="credit-heading" class="eyebrow dossier-heading">
+				{i18n.t('financePanel.ui.creditOffer')}
+			</h3>
+			<div class="term-cells" role="group" aria-label={i18n.t('financePanel.ui.loanTerm')}>
 				{#each [28, 56, 84] as term (term)}
 					{@const offer = metrics.creditAssessments[term as LoanTermDays]}
 					<button
 						type="button"
-						class="term-card"
+						class="term-cell"
 						class:active={selectedTerm === term}
 						aria-label={i18n.labels.loanTerm(term)}
 						aria-pressed={selectedTerm === term}
@@ -421,61 +443,9 @@
 					</button>
 				{/each}
 			</div>
-			<div class="credit-grid">
-				<div>
-					<span>{i18n.t('financePanel.credit.baseApr')}</span><strong
-						>{live ? i18n.format.apr(selectedAssessment.baseRateBps) : '—'}</strong
-					>
-				</div>
-				<div>
-					<span>{i18n.t('financePanel.credit.adjustments')}</span><strong
-						>{live
-							? `${i18n.t('financePanel.ui.healthAdjustment', {
-									amount: i18n.format.apr(selectedAssessment.healthPenaltyBps)
-								})} · ${i18n.t('financePanel.ui.historyAdjustment', {
-									amount: i18n.format.apr(selectedAssessment.historyPenaltyBps)
-								})}`
-							: '—'}</strong
-					>
-				</div>
-				<div>
-					<span>{i18n.t('financePanel.ui.finalApr')}</span><strong
-						>{live ? i18n.format.apr(selectedAssessment.annualInterestRateBps) : '—'}</strong
-					>
-				</div>
-				<div>
-					<span>{i18n.t('financePanel.ui.availableCredit')}</span><strong
-						>{live ? i18n.format.currency(selectedAssessment.availableCredit) : '—'}</strong
-					>
-				</div>
-				<div>
-					<span>{i18n.t('financePanel.ui.operatingCashFlow')}</span><strong
-						>{live ? i18n.format.currency(selectedAssessment.weeklyOperatingCashFlow) : '—'}
-						{i18n.t('financePanel.ui.perWeek')}</strong
-					>
-				</div>
-				<div>
-					<span>{i18n.t('financePanel.ui.principalHeadroom')}</span><strong
-						>{live ? i18n.format.currency(selectedAssessment.principalHeadroom) : '—'}</strong
-					>
-				</div>
-				<div>
-					<span>{i18n.t('financePanel.ui.serviceHeadroom')}</span><strong
-						>{live ? i18n.format.currency(selectedAssessment.weeklyServiceHeadroom) : '—'}
-						{i18n.t('financePanel.ui.perWeek')}</strong
-					>
-				</div>
-			</div>
-			{#if live && selectedAssessment.reasons.length}
-				<p class="reason">
-					{selectedAssessment.reasons
-						.map((reason) => i18n.t(`financePanel.credit.reasons.${reason}`))
-						.join(' · ')}
-				</p>
-			{/if}
 			<div class="borrow-row">
 				<label class="field" for="borrow-amount">
-					<span>{i18n.t('financePanel.ui.borrowAmount')}</span>
+					<span class="field-label">{i18n.t('financePanel.ui.borrowAmount')}</span>
 					<input
 						id="borrow-amount"
 						inputmode="numeric"
@@ -493,79 +463,142 @@
 					disabled={mutationPending}
 					onclick={openBorrowReview}>{i18n.t('financePanel.ui.reviewBorrowing')}</button
 				>
+				{#if fieldError?.field === 'borrow'}<p id="borrow-error" class="error">
+						{fieldError.message}
+					</p>{/if}
 			</div>
-			{#if fieldError?.field === 'borrow'}<p id="borrow-error" class="error">
-					{fieldError.message}
-				</p>{/if}
-			{#if enteredBorrowSchedule}
-				<p class="schedule">
-					{i18n.t('financePanel.ui.firstPayment')}
-					{i18n.format.currency(enteredBorrowSchedule.firstPayment)} · {i18n.t(
-						'financePanel.ui.regularPayment'
-					)}
-					{i18n.format.currency(enteredBorrowSchedule.regularPayment)} · {i18n.t(
-						'financePanel.ui.peakPayment'
-					)}
-					{i18n.format.currency(enteredBorrowSchedule.peakPayment)}
+			{#if live}
+				<p class="credit-facts">
+					<span class="fact">
+						<span class="fact-label">{i18n.t('financePanel.ui.finalApr')}</span>
+						<strong>{i18n.format.apr(selectedAssessment.annualInterestRateBps)}</strong>
+					</span>
+					<span class="fact">
+						<span class="fact-label">{i18n.t('financePanel.ui.availableCredit')}</span>
+						<strong>{i18n.format.currency(selectedAssessment.availableCredit)}</strong>
+					</span>
+					<span class="fact">
+						<span class="fact-label">{i18n.t('financePanel.ui.operatingCashFlow')}</span>
+						<strong>{i18n.format.currency(selectedAssessment.weeklyOperatingCashFlow)}</strong
+						>{i18n.t('financePanel.ui.perWeek')}
+					</span>
+					{#if selectedAssessment.baseRateBps !== selectedAssessment.annualInterestRateBps}
+						<span class="fact fact-adjustments">
+							<span class="fact-label">{i18n.t('financePanel.credit.adjustments')}</span>
+							<strong
+								>{i18n.t('financePanel.ui.healthAdjustment', {
+									amount: i18n.format.apr(selectedAssessment.healthPenaltyBps)
+								})} · {i18n.t('financePanel.ui.historyAdjustment', {
+									amount: i18n.format.apr(selectedAssessment.historyPenaltyBps)
+								})}</strong
+							>
+						</span>
+					{/if}
 				</p>
+				{#if enteredBorrowSchedule}
+					<p class="credit-facts">
+						<span class="fact">
+							<span class="fact-label">{i18n.t('financePanel.ui.firstPayment')}</span>
+							<strong>{i18n.format.currency(enteredBorrowSchedule.firstPayment)}</strong>
+						</span>
+						<span class="fact">
+							<span class="fact-label">{i18n.t('financePanel.ui.regularPayment')}</span>
+							<strong>{i18n.format.currency(enteredBorrowSchedule.regularPayment)}</strong>
+						</span>
+						<span class="fact">
+							<span class="fact-label">{i18n.t('financePanel.ui.peakPayment')}</span>
+							<strong>{i18n.format.currency(enteredBorrowSchedule.peakPayment)}</strong>
+						</span>
+					</p>
+				{/if}
+				{#if selectedAssessment.reasons.length}
+					<p class="credit-reason">
+						{selectedAssessment.reasons
+							.map((reason) => i18n.t(`financePanel.credit.reasons.${reason}`))
+							.join(' · ')}
+					</p>
+				{/if}
+			{:else}
+				<p class="credit-facts placeholder">—</p>
 			{/if}
 		</section>
 
-		<section aria-labelledby="loans-heading">
-			<h3 id="loans-heading">{i18n.t('financePanel.ui.loansAndHistory')}</h3>
-			<div class="loan-list">
+		<section class="dossier-col register-col" aria-labelledby="loans-heading">
+			<h3 id="loans-heading" class="eyebrow dossier-heading">
+				{i18n.t('financePanel.ui.loansAndHistory')}
+			</h3>
+			<div class="loan-notes">
 				{#each game.finance.loans as loan (loan.id)}
-					<article id={`finance-loan-${loan.id}`} class="loan" tabindex="-1">
-						<h4>{i18n.labels.loanPurpose(loan.purpose)} · {i18n.labels.loanStatus(loan.status)}</h4>
-						<div class="ledger">
-							<span class="ledger-title">{i18n.t('financePanel.ui.ledger')}</span>
-							<div class="ledger-grid">
-								<p class="ledger-cell">
-									<span>{i18n.t('financePanel.ui.originalPrincipal')}</span><strong
-										>{i18n.format.currency(loan.originalPrincipal)}</strong
-									>
-								</p>
-								<p class="ledger-cell">
-									<span>{i18n.t('financePanel.ui.remainingPrincipal')}</span><strong
-										>{i18n.format.currency(loan.remainingPrincipal)}</strong
-									>
-								</p>
-								<p class="ledger-cell">
-									<span>{i18n.t('financePanel.ui.apr')}</span><strong
-										>{i18n.format.apr(loan.annualInterestRateBps)}</strong
-									>
-								</p>
-								<p class="ledger-cell">
-									<span>{i18n.t('financePanel.ui.term')}</span><strong
-										>{i18n.labels.loanTerm(loan.termDays)}</strong
-									>
-								</p>
-								<p class="ledger-cell">
-									<span>{i18n.t('financePanel.ui.arrears')}</span><strong
-										>{i18n.format.currency(getLoanArrearsAmount(loan))}</strong
-									>
-								</p>
-								<p class="ledger-cell">
-									<span>{i18n.t('financePanel.metrics.nextPayment')}</span><strong
-										>{loan.nextPaymentDay === null
-											? i18n.t('financePanel.ui.noPaymentScheduled')
-											: `${i18n.format.currency(estimateNextLoanPayment(loan))} · ${i18n.t('financePanel.ui.day', { day: i18n.format.integer(loan.nextPaymentDay) })}`}</strong
-									>
-								</p>
-								<p class="ledger-cell">
-									<span>{i18n.t('financePanel.ui.payoffQuote')}</span><strong
-										>{i18n.format.currency(loanPayoffQuote(loan))}</strong
-									>
-								</p>
-							</div>
+					{@const open = isOpenLoan(loan)}
+					{@const arrears = getLoanArrearsAmount(loan)}
+					{@const payoff = loanPayoffQuote(loan)}
+					<article
+						id={`finance-loan-${loan.id}`}
+						class="loan-note"
+						class:loan-closed={!open}
+						class:loan-delinquent={loan.status === 'delinquent'}
+						tabindex="-1"
+					>
+						<div class="note-title">
+							<h4 class="note-name">{i18n.labels.loanPurpose(loan.purpose)}</h4>
+							<span class="note-dash" aria-hidden="true">—</span>
+							<strong class="note-principal" class:placeholder={!open}
+								>{i18n.format.currency(
+									open ? loan.remainingPrincipal : loan.originalPrincipal
+								)}</strong
+							>
+							{#if loan.status !== 'active'}
+								<span class="note-status" class:wax={loan.status === 'delinquent'}
+									>{i18n.labels.loanStatus(loan.status)}</span
+								>
+							{/if}
 						</div>
-						{#if loan.status === 'active' || loan.status === 'delinquent'}
-							<div class="loan-actions">
-								<label class="field" for={fieldIdForLoan('repay-amount', loan.id)}
-									><span>{i18n.t('financePanel.ui.repayAmount')}</span><input
+						<p class="note-facts">
+							<span class="fact">
+								<span class="fact-label">{i18n.t('financePanel.ui.term')}</span>
+								<strong>{i18n.labels.loanTerm(loan.termDays)}</strong>
+							</span>
+							<span class="fact">
+								<strong
+									>{i18n.format.apr(loan.annualInterestRateBps)}
+									{i18n.t('financePanel.ui.apr')}</strong
+								>
+							</span>
+							{#if loan.nextPaymentDay !== null}
+								<span class="fact">
+									<span class="fact-label">{i18n.t('financePanel.metrics.nextPayment')}</span>
+									<strong>{i18n.format.currency(estimateNextLoanPayment(loan))}</strong>
+									<span
+										>{i18n.t('financePanel.ui.day', {
+											day: i18n.format.integer(loan.nextPaymentDay)
+										})}</span
+									>
+								</span>
+							{/if}
+							{#if arrears > 0}
+								<span class="fact fact-arrears">
+									<span class="fact-label">{i18n.t('financePanel.ui.arrears')}</span>
+									<strong>{i18n.format.currency(arrears)}</strong>
+								</span>
+							{/if}
+							{#if open}
+								<span class="fact">
+									<span class="fact-label">{i18n.t('financePanel.ui.payoffQuote')}</span>
+									<strong>{i18n.format.currency(payoff)}</strong>
+								</span>
+							{/if}
+						</p>
+						{#if open}
+							<div class="note-actions">
+								<span class="repay-cluster">
+									<span class="money-prefix" aria-hidden="true">$</span>
+									<input
 										id={fieldIdForLoan('repay-amount', loan.id)}
+										class="amount-input"
+										type="text"
 										inputmode="numeric"
 										autocomplete="off"
+										aria-label={i18n.t('financePanel.ui.repayAmount')}
 										disabled={mutationPending}
 										aria-invalid={fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}
 										aria-describedby={fieldError?.field === fieldIdForLoan('repay-amount', loan.id)
@@ -579,100 +612,123 @@
 											};
 											clearError(fieldIdForLoan('repay-amount', loan.id));
 										}}
-									/></label
+									/>
+									<button
+										type="button"
+										class="action-chip"
+										disabled={mutationPending}
+										aria-label={i18n.t('financePanel.ui.reviewRepayment')}
+										title={i18n.t('financePanel.ui.reviewRepayment')}
+										onclick={() => openRepayReview(loan)}
+										>{i18n.t('financePanel.ui.actionRepayment')}</button
+									>
+								</span>
+								<button
+									id={`payoff-${loan.id}`}
+									type="button"
+									class="action-chip"
+									disabled={mutationPending}
+									aria-label={i18n.t('financePanel.ui.reviewPayoff')}
+									title={i18n.t('financePanel.ui.reviewPayoff')}
+									aria-describedby={fieldError?.field === `payoff-${loan.id}`
+										? `payoff-${loan.id}-error`
+										: undefined}
+									onclick={() => openPayoffReview(loan)}
+									>{i18n.t('financePanel.ui.actionPayoff')}</button
 								>
+								<span
+									class="refi-cluster"
+									role="group"
+									aria-label={i18n.t('financePanel.ui.refinance')}
+								>
+									<span class="cluster-caption" aria-hidden="true"
+										>{i18n.t('financePanel.ui.refinance')}</span
+									>
+									{#each [28, 56, 84] as term (term)}<button
+											id={`refinance-${loan.id}-${term}`}
+											type="button"
+											class="term-chip"
+											disabled={mutationPending || loan.status === 'delinquent'}
+											aria-label={`${i18n.t('financePanel.ui.refinance')} ${i18n.labels.loanTerm(term)}`}
+											title={`${i18n.t('financePanel.ui.refinance')} ${i18n.labels.loanTerm(term)}`}
+											aria-describedby={fieldError?.field === `refinance-${loan.id}-${term}`
+												? `refinance-${loan.id}-${term}-error`
+												: undefined}
+											onclick={() => openRefinanceReview(loan, term as LoanTermDays)}
+											>{i18n.format.integer(term)}</button
+										>{#if fieldError?.field === `refinance-${loan.id}-${term}`}<p
+												id={`refinance-${loan.id}-${term}-error`}
+												class="error"
+											>
+												{fieldError.message}
+											</p>{/if}{/each}
+								</span>
 								{#if fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}<p
 										id={`${fieldIdForLoan('repay-amount', loan.id)}-error`}
 										class="error"
 									>
 										{fieldError.message}
 									</p>{/if}
-								<button
-									type="button"
-									class="action-pill"
-									disabled={mutationPending}
-									onclick={() => openRepayReview(loan)}
-									>{i18n.t('financePanel.ui.reviewRepayment')}</button
-								>
-								<button
-									id={`payoff-${loan.id}`}
-									type="button"
-									class="action-pill"
-									disabled={mutationPending}
-									aria-describedby={fieldError?.field === `payoff-${loan.id}`
-										? `payoff-${loan.id}-error`
-										: undefined}
-									onclick={() => openPayoffReview(loan)}
-									>{i18n.t('financePanel.ui.reviewPayoff')}</button
-								>
 								{#if fieldError?.field === `payoff-${loan.id}`}<p
 										id={`payoff-${loan.id}-error`}
 										class="error"
 									>
 										{fieldError.message}
 									</p>{/if}
-								{#each [28, 56, 84] as term (term)}<button
-										id={`refinance-${loan.id}-${term}`}
-										type="button"
-										class="action-pill"
-										disabled={mutationPending || loan.status === 'delinquent'}
-										aria-describedby={fieldError?.field === `refinance-${loan.id}-${term}`
-											? `refinance-${loan.id}-${term}-error`
-											: undefined}
-										onclick={() => openRefinanceReview(loan, term as LoanTermDays)}
-										>{i18n.t('financePanel.ui.refinance')} {i18n.labels.loanTerm(term)}</button
-									>{#if fieldError?.field === `refinance-${loan.id}-${term}`}<p
-											id={`refinance-${loan.id}-${term}-error`}
-											class="error"
-										>
-											{fieldError.message}
-										</p>{/if}{/each}
 							</div>
 						{/if}
 					</article>
 				{/each}
 			</div>
-		</section>
-	</div>
 
-	<section aria-labelledby="activity-heading">
-		<h3 id="activity-heading">{i18n.t('financePanel.ui.transactionActivity')}</h3>
-		{#if transactions.length}
-			<ol class="transactions">
-				{#each transactions as transaction (transaction.id)}
-					<li class="txn-row">
-						<span class="txn-date"
-							>{i18n.t('financePanel.ui.day', {
-								day: i18n.format.integer(transaction.day)
-							})}</span
-						>
-						<strong class="txn-kind">{transactionLabel(transaction.kind)}</strong>
-						<span class="txn-figures">
-							<span class="txn-cell">
-								<span class="txn-label">{i18n.t('financePanel.ui.cash')}</span>
-								<strong
+			<section class="recent" aria-labelledby="recent-heading">
+				<h3 id="recent-heading" class="eyebrow dossier-heading">
+					{i18n.t('financePanel.ui.transactionActivity')}
+				</h3>
+				{#if recentTransactions.length}
+					<ol class="transactions">
+						{#each recentTransactions as transaction (transaction.id)}
+							<li class="txn-row">
+								<span class="txn-date"
+									>{i18n.t('financePanel.ui.day', {
+										day: i18n.format.integer(transaction.day)
+									})}</span
+								>
+								<strong class="txn-kind">{transactionLabel(transaction.kind)}</strong>
+								<span
 									class="txn-amount"
 									class:gain={transaction.cashDelta > 0}
 									class:loss={transaction.cashDelta < 0}
-									>{i18n.format.currency(transaction.cashDelta)}</strong
+									>{`${transaction.cashDelta >= 0 ? '+' : ''}${i18n.format.currency(transaction.cashDelta)}`}</span
 								>
-							</span>
-							<span class="txn-cell">
-								<span class="txn-label">{i18n.t('financePanel.ui.principal')}</span><strong
-									class="txn-amount">{i18n.format.currency(transaction.principalAmount)}</strong
-								>
-							</span>
-							<span class="txn-cell">
-								<span class="txn-label">{i18n.t('financePanel.ui.interest')}</span><strong
-									class="txn-amount">{i18n.format.currency(transaction.interestAmount)}</strong
-								>
-							</span>
-						</span>
-					</li>
-				{/each}
-			</ol>
-		{:else}<p>{i18n.t('financePanel.ui.noActivity')}</p>{/if}
-	</section>
+							</li>
+						{/each}
+					</ol>
+					{#if transactionsHidden > 0}
+						<p class="more-line" aria-hidden="true">+ {i18n.format.integer(transactionsHidden)}</p>
+					{/if}
+				{:else}<p class="no-activity">{i18n.t('financePanel.ui.noActivity')}</p>{/if}
+			</section>
+		</section>
+	</div>
+
+	<p class="ledger-strip">
+		<span class="strip-caption">{i18n.t('financePanel.ui.netPosition')}</span>
+		{#if !live}
+			<span class="placeholder">—</span>
+		{:else if ledgerEquation}
+			{#each ledgerEquation.terms as term (term.text)}
+				<span class="eq-term" class:pos={term.positive} class:neg={!term.positive}>{term.text}</span
+				>
+			{/each}
+			<span class="eq-equals" aria-hidden="true">=</span>
+			<strong
+				class="eq-net"
+				class:pos={ledgerEquation.netPositive}
+				class:neg={!ledgerEquation.netPositive}>{ledgerEquation.net}</strong
+			>
+		{/if}
+	</p>
 
 	{#if review}
 		<div class="review" role="group" aria-labelledby="finance-review-heading">
@@ -711,316 +767,556 @@
 </section>
 
 <style>
-	.panel {
+	.finance-panel {
 		display: grid;
-		gap: 1rem;
 		min-width: 0;
-		padding: 1.1rem 1.2rem;
+		gap: 0.85rem;
 		color: var(--ink-700);
 	}
-	h2,
+
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
 	h3,
 	h4,
 	p {
 		margin: 0;
 	}
-	h2,
-	h3,
+
 	h4 {
 		font-family: var(--font-display);
 		font-weight: 400;
 	}
-	h2 {
-		font-size: 1.1rem;
-	}
-	h3 {
-		font-size: 1rem;
-	}
-	h4 {
-		font-size: 0.95rem;
-	}
-	p {
-		overflow-wrap: anywhere;
-		font-family: var(--font-body);
-	}
-	.stat-cards,
-	.health-strip,
-	.credit-grid {
-		display: grid;
-		gap: 0.7rem;
+
+	.eyebrow.dossier-heading {
+		margin: 0;
+		font-size: 0.6rem;
+		letter-spacing: 0.16em;
 	}
 
-	.stat-cards {
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
-	}
-
-	.health-strip {
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
-		gap: 0.5rem;
-	}
-
-	.credit-grid {
-		grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-	}
-
-	/* Label/value cells: never run a small-caps label into its figure.
-	   Every label/value pair stacks (label row above value row) and long
-	   labels wrap inside their cell instead of colliding with the value. */
-	.credit-grid > div {
-		display: grid;
-		align-content: start;
-		gap: 0.22rem;
-		min-width: 0;
-	}
-
-	.credit-grid > div > span,
-	.stat-card > span,
-	.health-tile > span,
-	.ledger-cell > span,
-	.term-credit-label {
-		min-width: 0;
-		overflow-wrap: anywhere;
-	}
-
-	/* Mock dossier: stat cards on top, term offers left, loan register right. */
-	.dossier {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
-		align-items: start;
-		gap: 1rem;
+	strong {
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums;
+		font-weight: 700;
 	}
 
 	.placeholder {
 		color: var(--ink-400);
 	}
 
-	.stat-card,
-	.health-tile {
+	/* ---- KPI row ---- */
+	.kpi-row {
 		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 0.8rem;
+	}
+
+	.kpi-card {
+		display: flex;
+		flex-direction: column;
 		min-width: 0;
-		gap: 0.3rem;
-		padding: 0.65rem 0.6rem;
+		gap: 0.35rem;
+		padding: 0.6rem 0.7rem 0.55rem;
 		border: 1px solid var(--brass-300);
-		border-radius: 2px;
+		border-radius: 3px;
 		background: var(--paper-50);
 		background-image: var(--grain-svg);
 		background-blend-mode: multiply;
 		background-size: 200px 200px;
-		box-shadow: 0 1px 0 rgba(20, 16, 10, 0.08);
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			0 1px 0 rgba(20, 16, 10, 0.08);
 	}
 
-	.health-tile {
-		background-image: none;
-		background-color: var(--paper-100);
-		padding: 0.45rem 0.55rem;
-	}
-
-	.stat-card > strong {
-		font-size: 1.1rem;
+	.kpi-label {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.58rem;
 		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		overflow-wrap: anywhere;
 	}
 
-	.stat-card strong.negative {
+	.kpi-value {
+		font-size: 1.15rem;
+		overflow-wrap: anywhere;
+	}
+
+	.kpi-value.wax {
 		color: var(--wax-red);
 	}
 
-	.stat-card .no-report {
+	.kpi-value.kpi-muted {
+		font-size: 0.68rem;
+		letter-spacing: normal;
+		text-transform: none;
+		overflow-wrap: anywhere;
+	}
+
+	.kpi-value-row {
+		display: flex;
+		align-items: baseline;
+		gap: 0.45rem;
+		min-width: 0;
+	}
+
+	.kpi-leverage {
+		flex: none;
+		color: var(--brass-700);
 		font-family: var(--font-mono);
 		font-size: 0.78rem;
-	}
-
-	.spark {
-		display: flex;
-		align-items: flex-end;
-		gap: 0.15rem;
-		height: 2.4rem;
-		margin-top: 0.15rem;
-	}
-
-	.spark-bar {
-		display: block;
-		flex: 1;
-		min-width: 0;
-		background: var(--brass-500);
-	}
-	span {
-		color: var(--brass-700);
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
+		font-variant-numeric: tabular-nums;
 		font-weight: 700;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
 	}
-	strong {
-		overflow-wrap: anywhere;
+
+	.kpi-note {
+		margin-top: auto;
+		color: var(--ink-400);
 		font-family: var(--font-mono);
+		font-size: 0.62rem;
 		font-variant-numeric: tabular-nums;
 	}
-	.credit,
-	.loan,
-	section[aria-labelledby='activity-heading'] {
+
+	/* Runway health bar: depth of the real 90-day projection. Moss while the
+	   projection clears the horizon comfortably, wax-red when it is stressed
+	   (presentational severity mapping on a real day count). */
+	.runway-bar {
+		display: block;
+		height: 5px;
+		margin-top: auto;
+		border: 1px solid var(--brass-300);
+		border-radius: 1px;
+		background: color-mix(in srgb, var(--paper-200) 70%, var(--brass-100));
+		overflow: hidden;
+	}
+
+	.runway-bar > span {
+		display: block;
+		height: 100%;
+	}
+
+	.runway-bar > span.healthy {
+		background: var(--moss);
+	}
+
+	.runway-bar > span.stressed {
+		background: var(--wax-red);
+	}
+
+	/* ---- Lower dossier: credit offers left, loan register right ---- */
+	.dossier {
+		display: grid;
+		grid-template-columns: minmax(0, 9fr) minmax(0, 11fr);
+		align-items: start;
+		gap: 0.9rem;
+	}
+
+	.dossier-col {
 		display: grid;
 		min-width: 0;
-		gap: 0.65rem;
-		border-top: 1px solid var(--brass-300);
-		padding-top: 0.9rem;
-	}
-	.loan-actions,
-	.review-actions {
-		display: flex;
-		flex-wrap: wrap;
-	}
-
-	.loan-actions {
-		align-items: end;
-		gap: 0.4rem;
-	}
-
-	.review-actions {
 		gap: 0.5rem;
 	}
 
-	/* Compact brass pills for the loan mutation controls. */
-	.action-pill {
-		padding: 0.3rem 0.65rem;
-		font-family: var(--font-ui);
-		font-size: 0.72rem;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		background: var(--paper-50);
-		border: 1px solid var(--brass-500);
-		border-radius: 999px;
-		color: var(--ink-700);
-		box-shadow: inset 0 0 0 1px var(--paper-100);
-	}
-
-	.action-pill:hover,
-	.action-pill:focus-visible {
-		background: var(--paper-200);
-		border-color: var(--brass-700);
-	}
-
-	.loan-actions .field {
-		max-width: 8.5rem;
-		gap: 0.18rem;
-	}
-
-	.loan-actions .field > span {
-		font-size: 0.6rem;
-	}
-
-	.loan-actions .field input {
-		padding: 0.3rem 0.5rem;
-		font-size: 0.8rem;
-	}
-
-	.term-cards {
+	.term-cells {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
-		gap: 0.6rem;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.5rem;
 	}
 
-	.term-card {
+	.term-cell {
 		display: grid;
 		min-width: 0;
-		gap: 0.2rem;
+		gap: 0.18rem;
+		align-content: start;
 		text-align: left;
-		padding: 0.55rem 0.65rem;
-		border-color: var(--brass-300);
+		padding: 0.5rem 0.6rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 3px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			0 1px 0 rgba(20, 16, 10, 0.08);
+	}
+
+	.term-cell:hover,
+	.term-cell:focus-visible {
+		border-color: var(--brass-500);
+	}
+
+	/* Selected offer: pale brass fill (the mock's selection tint). */
+	.term-cell.active {
+		background: var(--brass-100);
+		border-color: var(--brass-500);
+		color: var(--ink-900);
+		box-shadow:
+			inset 0 0 0 1px var(--paper-50),
+			0 1px 0 rgba(20, 16, 10, 0.08);
+	}
+
+	.term-cell.active .term-name,
+	.term-cell.active .term-rate,
+	.term-cell.active .term-credit-label,
+	.term-cell.active .term-credit-value {
+		color: var(--ink-900);
 	}
 
 	.term-name {
-		font-family: var(--font-display);
-		font-size: 1rem;
-		font-weight: 400;
-		letter-spacing: normal;
-		text-transform: none;
-		color: inherit;
+		font-family: var(--font-ui);
+		font-size: 0.55rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--brass-700);
 	}
 
 	.term-rate {
-		color: var(--brass-700);
 		font-family: var(--font-mono);
-		font-size: 0.74rem;
+		font-size: 1rem;
 		font-variant-numeric: tabular-nums;
+		font-weight: 700;
 	}
 
 	.term-credit {
 		display: grid;
 		min-width: 0;
-		gap: 0.12rem;
-		letter-spacing: normal;
-		text-transform: none;
+		gap: 0.08rem;
 	}
 
 	.term-credit-label {
+		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.58rem;
+		font-size: 0.48rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
-		color: var(--brass-700);
 	}
 
 	.term-credit-value {
-		color: var(--ink-700);
-		font-size: 0.72rem;
-	}
-
-	/* Selected offer = the mock's filled brass/gold emphasis (same fill +
-	   ink border + inset-ring family as .btn-icon-primary, in brass). */
-	.term-card.active {
-		background: var(--brass-500);
-		border-color: var(--ink-900);
-		color: var(--ink-900);
-		box-shadow: inset 0 0 0 1px var(--paper-100);
-	}
-
-	.term-card.active .term-name,
-	.term-card.active .term-rate,
-	.term-card.active .term-credit-label,
-	.term-card.active .term-credit-value {
-		color: var(--ink-900);
+		font-size: 0.7rem;
+		overflow-wrap: anywhere;
 	}
 
 	.borrow-row {
 		display: flex;
 		align-items: end;
 		flex-wrap: wrap;
-		gap: 0.6rem;
-		padding: 0.8rem 0.85rem 0.75rem;
+		gap: 0.4rem 0.6rem;
+		padding: 0.55rem 0.6rem 0.55rem;
 		border: 1px solid var(--brass-300);
-		border-radius: 2px;
+		border-radius: 3px;
 		background-color: var(--paper-100);
 		background-image: var(--grain-svg);
 		background-blend-mode: multiply;
 		background-size: 200px 200px;
 	}
 
-	.field input:focus-visible {
+	.field {
+		display: grid;
+		min-width: 0;
+		gap: 0.2rem;
+		flex: 1 1 8.5rem;
+	}
+
+	.field-label {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.52rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+
+	.field input {
+		width: 100%;
+		padding: 0.34rem 0.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.85rem;
+	}
+
+	.field input:focus-visible,
+	.amount-input:focus-visible {
 		outline: 2px solid var(--brass-500);
 		outline-offset: 1px;
 		border-color: var(--brass-700);
 	}
 
 	.review-cta {
+		flex: none;
 		background: var(--moss);
 		border-color: var(--ink-900);
 		color: var(--paper-50);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
 		font-family: var(--font-ui);
-		font-size: 0.9rem;
+		font-size: 0.72rem;
 		font-weight: 700;
 		letter-spacing: 0.04em;
-		padding: 0.58rem 1.05rem;
-		box-shadow: inset 0 0 0 1px var(--moss-2);
-		transform: rotate(-0.6deg);
+		padding: 0.45rem 0.8rem;
+		border-radius: 3px;
 	}
 
 	.review-cta:hover,
 	.review-cta:focus-visible {
 		background: var(--moss-2);
 	}
+
+	.credit-facts {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		column-gap: 0.9rem;
+		row-gap: 0.2rem;
+		padding-top: 0.1rem;
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
+	}
+
+	.credit-facts.placeholder {
+		font-family: var(--font-mono);
+	}
+
+	.fact {
+		display: inline-flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		column-gap: 0.35rem;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+
+	.fact-label {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.52rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+
+	.credit-facts .fact strong,
+	.note-facts .fact strong {
+		color: var(--ink-700);
+		font-size: 0.66rem;
+	}
+
+	.credit-reason {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.62rem;
+		overflow-wrap: anywhere;
+	}
+
+	.error {
+		color: var(--wax-red);
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 700;
+	}
+
+	/* ---- Loan register: ruled, note-like rows ---- */
+	.loan-notes {
+		display: grid;
+		min-width: 0;
+	}
+
+	.loan-note {
+		display: grid;
+		min-width: 0;
+		gap: 0.28rem;
+		padding: 0.5rem 0.15rem 0.45rem;
+		border-bottom: 1px solid color-mix(in srgb, var(--brass-500) 35%, transparent);
+	}
+
+	.loan-note:focus {
+		outline: 2px solid var(--brass-500);
+		outline-offset: 3px;
+	}
+
+	.loan-note:last-child {
+		border-bottom: 0;
+	}
+
+	.note-title {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		column-gap: 0.5rem;
+		min-width: 0;
+	}
+
+	.note-name {
+		font-size: 1.02rem;
+		color: var(--ink-700);
+		overflow-wrap: anywhere;
+	}
+
+	.note-dash {
+		color: var(--ink-400);
+		font-family: var(--font-mono);
+	}
+
+	.note-principal {
+		font-size: 0.95rem;
+		overflow-wrap: anywhere;
+	}
+
+	.loan-closed .note-principal {
+		font-size: 0.8rem;
+	}
+
+	.note-status {
+		margin-left: auto;
+		padding: 0.08rem 0.45rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 2px;
+		color: var(--ink-500);
+		background: var(--paper-100);
+		font-family: var(--font-ui);
+		font-size: 0.54rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+
+	.note-status.wax {
+		border-color: color-mix(in srgb, var(--wax-red) 45%, transparent);
+		color: var(--wax-red);
+		background: color-mix(in srgb, var(--wax-red) 8%, var(--paper-50));
+	}
+
+	.note-facts {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		column-gap: 0.75rem;
+		row-gap: 0.15rem;
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
+		color: var(--ink-400);
+		overflow-wrap: anywhere;
+	}
+
+	.note-facts .fact span:not(.fact-label) {
+		color: var(--ink-400);
+	}
+
+	.fact-arrears,
+	.fact-arrears strong,
+	.fact-arrears .fact-label {
+		color: var(--wax-red);
+	}
+
+	/* Mutation controls: compact chips that keep their exact accessible names
+	   (aria-label/title) while the visible glyph stays short. */
+	.note-actions {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+		padding-top: 0.05rem;
+	}
+
+	.repay-cluster {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 3px;
+		background: var(--paper-100);
+		padding: 0.18rem 0.2rem 0.18rem 0.4rem;
+	}
+
+	.money-prefix {
+		color: var(--ink-400);
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+	}
+
+	.amount-input {
+		width: 5.6rem;
+		padding: 0.22rem 0.3rem;
+		border: 0;
+		background: transparent;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-700);
+	}
+
+	.amount-input:focus-visible {
+		outline-offset: 0;
+	}
+
+	.action-chip,
+	.term-chip {
+		padding: 0.28rem 0.55rem;
+		border-radius: 3px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.58rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		box-shadow: inset 0 0 0 1px var(--paper-100);
+	}
+
+	.action-chip {
+		border: 1px solid var(--brass-500);
+	}
+
+	.action-chip:hover,
+	.action-chip:focus-visible,
+	.term-chip:hover,
+	.term-chip:focus-visible {
+		background: var(--paper-200);
+		border-color: var(--brass-700);
+	}
+
+	.refi-cluster {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.16rem 0.2rem 0.16rem 0.45rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 3px;
+		background: var(--paper-50);
+	}
+
+	.cluster-caption {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.52rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+
+	.term-chip {
+		min-width: 1.9rem;
+		padding: 0.24rem 0.3rem;
+		border: 1px solid var(--brass-300);
+		font-family: var(--font-mono);
+		letter-spacing: normal;
+		text-transform: none;
+		font-size: 0.64rem;
+	}
+
+	.term-chip:disabled {
+		cursor: not-allowed;
+		opacity: 0.55;
+	}
+
 	button,
 	input {
 		max-width: 100%;
@@ -1032,127 +1328,58 @@
 		font: inherit;
 		padding: 0.45rem 0.6rem;
 	}
+
 	button {
 		cursor: pointer;
 	}
+
 	button:disabled {
 		cursor: not-allowed;
 		opacity: 0.55;
 	}
-	.field {
+
+	/* ---- Recent activity: dense mono ledger lines ---- */
+	.recent {
 		display: grid;
 		min-width: 0;
-		gap: 0.3rem;
-		max-width: 18rem;
-	}
-	.error {
-		color: var(--wax-red);
-		font-weight: 700;
-	}
-	.reason {
-		color: var(--brass-700);
-	}
-	.ledger {
-		display: grid;
-		gap: 0.35rem;
-		margin-top: 0.15rem;
-		padding: 0.45rem 0.5rem 0.5rem;
-		border: 1px solid var(--brass-300);
-		border-radius: 2px;
-		background-color: var(--paper-100);
-		background-image: var(--grain-svg);
-		background-blend-mode: multiply;
-		background-size: 200px 200px;
+		gap: 0.15rem;
+		padding-top: 0.35rem;
 	}
 
-	.ledger-title {
-		font-size: 0.6rem;
-		text-align: center;
-	}
-
-	.ledger-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
-		gap: 0.35rem 0.9rem;
-	}
-
-	.ledger-cell {
-		display: grid;
-		min-width: 0;
-		gap: 0.12rem;
-		margin: 0;
-	}
-
-	.loan-list {
-		display: grid;
-		gap: 0.7rem;
-	}
-
-	.loan {
-		border: 1px solid var(--brass-300);
-		padding: 0.75rem;
-	}
-
-	.loan:focus {
-		outline: 3px solid var(--brass-500);
-		outline-offset: 2px;
-	}
 	.transactions {
 		display: grid;
 		gap: 0;
 		margin: 0;
 		padding: 0;
 		list-style: none;
-		border-bottom: 1px solid color-mix(in srgb, var(--brass-500) 30%, transparent);
 	}
 
-	/* Dense ledger rows: muted date/label column up front, figures pushed to
-	   the right edge; cash deltas color by sign (gain moss / loss wax-red). */
 	.txn-row {
 		display: flex;
 		align-items: baseline;
-		flex-wrap: wrap;
-		gap: 0.15rem 1rem;
-		padding: 0.4rem 0.15rem;
+		gap: 0.15rem 0.9rem;
+		padding: 0.18rem 0.1rem;
 		border-top: 1px solid color-mix(in srgb, var(--brass-500) 30%, transparent);
+		font-family: var(--font-mono);
+		font-size: 0.66rem;
 	}
 
 	.txn-date {
 		color: var(--ink-400);
-		font-family: var(--font-mono);
-		font-size: 0.72rem;
-		letter-spacing: normal;
-		text-transform: none;
-	}
-
-	.txn-kind {
-		font-size: 0.82rem;
-		font-weight: 700;
-	}
-
-	.txn-figures {
-		display: flex;
-		align-items: baseline;
-		flex-wrap: wrap;
-		justify-content: flex-end;
-		gap: 0.35rem 1rem;
-		margin-left: auto;
-	}
-
-	.txn-cell {
-		display: inline-flex;
-		align-items: baseline;
-		gap: 0.35rem;
 		flex: none;
 	}
 
-	.txn-label {
-		font-size: 0.6rem;
+	.txn-kind {
+		font-weight: 700;
+		overflow-wrap: anywhere;
 	}
 
 	.txn-amount {
+		margin-left: auto;
+		flex: none;
+		font-variant-numeric: tabular-nums;
+		font-weight: 700;
 		color: var(--ink-700);
-		font-size: 0.8rem;
 	}
 
 	.txn-amount.gain {
@@ -1162,24 +1389,134 @@
 	.txn-amount.loss {
 		color: var(--wax-red);
 	}
+
+	.more-line {
+		padding: 0.1rem 0.1rem 0;
+		color: var(--ink-400);
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+	}
+
+	.no-activity {
+		color: var(--ink-400);
+		font-family: var(--font-mono);
+		font-size: 0.68rem;
+		padding: 0.2rem 0.1rem;
+	}
+
+	/* ---- Bottom ledger equation ---- */
+	.ledger-strip {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 0.2rem 0.55rem;
+		padding: 0.5rem 0.7rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 3px;
+		background: var(--paper-100);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
+		font-family: var(--font-mono);
+		font-size: 0.74rem;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.strip-caption {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.54rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.eq-term {
+		color: var(--ink-700);
+		font-weight: 700;
+	}
+
+	.eq-term.pos,
+	.eq-net.pos {
+		color: var(--moss);
+	}
+
+	.eq-term.neg,
+	.eq-net.neg {
+		color: var(--wax-red);
+	}
+
+	.eq-equals {
+		color: var(--ink-400);
+		font-weight: 700;
+	}
+
+	.eq-net {
+		font-size: 0.78rem;
+	}
+
+	.live-status {
+		color: var(--moss);
+		font-family: var(--font-body);
+		font-size: 0.78rem;
+		font-weight: 700;
+	}
+
 	.live-status:empty {
 		display: none;
 	}
+
+	/* ---- Review dialog ---- */
 	.review {
 		display: grid;
 		gap: 0.7rem;
 		border: 2px solid var(--ink-700);
+		border-radius: 3px;
 		background: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
 		padding: 1rem;
+		box-shadow: var(--shadow-paper);
 	}
-	@media (max-width: 520px) {
-		.stat-cards,
-		.health-strip,
-		.credit-grid,
-		.ledger-grid {
+
+	.review h3 {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 400;
+	}
+
+	.review p {
+		font-family: var(--font-body);
+		overflow-wrap: anywhere;
+	}
+
+	.review-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.review-actions button {
+		font-family: var(--font-ui);
+		font-size: 0.78rem;
+		font-weight: 700;
+		padding: 0.45rem 0.9rem;
+	}
+
+	@media (max-width: 860px) {
+		.kpi-row {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.dossier {
 			grid-template-columns: 1fr;
 		}
-		.panel {
+	}
+	@media (max-width: 520px) {
+		.kpi-row {
+			grid-template-columns: 1fr;
+		}
+		.finance-panel {
 			overflow-x: hidden;
 		}
 	}

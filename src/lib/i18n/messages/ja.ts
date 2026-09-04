@@ -1061,6 +1061,7 @@ export const ja = {
 	financePanel: {
 		title: '財務',
 		metrics: {
+			outstanding: '未返済',
 			outstandingPrincipal: '未返済元本',
 			amountDue: '支払総額',
 			nextPayment: '次回支払',
@@ -1175,7 +1176,10 @@ export const ja = {
 			reviewSubmission: '{amount} は確定後に実行されます。',
 			refinanceReview: '{amount} を {term} で借換えます。現金受取は含まれません。',
 			replacementComparison:
-				'借換後APR {apr} · 初回支払 {firstPayment} · 最大支払 {peakPayment} · 現金受取は含まれません。'
+				'借換後APR {apr} · 初回支払 {firstPayment} · 最大支払 {peakPayment} · 現金受取は含まれません。',
+			runwayLeverage: '資金余力・レバレッジ',
+			leverage: 'レバレッジ',
+			netPosition: '純資産残高'
 		}
 	},
 	workspaceSummary: {
