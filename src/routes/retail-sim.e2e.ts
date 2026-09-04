@@ -1726,6 +1726,7 @@ test('living market sandbox persists a brand edit and reports market evidence', 
 	});
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(reports.getByRole('region', { name: 'Brand performance' })).toContainText(
 		'Budget Bay'
 	);
@@ -1801,6 +1802,7 @@ test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly
 		if (day === 4) {
 			expiryReport = getLatestReport(saved);
 			const reports = await openManagementPanel(page, /reports/i);
+			await reports.getByText('Detailed evidence').click();
 			await expect(
 				reports.getByRole('region', { name: 'Latest-day modifier lifecycle' })
 			).toContainText('Status: Expired');
@@ -1821,6 +1823,7 @@ test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly
 	expect(stableMarket.playerShare).toBeCloseTo(baselineMarket.playerShare, 12);
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(reports.getByRole('region', { name: 'Market snapshot' })).toContainText(
 		'event multiplier: ×1'
 	);
@@ -1961,6 +1964,7 @@ test('production supplier bulk discount stays active through its final import an
 	]);
 
 	const reports = await openManagementPanel(page, /^reports$/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(reports.getByRole('region', { name: 'Latest-day modifier impacts' })).toContainText(
 		'Multiplier: ×0.9'
 	);
@@ -2361,6 +2365,7 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await policies.getByRole('button', { name: /close policies/i }).click();
 	await advanceSimulationDay(page);
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 
 	await expect(
 		reports.getByRole('group', { name: /reports status/i }).getByText(/^Day 2$/i)
@@ -2955,6 +2960,7 @@ test('player builds convenience production and refills from city inventory', asy
 	).toBe(bottledWaterReport.importedUnits);
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	const railShipmentUnits = latestReport.productionReport.railShipments.reduce(
 		(total, shipment) => total + shipment.quantity,
 		0
@@ -3188,6 +3194,7 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 	);
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(
 		reports.getByText('Operating cash flow', { exact: true }).locator('..')
 	).toContainText(`$${scheduledReport.operatingCashFlow.toLocaleString('en-US')}`);
@@ -3529,6 +3536,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	}
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	const importsMetric = reports
 		.getByLabel('Reports')
 		.locator('.metrics > div')
@@ -4263,6 +4271,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	]);
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	const productionCloseInventory = reports.getByRole('region', {
 		name: 'Production-close inventory (before retail replenishment)'
 	});
@@ -4370,6 +4379,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	await reloadedStores.getByRole('button', { name: 'Close Stores' }).click();
 
 	const reloadedReports = await openManagementPanel(page, /reports/i);
+	await reloadedReports.getByText('Detailed evidence').click();
 	const reloadedCurrentInventory = reloadedReports.getByRole('region', {
 		name: 'Current city inventory (after the latest replenishment)'
 	});
@@ -4475,6 +4485,7 @@ test('logistics manual inter-city transfer completes with inline validation and 
 	await deliveredLogistics.getByRole('button', { name: 'Close Logistics' }).click();
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	const latestLogistics = reports.getByRole('region', { name: 'Latest-day logistics' });
 	await expect(latestLogistics).toBeVisible();
 	await expect(latestLogistics.getByText('Delivered units: 2', { exact: true })).toBeVisible();
@@ -4969,6 +4980,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	});
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(reports.getByText('Modifier recoveries', { exact: true })).toBeVisible();
 	await expect(
 		reports.getByText('Route route-1 lead time recovered: 3 days → 2 days', { exact: true })

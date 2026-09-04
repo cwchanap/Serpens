@@ -28,6 +28,7 @@
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { ReportSummary } from '$lib/game/reports';
 	import { cashTrendFromReports } from '$lib/game/reports';
+	import type { ScenarioDefinition, ScenarioRun } from '$lib/scenarios/types';
 	import type {
 		ProductChainCategorySummary,
 		ProductChainHealth
@@ -62,6 +63,7 @@
 		manageLogistics?: boolean;
 		focusedLogisticsRouteId?: string | null;
 		logisticsRoutePreset?: RecurringRouteInput | null;
+		scenario?: { definition: ScenarioDefinition; run: ScenarioRun } | null;
 		i18n: I18nBundle;
 		disabledReason: string | null;
 
@@ -118,6 +120,7 @@
 		manageLogistics = false,
 		focusedLogisticsRouteId = null,
 		logisticsRoutePreset = null,
+		scenario = null,
 		i18n,
 		disabledReason,
 		onClose,
@@ -458,7 +461,7 @@
 							/>
 						</div>
 					{:else if panelId === 'reports'}
-						<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
+						<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} {scenario} />
 					{:else if panelId === 'productChains'}
 						<ProductChainsPanel {i18n} game={panelGame} {onPlanProduct} {plannerProductIds} />
 					{:else if panelId === 'logistics'}

@@ -3127,6 +3127,9 @@
 			manageLogistics={mutationAvailability.manageLogistics}
 			{focusedLogisticsRouteId}
 			{logisticsRoutePreset}
+			scenario={activeScenarioDefinition && activeScenarioRun
+				? { definition: activeScenarioDefinition, run: activeScenarioRun }
+				: null}
 			{i18n}
 			disabledReason={mutationDisabledReason}
 			onClose={closeManagementPanel}

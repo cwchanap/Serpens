@@ -194,7 +194,11 @@ export function buildScenarioCatalogCards(
 	});
 }
 
-function formatEvidenceValue(evidence: ObjectiveEvidence, value: number, i18n: I18nBundle): string {
+export function formatEvidenceValue(
+	evidence: ObjectiveEvidence,
+	value: number,
+	i18n: I18nBundle
+): string {
 	if (
 		evidence.metric === 'cash' ||
 		evidence.metric === 'daily-net-income' ||
