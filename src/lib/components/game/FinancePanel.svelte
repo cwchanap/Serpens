@@ -589,6 +589,7 @@
 									</p>{/if}
 								<button
 									type="button"
+									class="action-pill"
 									disabled={mutationPending}
 									onclick={() => openRepayReview(loan)}
 									>{i18n.t('financePanel.ui.reviewRepayment')}</button
@@ -596,6 +597,7 @@
 								<button
 									id={`payoff-${loan.id}`}
 									type="button"
+									class="action-pill"
 									disabled={mutationPending}
 									aria-describedby={fieldError?.field === `payoff-${loan.id}`
 										? `payoff-${loan.id}-error`
@@ -612,6 +614,7 @@
 								{#each [28, 56, 84] as term (term)}<button
 										id={`refinance-${loan.id}-${term}`}
 										type="button"
+										class="action-pill"
 										disabled={mutationPending || loan.status === 'delinquent'}
 										aria-describedby={fieldError?.field === `refinance-${loan.id}-${term}`
 											? `refinance-${loan.id}-${term}-error`
@@ -637,15 +640,34 @@
 		{#if transactions.length}
 			<ol class="transactions">
 				{#each transactions as transaction (transaction.id)}
-					<li>
-						<strong>{transactionLabel(transaction.kind)}</strong> · {i18n.t('financePanel.ui.day', {
-							day: i18n.format.integer(transaction.day)
-						})} · {i18n.t('financePanel.ui.cash')}
-						{i18n.format.currency(transaction.cashDelta)} · {i18n.t('financePanel.ui.principal')}
-						{i18n.format.currency(transaction.principalAmount)} · {i18n.t(
-							'financePanel.ui.interest'
-						)}
-						{i18n.format.currency(transaction.interestAmount)}
+					<li class="txn-row">
+						<span class="txn-date"
+							>{i18n.t('financePanel.ui.day', {
+								day: i18n.format.integer(transaction.day)
+							})}</span
+						>
+						<strong class="txn-kind">{transactionLabel(transaction.kind)}</strong>
+						<span class="txn-figures">
+							<span class="txn-cell">
+								<span class="txn-label">{i18n.t('financePanel.ui.cash')}</span>
+								<strong
+									class="txn-amount"
+									class:gain={transaction.cashDelta > 0}
+									class:loss={transaction.cashDelta < 0}
+									>{i18n.format.currency(transaction.cashDelta)}</strong
+								>
+							</span>
+							<span class="txn-cell">
+								<span class="txn-label">{i18n.t('financePanel.ui.principal')}</span><strong
+									class="txn-amount">{i18n.format.currency(transaction.principalAmount)}</strong
+								>
+							</span>
+							<span class="txn-cell">
+								<span class="txn-label">{i18n.t('financePanel.ui.interest')}</span><strong
+									class="txn-amount">{i18n.format.currency(transaction.interestAmount)}</strong
+								>
+							</span>
+						</span>
 					</li>
 				{/each}
 			</ol>
@@ -847,7 +869,50 @@
 	.review-actions {
 		display: flex;
 		flex-wrap: wrap;
+	}
+
+	.loan-actions {
+		align-items: end;
+		gap: 0.4rem;
+	}
+
+	.review-actions {
 		gap: 0.5rem;
+	}
+
+	/* Compact brass pills for the loan mutation controls. */
+	.action-pill {
+		padding: 0.3rem 0.65rem;
+		font-family: var(--font-ui);
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		background: var(--paper-50);
+		border: 1px solid var(--brass-500);
+		border-radius: 999px;
+		color: var(--ink-700);
+		box-shadow: inset 0 0 0 1px var(--paper-100);
+	}
+
+	.action-pill:hover,
+	.action-pill:focus-visible {
+		background: var(--paper-200);
+		border-color: var(--brass-700);
+	}
+
+	.loan-actions .field {
+		max-width: 8.5rem;
+		gap: 0.18rem;
+	}
+
+	.loan-actions .field > span {
+		font-size: 0.6rem;
+	}
+
+	.loan-actions .field input {
+		padding: 0.3rem 0.5rem;
+		font-size: 0.8rem;
 	}
 
 	.term-cards {
@@ -924,13 +989,30 @@
 		align-items: end;
 		flex-wrap: wrap;
 		gap: 0.6rem;
+		padding: 0.8rem 0.85rem 0.75rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 2px;
+		background-color: var(--paper-100);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
+	}
+
+	.field input:focus-visible {
+		outline: 2px solid var(--brass-500);
+		outline-offset: 1px;
+		border-color: var(--brass-700);
 	}
 
 	.review-cta {
 		background: var(--moss);
 		border-color: var(--ink-900);
 		color: var(--paper-50);
+		font-family: var(--font-ui);
+		font-size: 0.9rem;
 		font-weight: 700;
+		letter-spacing: 0.04em;
+		padding: 0.58rem 1.05rem;
 		box-shadow: inset 0 0 0 1px var(--moss-2);
 		transform: rotate(-0.6deg);
 	}
@@ -972,9 +1054,9 @@
 	}
 	.ledger {
 		display: grid;
-		gap: 0.45rem;
-		margin-top: 0.2rem;
-		padding: 0.55rem 0.6rem 0.65rem;
+		gap: 0.35rem;
+		margin-top: 0.15rem;
+		padding: 0.45rem 0.5rem 0.5rem;
 		border: 1px solid var(--brass-300);
 		border-radius: 2px;
 		background-color: var(--paper-100);
@@ -991,13 +1073,13 @@
 	.ledger-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
-		gap: 0.45rem 1rem;
+		gap: 0.35rem 0.9rem;
 	}
 
 	.ledger-cell {
 		display: grid;
 		min-width: 0;
-		gap: 0.15rem;
+		gap: 0.12rem;
 		margin: 0;
 	}
 
@@ -1017,9 +1099,68 @@
 	}
 	.transactions {
 		display: grid;
-		gap: 0.45rem;
+		gap: 0;
 		margin: 0;
-		padding-left: 1.25rem;
+		padding: 0;
+		list-style: none;
+		border-bottom: 1px solid color-mix(in srgb, var(--brass-500) 30%, transparent);
+	}
+
+	/* Dense ledger rows: muted date/label column up front, figures pushed to
+	   the right edge; cash deltas color by sign (gain moss / loss wax-red). */
+	.txn-row {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: 0.15rem 1rem;
+		padding: 0.4rem 0.15rem;
+		border-top: 1px solid color-mix(in srgb, var(--brass-500) 30%, transparent);
+	}
+
+	.txn-date {
+		color: var(--ink-400);
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		letter-spacing: normal;
+		text-transform: none;
+	}
+
+	.txn-kind {
+		font-size: 0.82rem;
+		font-weight: 700;
+	}
+
+	.txn-figures {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 0.35rem 1rem;
+		margin-left: auto;
+	}
+
+	.txn-cell {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.35rem;
+		flex: none;
+	}
+
+	.txn-label {
+		font-size: 0.6rem;
+	}
+
+	.txn-amount {
+		color: var(--ink-700);
+		font-size: 0.8rem;
+	}
+
+	.txn-amount.gain {
+		color: var(--moss);
+	}
+
+	.txn-amount.loss {
+		color: var(--wax-red);
 	}
 	.live-status:empty {
 		display: none;

@@ -27,7 +27,11 @@
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { ReportSummary } from '$lib/game/reports';
-	import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
+	import { cashTrendFromReports } from '$lib/game/reports';
+	import type {
+		ProductChainCategorySummary,
+		ProductChainHealth
+	} from '$lib/game/productChainGraph';
 	import type {
 		CompanyPolicy,
 		GameState,
@@ -158,8 +162,25 @@
 		return chainSummaries;
 	}
 
-	function activeLogisticsRouteCount(game: GameState): number {
-		return game.logistics.recurringRoutes.filter((route) => route.state === 'active').length;
+	// Worst-category chain status for the dashboard card's dot + label: moss
+	// only while every supported category is healthy; otherwise the label of the
+	// most severe category present (severity follows materialHealth ordering).
+	const CHAIN_HEALTH_SEVERITY: readonly ProductChainHealth[] = [
+		'shortage',
+		'no-local-capacity',
+		'watch',
+		'no-report'
+	];
+
+	function overallChainStatus(
+		summaries: ProductChainCategorySummary[]
+	): { healthy: boolean; label: string } | null {
+		if (summaries.length === 0) return null;
+		for (const health of CHAIN_HEALTH_SEVERITY) {
+			const worst = summaries.find((summary) => summary.health === health);
+			if (worst) return { healthy: false, label: worst.healthLabel };
+		}
+		return { healthy: true, label: summaries[0]!.healthLabel };
 	}
 
 	function requireLogisticsView(): LogisticsPanelView {
@@ -240,6 +261,14 @@
 						{@const healthyChains = summaries.filter(
 							(summary) => summary.health === 'healthy'
 						).length}
+						{@const recurringRoutes = panelGame.logistics.recurringRoutes}
+						{@const totalRoutes = recurringRoutes.length}
+						{@const activeRoutes = recurringRoutes.filter(
+							(route) => route.state === 'active'
+						).length}
+						{@const cashTrend = cashTrendFromReports(panelGame.reports)}
+						{@const revenueSeries = panelGame.reports.slice(-7).map((report) => report.revenue)}
+						{@const revenuePeak = revenueSeries.length > 0 ? Math.max(...revenueSeries) : 0}
 						<div class="workspace-dashboard">
 							<div class="summary-grid">
 								<article class="summary-card">
@@ -257,20 +286,68 @@
 									<strong class="summary-value" class:placeholder={!live}
 										>{live ? i18n.format.integer(panelGame.stores.length) : '—'}</strong
 									>
+									{#if live && revenueSeries.length > 0}
+										<span class="summary-note" aria-hidden="true">
+											<span class="spark">
+												{#each revenueSeries as value, index (index)}
+													<span
+														class="spark-bar"
+														style:height={`${revenuePeak > 0 ? Math.round((value / revenuePeak) * 100) : 0}%`}
+													></span>
+												{/each}
+											</span>
+										</span>
+									{/if}
 								</article>
 								<article class="summary-card">
 									<h3>{i18n.t('workspaceSummary.cash')}</h3>
 									<strong class="summary-value" class:placeholder={!live}
 										>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
 									>
+									{#if live && cashTrend}
+										<span class="summary-note">
+											<span
+												class="trend-chip"
+												class:up={cashTrend.direction === 'up'}
+												class:down={cashTrend.direction === 'down'}
+												data-testid="cash-trend"
+												aria-label={cashTrend.percent !== null
+													? i18n.t(
+															cashTrend.direction === 'up'
+																? 'topBar.cashTrend.up'
+																: 'topBar.cashTrend.down',
+															{ percent: i18n.format.percent1(cashTrend.percent) }
+														)
+													: i18n.t(
+															cashTrend.direction === 'up'
+																? 'topBar.cashTrend.upOnly'
+																: 'topBar.cashTrend.downOnly'
+														)}
+											>
+												{cashTrend.direction === 'up' ? '▲' : '▼'}
+												{cashTrend.percent !== null ? i18n.format.percent1(cashTrend.percent) : ''}
+											</span>
+										</span>
+									{/if}
 								</article>
 								<article class="summary-card">
 									<h3>{i18n.t('workspaceSummary.activeRoutes')}</h3>
 									<strong class="summary-value" class:placeholder={!live}
 										>{live
-											? i18n.format.integer(activeLogisticsRouteCount(panelGame))
+											? totalRoutes > 0
+												? `${i18n.format.integer(activeRoutes)} / ${i18n.format.integer(totalRoutes)}`
+												: i18n.format.integer(activeRoutes)
 											: '—'}</strong
 									>
+									{#if live && totalRoutes > 0}
+										<span class="summary-note">
+											<span class="route-caption">{i18n.t('logisticsPanel.states.active')}</span>
+										</span>
+									{:else if live}
+										<span class="summary-note note-icon" aria-hidden="true">
+											<GameIcon name="logistics" />
+										</span>
+									{/if}
 								</article>
 								<article class="summary-card">
 									<h3>{i18n.t('workspaceSummary.chainHealth')}</h3>
@@ -279,6 +356,14 @@
 											? `${i18n.format.integer(healthyChains)} / ${i18n.format.integer(summaries.length)}`
 											: '—'}</strong
 									>
+									{#if live && summaries.length > 0}
+										{@const status = overallChainStatus(summaries)}
+										<span class="summary-note">
+											<span class="status-dot" class:good={status?.healthy} aria-hidden="true"
+											></span>
+											<span class="status-label">{status?.label}</span>
+										</span>
+									{/if}
 								</article>
 							</div>
 							<div class="workspace-scorecard">
@@ -534,6 +619,7 @@
 		align-content: center;
 		gap: 0.6rem;
 		min-width: 0;
+		min-height: 12rem;
 		padding: 1.3rem 0.9rem 1.2rem;
 		border: 1px solid var(--brass-300);
 		border-radius: 2px;
@@ -541,14 +627,17 @@
 		background-image: var(--grain-svg);
 		background-blend-mode: multiply;
 		background-size: 200px 200px;
-		box-shadow: 0 1px 0 rgba(20, 16, 10, 0.08);
+		/* Warm plaque double-frame: 1px parchment inner ring on the brass border. */
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			0 1px 0 rgba(20, 16, 10, 0.08);
 	}
 
 	.summary-card h3 {
 		margin: 0;
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.74rem;
+		font-size: 0.8rem;
 		font-weight: 700;
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
@@ -565,11 +654,89 @@
 	.summary-value {
 		color: var(--ink-700);
 		font-family: var(--font-mono);
-		font-size: 1.9rem;
+		font-size: 2rem;
 		font-weight: 700;
 		font-variant-numeric: tabular-nums lining-nums;
 		text-align: center;
 		overflow-wrap: anywhere;
+	}
+
+	/* Card treatment zone: each summary card may carry one compact annotation
+	   (sparkline / trend chip / route caption / chain dot+label). Reserving the
+	   strip keeps the cards' centered content visually aligned. */
+	.summary-note {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		min-height: 2.6rem;
+		max-width: 100%;
+	}
+
+	.summary-note .spark {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.16rem;
+		height: 2.2rem;
+		width: min(100%, 7.5rem);
+	}
+
+	.summary-note .spark-bar {
+		display: block;
+		flex: 1;
+		min-width: 0;
+		border-radius: 1px 1px 0 0;
+		background: var(--brass-500);
+	}
+
+	.trend-chip {
+		padding: 0.16rem 0.55rem;
+		border: 1px solid var(--ink-900);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums lining-nums;
+		line-height: 1.1;
+		color: var(--paper-50);
+	}
+
+	.trend-chip.up {
+		background: var(--moss);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
+	}
+
+	.trend-chip.down {
+		background: var(--wax-red);
+		box-shadow: inset 0 0 0 1px var(--wax-red-2);
+	}
+
+	.route-caption,
+	.status-label {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.note-icon {
+		color: var(--brass-700);
+	}
+
+	.status-dot {
+		width: 0.62rem;
+		height: 0.62rem;
+		flex: none;
+		border-radius: 999px;
+		background: var(--wax-red);
+		box-shadow: inset 0 0 0 1px var(--wax-red-2);
+	}
+
+	.status-dot.good {
+		background: var(--moss);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
 	}
 
 	.decisions-surfaces,

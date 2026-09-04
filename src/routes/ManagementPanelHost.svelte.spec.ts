@@ -7,13 +7,17 @@ import {
 	buildLogisticsPanelView,
 	type LogisticsPanelView
 } from '$lib/components/game/logisticsPanel';
-import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
+import {
+	createTwoIndustryCityGame,
+	withRecurringRoutes
+} from '$lib/game/interCityLogistics.testUtils';
 import { decisionContextCashPressure } from '$lib/game/decisionContext';
 import { getFinanceMetrics, type FinanceMetrics } from '$lib/game/financeMetrics';
 import { buildStoreCategoryChainSummaries } from '$lib/game/productChainTree';
 import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
-import { summarizeReports, type ReportSummary } from '$lib/game/reports';
+import { simulateDay } from '$lib/game/simulateDay';
+import { cashTrendFromReports, summarizeReports, type ReportSummary } from '$lib/game/reports';
 import { createNewGame } from '$lib/game/state';
 import type {
 	CompanyPolicy,
@@ -284,6 +288,85 @@ describe('ManagementPanelHost', () => {
 				`${props.i18n.format.integer(healthy)} / ${props.i18n.format.integer(summaries.length)}`
 			]);
 		});
+	});
+
+	it('adds real editorial treatments to the dashboard summary cards', async () => {
+		const base = { ...createNewGame('grocery', 44), cash: 50_000 };
+		let game: GameState = base;
+		let days = 0;
+		while (days < 30) {
+			game = simulateDay(game);
+			days += 1;
+			// Keep ticking until the trailing 7-day window is full AND the last
+			// day moved cash, so the chip, the spark, and the route split all
+			// render from real data.
+			if (days >= 7 && cashTrendFromReports(game.reports) !== null) break;
+		}
+		const panelGame = withRecurringRoutes(game, [
+			{
+				id: 'route-1',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 30,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2,
+				priority: 1,
+				state: 'active',
+				nextDispatchOnDay: 0
+			},
+			{
+				id: 'route-2',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 30,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2,
+				priority: 1,
+				state: 'paused',
+				nextDispatchOnDay: 0
+			}
+		]);
+		const props = hostProps({
+			panelGame,
+			summary: summarizeReports(panelGame.reports),
+			chainSummaries: buildStoreCategoryChainSummaries(panelGame)
+		});
+		render(ManagementPanelHost, props);
+
+		// Stores card: the trailing-7-day revenue spark, one bar per report.
+		const series = panelGame.reports.slice(-7).map((report) => report.revenue);
+		const peak = Math.max(...series);
+		await vi.waitFor(() => {
+			expect(document.querySelectorAll('.summary-card .spark-bar')).toHaveLength(7);
+		});
+		const heights = [...document.querySelectorAll<HTMLElement>('.summary-card .spark-bar')].map(
+			(bar) => Number.parseFloat(bar.style.height)
+		);
+		expect(
+			heights.every((height, index) => height === Math.round((series[index]! / peak) * 100))
+		).toBe(true);
+
+		// Cash card: the netCashChange-derived trend chip.
+		const chip = document.querySelector<HTMLElement>('.summary-card [data-testid="cash-trend"]');
+		expect(chip).not.toBeNull();
+		expect(chip?.getAttribute('aria-label')).toMatch(/^(Up|Down)/);
+
+		// Routes card: active / total split with the route-state caption.
+		const values = [...document.querySelectorAll<HTMLElement>('.summary-value')].map(
+			(element) => element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+		);
+		expect(values[2]).toBe('1 / 2');
+		await expect.element(page.getByText('Active', { exact: true })).toBeVisible();
+
+		// Chain card: wax/moss status dot + worst-category label.
+		const dot = document.querySelector<HTMLElement>('.summary-card .status-dot');
+		const statusLabel = document.querySelector<HTMLElement>('.summary-card .status-label');
+		expect(dot).not.toBeNull();
+		expect(statusLabel?.textContent?.trim().length ?? 0).toBeGreaterThan(0);
 	});
 
 	it('renders muted placeholders on dashboard cards and the header before a game exists', async () => {

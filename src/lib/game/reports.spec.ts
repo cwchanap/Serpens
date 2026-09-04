@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { emptyLogisticsReport } from './logisticsReport.testUtils';
-import { clampScore, summarizeReports } from './reports';
+import { clampScore, cashTrendFromReports, summarizeReports } from './reports';
 import type { DailyProductionReport, DailyReport, DailyStoreReport } from './types';
 
 function emptyProductionReport(): DailyProductionReport {
@@ -100,6 +100,44 @@ function storeReport(importSpend: number): DailyStoreReport {
 }
 
 describe('reports', () => {
+	describe('cashTrendFromReports', () => {
+		test('returns null without reports or when cash did not move', () => {
+			expect.assertions(2);
+			expect(cashTrendFromReports([])).toBeNull();
+			expect(cashTrendFromReports([report(1, 4)])).toBeNull();
+		});
+
+		test('derives direction and percent against the opening cash', () => {
+			expect.assertions(3);
+			// Factory: netCashChange = netIncome - 4, cashBefore = 10_000.
+			expect(cashTrendFromReports([report(1, 604)])).toEqual({
+				direction: 'up',
+				percent: 0.06
+			});
+			expect(cashTrendFromReports([report(1, -196)])).toEqual({
+				direction: 'down',
+				percent: 0.02
+			});
+			// Only the latest report drives the chip.
+			expect(cashTrendFromReports([report(1, 604), report(2, -196)])).toEqual({
+				direction: 'down',
+				percent: 0.02
+			});
+		});
+
+		test('falls back to a sign-only trend when opening cash is not positive', () => {
+			expect.assertions(2);
+			expect(cashTrendFromReports([{ ...report(1, 604), cashBefore: 0 }])).toEqual({
+				direction: 'up',
+				percent: null
+			});
+			expect(cashTrendFromReports([{ ...report(1, -196), cashBefore: -50 }])).toEqual({
+				direction: 'down',
+				percent: null
+			});
+		});
+	});
+
 	test('clamps score values into the scorecard range', () => {
 		expect.assertions(3);
 		expect(clampScore(-4)).toBe(0);

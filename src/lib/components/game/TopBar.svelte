@@ -5,14 +5,9 @@
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle, SupportedLocale } from '$lib/i18n';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
+	import type { CashTrend } from '$lib/game/reports';
 	import GameIcon from './GameIcon.svelte';
 	import GameMenu from './GameMenu.svelte';
-
-	interface CashTrend {
-		direction: 'up' | 'down';
-		/** Cash change as a ratio (e.g. 0.062); null when only the direction is known. */
-		percent: number | null;
-	}
 
 	interface Props {
 		eyebrow: string;

@@ -93,7 +93,7 @@
 		type TranslationKey
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
-	import { summarizeReports } from '$lib/game/reports';
+	import { cashTrendFromReports, summarizeReports } from '$lib/game/reports';
 	import {
 		createEmptyFinanceState,
 		getExpansionFinanceOffer,
@@ -693,23 +693,8 @@
 				? i18n.labels.worldCity(industryCity.id).name
 				: i18n.labels.worldCity(activeCity.id).name
 	);
-	// Day-over-day cash trend for the HUD delta chip. Direction and magnitude
-	// come from the latest report's own net cash change, so the first report
-	// already yields a percent against its opening cash (cashBefore). When the
-	// percent is not meaningful (no positive opening cash) only the sign chip is
-	// shown; no chip before the first report or when cash did not move.
-	let cashTrend = $derived.by((): { direction: 'up' | 'down'; percent: number | null } | null => {
-		const reports = game?.reports ?? [];
-		const latest = reports[reports.length - 1];
-		if (!latest) return null;
-		const change = latest.netCashChange;
-		if (change === 0) return null;
-		const direction = change > 0 ? 'up' : 'down';
-		return {
-			direction,
-			percent: latest.cashBefore > 0 ? Math.abs(change) / latest.cashBefore : null
-		};
-	});
+	// Day-over-day cash trend for the HUD delta chip and the Dashboard cash card.
+	let cashTrend = $derived.by(() => cashTrendFromReports(game?.reports ?? []));
 	let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
 		const currentGame: GameState | null = game;
 		return WORLD_CITY_CATALOG.map((city) =>

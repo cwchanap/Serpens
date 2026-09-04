@@ -117,12 +117,12 @@
 	.dial-value-text {
 		position: absolute;
 		inset-inline: 0;
-		bottom: 0.85rem;
+		bottom: 1rem;
 		text-align: center;
 		line-height: 1;
 		color: var(--ink-700);
 		font-family: var(--font-mono);
-		font-size: 1.5rem;
+		font-size: 1.85rem;
 		font-weight: 700;
 		font-variant-numeric: tabular-nums lining-nums;
 	}
@@ -156,8 +156,8 @@
 		}
 
 		.dial-value-text {
-			font-size: 1.1rem;
-			bottom: 0.5rem;
+			font-size: 1.35rem;
+			bottom: 0.73rem;
 		}
 	}
 </style>

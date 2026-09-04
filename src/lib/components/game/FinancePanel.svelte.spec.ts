@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { assessCredit, borrow } from '$lib/game/finance';
+import { assessCredit, borrow, repayLoan } from '$lib/game/finance';
 import { simulateDay } from '$lib/game/simulateDay';
 import { getFinanceMetrics } from '$lib/game/financeMetrics';
 import { createI18n, type I18nBundle } from '$lib/i18n';
@@ -370,11 +370,45 @@ describe('FinancePanel', () => {
 		}
 	);
 
+	it('renders the activity ledger with sign-colored cash figures', async () => {
+		const borrowed = gameWithLoan();
+		const loan = borrowed.finance.loans.at(-1)!;
+		const repaid = repayLoan(borrowed, { loanId: loan.id, amount: 100 });
+		if (!repaid.ok) throw new Error('expected fixture repayment');
+		renderPanel({ game: repaid.game });
+
+		await vi.waitFor(() => {
+			// Disbursement row: +$2,000 in moss; repayment row: -$100 in wax-red.
+			const gains = [...document.querySelectorAll<HTMLElement>('.txn-amount.gain')];
+			const losses = [...document.querySelectorAll<HTMLElement>('.txn-amount.loss')];
+			expect(gains.some((element) => element.textContent?.includes('2,000'))).toBe(true);
+			expect(losses.some((element) => element.textContent?.includes('100'))).toBe(true);
+			expect(document.querySelector('.transactions')?.tagName).toBe('OL');
+		});
+	});
+
+	it('compacts every loan mutation control into an action pill with its name', async () => {
+		const props = renderPanel();
+		await vi.waitFor(() => {
+			const buttons = [
+				...document.querySelectorAll<HTMLButtonElement>('.loan .loan-actions > button')
+			];
+			expect(buttons.length).toBeGreaterThanOrEqual(5);
+			expect(buttons.every((button) => button.classList.contains('action-pill'))).toBe(true);
+		});
+		// The exact accessible names survive the visual compaction.
+		await expect.element(page.getByRole('button', { name: 'Review payoff' }).nth(0)).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: 'Refinance 28 days' }).nth(0))
+			.toBeVisible();
+		expect(props.onRepay).not.toHaveBeenCalled();
+	});
+
 	it('lays out stat cards, term-offer cards, and the borrow review CTA', async () => {
 		expect.assertions(6);
 		renderPanel();
 		for (const label of ['Cash', 'Outstanding principal', 'Latest daily profit', 'Daily revenue']) {
-			await expect.element(page.getByText(label, { exact: true })).toBeVisible();
+			await expect.element(page.getByText(label, { exact: true }).first()).toBeVisible();
 		}
 		await expect.element(page.getByText('No report yet').first()).toBeVisible();
 		await expect
