@@ -1033,15 +1033,15 @@ describe('game copy builders', () => {
 		const enLocalized = localizeProductChainGraph(graph, english);
 		const jaLocalized = localizeProductChainGraph(graph, japanese);
 
-		// Recipe node stat line: en uses "bldg" and "/d", ja uses "棟" and "1日"
-		expect(enLocalized.nodes[0]?.statLine).toBe('2 bldg · 30/d');
-		expect(jaLocalized.nodes[0]?.statLine).not.toBe('2 bldg · 30/d');
-		expect(jaLocalized.nodes[0]?.statLine).toContain('棟');
+		// Recipe node stat line: en shows output/day with a▲ glyph, ja keeps a per-day form
+		expect(enLocalized.nodes[0]?.statLine).toBe('▲ 30/d');
+		expect(jaLocalized.nodes[0]?.statLine).not.toBe('▲ 30/d');
+		expect(jaLocalized.nodes[0]?.statLine).toContain('30');
 
-		// Material/warehouse node stat line: en uses "stock", ja uses "在庫"
-		expect(enLocalized.nodes[1]?.statLine).toBe('stock 15');
-		expect(jaLocalized.nodes[1]?.statLine).not.toBe('stock 15');
-		expect(jaLocalized.nodes[1]?.statLine).toContain('在庫');
+		// Material/warehouse node stat line: en uses "held", ja uses its own form
+		expect(enLocalized.nodes[1]?.statLine).toBe('15 held');
+		expect(jaLocalized.nodes[1]?.statLine).not.toBe('15 held');
+		expect(jaLocalized.nodes[1]?.statLine).toContain('15');
 
 		// Edge health label: en uses "No report yet", ja uses localized health
 		expect(enLocalized.edges[0]?.healthLabel).toBe('No report yet');
@@ -1737,7 +1737,8 @@ describe('game copy builders', () => {
 		};
 		const baseCapacity = { buildingCount: 0, outputPerDay: 0, inputPerDay: 0 };
 
-		// Node stats: recipe node with 1,234 buildings and 1,500 output/day.
+		// Node stats: recipe node with 1,234 buildings and 1,500 output/day. The
+		// stat line shows only the per-day output, so the building count must not appear.
 		const recipeNode: ProductChainNode = {
 			id: 'recipe-1',
 			kind: 'recipe',
@@ -1764,8 +1765,8 @@ describe('game copy builders', () => {
 			emptyReason: null
 		};
 		const localizedRecipe = localizeProductChainGraph(recipeGraph, japanese);
-		expect(localizedRecipe.nodes[0]?.statLine).toContain(japanese.format.integer(1234));
 		expect(localizedRecipe.nodes[0]?.statLine).toContain(japanese.format.integer(1500));
+		expect(localizedRecipe.nodes[0]?.statLine).not.toContain(japanese.format.integer(1234));
 		expect(localizedRecipe.nodes[0]?.statLine).not.toContain('1234');
 
 		// Node stats: warehouse node with 1,234 stock.

@@ -53,7 +53,7 @@
 	const rectX = $derived(-rectWidth / 2);
 
 	function healthStroke(health: ProductChainHealth): string {
-		if (health === 'healthy') return 'var(--moss)';
+		if (health === 'healthy') return 'var(--brass-700)';
 		if (health === 'shortage' || health === 'no-local-capacity') return 'var(--wax-red)';
 		if (health === 'no-report')
 			return 'color-mix(in srgb, var(--brass-700) 50%, var(--paper-edge))';
@@ -61,7 +61,8 @@
 	}
 
 	function healthDash(health: ProductChainHealth): string {
-		if (health === 'shortage' || health === 'no-local-capacity') return '8 4';
+		if (health === 'healthy') return 'none';
+		if (health === 'shortage' || health === 'no-local-capacity') return '2 5';
 		return '6 4';
 	}
 </script>

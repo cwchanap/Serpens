@@ -2773,14 +2773,11 @@ test('industry build menu shows construction status before founding a store', as
 	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
 	await expect(buildMenu).toBeVisible();
 	await expect(buildMenu.getByText(/open a retail store to unlock construction/i)).toBeVisible();
-	await buildMenu.getByRole('button', { name: /filter: all products/i }).click();
-	const filterPopup = buildMenu.getByRole('dialog', { name: /product chain filter/i });
-	await expect(filterPopup).toBeVisible();
-	await filterPopup.getByLabel(/search products/i).fill('gift');
-	await expect(filterPopup.getByRole('button', { name: /gifts/i })).toBeVisible();
-	await expect(filterPopup.getByRole('button', { name: /snacks/i })).toHaveCount(0);
-	await filterPopup.getByRole('button', { name: /gifts/i }).click();
-	await expect(buildMenu.getByRole('button', { name: /filter: gifts/i })).toBeVisible();
+	await buildMenu.getByRole('button', { name: /filter: gifts/i }).click();
+	await expect(buildMenu.getByRole('button', { name: /filter: gifts/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
 	await expect(buildMenu.getByRole('button', { name: /build gift workshop/i })).toBeDisabled();
 	await expect(buildMenu.getByRole('button', { name: /build packaging plant/i })).toBeDisabled();
 	await expect(buildMenu.getByRole('button', { name: /build drink bottling plant/i })).toHaveCount(

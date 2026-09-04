@@ -53,10 +53,10 @@
 	}
 
 	.line.healthy {
-		border-top: 2px solid var(--moss);
+		border-top: 2px solid var(--brass-700);
 	}
 
 	.line.shortage {
-		border-top: 2px dashed var(--wax-red);
+		border-top: 2px dotted var(--wax-red);
 	}
 </style>

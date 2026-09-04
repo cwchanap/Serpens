@@ -77,26 +77,17 @@ export const zhHant = {
 		},
 		industry: {
 			filter: {
+				chainLabel: '鏈條',
+				title: '商品鏈篩選',
+				allShortLabel: '全部',
 				allProducts: '篩選：全部商品',
 				selected: '篩選：{name}',
-				clear: '清除商品篩選',
-				dialog: '商品鏈篩選',
-				title: '商品篩選',
-				close: '關閉商品鏈篩選',
-				search: '搜尋商品',
-				allProductsLabel: '全部商品',
-				allBuildings: '全部工業建築',
-				chainBuildings: {
-					one: '{count} 個鏈條建築',
-					other: '{count} 個鏈條建築'
-				},
-				noChain: '尚無對應的工業鏈',
-				noMatches: '找不到符合的商品'
+				noChain: '尚無對應的工業鏈'
 			},
 			supplyAdvisor: '供應顧問 - 我該蓋什麼？',
 			buildType: '建設{name}',
 			starter: '起步',
-			costOperating: '成本 {cost} | 營運費 {operating}/天',
+			costOperating: '{cost} · {operating}/天',
 			recipe: '配方',
 			needsProducer: '需要 {producer}',
 			needsResource: '需要 {resource} 資源地塊',
@@ -672,14 +663,12 @@ export const zhHant = {
 	},
 	productChainsPanel: {
 		ariaLabel: '商品鏈',
-		eyebrow: 'Folio II · 生產鏈',
+		eyebrow: '供給圖譜',
 		modeGroup: '商品鏈檢視',
 		storeCategoryChains: '店鋪類別鏈',
 		cityInventoryFlow: '城市庫存流向',
-		scopeAria: '城市庫存範圍',
+		capacityLabel: '庫存容量',
 		activeIndustryInventory: '城市庫存 — {cityName}',
-		activeRetailSupply:
-			'{retailCityName}的本地供應 — {sourceCityName}：已使用 {used} / {capacity} 城市庫存。',
 		supplyState: {
 			importsOnly: '{retailCityName}供應：僅進口 — 補貨使用外部進口。',
 			zeroCapacity: '{retailCityName}的本地供應 — 供應來源 {sourceCityName} 的城市庫存容量為 0。',
@@ -890,25 +879,22 @@ export const zhHant = {
 	},
 	atlas: {
 		categoryIndex: {
-			ariaLabel: '商品類別索引',
-			tier: 'Tier {tier}',
-			metrics: '庫存 {stock} · 生產 {produced}/日 · 售出 {consumed}/日'
+			ariaLabel: '商品類別索引'
+		},
+		capacityStrip: {
+			figures: '{used} / {capacity}'
 		},
 		nodeBroadside: {
 			inspected: '檢視節點',
 			emptyTitle: '鏈條節點',
 			empty: '選擇圖節點以檢視最新流量指標。',
 			sharedProducer: '共享生產者 - 繪製在此鏈條的 {count} 個分支中。',
+			recipe: '配方',
 			metrics: {
-				buildings: '建築',
-				capacity: '產能',
-				capacityValue: '輸出 {output} / 輸入 {input}',
-				produced: '生產',
-				consumed: '消耗',
-				imported: '進口',
-				sold: '售出',
-				missed: '錯失',
-				stock: '庫存'
+				throughput: '吞吐量',
+				shortfall: '短缺',
+				health: '狀態',
+				perDay: '{value}/天'
 			}
 		},
 		legend: {
@@ -1732,8 +1718,9 @@ export const zhHant = {
 			},
 			warehouseNode: '城市庫存',
 			nodeStats: {
-				recipe: '{buildings} 棟 · 每日 {output}',
-				stock: '庫存 {stock}'
+				recipe: '▲ 每日 {output}',
+				stock: '{stock} 庫存',
+				shortage: '▼ 短缺 {short}'
 			},
 			health: {
 				healthy: '健康',

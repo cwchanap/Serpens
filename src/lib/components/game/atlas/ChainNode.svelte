@@ -271,8 +271,8 @@
 	}
 
 	.chain-node.is-selected .frame {
-		outline: 3px solid var(--brass-300);
-		outline-offset: 4px;
+		outline: 2px solid var(--wax-red);
+		outline-offset: 3px;
 	}
 
 	.chain-node:focus-visible .frame {

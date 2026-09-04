@@ -26,51 +26,48 @@
 		{@const active = mode === 'store-categories' && activeProductId === summary.productId}
 		{@const icon = iconFor(summary.productId)}
 		{@const categoryName = i18n.labels.productCategory(summary.productId)}
+		{@const attention = summary.health === 'shortage' || summary.health === 'no-local-capacity'}
 		<button
 			type="button"
-			class={['stamp', `stamp-${summary.health}`, active && 'is-active']}
+			class={['stamp', active && 'is-active', attention && 'has-attention']}
 			data-category-id={summary.productId}
 			data-testid={`category-stamp-${summary.productId}`}
 			aria-pressed={active}
+			aria-label={categoryName}
+			title={categoryName}
 			onclick={() => onSelectProduct(summary.productId)}
 		>
-			<span class={['seal', `seal-${summary.health}`]}>
-				{i18n.t(`copy.productChainGraph.health.${summary.health}`)}
-			</span>
-			<span class="name">{categoryName}</span>
-			{#if summary.tier !== null}
-				<span class="tier">{i18n.t('atlas.categoryIndex.tier', { tier: summary.tier })}</span>
-			{/if}
 			{#if icon}
-				<span class="icons"><img src={icon} alt={categoryName} /></span>
+				<img src={icon} alt="" />
+			{:else}
+				<span class="dash" aria-hidden="true">—</span>
 			{/if}
-			<span class="nums">
-				{i18n.t('atlas.categoryIndex.metrics', {
-					stock: i18n.format.decimal(summary.warehouseStock),
-					produced: i18n.format.decimal(summary.produced),
-					consumed: i18n.format.decimal(summary.consumed)
-				})}
-			</span>
+			{#if attention}
+				<span class="attention" aria-hidden="true">!</span>
+			{/if}
 		</button>
 	{/each}
 </div>
 
 <style>
 	.stamp-index {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-		gap: 0.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.8rem;
+		flex-wrap: wrap;
 	}
 
 	.stamp {
-		display: grid;
-		gap: 4px;
-		padding: 12px 14px;
-		background: color-mix(in srgb, var(--paper-50) 92%, var(--brass-100));
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 70px;
+		height: 70px;
+		padding: 0;
+		background: var(--paper-50);
 		border: 1px solid var(--paper-edge);
-		text-align: left;
-		color: var(--ink-700);
-		font: inherit;
+		border-radius: 50%;
 		cursor: pointer;
 	}
 
@@ -79,74 +76,38 @@
 	}
 
 	.stamp.is-active {
-		border-color: var(--brass-700);
-		box-shadow:
-			inset 0 0 0 1px var(--brass-700),
-			0 0 0 3px color-mix(in srgb, var(--brass-700) 18%, transparent);
+		background: color-mix(in srgb, var(--brass-100) 78%, var(--paper-50));
+		border: 2px solid var(--brass-700);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass-700) 18%, transparent);
 	}
 
-	.seal {
-		width: fit-content;
-		padding: 2px 6px;
-		font-family: var(--font-ui);
-		font-size: 9px;
-		font-weight: 700;
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
-		color: var(--paper-50);
-		background: var(--moss);
-	}
-
-	.seal-watch,
-	.seal-no-report {
-		background: var(--brass-700);
-	}
-
-	.seal-shortage,
-	.seal-no-local-capacity {
-		background: var(--wax-red);
-	}
-
-	.name {
-		font-family: var(--font-display);
-		font-size: 17px;
-		line-height: 1.1;
-		color: var(--ink-700);
-	}
-
-	.tier {
-		width: fit-content;
-		padding: 1px 5px;
-		font-family: var(--font-ui);
-		font-size: 8.5px;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: var(--brass-700);
-		border: 1px solid var(--brass-700);
-		border-radius: 1px;
-	}
-
-	.icons {
-		display: flex;
-		gap: 4px;
-		margin-top: 2px;
-	}
-
-	.icons img {
-		width: 22px;
-		height: 22px;
-		padding: 1px;
-		background: var(--paper-50);
-		border: 1px solid var(--paper-edge);
-		border-radius: 50%;
+	.stamp img {
+		width: 44px;
+		height: 44px;
 		image-rendering: pixelated;
 	}
 
-	.nums {
+	.dash {
 		font-family: var(--font-mono);
-		font-size: 11px;
-		font-variant-numeric: tabular-nums;
+		font-size: 1.1rem;
 		color: var(--ink-500);
+	}
+
+	.attention {
+		position: absolute;
+		right: -2px;
+		bottom: -2px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		font-family: var(--font-ui);
+		font-size: 11px;
+		font-weight: 700;
+		color: var(--paper-50);
+		background: var(--wax-red);
+		border: 1px solid var(--paper-50);
+		border-radius: 50%;
 	}
 </style>

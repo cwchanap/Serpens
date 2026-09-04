@@ -32,6 +32,7 @@
 	interface ProductChainFilter {
 		id: ProductId;
 		name: string;
+		artSrc: string | null;
 		buildingCount: number;
 	}
 
@@ -82,33 +83,12 @@
 	}: Props = $props();
 
 	let selectedProductFilterId = $state<ProductId | null>(null);
-	let productFilterOpen = $state(false);
-	let productFilterSearch = $state('');
 	const productFilters = $derived.by(() => getProductChainFilters());
-	const selectedProductFilter = $derived(
-		selectedProductFilterId
-			? (productFilters.find((filter) => filter.id === selectedProductFilterId) ?? null)
-			: null
+	const filteredProductFilters = $derived(
+		productFilters.filter(
+			(filter) => filter.buildingCount > 0 || filter.id === selectedProductFilterId
+		)
 	);
-	const filterButtonLabel = $derived(
-		selectedProductFilter
-			? i18n.t('buildMenu.industry.filter.selected' as never, {
-					name: selectedProductFilter.name
-				})
-			: i18n.t('buildMenu.industry.filter.allProducts' as never)
-	);
-	const filteredProductFilters = $derived.by(() => {
-		const query = productFilterSearch.trim().toLowerCase();
-
-		if (!query) {
-			return productFilters;
-		}
-
-		return productFilters.filter(
-			(filter) =>
-				filter.name.toLowerCase().includes(query) || filter.id.toLowerCase().includes(query)
-		);
-	});
 	const visibleIndustryBuildingTypes = $derived.by(() => {
 		const productionMaterialId = selectedProductFilterId
 			? getProductDefinition(selectedProductFilterId).productionMaterialId
@@ -203,6 +183,11 @@
 		return producer ? i18n.labels.industrialBuilding(producer.id) : materialName(materialId);
 	}
 
+	function productArt(productId: ProductId): string | null {
+		const materialId = getProductDefinition(productId).productionMaterialId;
+		return materialId ? (getIndustryMaterialArt(materialId as MaterialId) ?? null) : null;
+	}
+
 	function getProductChainFilters(): ProductChainFilter[] {
 		const products: Array<{ id: ProductId; name: string }> = [];
 
@@ -221,6 +206,7 @@
 				return {
 					id: product.id,
 					name: i18n.labels.productCategory(product.id),
+					artSrc: productArt(product.id),
 					buildingCount: productionMaterialId
 						? getIndustrialBuildingTypesForProductChain(productionMaterialId).length
 						: 0
@@ -229,18 +215,8 @@
 			.sort((first, second) => first.name.localeCompare(second.name));
 	}
 
-	function toggleProductFilter(): void {
-		productFilterOpen = !productFilterOpen;
-	}
-
-	function closeProductFilter(): void {
-		productFilterOpen = false;
-	}
-
 	function selectProductFilter(filterId: ProductId | null): void {
 		selectedProductFilterId = filterId;
-		productFilterOpen = false;
-		productFilterSearch = '';
 	}
 
 	function chooseRetail(archetypeId: ArchetypeId): void {
@@ -265,12 +241,6 @@
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			event.stopPropagation();
-
-			if (productFilterOpen) {
-				closeProductFilter();
-				return;
-			}
-
 			onClose();
 			return;
 		}
@@ -318,223 +288,193 @@
 		</header>
 
 		{#if activeMapView === 'retail'}
-			<div class="option-list">
+			<div class="option-grid">
 				{#each retailOptions as option (option.archetypeId)}
 					{@const art = getStoreArt(option.archetypeId)}
+					{@const disabled =
+						option.disabledReason !== null ||
+						!canStartRetailExpansion ||
+						!allowedRetailSet.has(option.archetypeId)}
 					<button
 						type="button"
 						class="build-option"
-						disabled={option.disabledReason !== null ||
-							!canStartRetailExpansion ||
-							!allowedRetailSet.has(option.archetypeId)}
+						class:is-disabled={disabled}
+						{disabled}
 						onclick={() => chooseRetail(option.archetypeId)}
 					>
-						<img src={asset(art.path)} alt="" width="64" height="48" />
-						{#if option.disabledReason || !canStartRetailExpansion || !allowedRetailSet.has(option.archetypeId)}
+						<span class="art-frame">
+							<img src={asset(art.path)} alt="" />
+						</span>
+						<strong>
+							{i18n.t('buildMenu.retail.buildArchetype' as never, {
+								name: i18n.labels.archetype(option.archetypeId).name
+							})}
+						</strong>
+						<small>
+							{i18n.t('buildMenu.retail.setupRevenue' as never, {
+								setup: formatRange(option.setupCostRange),
+								revenue: formatRange(option.projectedDailyRevenueRange)
+							})}
+						</small>
+						<small>{validTileLabel(option.validTileCount)}</small>
+						{#if option.disabledReason}
+							<small class="disabled-copy">
+								{formatPlacementReason(option.disabledReason)}
+							</small>
+						{/if}
+						{#if !canStartRetailExpansion || !allowedRetailSet.has(option.archetypeId)}
+							<small class="disabled-copy">{disabledReason}</small>
+						{/if}
+						{#if disabled}
 							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
 						{/if}
-						<span>
-							<strong>
-								{i18n.t('buildMenu.retail.buildArchetype' as never, {
-									name: i18n.labels.archetype(option.archetypeId).name
-								})}
-							</strong>
-							<small>
-								{i18n.t('buildMenu.retail.setupRevenue' as never, {
-									setup: formatRange(option.setupCostRange),
-									revenue: formatRange(option.projectedDailyRevenueRange)
-								})}
-							</small>
-							<small>{validTileLabel(option.validTileCount)}</small>
-							{#if option.disabledReason}
-								<small class="disabled-copy">
-									{formatPlacementReason(option.disabledReason)}
-								</small>
-							{/if}
-							{#if !canStartRetailExpansion || !allowedRetailSet.has(option.archetypeId)}
-								<small class="disabled-copy">{disabledReason}</small>
-							{/if}
-						</span>
 					</button>
 				{:else}
 					<p class="muted">{i18n.t('buildMenu.retail.noOptions')}</p>
 				{/each}
 			</div>
 		{:else}
-			<div class="product-filter">
-				<button
-					type="button"
-					class="filter-trigger"
-					aria-expanded={productFilterOpen}
-					onclick={toggleProductFilter}
+			<div class="filter-band">
+				<span class="band-label">{i18n.t('buildMenu.industry.filter.chainLabel')}</span>
+				<div
+					class="chain-filters"
+					role="group"
+					aria-label={i18n.t('buildMenu.industry.filter.title')}
 				>
-					{filterButtonLabel}
-				</button>
-				{#if selectedProductFilterId}
 					<button
 						type="button"
-						class="filter-clear"
-						aria-label={i18n.t('buildMenu.industry.filter.clear')}
+						class="chain-filter"
+						class:is-active={selectedProductFilterId === null}
+						aria-pressed={selectedProductFilterId === null}
+						aria-label={i18n.t('buildMenu.industry.filter.allProducts')}
+						title={i18n.t('buildMenu.industry.filter.allProducts')}
 						onclick={() => selectProductFilter(null)}
 					>
-						×
+						{i18n.t('buildMenu.industry.filter.allShortLabel')}
 					</button>
-				{/if}
+					{#each filteredProductFilters as filter (filter.id)}
+						{@const filterDisabled = filter.buildingCount === 0}
+						<button
+							type="button"
+							class="chain-filter"
+							class:is-active={selectedProductFilterId === filter.id}
+							aria-pressed={selectedProductFilterId === filter.id}
+							aria-label={filterDisabled
+								? `${i18n.t('buildMenu.industry.filter.selected' as never, { name: filter.name })} — ${i18n.t('buildMenu.industry.filter.noChain')}`
+								: i18n.t('buildMenu.industry.filter.selected' as never, { name: filter.name })}
+							title={filterDisabled
+								? i18n.t('buildMenu.industry.filter.noChain')
+								: i18n.t('buildMenu.industry.filter.selected' as never, { name: filter.name })}
+							disabled={filterDisabled}
+							onclick={() => selectProductFilter(filter.id)}
+						>
+							{#if filter.artSrc}
+								<img src={filter.artSrc} alt="" />
+							{:else}
+								<span class="dash" aria-hidden="true">—</span>
+							{/if}
+						</button>
+					{/each}
+				</div>
+				<button
+					type="button"
+					class="advisor-open"
+					disabled={industryLockedReason !== null}
+					onclick={onOpenAdvisor}
+				>
+					{i18n.t('buildMenu.industry.supplyAdvisor')}
+				</button>
 			</div>
 
 			{#if industryLockedReason}
 				<p class="disabled-copy">{formatPlacementReason(industryLockedReason)}</p>
 			{/if}
 
-			{#if productFilterOpen}
-				<div
-					class="filter-popup"
-					role="dialog"
-					aria-label={i18n.t('buildMenu.industry.filter.dialog')}
-				>
-					<div class="filter-popup-heading">
-						<h3>{i18n.t('buildMenu.industry.filter.title')}</h3>
-						<button
-							type="button"
-							class="filter-close"
-							aria-label={i18n.t('buildMenu.industry.filter.close')}
-							onclick={closeProductFilter}
-						>
-							×
-						</button>
-					</div>
-					<label>
-						<span>{i18n.t('buildMenu.industry.filter.search')}</span>
-						<input type="search" bind:value={productFilterSearch} />
-					</label>
-					<div class="filter-list">
-						<button
-							type="button"
-							aria-pressed={selectedProductFilterId === null}
-							onclick={() => selectProductFilter(null)}
-						>
-							<span>{i18n.t('buildMenu.industry.filter.allProductsLabel')}</span>
-							<small>{i18n.t('buildMenu.industry.filter.allBuildings')}</small>
-						</button>
-						{#each filteredProductFilters as filter (filter.id)}
-							<button
-								type="button"
-								aria-pressed={selectedProductFilterId === filter.id}
-								disabled={filter.buildingCount === 0}
-								onclick={() => selectProductFilter(filter.id)}
-							>
-								<span>{filter.name}</span>
-								<small>
-									{filter.buildingCount > 0
-										? i18n.t(
-												(filter.buildingCount === 1
-													? 'buildMenu.industry.filter.chainBuildings.one'
-													: 'buildMenu.industry.filter.chainBuildings.other') as never,
-												{
-													count: i18n.format.integer(filter.buildingCount)
-												}
-											)
-										: i18n.t('buildMenu.industry.filter.noChain')}
-								</small>
-							</button>
-						{:else}
-							<p class="muted">{i18n.t('buildMenu.industry.filter.noMatches')}</p>
-						{/each}
-					</div>
-				</div>
-			{/if}
-
-			<button
-				type="button"
-				class="advisor-open"
-				disabled={industryLockedReason !== null}
-				onclick={onOpenAdvisor}
-			>
-				{i18n.t('buildMenu.industry.supplyAdvisor')}
-			</button>
-
-			<div class="option-list">
+			<div class="option-grid">
 				{#each visibleIndustryBuildingTypes as type (type.id)}
 					{@const recipe = recipeForType(type.id)}
 					{@const optionDisabledReason = industryDisabledReason(type.id)}
+					{@const disabled =
+						industryLockedReason !== null ||
+						!canStartIndustryExpansion ||
+						optionDisabledReason !== null ||
+						!allowedIndustrySet.has(type.id)}
 					<button
 						type="button"
 						class="build-option"
-						disabled={industryLockedReason !== null ||
-							!canStartIndustryExpansion ||
-							optionDisabledReason !== null ||
-							!allowedIndustrySet.has(type.id)}
+						class:is-disabled={disabled}
+						{disabled}
 						onclick={() => chooseIndustry(type.id)}
 					>
-						<img src={asset(getIndustrialBuildingArt(type.id))} alt="" width="44" height="44" />
-						{#if industryLockedReason || !canStartIndustryExpansion || optionDisabledReason || !allowedIndustrySet.has(type.id)}
-							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
-						{/if}
-						<span>
-							<strong>
-								{i18n.t('buildMenu.industry.buildType' as never, {
-									name: i18n.labels.industrialBuilding(type.id)
-								})}
-								{#if type.tier === 1}
-									<em class="starter">{i18n.t('buildMenu.industry.starter')}</em>
-								{/if}
-							</strong>
-							{#if !canStartIndustryExpansion || !allowedIndustrySet.has(type.id)}
-								<small class="disabled-copy">{disabledReason}</small>
+						<span class="art-frame">
+							<img src={asset(getIndustrialBuildingArt(type.id))} alt="" />
+						</span>
+						<strong>
+							{i18n.t('buildMenu.industry.buildType' as never, {
+								name: i18n.labels.industrialBuilding(type.id)
+							})}
+							{#if type.tier === 1}
+								<em class="starter">{i18n.t('buildMenu.industry.starter')}</em>
 							{/if}
-							{#if optionDisabledReason}
-								<small class="disabled-copy">
-									{formatIndustryDisabledReason(optionDisabledReason)}
-								</small>
-							{/if}
-							<small>
-								{i18n.t('buildMenu.industry.costOperating' as never, {
-									cost: i18n.format.currency(type.buildCost),
-									operating: i18n.format.currency(type.dailyOperatingCost)
-								})}
-							</small>
-							{#if recipe}
-								<span class="recipe" aria-label={i18n.t('buildMenu.industry.recipe')}>
-									{#each recipe.inputs as input (input.materialId)}
-										<span class="chip" class:missing={!isAvailable(input.materialId)}>
-											<img
-												src={materialArt(input.materialId)}
-												alt={materialName(input.materialId)}
-												width="18"
-												height="18"
-											/>
-											{input.quantity}
-										</span>
-									{/each}
-									<span class="arrow" aria-hidden="true">→</span>
-									{#each recipe.outputs as output (output.materialId)}
-										<span class="chip out">
-											<img
-												src={materialArt(output.materialId)}
-												alt={materialName(output.materialId)}
-												width="18"
-												height="18"
-											/>
-											{output.quantity}
-										</span>
-									{/each}
-								</span>
-								{#each recipe.inputs.filter((input) => !isAvailable(input.materialId)) as missing (missing.materialId)}
-									<small class="need">
-										{i18n.t('buildMenu.industry.needsProducer' as never, {
-											producer: neededProducerName(missing.materialId)
-										})}
-									</small>
+						</strong>
+						<small>
+							{i18n.t('buildMenu.industry.costOperating' as never, {
+								cost: i18n.format.currency(type.buildCost),
+								operating: i18n.format.currency(type.dailyOperatingCost)
+							})}
+						</small>
+						{#if recipe}
+							<span class="recipe" aria-label={i18n.t('buildMenu.industry.recipe')}>
+								{#each recipe.inputs as input (input.materialId)}
+									<span class="chip" class:missing={!isAvailable(input.materialId)}>
+										<img
+											src={materialArt(input.materialId)}
+											alt={materialName(input.materialId)}
+											width="18"
+											height="18"
+										/>
+										{input.quantity}
+									</span>
 								{/each}
-							{/if}
-							{#if type.requiredResource}
+								<span class="arrow" aria-hidden="true">→</span>
+								{#each recipe.outputs as output (output.materialId)}
+									<span class="chip out">
+										<img
+											src={materialArt(output.materialId)}
+											alt={materialName(output.materialId)}
+											width="18"
+											height="18"
+										/>
+										{output.quantity}
+									</span>
+								{/each}
+							</span>
+							{#each recipe.inputs.filter((input) => !isAvailable(input.materialId)) as missing (missing.materialId)}
 								<small class="need">
-									{i18n.t('buildMenu.industry.needsResource' as never, {
-										resource: i18n.labels.industryResource(type.requiredResource)
+									{i18n.t('buildMenu.industry.needsProducer' as never, {
+										producer: neededProducerName(missing.materialId)
 									})}
 								</small>
-							{/if}
-						</span>
+							{/each}
+						{/if}
+						{#if type.requiredResource}
+							<small class="need resource">
+								{i18n.t('buildMenu.industry.needsResource' as never, {
+									resource: i18n.labels.industryResource(type.requiredResource)
+								})}
+							</small>
+						{/if}
+						{#if !canStartIndustryExpansion || !allowedIndustrySet.has(type.id)}
+							<small class="disabled-copy">{disabledReason}</small>
+						{/if}
+						{#if optionDisabledReason}
+							<small class="disabled-copy">
+								{formatIndustryDisabledReason(optionDisabledReason)}
+							</small>
+						{/if}
+						{#if disabled}
+							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
+						{/if}
 					</button>
 				{:else}
 					<p class="muted">{i18n.t('buildMenu.industry.noOptions')}</p>
@@ -552,8 +492,8 @@
 		display: grid;
 		place-items: center;
 		padding: 1rem;
-		background: rgba(20, 16, 10, 0.7);
-		backdrop-filter: blur(4px);
+		background: rgba(16, 12, 7, 0.88);
+		backdrop-filter: blur(3px);
 	}
 
 	.backdrop-button {
@@ -570,28 +510,23 @@
 		z-index: 1;
 		display: grid;
 		gap: 0.85rem;
-		width: min(36rem, 100%);
+		width: min(900px, 100%);
 		max-height: calc(100dvh - 2rem);
 		overflow: auto;
 		padding: 1.1rem 1.2rem;
 		color: var(--ink-700);
 	}
 
-	header,
-	.product-filter {
+	header {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-	}
-
-	header {
 		justify-content: space-between;
+		gap: 0.75rem;
 		padding-bottom: 0.75rem;
 		border-bottom: 1px solid var(--brass-500);
 	}
 
 	h2,
-	h3,
 	p {
 		margin: 0;
 	}
@@ -621,6 +556,7 @@
 	}
 
 	small {
+		display: block;
 		font-family: var(--font-mono);
 		font-size: 0.78rem;
 		color: var(--ink-500);
@@ -632,80 +568,6 @@
 		font-size: 0.86rem;
 	}
 
-	.option-list,
-	.filter-popup,
-	.filter-list,
-	label {
-		display: grid;
-		gap: 0.55rem;
-	}
-
-	.build-option {
-		display: flex;
-		align-items: center;
-		gap: 0.85rem;
-		width: 100%;
-		padding: 0.75rem;
-		border: 1px solid var(--paper-edge);
-		border-left: 0;
-		border-radius: 0 2px 2px 0;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font: inherit;
-		text-align: left;
-		position: relative;
-	}
-
-	.build-option:hover:not(:disabled),
-	.build-option:focus-visible:not(:disabled) {
-		background: var(--paper-200);
-		border-color: var(--brass-500);
-		box-shadow: inset 3px 0 0 var(--wax-red);
-		outline: none;
-	}
-
-	.build-option:disabled {
-		cursor: not-allowed;
-		opacity: 0.55;
-	}
-
-	.disabled-badge {
-		position: absolute;
-		top: 0.3rem;
-		right: 0.5rem;
-		font-family: var(--font-ui);
-		font-size: 0.6rem;
-		font-weight: 700;
-		letter-spacing: 0.18em;
-		color: var(--wax-red);
-		border: 1px solid var(--wax-red);
-		background: var(--paper-50);
-		padding: 0.1rem 0.3rem;
-		transform: rotate(-3deg);
-	}
-
-	.build-option img {
-		flex: 0 0 auto;
-		border: 1px solid var(--brass-500);
-		border-radius: 2px;
-		background: var(--paper-200);
-		padding: 0.2rem;
-		object-fit: cover;
-	}
-
-	.build-option > span {
-		display: grid;
-		gap: 0.22rem;
-		min-width: 0;
-	}
-
-	.build-option strong {
-		font-family: var(--font-display);
-		font-size: 1rem;
-		font-weight: 400;
-		color: var(--ink-700);
-	}
-
 	.close {
 		flex: 0 0 auto;
 		width: 2rem;
@@ -714,114 +576,84 @@
 		text-align: center;
 	}
 
-	.filter-clear,
-	.filter-close {
-		flex: 0 0 auto;
-		width: 2rem;
-		height: 2rem;
-		padding: 0;
-		text-align: center;
-		border: 1px solid var(--ink-700);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-	}
-
-	.filter-trigger {
-		flex: 1 1 auto;
-		padding: 0.6rem 0.75rem;
-		text-align: left;
-		border: 1px solid var(--ink-700);
-		border-top-color: var(--brass-500);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-	}
-
-	.filter-trigger:hover,
-	.filter-trigger:focus-visible {
-		background: var(--paper-200);
-	}
-
-	.filter-popup {
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		padding: 0.8rem;
-	}
-
-	.filter-popup-heading {
+	/* Chain filter band */
+	.filter-band {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
+		gap: 0.7rem;
+		flex-wrap: wrap;
 	}
 
-	h3 {
-		font-family: var(--font-display);
-		font-size: 0.95rem;
-		font-weight: 400;
-		color: var(--ink-700);
-	}
-
-	input {
-		min-width: 0;
-		border: 1px solid var(--ink-700);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		padding: 0.55rem 0.7rem;
+	.band-label {
 		font-family: var(--font-ui);
-	}
-
-	label span {
-		color: var(--brass-700);
-		font-family: var(--font-ui);
-		font-size: 0.7rem;
+		font-size: 0.66rem;
 		font-weight: 700;
-		letter-spacing: 0.14em;
+		letter-spacing: 0.2em;
 		text-transform: uppercase;
+		color: var(--brass-700);
 	}
 
-	.filter-list button {
-		display: grid;
-		gap: 0.18rem;
-		padding: 0.6rem 0.75rem;
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
+	.chain-filters {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		flex-wrap: wrap;
+	}
+
+	.chain-filter {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
 		font-family: var(--font-ui);
-		text-align: left;
+		font-size: 0.66rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-700);
+		background: var(--paper-50);
+		border: 1px solid var(--paper-edge);
+		border-radius: 50%;
+		cursor: pointer;
 	}
 
-	.filter-list button:hover:not(:disabled) {
-		background: var(--paper-200);
-		border-color: var(--brass-500);
+	.chain-filter:hover:not(:disabled) {
+		border-color: var(--brass-700);
 	}
 
-	.filter-list button[aria-pressed='true'] {
-		background: var(--paper-200);
-		border-color: var(--brass-500);
-		box-shadow: inset 3px 0 0 var(--wax-red);
+	.chain-filter.is-active {
+		background: color-mix(in srgb, var(--brass-100) 78%, var(--paper-50));
+		border: 2px solid var(--brass-700);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass-700) 16%, transparent);
 	}
 
-	.filter-list button:disabled {
+	.chain-filter:disabled {
 		cursor: not-allowed;
-		opacity: 0.55;
+		opacity: 0.5;
+	}
+
+	.chain-filter img {
+		width: 28px;
+		height: 28px;
+		image-rendering: pixelated;
+	}
+
+	.chain-filter .dash {
+		color: var(--ink-500);
 	}
 
 	.advisor-open {
-		width: 100%;
-		border: 1px solid var(--brass-500);
+		margin-left: auto;
+		border: 1px solid var(--brass-700);
 		border-radius: 2px;
-		background: var(--paper-100);
+		background: var(--paper-50);
 		color: var(--ink-700);
 		font-family: var(--font-ui);
+		font-size: 0.76rem;
 		font-weight: 700;
-		padding: 0.6rem 0.75rem;
-		text-align: left;
+		padding: 0.42rem 0.65rem;
 	}
 
 	.advisor-open:hover,
@@ -832,6 +664,88 @@
 	.advisor-open:disabled {
 		cursor: not-allowed;
 		opacity: 0.55;
+	}
+
+	/* Card grid */
+	.option-grid {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.75rem;
+	}
+
+	.build-option {
+		position: relative;
+		display: grid;
+		align-content: start;
+		gap: 0.35rem;
+		min-width: 0;
+		padding: 0.7rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font: inherit;
+		text-align: left;
+	}
+
+	.build-option:hover:not(:disabled),
+	.build-option:focus-visible:not(:disabled) {
+		background: var(--paper-200);
+		border-color: var(--brass-500);
+		box-shadow: inset 0 2px 0 var(--brass-700);
+		outline: none;
+	}
+
+	.build-option:disabled {
+		cursor: not-allowed;
+	}
+
+	.build-option.is-disabled img {
+		filter: grayscale(0.7);
+		opacity: 0.8;
+	}
+
+	.art-frame {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 130px;
+		margin-bottom: 0.25rem;
+		background: radial-gradient(
+			circle at 50% 40%,
+			color-mix(in srgb, var(--paper-50) 97%, white) 0%,
+			color-mix(in srgb, var(--paper-50) 88%, var(--brass-100)) 100%
+		);
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+	}
+
+	.art-frame img {
+		max-width: 82%;
+		max-height: 82%;
+		image-rendering: pixelated;
+	}
+
+	.build-option strong {
+		font-family: var(--font-display);
+		font-size: 1rem;
+		font-weight: 400;
+		color: var(--ink-700);
+	}
+
+	.disabled-badge {
+		position: absolute;
+		top: 0.5rem;
+		right: 0.5rem;
+		font-family: var(--font-ui);
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		color: var(--wax-red);
+		border: 1px solid var(--wax-red);
+		background: var(--paper-50);
+		padding: 0.1rem 0.3rem;
+		transform: rotate(-4deg);
 	}
 
 	.starter {
@@ -847,6 +761,7 @@
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		padding: 0.05rem 0.4rem;
+		vertical-align: middle;
 	}
 
 	.recipe {
@@ -854,7 +769,6 @@
 		align-items: center;
 		flex-wrap: wrap;
 		gap: 0.3rem;
-		margin-top: 0.15rem;
 	}
 
 	.chip {
@@ -888,5 +802,21 @@
 		color: var(--wax-red);
 		font-family: var(--font-body);
 		font-size: 0.76rem;
+	}
+
+	.need.resource {
+		color: var(--ink-500);
+	}
+
+	@media (max-width: 860px) {
+		.option-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	@media (max-width: 560px) {
+		.option-grid {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 </style>

@@ -77,26 +77,17 @@ export const en = {
 		},
 		industry: {
 			filter: {
+				chainLabel: 'Chain',
+				title: 'Product chain filters',
+				allShortLabel: 'All',
 				allProducts: 'Filter: All products',
 				selected: 'Filter: {name}',
-				clear: 'Clear product filter',
-				dialog: 'Product chain filter',
-				title: 'Product filter',
-				close: 'Close product chain filter',
-				search: 'Search products',
-				allProductsLabel: 'All products',
-				allBuildings: 'All industrial buildings',
-				chainBuildings: {
-					one: '{count} chain building',
-					other: '{count} chain buildings'
-				},
-				noChain: 'No industry chain yet',
-				noMatches: 'No matching products'
+				noChain: 'No industry chain yet'
 			},
 			supplyAdvisor: 'Supply Advisor — what should I build?',
 			buildType: 'Build {name}',
 			starter: 'Starter',
-			costOperating: 'Cost {cost} | Operating {operating}/day',
+			costOperating: '{cost} · {operating}/d',
 			recipe: 'Recipe',
 			needsProducer: 'Needs {producer}',
 			needsResource: 'Needs a {resource} resource tile',
@@ -673,14 +664,12 @@ export const en = {
 	},
 	productChainsPanel: {
 		ariaLabel: 'Product Chains',
-		eyebrow: 'Folio II · Production Chain',
+		eyebrow: 'Atlas of Supply',
 		modeGroup: 'Product chain view',
 		storeCategoryChains: 'Store category chains',
 		cityInventoryFlow: 'City inventory flow',
-		scopeAria: 'City inventory scope',
+		capacityLabel: 'Inventory capacity',
 		activeIndustryInventory: 'City inventory — {cityName}',
-		activeRetailSupply:
-			'Local supply for {retailCityName} — {sourceCityName}: {used} / {capacity} city inventory used.',
 		supplyState: {
 			importsOnly: '{retailCityName} supply: Imports only — replenishment uses external imports.',
 			zeroCapacity:
@@ -899,25 +888,22 @@ export const en = {
 	},
 	atlas: {
 		categoryIndex: {
-			ariaLabel: 'Product category index',
-			tier: 'Tier {tier}',
-			metrics: 'stock {stock} · made {produced}/d · sold {consumed}/d'
+			ariaLabel: 'Product category index'
+		},
+		capacityStrip: {
+			figures: '{used} / {capacity}'
 		},
 		nodeBroadside: {
 			inspected: 'Inspected node',
 			emptyTitle: 'Chain node',
 			empty: 'Select a graph node to inspect its latest flow metrics.',
 			sharedProducer: 'Shared producer — drawn in {count} branches of this chain.',
+			recipe: 'Recipe',
 			metrics: {
-				buildings: 'Buildings',
-				capacity: 'Capacity',
-				capacityValue: '{output} out / {input} in',
-				produced: 'Produced',
-				consumed: 'Consumed',
-				imported: 'Imported',
-				sold: 'Sold',
-				missed: 'Missed',
-				stock: 'Stock'
+				throughput: 'Throughput',
+				shortfall: 'Shortfall',
+				health: 'Status',
+				perDay: '{value}/d'
 			}
 		},
 		legend: {
@@ -1775,8 +1761,9 @@ export const en = {
 			},
 			warehouseNode: 'City inventory',
 			nodeStats: {
-				recipe: '{buildings} bldg · {output}/d',
-				stock: 'stock {stock}'
+				recipe: '▲ {output}/d',
+				stock: '{stock} held',
+				shortage: '▼ short {short}'
 			},
 			health: {
 				healthy: 'Healthy',

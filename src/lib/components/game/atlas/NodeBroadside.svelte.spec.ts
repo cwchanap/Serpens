@@ -53,14 +53,14 @@ describe('NodeBroadside', () => {
 			.toBeVisible();
 	});
 
-	it('renders the node label, status, bottleneck, and metrics', async () => {
+	it('renders the node label, recipe chips, bottleneck, and the two metric cards', async () => {
 		expect.assertions(5);
 		render(NodeBroadside, { i18n: createI18n('en'), node: shortageRecipeNode() });
 		await expect.element(page.getByRole('heading', { name: 'Flour mill' })).toBeVisible();
-		await expect.element(page.getByText('Shortage')).toBeVisible();
 		await expect.element(page.getByText('Insufficient flour input for the bakery.')).toBeVisible();
-		await expect.element(page.getByText('Missed').first()).toBeVisible();
-		await expect.element(page.getByText('8')).toBeVisible();
+		await expect.element(page.getByText('Throughput')).toBeVisible();
+		await expect.element(page.getByText('Shortfall')).toBeVisible();
+		await expect.element(page.getByText('8/d')).toBeVisible();
 	});
 
 	it('renders a shared producer note and omits the verdict when there is no bottleneck', async () => {
@@ -86,7 +86,7 @@ describe('NodeBroadside', () => {
 		expect(section?.querySelector('.verdict')).toBeNull();
 	});
 
-	it('preserves fractional capacity values for upgraded recipe nodes', async () => {
+	it('preserves fractional throughput values for upgraded recipe nodes', async () => {
 		expect.assertions(1);
 		const node: LocalizedProductChainNode = {
 			...shortageRecipeNode(),
@@ -95,6 +95,17 @@ describe('NodeBroadside', () => {
 
 		render(NodeBroadside, { i18n: createI18n('en'), node });
 
-		await expect.element(page.getByText('11.2 out / 15.4 in')).toBeVisible();
+		await expect.element(page.getByText('11.2/d')).toBeVisible();
+	});
+
+	it('renders illustrated recipe chips for the inspected recipe node', async () => {
+		expect.assertions(2);
+		render(NodeBroadside, { i18n: createI18n('en'), node: shortageRecipeNode() });
+
+		const strip = document.querySelector('.recipe-strip');
+		expect(strip).not.toBeNull();
+		// flour-milling: 10 grain in → 8 flour out.
+		const chips = strip?.querySelectorAll('.chip img');
+		expect(chips?.length).toBe(2);
 	});
 });

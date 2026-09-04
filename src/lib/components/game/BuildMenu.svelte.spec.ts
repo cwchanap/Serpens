@@ -106,45 +106,32 @@ describe('BuildMenu', () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
-	it('renders industry buildings and filters them by product chain search', async () => {
-		expect.assertions(7);
+	it('renders industry buildings and filters them by product chain from the filter band', async () => {
+		expect.assertions(4);
 		const onChooseIndustry = vi.fn();
 
 		render(BuildMenu, buildMenuProps({ activeMapView: 'industry', onChooseIndustry }));
 
 		await expect.element(page.getByRole('heading', { name: /build industry/i })).toBeVisible();
-		await page.getByRole('button', { name: /filter: all products/i }).click();
-		const filterPopover = page.getByRole('dialog', { name: /product chain filter/i });
-		await expect.element(filterPopover).toBeVisible();
-		await expect.element(filterPopover).not.toHaveAttribute('aria-modal');
-		await page.getByLabelText(/search products/i).fill('gift');
-		await expect.element(page.getByRole('button', { name: /gifts/i })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: /snacks/i })).not.toBeInTheDocument();
-		await page.getByRole('button', { name: /gifts/i }).click();
+		await expect.element(page.getByRole('button', { name: /filter: all products/i })).toBeVisible();
+		await page.getByRole('button', { name: /filter: gifts/i }).click();
 		await expect.element(page.getByRole('button', { name: /build gift workshop/i })).toBeVisible();
 		await page.getByRole('button', { name: /build gift workshop/i }).click();
 		expect(onChooseIndustry).toHaveBeenCalledWith('gift-workshop');
 	});
 
-	it('dismisses the product filter popover with the close button and Escape', async () => {
-		expect.assertions(5);
-		const onClose = vi.fn();
+	it('marks the ALL control pressed and swaps pressed state when a chain filter is picked', async () => {
+		expect.assertions(3);
 
-		render(BuildMenu, buildMenuProps({ activeMapView: 'industry', onClose }));
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
-		await page.getByRole('button', { name: /filter: all products/i }).click();
-		const filterPopover = page.getByRole('dialog', { name: /product chain filter/i });
-
-		await expect.element(filterPopover).toBeVisible();
-		await expect.element(filterPopover).not.toHaveAttribute('aria-modal');
-		await page.getByRole('button', { name: /close product chain filter/i }).click();
-		await expect.element(filterPopover).not.toBeInTheDocument();
-
-		await page.getByRole('button', { name: /filter: all products/i }).click();
-		pressKey('Escape');
-
-		await expect.element(filterPopover).not.toBeInTheDocument();
-		expect(onClose).not.toHaveBeenCalled();
+		const all = page.getByRole('button', { name: /filter: all products/i });
+		await expect.element(all).toHaveAttribute('aria-pressed', 'true');
+		await page.getByRole('button', { name: /filter: gifts/i }).click();
+		await expect.element(all).toHaveAttribute('aria-pressed', 'false');
+		await expect
+			.element(page.getByRole('button', { name: /filter: gifts/i }))
+			.toHaveAttribute('aria-pressed', 'true');
 	});
 
 	it('sorts industry building options by tier, then cost, then name', async () => {
@@ -282,15 +269,26 @@ describe('BuildMenu', () => {
 		await expect.element(page.getByText('No retail buildings available')).toBeVisible();
 	});
 
-	it('shows no matching products when the filter search matches nothing', async () => {
+	it('omits chain filters without industry buildings from the filter band', async () => {
 		expect.assertions(1);
 
 		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
-		await page.getByRole('button', { name: /filter: all products/i }).click();
-		await page.getByLabelText(/search products/i).fill('zzzznotachain');
+		// Chains without industrial buildings are not offered as filters.
+		await expect.element(page.getByRole('button', { name: /apparel/i })).not.toBeInTheDocument();
+	});
 
-		await expect.element(page.getByText('No matching products')).toBeVisible();
+	it('clears the product filter by clicking the ALL control', async () => {
+		expect.assertions(2);
+
+		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
+
+		await page.getByRole('button', { name: /filter: gifts/i }).click();
+		await expect
+			.element(page.getByRole('button', { name: /build warehouse/i }))
+			.not.toBeInTheDocument();
+		await page.getByRole('button', { name: /filter: all products/i }).click();
+		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeVisible();
 	});
 
 	it('disables a product filter with no industry chain and shows no buildings when selected', async () => {
@@ -298,22 +296,25 @@ describe('BuildMenu', () => {
 
 		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
-		await page.getByRole('button', { name: /filter: all products/i }).click();
-		const apparelButton = page.getByRole('button', { name: /apparel no industry chain yet/i });
-		await expect.element(apparelButton).toBeDisabled();
-		await expect.element(apparelButton).toBeVisible();
+		// The band only offers filters with real chains, so a no-chain category
+		// (apparel) must not be selectable or rendered at all.
+		await expect.element(page.getByRole('button', { name: /apparel/i })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: /filter: gifts/i })).toBeEnabled();
 	});
 
-	it('clears the product filter with the clear button', async () => {
+	it('clears the product filter with the ALL control', async () => {
 		expect.assertions(2);
 
 		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
+		await page.getByRole('button', { name: /filter: gifts/i }).click();
+		await expect
+			.element(page.getByRole('button', { name: /filter: gifts/i }))
+			.toHaveAttribute('aria-pressed', 'true');
 		await page.getByRole('button', { name: /filter: all products/i }).click();
-		await page.getByRole('button', { name: /gifts/i }).click();
-		await expect.element(page.getByRole('button', { name: /filter: gifts/i })).toBeVisible();
-		await page.getByRole('button', { name: /clear product filter/i }).click();
-		await expect.element(page.getByRole('button', { name: /filter: all products/i })).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: /filter: all products/i }))
+			.toHaveAttribute('aria-pressed', 'true');
 	});
 
 	it('resets to all products by clicking the "All products" filter entry', async () => {
@@ -321,14 +322,12 @@ describe('BuildMenu', () => {
 
 		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
 
-		await page.getByRole('button', { name: /filter: all products/i }).click();
-		await page.getByRole('button', { name: /gifts/i }).click();
-		await expect.element(page.getByRole('button', { name: /filter: gifts/i })).toBeVisible();
-
-		// Reopen the filter popover and pick "All products" to clear the active filter.
 		await page.getByRole('button', { name: /filter: gifts/i }).click();
-		await page.getByRole('button', { name: /all products/i }).click();
-		await expect.element(page.getByRole('button', { name: /filter: all products/i })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /build gift workshop/i })).toBeVisible();
+
+		// Clicking the ALL circular control resets the filter to all buildings.
+		await page.getByRole('button', { name: /filter: all products/i }).click();
+		await expect.element(page.getByRole('button', { name: /build warehouse/i })).toBeVisible();
 	});
 
 	it('traps focus to the last element when shift-tabbing from outside the dialog', async () => {

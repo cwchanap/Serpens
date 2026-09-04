@@ -318,18 +318,15 @@ describe('ProductChainsPanel', () => {
 	});
 
 	it.each([
-		[
-			'available local supply',
-			(game: GameState) => game,
-			'Local supply for Harbor City — Industry City: 8 / 200 city inventory used.'
-		],
+		['available local supply', (game: GameState) => game, 'Industry City', '8 / 200'],
 		[
 			'imports only',
 			(game: GameState) => ({
 				...game,
 				retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: null }]
 			}),
-			'Harbor City supply: Imports only — replenishment uses external imports.'
+			'Harbor City supply: Imports only — replenishment uses external imports.',
+			null
 		],
 		[
 			'zero-capacity source',
@@ -347,14 +344,22 @@ describe('ProductChainsPanel', () => {
 						: inventory
 				)
 			}),
-			'Local supply for Harbor City — source Industry City has zero city inventory capacity.'
+			'Local supply for Harbor City — source Industry City has zero city inventory capacity.',
+			null
 		]
-	] as const)('shows %s as a distinct retail source state', async (_, arrange, expectedCopy) => {
-		expect.assertions(1);
-		renderProductChainsPanel(arrange(cityScopedChainGame()) as GameState);
+	] as const)(
+		'shows %s as a distinct retail source state',
+		async (_, arrange, expectedCopy, expectedFigures) => {
+			expect.assertions(expectedFigures === null ? 1 : 2);
+			renderProductChainsPanel(arrange(cityScopedChainGame()) as GameState);
 
-		await expect.element(page.getByText(expectedCopy)).toBeVisible();
-	});
+			await expect.element(page.getByText(expectedCopy)).toBeVisible();
+			if (expectedFigures !== null) {
+				// Available state surfaces its capacity figures through the strip.
+				await expect.element(page.getByText(expectedFigures, { exact: true })).toBeVisible();
+			}
+		}
+	);
 
 	it.each([
 		[

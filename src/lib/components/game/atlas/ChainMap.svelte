@@ -10,10 +10,9 @@
 		height: number;
 		compact: boolean;
 		children: Snippet;
-		broadside?: Snippet;
 	}
 
-	let { i18n, width, height, compact, children, broadside }: Props = $props();
+	let { i18n, width, height, compact, children }: Props = $props();
 </script>
 
 <div
@@ -31,11 +30,6 @@
 		<div class="legend-slot">
 			<LegendCartouche {i18n} />
 		</div>
-		{#if broadside}
-			<div class="broadside-slot">
-				{@render broadside()}
-			</div>
-		{/if}
 	{/if}
 	<div class="canvas">
 		{@render children()}
@@ -96,14 +90,5 @@
 		left: 18px;
 		bottom: 18px;
 		z-index: 3;
-	}
-
-	.broadside-slot {
-		position: absolute;
-		right: 26px;
-		top: 88px;
-		z-index: 3;
-		width: 240px;
-		pointer-events: none;
 	}
 </style>

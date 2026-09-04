@@ -203,8 +203,12 @@ function localizeHealth(health: ProductChainHealth, i18n: I18nBundle): string {
 
 function localizeNodeStatLine(node: ProductChainNode, i18n: I18nBundle): string {
 	if (node.kind === 'recipe') {
+		if (node.actual.demandMissed > 0) {
+			return i18n.t('copy.productChainGraph.nodeStats.shortage', {
+				short: formatQuantityForLocale(node.actual.demandMissed, i18n)
+			});
+		}
 		return i18n.t('copy.productChainGraph.nodeStats.recipe', {
-			buildings: formatQuantityForLocale(node.capacity.buildingCount, i18n),
 			output: formatQuantityForLocale(node.capacity.outputPerDay, i18n)
 		});
 	}

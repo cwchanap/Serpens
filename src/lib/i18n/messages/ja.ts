@@ -77,26 +77,17 @@ export const ja = {
 		},
 		industry: {
 			filter: {
+				chainLabel: 'チェーン',
+				title: '商品チェーンフィルター',
+				allShortLabel: '全て',
 				allProducts: 'フィルター: すべての商品',
 				selected: 'フィルター: {name}',
-				clear: '商品フィルターを解除',
-				dialog: '商品チェーンフィルター',
-				title: '商品フィルター',
-				close: '商品チェーンフィルターを閉じる',
-				search: '商品を検索',
-				allProductsLabel: 'すべての商品',
-				allBuildings: 'すべての工業施設',
-				chainBuildings: {
-					one: 'チェーン施設 {count} 件',
-					other: 'チェーン施設 {count} 件'
-				},
-				noChain: '対応する工業チェーンはまだありません',
-				noMatches: '一致する商品がありません'
+				noChain: '対応する工業チェーンはまだありません'
 			},
 			supplyAdvisor: '供給アドバイザー - 何を建てるべき？',
 			buildType: '{name}を建設',
 			starter: '初期向け',
-			costOperating: '建設費 {cost} | 維持費 {operating}/日',
+			costOperating: '{cost} · {operating}/日',
 			recipe: 'レシピ',
 			needsProducer: '{producer} が必要です',
 			needsResource: '{resource} の資源タイルが必要です',
@@ -672,14 +663,12 @@ export const ja = {
 	},
 	productChainsPanel: {
 		ariaLabel: '商品チェーン',
-		eyebrow: 'Folio II · 生産チェーン',
+		eyebrow: '供給アトラス',
 		modeGroup: '商品チェーン表示',
 		storeCategoryChains: '店舗カテゴリチェーン',
 		cityInventoryFlow: '都市在庫フロー',
-		scopeAria: '都市在庫の範囲',
+		capacityLabel: '在庫容量',
 		activeIndustryInventory: '都市在庫 — {cityName}',
-		activeRetailSupply:
-			'{retailCityName} のローカル供給 — {sourceCityName}: 都市在庫を {used} / {capacity} 使用中。',
 		supplyState: {
 			importsOnly: '{retailCityName} の供給: 輸入のみ — 補充は外部輸入で行われます。',
 			zeroCapacity:
@@ -893,25 +882,22 @@ export const ja = {
 	},
 	atlas: {
 		categoryIndex: {
-			ariaLabel: '商品カテゴリ索引',
-			tier: 'Tier {tier}',
-			metrics: '在庫 {stock} · 生産 {produced}/日 · 販売 {consumed}/日'
+			ariaLabel: '商品カテゴリ索引'
+		},
+		capacityStrip: {
+			figures: '{used} / {capacity}'
 		},
 		nodeBroadside: {
 			inspected: '検査中のノード',
 			emptyTitle: 'チェーンノード',
 			empty: 'グラフノードを選択して最新のフロー指標を確認します。',
 			sharedProducer: '共有生産者 - このチェーンの {count} 分岐に描画されています。',
+			recipe: 'レシピ',
 			metrics: {
-				buildings: '建物',
-				capacity: '容量',
-				capacityValue: '出力 {output} / 入力 {input}',
-				produced: '生産',
-				consumed: '消費',
-				imported: '輸入',
-				sold: '販売',
-				missed: '機会損失',
-				stock: '在庫'
+				throughput: 'スループット',
+				shortfall: '不足',
+				health: '状態',
+				perDay: '{value}/日'
 			}
 		},
 		legend: {
@@ -1748,8 +1734,9 @@ export const ja = {
 			},
 			warehouseNode: '都市在庫',
 			nodeStats: {
-				recipe: '{buildings} 棟 · 1日 {output}',
-				stock: '在庫 {stock}'
+				recipe: '▲ 1日 {output}',
+				stock: '{stock} 保有',
+				shortage: '▼ 不足 {short}'
 			},
 			health: {
 				healthy: '健全',
