@@ -546,7 +546,7 @@
 		position: relative;
 		z-index: 1;
 		width: min(74rem, calc(100vw - 2rem));
-		height: calc(100vh - 2rem);
+		height: auto;
 		max-height: calc(100vh - 2rem);
 		display: flex;
 		flex-direction: column;
@@ -613,7 +613,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.1rem;
-		min-height: 100%;
 	}
 
 	/* Scorecard stretch wrapper: a grid row so the child panel fills the

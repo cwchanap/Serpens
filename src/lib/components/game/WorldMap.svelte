@@ -616,8 +616,8 @@
 
 	.crest {
 		justify-self: start;
-		width: 3.4rem;
-		height: 3.4rem;
+		width: 4.2rem;
+		height: 4.2rem;
 		border-radius: 999px;
 		border: 1px solid var(--brass-500);
 		background: color-mix(in srgb, var(--brass-500) 18%, var(--walnut-900));
@@ -627,8 +627,8 @@
 	}
 
 	.crest :global(svg) {
-		width: 1.7rem;
-		height: 1.7rem;
+		width: 2.1rem;
+		height: 2.1rem;
 	}
 
 	.stat-row {

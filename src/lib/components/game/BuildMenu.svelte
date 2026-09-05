@@ -670,16 +670,16 @@
 	.option-grid {
 		display: grid;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 0.75rem;
+		gap: 0.6rem;
 	}
 
 	.build-option {
 		position: relative;
 		display: grid;
 		align-content: start;
-		gap: 0.35rem;
+		gap: 0.3rem;
 		min-width: 0;
-		padding: 0.7rem;
+		padding: 0.55rem;
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
 		background: var(--paper-50);
@@ -709,8 +709,8 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 130px;
-		margin-bottom: 0.25rem;
+		height: 96px;
+		margin-bottom: 0.2rem;
 		background: radial-gradient(
 			circle at 50% 40%,
 			color-mix(in srgb, var(--paper-50) 97%, white) 0%,
