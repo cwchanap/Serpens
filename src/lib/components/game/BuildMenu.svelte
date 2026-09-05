@@ -511,7 +511,7 @@
 		display: grid;
 		gap: 0.85rem;
 		width: min(900px, 100%);
-		max-height: calc(100dvh - 2rem);
+		max-height: min(680px, calc(100dvh - 2rem));
 		overflow: auto;
 		padding: 1.1rem 1.2rem;
 		color: var(--ink-700);
@@ -709,7 +709,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 96px;
+		height: 135px;
 		margin-bottom: 0.2rem;
 		background: radial-gradient(
 			circle at 50% 40%,
@@ -721,8 +721,8 @@
 	}
 
 	.art-frame img {
-		max-width: 82%;
-		max-height: 82%;
+		max-width: 90%;
+		max-height: 90%;
 		image-rendering: pixelated;
 	}
 

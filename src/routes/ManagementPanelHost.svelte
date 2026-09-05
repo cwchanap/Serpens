@@ -402,16 +402,6 @@
 									canPromote={mutations.promoteStaff}
 									{disabledReason}
 								/>
-								{#if panelId === 'staff'}
-									<ManagerDelegationPanel
-										{i18n}
-										game={panelGame}
-										onChange={onSetManagerDelegation}
-										onRemove={onRemoveManagerDelegation}
-										canUpdate={mutations.delegation}
-										{disabledReason}
-									/>
-								{/if}
 							</div>
 							<div class="plate-policies" bind:this={policiesBandEl}>
 								<PolicyPanel
@@ -426,6 +416,16 @@
 									{disabledReason}
 								/>
 							</div>
+							{#if panelId === 'staff'}
+								<ManagerDelegationPanel
+									{i18n}
+									game={panelGame}
+									onChange={onSetManagerDelegation}
+									onRemove={onRemoveManagerDelegation}
+									canUpdate={mutations.delegation}
+									{disabledReason}
+								/>
+							{/if}
 						</div>
 					{:else if panelId === 'stores'}
 						<div class="stores-surfaces">

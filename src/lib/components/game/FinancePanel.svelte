@@ -840,7 +840,7 @@
 	.kpi-label {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.58rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
@@ -857,7 +857,7 @@
 	}
 
 	.kpi-value.kpi-muted {
-		font-size: 0.68rem;
+		font-size: 0.76rem;
 		letter-spacing: normal;
 		text-transform: none;
 		overflow-wrap: anywhere;
@@ -883,7 +883,7 @@
 		margin-top: auto;
 		color: var(--ink-400);
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.76rem;
 		font-variant-numeric: tabular-nums;
 	}
 
@@ -973,7 +973,7 @@
 
 	.term-name {
 		font-family: var(--font-ui);
-		font-size: 0.55rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
@@ -996,7 +996,7 @@
 	.term-credit-label {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.48rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
@@ -1031,7 +1031,7 @@
 	.field-label {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.52rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
@@ -1058,7 +1058,7 @@
 		color: var(--paper-50);
 		box-shadow: inset 0 0 0 1px var(--moss-2);
 		font-family: var(--font-ui);
-		font-size: 0.72rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.04em;
 		padding: 0.45rem 0.8rem;
@@ -1078,7 +1078,7 @@
 		row-gap: 0.2rem;
 		padding-top: 0.1rem;
 		font-family: var(--font-mono);
-		font-size: 0.66rem;
+		font-size: 0.76rem;
 	}
 
 	.credit-facts.placeholder {
@@ -1097,7 +1097,7 @@
 	.fact-label {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.52rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
@@ -1106,13 +1106,13 @@
 	.credit-facts .fact strong,
 	.note-facts .fact strong {
 		color: var(--ink-700);
-		font-size: 0.66rem;
+		font-size: 0.76rem;
 	}
 
 	.credit-reason {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.62rem;
+		font-size: 0.76rem;
 		overflow-wrap: anywhere;
 	}
 
@@ -1182,7 +1182,7 @@
 		color: var(--ink-500);
 		background: var(--paper-100);
 		font-family: var(--font-ui);
-		font-size: 0.54rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
@@ -1201,7 +1201,7 @@
 		column-gap: 0.75rem;
 		row-gap: 0.15rem;
 		font-family: var(--font-mono);
-		font-size: 0.66rem;
+		font-size: 0.76rem;
 		color: var(--ink-400);
 		overflow-wrap: anywhere;
 	}
@@ -1248,7 +1248,7 @@
 		border: 0;
 		background: transparent;
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: 0.76rem;
 		font-variant-numeric: tabular-nums;
 		color: var(--ink-700);
 	}
@@ -1264,7 +1264,7 @@
 		background: var(--paper-50);
 		color: var(--ink-700);
 		font-family: var(--font-ui);
-		font-size: 0.58rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -1296,7 +1296,7 @@
 	.cluster-caption {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.52rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
@@ -1309,7 +1309,7 @@
 		font-family: var(--font-mono);
 		letter-spacing: normal;
 		text-transform: none;
-		font-size: 0.64rem;
+		font-size: 0.76rem;
 	}
 
 	.term-chip:disabled {
@@ -1361,7 +1361,7 @@
 		padding: 0.18rem 0.1rem;
 		border-top: 1px solid color-mix(in srgb, var(--brass-500) 30%, transparent);
 		font-family: var(--font-mono);
-		font-size: 0.66rem;
+		font-size: 0.76rem;
 	}
 
 	.txn-date {
@@ -1394,13 +1394,13 @@
 		padding: 0.1rem 0.1rem 0;
 		color: var(--ink-400);
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.76rem;
 	}
 
 	.no-activity {
 		color: var(--ink-400);
 		font-family: var(--font-mono);
-		font-size: 0.68rem;
+		font-size: 0.76rem;
 		padding: 0.2rem 0.1rem;
 	}
 
@@ -1425,7 +1425,7 @@
 	.strip-caption {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.54rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;

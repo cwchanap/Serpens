@@ -100,7 +100,10 @@ test('automatic day clock keeps advancing across a non-day mutation', async ({ p
 	await page.getByRole('button', { name: /policies/i }).click();
 	const policies = page.getByRole('dialog', { name: /policies/i });
 	await expect(policies).toBeVisible();
-	await policies.getByLabel(/pricing/i).selectOption('premium');
+	await policies
+		.getByLabel(/pricing/i)
+		.getByRole('radio', { name: 'Premium' })
+		.check();
 	await policies.getByRole('button', { name: /close policies/i }).click();
 	await page.clock.runFor(0);
 
@@ -177,7 +180,10 @@ test('automatic day clock keeps advancing across a non-day mutation in scenario 
 	await page.getByRole('button', { name: /policies/i }).click();
 	const policies = page.getByRole('dialog', { name: /policies/i });
 	await expect(policies).toBeVisible();
-	await policies.getByLabel(/pricing/i).selectOption('standard');
+	await policies
+		.getByLabel(/pricing/i)
+		.getByRole('radio', { name: 'Standard' })
+		.check();
 	await policies.getByRole('button', { name: /close policies/i }).click();
 	// Wait for the scenario command to finish persisting so advanceDay is true
 	// again before the day timer fires.

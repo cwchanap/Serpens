@@ -169,10 +169,10 @@
 	}
 </script>
 
-<section class="panel paper" aria-labelledby="staff-heading">
+<section class="panel" aria-labelledby="staff-heading">
 	<div class="panel-heading">
 		<div>
-			<h2 id="staff-heading">{i18n.t('staffPanel.title')}</h2>
+			<h2 id="staff-heading" class="visually-hidden">{i18n.t('staffPanel.title')}</h2>
 			<p>{i18n.t('staffPanel.hiredCount', { count: i18n.format.integer(staff.length) })}</p>
 		</div>
 	</div>
@@ -436,6 +436,18 @@
 </section>
 
 <style>
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
 	.panel {
 		display: grid;
 		gap: 1rem;

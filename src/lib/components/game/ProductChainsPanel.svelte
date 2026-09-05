@@ -182,7 +182,7 @@
 </script>
 
 <section
-	class="panel paper product-chains-panel atlas-sheet"
+	class="panel product-chains-panel atlas-sheet"
 	aria-label={i18n.t('productChainsPanel.ariaLabel')}
 >
 	<div class="sheet-head">

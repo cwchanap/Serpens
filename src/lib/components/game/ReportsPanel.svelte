@@ -621,8 +621,8 @@
 	}
 </script>
 
-<section class="panel paper" aria-labelledby="reports-heading">
-	<h2 id="reports-heading">{i18n.t('reportsPanel.title')}</h2>
+<section class="panel" aria-labelledby="reports-heading">
+	<h2 id="reports-heading" class="visually-hidden">{i18n.t('reportsPanel.title')}</h2>
 
 	{#if summary.latest}
 		<div class="plate">
@@ -1869,24 +1869,29 @@
 
 	.store-card {
 		display: grid;
-		gap: 0.3rem;
+		grid-template-columns: 76px minmax(0, 1fr);
+		grid-template-rows: auto auto auto;
+		column-gap: 0.6rem;
+		align-items: center;
+		gap: 0.15rem 0.6rem;
 		min-width: 0;
-		padding: 0.5rem 0.55rem 0.55rem;
+		padding: 0.45rem 0.5rem;
 		border: 1px solid var(--brass-300);
 		border-radius: 2px;
 		background: var(--paper-50);
 	}
 
 	.store-card img {
-		width: 100%;
-		height: auto;
-		aspect-ratio: 4 / 3;
+		grid-row: 1 / span 3;
+		width: 76px;
+		height: 60px;
 		object-fit: cover;
 		border: 1px solid var(--paper-edge);
 		border-radius: 2px;
 	}
 
 	.store-card h4 {
+		grid-column: 2;
 		margin: 0;
 		overflow: hidden;
 		color: var(--ink-700);
@@ -1895,6 +1900,17 @@
 		font-weight: 400;
 		white-space: nowrap;
 		text-overflow: ellipsis;
+	}
+
+	.store-card .mono-value,
+	.store-card .delta {
+		grid-column: 2;
+	}
+
+	.store-card .spark {
+		grid-column: 2;
+		width: 100%;
+		height: 1.4rem;
 	}
 
 	.mono-value {

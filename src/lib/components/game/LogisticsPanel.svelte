@@ -951,7 +951,7 @@
 	}
 
 	.zone-heading {
-		font-size: 0.58rem;
+		font-size: 0.76rem;
 	}
 
 	.desk-label {
@@ -1054,7 +1054,7 @@
 	}
 
 	.field-label {
-		font-size: 0.46rem;
+		font-size: 0.76rem;
 		letter-spacing: 0.1em;
 		overflow-wrap: anywhere;
 	}
@@ -1113,7 +1113,7 @@
 		background: var(--moss);
 		color: var(--paper-50);
 		font-family: var(--font-ui);
-		font-size: 0.72rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.04em;
 		box-shadow: inset 0 0 0 1px var(--moss-2);
@@ -1146,7 +1146,7 @@
 		padding: 0.3rem 0.7rem;
 		border-radius: 3px;
 		font-family: var(--font-ui);
-		font-size: 0.66rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.06em;
 		cursor: pointer;
@@ -1271,7 +1271,7 @@
 		background: var(--brass-500);
 		color: var(--ink-900);
 		font-family: var(--font-ui);
-		font-size: 0.52rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
@@ -1287,7 +1287,7 @@
 	.route-condition {
 		color: var(--ink-400);
 		font-family: var(--font-ui);
-		font-size: 0.56rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
@@ -1336,7 +1336,7 @@
 
 	.route-facts {
 		font-family: var(--font-mono);
-		font-size: 0.64rem;
+		font-size: 0.76rem;
 		font-variant-numeric: tabular-nums;
 		color: var(--ink-700);
 		overflow-wrap: anywhere;
@@ -1413,7 +1413,7 @@
 		background: var(--paper-50);
 		color: var(--ink-700);
 		font-family: var(--font-mono);
-		font-size: 0.72rem;
+		font-size: 0.76rem;
 		font-variant-numeric: tabular-nums;
 	}
 
@@ -1424,7 +1424,7 @@
 		background: var(--paper-50);
 		color: var(--ink-700);
 		font-family: var(--font-ui);
-		font-size: 0.52rem;
+		font-size: 0.76rem;
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -1435,7 +1435,7 @@
 		padding: 0.15rem 0.1rem;
 		color: var(--ink-400);
 		font-family: var(--font-mono);
-		font-size: 0.66rem;
+		font-size: 0.76rem;
 	}
 
 	/* ---- Bottom split: in transit | recent transfers ---- */
@@ -1507,7 +1507,7 @@
 		column-gap: 0.35rem;
 		min-width: 0;
 		font-family: var(--font-mono);
-		font-size: 0.64rem;
+		font-size: 0.76rem;
 		font-variant-numeric: tabular-nums;
 		overflow-wrap: anywhere;
 	}
@@ -1532,7 +1532,7 @@
 		padding: 0.16rem 0.05rem;
 		border-top: 1px solid color-mix(in srgb, var(--brass-500) 25%, transparent);
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: 0.76rem;
 		font-variant-numeric: tabular-nums;
 		overflow-wrap: anywhere;
 	}
