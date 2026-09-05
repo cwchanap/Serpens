@@ -237,6 +237,12 @@ export const ja = {
 		routeSummary: '{origin} → {destination} · {material} · {state} · {condition}',
 		cityDetails: '都市詳細',
 		closeCityDetails: '都市詳細を閉じる',
+		stats: {
+			stores: '店舗',
+			plants: '工場',
+			opening: '開設費',
+			status: '状態'
+		},
 		cityEyebrow: {
 			retail: '小売都市',
 			industry: '工業都市'

@@ -237,6 +237,12 @@ export const en = {
 		routeSummary: '{origin} to {destination} · {material} · {state} · {condition}',
 		cityDetails: 'City details',
 		closeCityDetails: 'Close city details',
+		stats: {
+			stores: 'Stores',
+			plants: 'Plants',
+			opening: 'Opening',
+			status: 'Status'
+		},
 		cityEyebrow: {
 			retail: 'Retail city',
 			industry: 'Industrial city'

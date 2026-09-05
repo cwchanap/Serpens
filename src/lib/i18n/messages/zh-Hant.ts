@@ -237,6 +237,12 @@ export const zhHant = {
 		routeSummary: '{origin} → {destination} · {material} · {state} · {condition}',
 		cityDetails: '城市詳情',
 		closeCityDetails: '關閉城市詳情',
+		stats: {
+			stores: '商店',
+			plants: '工廠',
+			opening: '開設費',
+			status: '狀態'
+		},
 		cityEyebrow: {
 			retail: '零售城市',
 			industry: '工業城市'

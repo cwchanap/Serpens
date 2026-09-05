@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { WORLD_MAP_ART } from '$lib/assets/gameArt';
+	import GameIcon from '$lib/components/game/GameIcon.svelte';
 	import WorldLogisticsRoutes from '$lib/components/game/WorldLogisticsRoutes.svelte';
 	import { localizeWorldCityStatus } from '$lib/i18n/gameCopy';
 	import type { LocalizedWorldCityStatus } from '$lib/i18n/localizedTypes';
@@ -97,6 +98,16 @@
 		return i18n.labels.worldCity(cityId).name;
 	}
 
+	const routeStateCounts = $derived.by(() => {
+		let active = 0;
+		let paused = 0;
+		for (const summary of logisticsRouteSummaries) {
+			if (summary.route.state === 'active') active += 1;
+			else if (summary.route.state === 'paused') paused += 1;
+		}
+		return { active, paused };
+	});
+
 	function routeStateLabel(summary: RouteOperationalSummary): string {
 		return i18n.t(`logisticsPanel.states.${summary.route.state}` as never);
 	}
@@ -182,8 +193,19 @@
 							onSelectCity(status.city.id);
 					}}
 				>
-					<strong id={cityTitleId(status)}>{status.city.name}</strong>
-					<span id={cityDescriptionId(status)}>
+					<span class="row">
+						<strong id={cityTitleId(status)}>{status.city.name}</strong>
+						<span class="ops" aria-hidden="true">
+							{#if status.state === 'opened' && status.city.kind === 'retail'}
+								{i18n.format.integer(status.storeCount)} · {status.stateLabel}
+							{:else if status.state === 'opened'}
+								{i18n.format.integer(status.buildingCount)} · {status.stateLabel}
+							{:else}
+								{status.stateLabel}
+							{/if}
+						</span>
+					</span>
+					<span id={cityDescriptionId(status)} class="desc">
 						{status.kindLabel} - {status.stateLabel}. {status.city.specialtySummary}
 					</span>
 					{#if status.state === 'locked' && status.blockedReason}
@@ -197,6 +219,14 @@
 		</div>
 		{#if logisticsRouteSummaries.length > 0}
 			<div class="world-route-group" role="group" aria-label={i18n.t('worldMap.routes')}>
+				<p class="routes-strip">
+					{i18n.t('worldMap.routes')} · {i18n.format.integer(routeStateCounts.active)}
+					{i18n.t('logisticsPanel.states.active' as never)} ·
+					{i18n.format.integer(routeStateCounts.paused)}
+					{i18n.t('logisticsPanel.states.paused' as never)}
+					<span class="dot active" aria-hidden="true"></span>
+					<span class="dot paused" aria-hidden="true"></span>
+				</p>
 				{#each logisticsRouteSummaries as summary (summary.route.id)}
 					<button
 						type="button"
@@ -243,9 +273,34 @@
 			>
 				X
 			</button>
+			<div class="crest" aria-hidden="true">
+				<GameIcon name={selectedStatus.city.kind === 'retail' ? 'retail' : 'industry'} />
+			</div>
 			<p class="eyebrow">{i18n.t(`worldMap.cityEyebrow.${selectedStatus.city.kind}` as never)}</p>
 			<h2>{selectedStatus.city.name}</h2>
-			<p>{selectedStatus.city.specialtySummary}</p>
+			<div class="stat-row" aria-hidden="true">
+				<div class="stat-box">
+					<span class="stat-label"
+						>{selectedStatus.city.kind === 'retail'
+							? i18n.t('worldMap.stats.stores' as never)
+							: i18n.t('worldMap.stats.plants' as never)}</span
+					>
+					<span class="stat-value">
+						{selectedStatus.city.kind === 'retail'
+							? i18n.format.integer(selectedStatus.storeCount)
+							: i18n.format.integer(selectedStatus.buildingCount)}
+					</span>
+				</div>
+				<div class="stat-box">
+					<span class="stat-label">{i18n.t('worldMap.stats.opening' as never)}</span>
+					<span class="stat-value">{i18n.format.currency(selectedStatus.city.openingCost)}</span>
+				</div>
+				<div class="stat-box">
+					<span class="stat-label">{i18n.t('worldMap.stats.status' as never)}</span>
+					<span class="stat-value">{selectedStatus.stateLabel}</span>
+				</div>
+			</div>
+			<p class="specialty">{selectedStatus.city.specialtySummary}</p>
 			{#if selectedStatus.state === 'revealed' && allowedCitySet.has(selectedStatus.city.id)}
 				{#if canOpenWorldCity}
 					<button
@@ -314,13 +369,8 @@
 	}
 
 	.world-map-viewport {
-		position: relative;
-		aspect-ratio: 1;
-		max-width: 100%;
-		max-height: 100%;
-		width: auto;
-		height: 100%;
-		margin: auto;
+		position: absolute;
+		inset: 0;
 		overflow: hidden;
 	}
 
@@ -370,7 +420,8 @@
 		z-index: 3;
 		display: grid;
 		gap: 0.5rem;
-		width: min(24rem, calc(100% - 2rem));
+		align-content: start;
+		width: min(20rem, calc(100% - 2rem));
 		overflow: auto;
 	}
 
@@ -387,15 +438,38 @@
 
 	.world-node-card {
 		display: grid;
-		gap: 0.2rem;
+		grid-template-columns: auto 1fr;
+		align-items: center;
+		column-gap: 0.55rem;
+		gap: 0.15rem 0.55rem;
 		width: 100%;
 		border: 1px solid var(--brass-500);
 		border-radius: 2px;
 		background: var(--paper-100);
 		color: var(--ink-700);
-		padding: 0.6rem 0.7rem;
+		padding: 0.5rem 0.65rem;
 		text-align: left;
 		box-shadow: var(--shadow-paper);
+	}
+
+	.world-node-card :global(svg) {
+		grid-row: 1 / -1;
+		align-self: center;
+		width: 1.35rem;
+		height: 1.35rem;
+		color: var(--brass-700);
+	}
+
+	.world-node-card :global(.row) {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.5rem;
+		min-width: 0;
+	}
+
+	.world-node-card :global(.ops) {
+		flex: none;
 	}
 
 	.world-node-card:hover,
@@ -432,6 +506,53 @@
 	.world-node-card.locked {
 		color: var(--ink-500);
 		background: var(--paper-200);
+	}
+
+	.world-node-card.locked :global(svg) {
+		opacity: 0.55;
+	}
+
+	.world-node-card :global(.desc) {
+		font-family: var(--font-ui);
+		font-size: 0.68rem;
+		line-height: 1.3;
+		color: var(--ink-500);
+		text-transform: none;
+		letter-spacing: 0;
+		font-weight: 400;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.routes-strip {
+		margin: 0 0 0.35rem;
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.dot {
+		width: 0.55rem;
+		height: 0.55rem;
+		border-radius: 999px;
+		border: 1px solid var(--ink-700);
+	}
+
+	.dot.active {
+		background: var(--moss);
+	}
+
+	.dot.paused {
+		background: var(--brass-300);
 	}
 
 	strong {
@@ -471,26 +592,86 @@
 		z-index: 4;
 		display: grid;
 		gap: 0.65rem;
-		width: min(360px, calc(100% - 2rem));
+		width: min(380px, calc(100% - 2rem));
 		padding: 1rem;
-		color: var(--ink-700);
+		color: var(--paper-100);
+		background: linear-gradient(180deg, var(--walnut-800), var(--walnut-900));
+		border: 1px solid var(--brass-500);
+		box-shadow: var(--shadow-paper);
 	}
 
 	.close {
 		justify-self: end;
-		border: 1px solid var(--ink-700);
-		border-top-color: var(--brass-500);
-		border-radius: 2px;
+		width: 2.2rem;
+		height: 2.2rem;
+		border-radius: 999px;
+		border: 1px solid var(--brass-500);
 		background: var(--paper-50);
 		color: var(--ink-700);
-		padding: 0.3rem 0.5rem;
+		padding: 0;
 		font-family: var(--font-ui);
 		font-size: 0.78rem;
+		line-height: 1;
+	}
+
+	.crest {
+		justify-self: start;
+		width: 3.4rem;
+		height: 3.4rem;
+		border-radius: 999px;
+		border: 1px solid var(--brass-500);
+		background: color-mix(in srgb, var(--brass-500) 18%, var(--walnut-900));
+		display: grid;
+		place-items: center;
+		color: var(--brass-300);
+	}
+
+	.crest :global(svg) {
+		width: 1.7rem;
+		height: 1.7rem;
+	}
+
+	.stat-row {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 0.5rem;
+	}
+
+	.stat-box {
+		display: grid;
+		gap: 0.15rem;
+		border: 1px solid color-mix(in srgb, var(--brass-500) 55%, transparent);
+		background: color-mix(in srgb, var(--walnut-900) 55%, transparent);
+		padding: 0.4rem 0.45rem;
+	}
+
+	.stat-label {
+		color: var(--brass-300);
+		font-family: var(--font-ui);
+		font-size: 0.62rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.stat-value {
+		color: var(--paper-50);
+		font-family: var(--font-mono);
+		font-size: 0.85rem;
+		font-weight: 700;
+		overflow-wrap: anywhere;
+	}
+
+	.specialty {
+		margin: 0;
+		color: color-mix(in srgb, var(--paper-100) 80%, transparent);
+		font-size: 0.85rem;
+		line-height: 1.4;
 	}
 
 	.eyebrow {
 		margin: 0;
-		color: var(--brass-700);
+		color: var(--brass-300);
 		font-size: 0.72rem;
 		font-weight: 700;
 		letter-spacing: 0.08em;
@@ -500,8 +681,9 @@
 	h2 {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: 1.25rem;
+		font-size: 1.7rem;
 		font-weight: 400;
+		color: var(--paper-50);
 	}
 
 	.world-inspector p {
