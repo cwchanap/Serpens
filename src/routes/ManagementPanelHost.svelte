@@ -221,35 +221,6 @@
 			: undefined}
 		{@attach focusTrap}
 	>
-		<div class="tower-header">
-			<div>
-				<p class="eyebrow">{i18n.t('route.controlTower.eyebrow')}</p>
-				<h2>{panelLabel}</h2>
-			</div>
-			<div
-				class="tower-actions"
-				role="group"
-				aria-label={i18n.t('route.controlTower.panelStatus', { panel: panelLabel })}
-			>
-				<span class="ticker" class:placeholder={!live}
-					>{i18n.t('topBar.day', {
-						day: live ? i18n.format.integer(panelGame.day) : '—'
-					})}</span
-				>
-				<strong class="ticker" class:placeholder={!live}
-					>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
-				>
-				<button
-					type="button"
-					class="close-tower"
-					aria-label={i18n.t('route.controlTower.closePanel', { panel: panelLabel })}
-					onclick={onClose}
-				>
-					×
-				</button>
-			</div>
-		</div>
-
 		<div class="workspace-grid">
 			<div class="workspace-rail" role="group" aria-label={i18n.t('controlDesk.management')}>
 				{#each managementItems as item (item.id)}
@@ -266,236 +237,274 @@
 					</button>
 				{/each}
 			</div>
+			<div class="tower-main">
+				<div class="tower-header">
+					<div>
+						<p class="eyebrow">{i18n.t('route.controlTower.eyebrow')}</p>
+						<h2>{panelLabel}</h2>
+					</div>
+					<div
+						class="tower-actions"
+						role="group"
+						aria-label={i18n.t('route.controlTower.panelStatus', { panel: panelLabel })}
+					>
+						<span class="ticker" class:placeholder={!live}
+							>{i18n.t('topBar.day', {
+								day: live ? i18n.format.integer(panelGame.day) : '—'
+							})}</span
+						>
+						<strong class="ticker" class:placeholder={!live}
+							>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
+						>
+						<button
+							type="button"
+							class="close-tower"
+							aria-label={i18n.t('route.controlTower.closePanel', { panel: panelLabel })}
+							onclick={onClose}
+						>
+							×
+						</button>
+					</div>
+				</div>
 
-			<div class="workspace-content">
-				{#key panelId}
-					{#if panelId === 'dashboard'}
-						{@const summaries = requireChainSummaries()}
-						{@const healthyChains = summaries.filter(
-							(summary) => summary.health === 'healthy'
-						).length}
-						{@const recurringRoutes = panelGame.logistics.recurringRoutes}
-						{@const totalRoutes = recurringRoutes.length}
-						{@const activeRoutes = recurringRoutes.filter(
-							(route) => route.state === 'active'
-						).length}
-						{@const cashTrend = cashTrendFromReports(panelGame.reports)}
-						{@const revenueSeries = panelGame.reports.slice(-7).map((report) => report.revenue)}
-						{@const revenuePeak = revenueSeries.length > 0 ? Math.max(...revenueSeries) : 0}
-						<div class="workspace-dashboard">
-							<div class="summary-grid">
-								<article class="summary-card">
-									<h3>{i18n.t('workspaceSummary.stores')}</h3>
-									{#if live && panelGame.stores.length > 0}
-										{@const storeArt = getStoreArt(panelGame.stores[0]!.archetypeId)}
-										<img
-											class="summary-thumb"
-											src={asset(storeArt.path)}
-											alt=""
-											width="96"
-											height="72"
-										/>
-									{/if}
-									<strong class="summary-value" class:placeholder={!live}
-										>{live ? i18n.format.integer(panelGame.stores.length) : '—'}</strong
-									>
-									{#if live && revenueSeries.length > 0}
-										<span class="summary-note" aria-hidden="true">
-											<span class="spark">
-												{#each revenueSeries as value, index (index)}
-													<span
-														class="spark-bar"
-														style:height={`${revenuePeak > 0 ? Math.round((value / revenuePeak) * 100) : 0}%`}
-													></span>
-												{/each}
+				<div class="workspace-content">
+					{#key panelId}
+						{#if panelId === 'dashboard'}
+							{@const summaries = requireChainSummaries()}
+							{@const healthyChains = summaries.filter(
+								(summary) => summary.health === 'healthy'
+							).length}
+							{@const recurringRoutes = panelGame.logistics.recurringRoutes}
+							{@const totalRoutes = recurringRoutes.length}
+							{@const activeRoutes = recurringRoutes.filter(
+								(route) => route.state === 'active'
+							).length}
+							{@const cashTrend = cashTrendFromReports(panelGame.reports)}
+							{@const revenueSeries = panelGame.reports.slice(-7).map((report) => report.revenue)}
+							{@const revenuePeak = revenueSeries.length > 0 ? Math.max(...revenueSeries) : 0}
+							<div class="workspace-dashboard">
+								<div class="summary-grid">
+									<article class="summary-card">
+										<h3>{i18n.t('workspaceSummary.stores')}</h3>
+										{#if live && panelGame.stores.length > 0}
+											{@const storeArt = getStoreArt(panelGame.stores[0]!.archetypeId)}
+											<img
+												class="summary-thumb"
+												src={asset(storeArt.path)}
+												alt=""
+												width="96"
+												height="72"
+											/>
+										{/if}
+										<strong class="summary-value" class:placeholder={!live}
+											>{live ? i18n.format.integer(panelGame.stores.length) : '—'}</strong
+										>
+										{#if live && revenueSeries.length > 0}
+											<span class="summary-note" aria-hidden="true">
+												<span class="spark">
+													{#each revenueSeries as value, index (index)}
+														<span
+															class="spark-bar"
+															style:height={`${revenuePeak > 0 ? Math.round((value / revenuePeak) * 100) : 0}%`}
+														></span>
+													{/each}
+												</span>
 											</span>
-										</span>
-									{/if}
-								</article>
-								<article class="summary-card">
-									<h3>{i18n.t('workspaceSummary.cash')}</h3>
-									<strong class="summary-value" class:placeholder={!live}
-										>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
-									>
-									{#if live && cashTrend}
-										<span class="summary-note">
-											<span
-												class="trend-chip"
-												class:up={cashTrend.direction === 'up'}
-												class:down={cashTrend.direction === 'down'}
-												data-testid="cash-trend"
-												aria-label={cashTrend.percent !== null
-													? i18n.t(
-															cashTrend.direction === 'up'
-																? 'topBar.cashTrend.up'
-																: 'topBar.cashTrend.down',
-															{ percent: i18n.format.percent1(cashTrend.percent) }
-														)
-													: i18n.t(
-															cashTrend.direction === 'up'
-																? 'topBar.cashTrend.upOnly'
-																: 'topBar.cashTrend.downOnly'
-														)}
-											>
-												{cashTrend.direction === 'up' ? '▲' : '▼'}
-												{cashTrend.percent !== null ? i18n.format.percent1(cashTrend.percent) : ''}
+										{/if}
+									</article>
+									<article class="summary-card">
+										<h3>{i18n.t('workspaceSummary.cash')}</h3>
+										<strong class="summary-value" class:placeholder={!live}
+											>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
+										>
+										{#if live && cashTrend}
+											<span class="summary-note">
+												<span
+													class="trend-chip"
+													class:up={cashTrend.direction === 'up'}
+													class:down={cashTrend.direction === 'down'}
+													data-testid="cash-trend"
+													aria-label={cashTrend.percent !== null
+														? i18n.t(
+																cashTrend.direction === 'up'
+																	? 'topBar.cashTrend.up'
+																	: 'topBar.cashTrend.down',
+																{ percent: i18n.format.percent1(cashTrend.percent) }
+															)
+														: i18n.t(
+																cashTrend.direction === 'up'
+																	? 'topBar.cashTrend.upOnly'
+																	: 'topBar.cashTrend.downOnly'
+															)}
+												>
+													{cashTrend.direction === 'up' ? '▲' : '▼'}
+													{cashTrend.percent !== null
+														? i18n.format.percent1(cashTrend.percent)
+														: ''}
+												</span>
 											</span>
-										</span>
-									{/if}
-								</article>
-								<article class="summary-card">
-									<h3>{i18n.t('workspaceSummary.activeRoutes')}</h3>
-									<strong class="summary-value" class:placeholder={!live}
-										>{live
-											? totalRoutes > 0
-												? `${i18n.format.integer(activeRoutes)} / ${i18n.format.integer(totalRoutes)}`
-												: i18n.format.integer(activeRoutes)
-											: '—'}</strong
-									>
-									{#if live && totalRoutes > 0}
-										<span class="summary-note">
-											<span class="route-caption">{i18n.t('logisticsPanel.states.active')}</span>
-										</span>
-									{:else if live}
-										<span class="summary-note note-icon" aria-hidden="true">
-											<GameIcon name="logistics" />
-										</span>
-									{/if}
-								</article>
-								<article class="summary-card">
-									<h3>{i18n.t('workspaceSummary.chainHealth')}</h3>
-									<strong class="summary-value" class:placeholder={!live}
-										>{live
-											? `${i18n.format.integer(healthyChains)} / ${i18n.format.integer(summaries.length)}`
-											: '—'}</strong
-									>
-									{#if live && summaries.length > 0}
-										{@const status = overallChainStatus(summaries)}
-										<span class="summary-note">
-											<span class="status-dot" class:good={status?.healthy} aria-hidden="true"
-											></span>
-											<span class="status-label">{status?.label}</span>
-										</span>
-									{/if}
-								</article>
+										{/if}
+									</article>
+									<article class="summary-card">
+										<h3>{i18n.t('workspaceSummary.activeRoutes')}</h3>
+										<strong class="summary-value" class:placeholder={!live}
+											>{live
+												? totalRoutes > 0
+													? `${i18n.format.integer(activeRoutes)} / ${i18n.format.integer(totalRoutes)}`
+													: i18n.format.integer(activeRoutes)
+												: '—'}</strong
+										>
+										{#if live && totalRoutes > 0}
+											<span class="summary-note">
+												<span class="route-caption">{i18n.t('logisticsPanel.states.active')}</span>
+											</span>
+										{:else if live}
+											<span class="summary-note note-icon" aria-hidden="true">
+												<GameIcon name="logistics" />
+											</span>
+										{/if}
+									</article>
+									<article class="summary-card">
+										<h3>{i18n.t('workspaceSummary.chainHealth')}</h3>
+										<strong class="summary-value" class:placeholder={!live}
+											>{live
+												? `${i18n.format.integer(healthyChains)} / ${i18n.format.integer(summaries.length)}`
+												: '—'}</strong
+										>
+										{#if live && summaries.length > 0}
+											{@const status = overallChainStatus(summaries)}
+											<span class="summary-note">
+												<span class="status-dot" class:good={status?.healthy} aria-hidden="true"
+												></span>
+												<span class="status-label">{status?.label}</span>
+											</span>
+										{/if}
+									</article>
+								</div>
+								<div class="workspace-scorecard">
+									<Scorecard {i18n} scorecard={panelGame.scorecard} />
+								</div>
 							</div>
-							<div class="workspace-scorecard">
-								<Scorecard {i18n} scorecard={panelGame.scorecard} />
+						{:else if panelId === 'staff' || panelId === 'policies'}
+							<div class="staff-policies-plate" class:policies-emphasis={panelId === 'policies'}>
+								<div class="plate-staff">
+									<StaffPanel
+										{i18n}
+										stores={panelGame.stores}
+										staff={panelGame.staff}
+										hiringCandidates={panelGame.hiringCandidates}
+										cash={panelGame.cash}
+										onHire={onHireStaff}
+										onAssign={onAssignStaff}
+										onUnassign={onUnassignStaff}
+										onPromote={onPromoteStaff}
+										canHire={mutations.hireStaff}
+										canAssign={mutations.assignStaff}
+										canUnassign={mutations.unassignStaff}
+										canPromote={mutations.promoteStaff}
+										{disabledReason}
+									/>
+								</div>
+								<div class="plate-policies" bind:this={policiesBandEl}>
+									<PolicyPanel
+										{i18n}
+										game={panelGame}
+										onChange={onChangePolicy}
+										{onSetPolicyOverride}
+										{onClearPolicyOverrideField}
+										{onResetPolicyOverrideScope}
+										canUpdate={mutations.updatePolicy}
+										canUpdateScoped={mutations.scopedPolicy}
+										{disabledReason}
+									/>
+								</div>
+								{#if panelId === 'staff'}
+									<ManagerDelegationPanel
+										{i18n}
+										game={panelGame}
+										onChange={onSetManagerDelegation}
+										onRemove={onRemoveManagerDelegation}
+										canUpdate={mutations.delegation}
+										{disabledReason}
+									/>
+								{/if}
 							</div>
-						</div>
-					{:else if panelId === 'staff' || panelId === 'policies'}
-						<div class="staff-policies-plate" class:policies-emphasis={panelId === 'policies'}>
-							<div class="plate-staff">
-								<StaffPanel
+						{:else if panelId === 'stores'}
+							<div class="stores-surfaces">
+								<RetailSupplySources
+									retailCities={retailSupplyViews}
+									disabled={retailSupplyDisabled}
+									focusedRetailCityId={focusedRetailSupplyCityId}
+									onChange={onSetRetailSupplySource}
+								/>
+								<StoreOverview
 									{i18n}
 									stores={panelGame.stores}
 									staff={panelGame.staff}
-									hiringCandidates={panelGame.hiringCandidates}
-									cash={panelGame.cash}
-									onHire={onHireStaff}
-									onAssign={onAssignStaff}
-									onUnassign={onUnassignStaff}
-									onPromote={onPromoteStaff}
-									canHire={mutations.hireStaff}
-									canAssign={mutations.assignStaff}
-									canUnassign={mutations.unassignStaff}
-									canPromote={mutations.promoteStaff}
-									{disabledReason}
+									latestReports={summary.latest?.storeReports ?? []}
 								/>
 							</div>
-							<div class="plate-policies" bind:this={policiesBandEl}>
-								<PolicyPanel
+						{:else if panelId === 'decisions'}
+							<div class="decisions-surfaces">
+								<DecisionQueue
 									{i18n}
 									game={panelGame}
-									onChange={onChangePolicy}
-									{onSetPolicyOverride}
-									{onClearPolicyOverrideField}
-									{onResetPolicyOverrideScope}
-									canUpdate={mutations.updatePolicy}
-									canUpdateScoped={mutations.scopedPolicy}
+									decisions={panelGame.decisions}
+									onResolve={onChooseDecision}
+									canResolve={mutations.resolveDecision}
 									{disabledReason}
+								/>
+								<ActiveModifiers
+									{i18n}
+									day={panelGame.day}
+									modifiers={panelGame.events.activeModifiers}
+									routes={panelGame.logistics.recurringRoutes}
+									competitors={panelGame.competitors}
 								/>
 							</div>
-							{#if panelId === 'staff'}
-								<ManagerDelegationPanel
-									{i18n}
-									game={panelGame}
-									onChange={onSetManagerDelegation}
-									onRemove={onRemoveManagerDelegation}
-									canUpdate={mutations.delegation}
-									{disabledReason}
-								/>
-							{/if}
-						</div>
-					{:else if panelId === 'stores'}
-						<div class="stores-surfaces">
-							<RetailSupplySources
-								retailCities={retailSupplyViews}
-								disabled={retailSupplyDisabled}
-								focusedRetailCityId={focusedRetailSupplyCityId}
-								onChange={onSetRetailSupplySource}
-							/>
-							<StoreOverview
+						{:else if panelId === 'reports'}
+							<ReportsPanel
 								{i18n}
-								stores={panelGame.stores}
-								staff={panelGame.staff}
-								latestReports={summary.latest?.storeReports ?? []}
-							/>
-						</div>
-					{:else if panelId === 'decisions'}
-						<div class="decisions-surfaces">
-							<DecisionQueue
-								{i18n}
+								{summary}
 								game={panelGame}
-								decisions={panelGame.decisions}
-								onResolve={onChooseDecision}
-								canResolve={mutations.resolveDecision}
+								stores={panelGame.stores}
+								{scenario}
+							/>
+						{:else if panelId === 'productChains'}
+							<ProductChainsPanel {i18n} game={panelGame} {onPlanProduct} {plannerProductIds} />
+						{:else if panelId === 'logistics'}
+							<LogisticsPanel
+								game={panelGame}
+								view={requireLogisticsView()}
+								canMutate={manageLogistics}
+								focusedRouteId={focusedLogisticsRouteId}
+								routePreset={logisticsRoutePreset}
 								{disabledReason}
-							/>
-							<ActiveModifiers
 								{i18n}
-								day={panelGame.day}
-								modifiers={panelGame.events.activeModifiers}
-								routes={panelGame.logistics.recurringRoutes}
-								competitors={panelGame.competitors}
+								{onDispatchManualTransfer}
+								{onCreateRecurringRoute}
+								{onUpdateRecurringRoute}
+								{onPauseRecurringRoute}
+								{onResumeRecurringRoute}
+								{onReprioritizeRecurringRoute}
+								{onRemoveRecurringRoute}
 							/>
-						</div>
-					{:else if panelId === 'reports'}
-						<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} {scenario} />
-					{:else if panelId === 'productChains'}
-						<ProductChainsPanel {i18n} game={panelGame} {onPlanProduct} {plannerProductIds} />
-					{:else if panelId === 'logistics'}
-						<LogisticsPanel
-							game={panelGame}
-							view={requireLogisticsView()}
-							canMutate={manageLogistics}
-							focusedRouteId={focusedLogisticsRouteId}
-							routePreset={logisticsRoutePreset}
-							{disabledReason}
-							{i18n}
-							{onDispatchManualTransfer}
-							{onCreateRecurringRoute}
-							{onUpdateRecurringRoute}
-							{onPauseRecurringRoute}
-							{onResumeRecurringRoute}
-							{onReprioritizeRecurringRoute}
-							{onRemoveRecurringRoute}
-						/>
-					{:else if panelId === 'finance'}
-						<FinancePanel
-							game={panelGame}
-							metrics={requireFinanceMetrics()}
-							{live}
-							{i18n}
-							focusedLoanId={focusedFinanceLoanId}
-							mutationPending={mutations.pending}
-							{onBorrow}
-							{onRepay}
-							{onPayoff}
-							{onRefinance}
-						/>
-					{/if}
-				{/key}
+						{:else if panelId === 'finance'}
+							<FinancePanel
+								game={panelGame}
+								metrics={requireFinanceMetrics()}
+								{live}
+								{i18n}
+								focusedLoanId={focusedFinanceLoanId}
+								mutationPending={mutations.pending}
+								{onBorrow}
+								{onRepay}
+								{onPayoff}
+								{onRefinance}
+							/>
+						{/if}
+					{/key}
+				</div>
 			</div>
 		</div>
 	</div>
@@ -564,6 +573,14 @@
 		min-height: 0;
 	}
 
+	.tower-main {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-width: 0;
+		min-height: 0;
+	}
+
 	.workspace-rail {
 		display: flex;
 		flex-direction: column;
@@ -605,6 +622,7 @@
 	.workspace-content {
 		min-width: 0;
 		min-height: 0;
+		flex: 1 1 auto;
 		padding: 1rem;
 		overflow: auto;
 	}
