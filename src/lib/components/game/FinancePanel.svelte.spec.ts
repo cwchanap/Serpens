@@ -65,7 +65,7 @@ describe('FinancePanel', () => {
 			'Cash',
 			'Outstanding',
 			'Next payment',
-			'Runway · Leverage',
+			'Runway · Coverage',
 			'Credit offer',
 			'Loans and history',
 			'Available credit',
@@ -98,6 +98,7 @@ describe('FinancePanel', () => {
 			.toBeVisible();
 		// Runway is the canonical 90-day projection; with no trailing reports yet
 		// the projection clears the horizon, and leverage is principal over cash.
+		await expect.element(page.getByText('Runway · Coverage', { exact: true })).toBeVisible();
 		await expect.element(page.getByText('90+ days', { exact: true })).toBeVisible();
 		const leverage = (props.metrics.outstandingPrincipal / props.game.cash).toFixed(2);
 		await expect.element(page.getByText(`${leverage}×`, { exact: true })).toBeVisible();
@@ -126,6 +127,13 @@ describe('FinancePanel', () => {
 		await vi.waitFor(() => {
 			const fill = document.querySelector<HTMLElement>('.runway-bar > span');
 			expect(fill?.style.width).toBe(`${Math.min(100, expected)}%`);
+		});
+		// The cash KPI card plots the trailing reports' closing cash (one point/day).
+		await vi.waitFor(() => {
+			const points = document
+				.querySelector<SVGPolylineElement>('.cash-spark-line')
+				?.getAttribute('points');
+			expect(points?.split(' ')).toHaveLength(3);
 		});
 	});
 

@@ -44,8 +44,10 @@
 		{:else}
 			<span class="glyph" data-art-missing aria-hidden="true">{node.label.charAt(0)}</span>
 		{/if}
-		<span class={['pin', `pin-${node.health}`]}>{node.healthLabel}</span>
 	</span>
+	<!-- The pin lives outside .frame so recipe clip-path octagons cannot clip it,
+		and after it so the frame plate never paints over the ribbon. -->
+	<span class={['pin', `pin-${node.health}`]}>{node.healthLabel}</span>
 	<span class="cartouche">{node.label}</span>
 	{#if node.subLabel}
 		<span class="sub-cartouche">{node.subLabel}</span>
@@ -184,7 +186,7 @@
 	.pin {
 		position: absolute;
 		top: -7px;
-		right: -7px;
+		right: 14px;
 		padding: 2px 6px;
 		font-family: var(--font-ui);
 		font-size: 9px;
@@ -196,6 +198,24 @@
 		border-radius: 1px;
 		transform: rotate(3deg);
 		box-shadow: 1px 1px 0 rgba(15, 10, 3, 0.25);
+	}
+
+	/* Keep the ribbon anchored to the frame's top-right corner per shape. */
+	.chain-node-recipe .pin {
+		right: 9px;
+	}
+
+	.chain-node-warehouse .pin {
+		right: 10px;
+	}
+
+	.is-compact .pin {
+		right: 15px;
+	}
+
+	.is-compact.chain-node-recipe .pin,
+	.is-compact.chain-node-warehouse .pin {
+		right: 13px;
 	}
 
 	.pin-watch,

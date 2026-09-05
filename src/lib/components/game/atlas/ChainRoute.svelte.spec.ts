@@ -75,14 +75,24 @@ describe('ChainRoute', () => {
 		expect(group.getAttribute('data-edge-health')).toBe('watch');
 	});
 
-	it('renders the edge label text inside the route group', async () => {
-		expect.assertions(1);
-		const edge = makeEdge({ label: '10/day produced' });
-		renderRoute(edge);
+	it('renders a labels-only copy without the route path, hidden from assistive tech', async () => {
+		expect.assertions(4);
+		const edge = makeEdge();
+		render(ChainRoute, {
+			props: {
+				edge,
+				source: { x: 0, y: 0 },
+				target: { x: 200, y: 0 },
+				markerPrefix: 'test',
+				labels: true
+			}
+		});
 
 		const group = getRouteGroup(edge.id);
-		const text = group.querySelector('text');
-		expect(text?.textContent).toBe('10/day produced');
+		expect(group.querySelector('path')).toBeNull();
+		expect(group.getAttribute('aria-hidden')).toBe('true');
+		expect(group.getAttribute('role')).toBeNull();
+		expect(group.textContent).toContain(edge.label);
 	});
 
 	it('renders a <title> matching the aria-label for accessibility', async () => {
@@ -111,7 +121,15 @@ describe('ChainRoute', () => {
 		const shortLabel = '5/day';
 		const longLabel = '99999/day produced here';
 		const edge = makeEdge({ label: shortLabel });
-		const view = renderRoute(edge);
+		const view = render(ChainRoute, {
+			props: {
+				edge,
+				source: { x: 0, y: 0 },
+				target: { x: 200, y: 0 },
+				markerPrefix: 'test',
+				labels: true
+			}
+		});
 
 		const group = getRouteGroup(edge.id);
 		const text = group.querySelector('text');
@@ -121,7 +139,8 @@ describe('ChainRoute', () => {
 			edge: makeEdge({ label: longLabel }),
 			source: { x: 0, y: 0 },
 			target: { x: 200, y: 0 },
-			markerPrefix: 'test'
+			markerPrefix: 'test',
+			labels: true
 		});
 
 		await new Promise((r) => setTimeout(r, 0));

@@ -156,6 +156,22 @@
 							onSelect={handleNodeSelect}
 						/>
 					{/each}
+					<!-- Edge labels repaint above the nodes so node plates can't occlude them. -->
+					<svg
+						class="route-labels"
+						width={layout.width}
+						height={layout.height}
+						viewBox={`0 0 ${layout.width} ${layout.height}`}
+						aria-hidden="true"
+					>
+						{#each graph.edges as edge (edge.id)}
+							{@const source = centers.get(edge.source)}
+							{@const target = centers.get(edge.target)}
+							{#if source && target}
+								<ChainRoute {edge} {source} {target} {markerPrefix} labels />
+							{/if}
+						{/each}
+					</svg>
 				</div>
 			</ChainMap>
 			{#if !compact && broadside}
@@ -203,6 +219,12 @@
 	}
 
 	.routes {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
+
+	.route-labels {
 		position: absolute;
 		inset: 0;
 		pointer-events: none;

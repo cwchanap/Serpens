@@ -86,6 +86,19 @@
 	let leverageRatio = $derived(game.cash > 0 ? metrics.outstandingPrincipal / game.cash : null);
 	let runwayHealthy = $derived(runway.kind === 'ninetyPlus' || runway.days >= 30);
 
+	// Cash KPI sparkline: trailing seven daily reports' closing cash.
+	let cashSparkSeries = $derived(game.reports.slice(-7).map((report) => report.cashAfter));
+
+	function sparkPoints(values: number[], width: number, height: number): string {
+		if (values.length === 0) return '';
+		const lo = Math.min(...values, 0);
+		const hi = Math.max(...values, 1);
+		const y = (value: number) => height - 4 - ((value - lo) / (hi - lo)) * (height - 8);
+		if (values.length === 1) return `0,${y(values[0]!)} ${width},${y(values[0]!)}`;
+		const step = width / (values.length - 1);
+		return values.map((value, index) => `${index * step},${y(value)}`).join(' ');
+	}
+
 	// Ledger-equation strip: signed real figures only. Positive terms are cash
 	// and the trailing seven-day operating cash flow (moss when non-negative),
 	// liabilities are outstanding principal and the next scheduled payment
@@ -360,6 +373,11 @@
 			<strong class="kpi-value" class:wax={live && game.cash < 0} class:placeholder={!live}
 				>{live ? i18n.format.currency(game.cash) : '—'}</strong
 			>
+			{#if live && cashSparkSeries.length > 1}
+				<svg class="cash-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+					<polyline class="cash-spark-line" points={sparkPoints(cashSparkSeries, 100, 28)} />
+				</svg>
+			{/if}
 		</article>
 		<article class="kpi-card">
 			<p class="kpi-label">{i18n.t('financePanel.metrics.outstanding')}</p>
@@ -885,6 +903,21 @@
 		font-family: var(--font-mono);
 		font-size: 0.76rem;
 		font-variant-numeric: tabular-nums;
+	}
+
+	.cash-spark {
+		display: block;
+		width: 100%;
+		height: 1.5rem;
+	}
+
+	.cash-spark-line {
+		fill: none;
+		stroke: var(--moss);
+		stroke-width: 2;
+		stroke-linejoin: round;
+		stroke-linecap: round;
+		vector-effect: non-scaling-stroke;
 	}
 
 	/* Runway health bar: depth of the real 90-day projection. Moss while the

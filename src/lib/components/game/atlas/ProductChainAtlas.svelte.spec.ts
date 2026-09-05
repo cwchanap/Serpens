@@ -93,6 +93,28 @@ describe('ProductChainAtlas', () => {
 			.toHaveAttribute('aria-pressed', 'true');
 	});
 
+	it('repaints edge labels in an overlay above the node buttons', async () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260518);
+		const graph = buildProductChainTree({
+			game,
+			store: game.stores[0]!,
+			productId: 'snacks'
+		});
+		expect(graph.edges.length).toBeGreaterThan(0);
+		const onSelectNode = vi.fn();
+		render(ProductChainAtlas, {
+			graph: localizedGraph(graph),
+			i18n,
+			selectedNodeId: null,
+			onSelectNode
+		});
+
+		const overlay = document.querySelector('.route-labels');
+		expect(overlay).not.toBeNull();
+		expect(overlay?.querySelectorAll('g[data-edge-id]').length).toBe(graph.edges.length);
+	});
+
 	it('clears selection when the graph id changes', async () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260518);
@@ -193,7 +215,8 @@ describe('ProductChainAtlas', () => {
 			onSelectNode
 		});
 
-		const edgeGroups = document.querySelectorAll('g[data-edge-id]');
+		// Route paths live in the .routes svg; labels repaint in the .route-labels overlay.
+		const edgeGroups = document.querySelectorAll('.routes g[data-edge-id]');
 		expect(edgeGroups).toHaveLength(graph.edges.length);
 	});
 

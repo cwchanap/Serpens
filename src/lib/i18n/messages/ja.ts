@@ -1200,7 +1200,7 @@ export const ja = {
 			refinanceReview: '{amount} を {term} で借換えます。現金受取は含まれません。',
 			replacementComparison:
 				'借換後APR {apr} · 初回支払 {firstPayment} · 最大支払 {peakPayment} · 現金受取は含まれません。',
-			runwayLeverage: '資金余力・レバレッジ',
+			runwayLeverage: '資金余力・カバレッジ',
 			leverage: 'レバレッジ',
 			netPosition: '純資産残高'
 		}

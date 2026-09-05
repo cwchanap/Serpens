@@ -7,9 +7,11 @@
 		source: { x: number; y: number };
 		target: { x: number; y: number };
 		markerPrefix: string;
+		/** Label-plate-only render; the atlas draws this copy above the node buttons. */
+		labels?: boolean;
 	}
 
-	let { edge, source, target, markerPrefix }: Props = $props();
+	let { edge, source, target, markerPrefix, labels = false }: Props = $props();
 
 	const path = $derived.by(() => {
 		const dx = Math.max(40, (target.x - source.x) / 2);
@@ -71,40 +73,44 @@
 	class={['chain-route', `chain-route-${edge.health}`]}
 	data-edge-id={edge.id}
 	data-edge-health={edge.health}
-	role="img"
-	aria-label={ariaLabel}
+	role={labels ? undefined : 'img'}
+	aria-label={labels ? undefined : ariaLabel}
+	aria-hidden={labels || undefined}
 >
-	<title>{ariaLabel}</title>
-	<path
-		d={path}
-		{stroke}
-		stroke-width="2.5"
-		stroke-dasharray={dashArray}
-		fill="none"
-		marker-end={`url(#${markerPrefix}-chain-route-arrow-${edge.health})`}
-	/>
-	<g transform={`translate(${labelPoint.x}, ${labelPoint.y - 8})`}>
-		<rect
-			x={rectX}
-			y="-9"
-			width={rectWidth}
-			height="14"
-			fill="var(--paper-50)"
-			stroke="var(--paper-edge)"
+	{#if !labels}
+		<title>{ariaLabel}</title>
+		<path
+			d={path}
+			{stroke}
+			stroke-width="2.5"
+			stroke-dasharray={dashArray}
+			fill="none"
+			marker-end={`url(#${markerPrefix}-chain-route-arrow-${edge.health})`}
 		/>
-		<text
-			bind:this={textEl}
-			text-anchor="middle"
-			dominant-baseline="middle"
-			y="-2"
-			font-family="var(--font-ui)"
-			font-size="10"
-			font-weight="700"
-			fill="var(--ink-700)"
-		>
-			{edge.label}
-		</text>
-	</g>
+	{:else}
+		<g transform={`translate(${labelPoint.x}, ${labelPoint.y - 8})`}>
+			<rect
+				x={rectX}
+				y="-9"
+				width={rectWidth}
+				height="14"
+				fill="var(--paper-50)"
+				stroke="var(--paper-edge)"
+			/>
+			<text
+				bind:this={textEl}
+				text-anchor="middle"
+				dominant-baseline="middle"
+				y="-2"
+				font-family="var(--font-ui)"
+				font-size="10"
+				font-weight="700"
+				fill="var(--ink-700)"
+			>
+				{edge.label}
+			</text>
+		</g>
+	{/if}
 </g>
 
 <style>

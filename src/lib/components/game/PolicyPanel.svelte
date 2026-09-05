@@ -429,20 +429,22 @@
 	}
 
 	.segmented {
-		display: grid;
+		display: flex;
+		flex-wrap: wrap;
 		border: 1px solid var(--ink-700);
 		border-radius: 2px;
 		overflow: hidden;
 	}
 
 	.segment {
-		min-width: 0;
 		position: relative;
 		display: grid;
+		flex: 1 0 auto;
 	}
 
 	.segment + .segment {
-		border-top: 1px solid var(--paper-edge);
+		border-top: 0;
+		border-left: 1px solid var(--paper-edge);
 	}
 
 	.segment input {
@@ -460,10 +462,10 @@
 	}
 
 	.segment > span {
-		padding: 0.24rem 0.4rem;
+		padding: 0.22rem 0.32rem;
 		text-align: center;
 		font-family: var(--font-ui);
-		font-size: 0.7rem;
+		font-size: 0.64rem;
 		line-height: 1.15;
 		color: var(--ink-700);
 		white-space: nowrap;

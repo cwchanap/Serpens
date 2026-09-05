@@ -150,6 +150,21 @@ describe('ChainNode', () => {
 		await expect.element(button).toHaveAttribute('aria-pressed', 'true');
 	});
 
+	it('renders the health pin outside the frame plate so clip-paths cannot cut it', async () => {
+		expect.assertions(2);
+		const onSelect = vi.fn();
+		render(ChainNode, {
+			node: materialNode(),
+			selected: false,
+			compact: false,
+			position: { x: 0, y: 0 },
+			onSelect
+		});
+
+		expect(document.querySelector('.chain-node > .pin')).not.toBeNull();
+		expect(document.querySelector('.frame > .pin')).toBeNull();
+	});
+
 	it('renders a glyph fallback with data-art-missing when art src is null', async () => {
 		expect.assertions(2);
 		const onSelect = vi.fn();

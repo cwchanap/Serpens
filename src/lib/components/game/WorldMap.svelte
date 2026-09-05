@@ -513,6 +513,7 @@
 	}
 
 	.world-node-card :global(.desc) {
+		grid-column: 1 / -1;
 		font-family: var(--font-ui);
 		font-size: 0.68rem;
 		line-height: 1.3;
@@ -520,11 +521,6 @@
 		text-transform: none;
 		letter-spacing: 0;
 		font-weight: 400;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
 	}
 
 	.routes-strip {
@@ -594,10 +590,6 @@
 		gap: 0.65rem;
 		width: min(380px, calc(100% - 2rem));
 		padding: 1rem;
-		color: var(--paper-100);
-		background: linear-gradient(180deg, var(--walnut-800), var(--walnut-900));
-		border: 1px solid var(--brass-500);
-		box-shadow: var(--shadow-paper);
 	}
 
 	.close {
@@ -620,10 +612,10 @@
 		height: 4.2rem;
 		border-radius: 999px;
 		border: 1px solid var(--brass-500);
-		background: color-mix(in srgb, var(--brass-500) 18%, var(--walnut-900));
+		background: color-mix(in srgb, var(--brass-500) 18%, var(--paper-50));
 		display: grid;
 		place-items: center;
-		color: var(--brass-300);
+		color: var(--brass-700);
 	}
 
 	.crest :global(svg) {
@@ -640,13 +632,13 @@
 	.stat-box {
 		display: grid;
 		gap: 0.15rem;
-		border: 1px solid color-mix(in srgb, var(--brass-500) 55%, transparent);
-		background: color-mix(in srgb, var(--walnut-900) 55%, transparent);
+		border: 1px solid var(--brass-500);
+		background: var(--paper-100);
 		padding: 0.4rem 0.45rem;
 	}
 
 	.stat-label {
-		color: var(--brass-300);
+		color: var(--brass-700);
 		font-family: var(--font-ui);
 		font-size: 0.62rem;
 		font-weight: 700;
@@ -655,7 +647,7 @@
 	}
 
 	.stat-value {
-		color: var(--paper-50);
+		color: var(--ink-700);
 		font-family: var(--font-mono);
 		font-size: 0.85rem;
 		font-weight: 700;
@@ -664,14 +656,14 @@
 
 	.specialty {
 		margin: 0;
-		color: color-mix(in srgb, var(--paper-100) 80%, transparent);
+		color: var(--ink-500);
 		font-size: 0.85rem;
 		line-height: 1.4;
 	}
 
 	.eyebrow {
 		margin: 0;
-		color: var(--brass-300);
+		color: var(--brass-700);
 		font-size: 0.72rem;
 		font-weight: 700;
 		letter-spacing: 0.08em;
@@ -683,7 +675,7 @@
 		font-family: var(--font-display);
 		font-size: 1.7rem;
 		font-weight: 400;
-		color: var(--paper-50);
+		color: var(--ink-700);
 	}
 
 	.world-inspector p {

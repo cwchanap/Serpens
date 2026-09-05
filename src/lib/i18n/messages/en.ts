@@ -1206,7 +1206,7 @@ export const en = {
 			refinanceReview: 'Refinance {amount} with {term}. No cash-out is included.',
 			replacementComparison:
 				'Replacement APR {apr} · First payment {firstPayment} · Peak payment {peakPayment} · No cash-out is included.',
-			runwayLeverage: 'Runway · Leverage',
+			runwayLeverage: 'Runway · Coverage',
 			leverage: 'Leverage',
 			netPosition: 'Net position'
 		}

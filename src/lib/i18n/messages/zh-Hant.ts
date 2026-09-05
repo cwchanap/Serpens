@@ -1196,7 +1196,7 @@ export const zhHant = {
 			refinanceReview: '以 {term} 再融資 {amount}。不包含現金套現。',
 			replacementComparison:
 				'替換年利率 {apr} · 首次付款 {firstPayment} · 最高付款 {peakPayment} · 不包含現金套現。',
-			runwayLeverage: '續航・槓桿',
+			runwayLeverage: '續航・覆蓋',
 			leverage: '槓桿',
 			netPosition: '淨資產餘額'
 		}

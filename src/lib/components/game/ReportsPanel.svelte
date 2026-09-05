@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
 	import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
+	import GameIcon from '$lib/components/game/GameIcon.svelte';
+	import type { GameIconName } from '$lib/components/game/gameNavigation';
 	import type { I18nBundle } from '$lib/i18n';
 	import { formatEvidenceValue } from '$lib/i18n/scenarioCopy';
 	import type { ReportSummary } from '$lib/game/reports';
@@ -79,6 +81,13 @@
 	}
 
 	let { i18n, summary, stores, game, scenario = null }: Props = $props();
+
+	// Decorative brass glyphs for the boxed margin/footfall/spoilage stat cards.
+	const CELL_ICONS: Record<'margin' | 'footfall' | 'spoilage', GameIconName> = {
+		margin: 'cash',
+		footfall: 'staff',
+		spoilage: 'alerts'
+	};
 
 	// ---- Scorecard plate ----
 	// Window selection is presentation-only: every figure below is sliced from
@@ -678,17 +687,26 @@
 					{/if}
 					<div class="cells">
 						<div class="cell">
-							<span class="eyebrow">{i18n.t('reportsPanel.margin')}</span>
+							<span class="eyebrow">
+								<GameIcon name={CELL_ICONS.margin} />
+								{i18n.t('reportsPanel.margin')}
+							</span>
 							<strong>
 								{windowMargin === null ? '—' : i18n.format.percent1(windowMargin)}
 							</strong>
 						</div>
 						<div class="cell">
-							<span class="eyebrow">{i18n.t('reportsPanel.footfall')}</span>
+							<span class="eyebrow">
+								<GameIcon name={CELL_ICONS.footfall} />
+								{i18n.t('reportsPanel.footfall')}
+							</span>
 							<strong>{i18n.format.integer(windowFootfall)}</strong>
 						</div>
 						<div class="cell">
-							<span class="eyebrow">{i18n.t('reportsPanel.spoilage')}</span>
+							<span class="eyebrow">
+								<GameIcon name={CELL_ICONS.spoilage} />
+								{i18n.t('reportsPanel.spoilage')}
+							</span>
 							<strong>{i18n.format.currency(windowSpoilage)}</strong>
 						</div>
 					</div>
@@ -752,7 +770,7 @@
 					<h3 id="by-store-heading" class="eyebrow">{i18n.t('reportsPanel.byStore')}</h3>
 					<div class="store-cards">
 						{#each visibleStoreRows as row (row.id)}
-							<article class="store-card">
+							<article class="store-card" data-direction={row.direction}>
 								<img src={asset(row.artPath)} alt="" width="96" height="72" />
 								<h4>{row.name}</h4>
 								<strong class="mono-value">{i18n.format.currency(row.revenue)}</strong>
@@ -1741,6 +1759,21 @@
 		display: grid;
 		min-width: 0;
 		gap: 0.2rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 2px;
+		background: var(--paper-50);
+		padding: 0.45rem 0.55rem;
+	}
+
+	.cell .eyebrow {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+	}
+
+	.cell .eyebrow :global(svg) {
+		width: 0.85rem;
+		height: 0.85rem;
 	}
 
 	.cell strong {
@@ -1877,8 +1910,17 @@
 		min-width: 0;
 		padding: 0.45rem 0.5rem;
 		border: 1px solid var(--brass-300);
+		border-left: 3px solid var(--brass-700);
 		border-radius: 2px;
 		background: var(--paper-50);
+	}
+
+	.store-card[data-direction='up'] {
+		border-left-color: var(--moss);
+	}
+
+	.store-card[data-direction='down'] {
+		border-left-color: var(--wax-red);
 	}
 
 	.store-card img {

@@ -394,15 +394,18 @@
 				{#each visibleIndustryBuildingTypes as type (type.id)}
 					{@const recipe = recipeForType(type.id)}
 					{@const optionDisabledReason = industryDisabledReason(type.id)}
+					{@const missingInput =
+						recipe !== null && recipe.inputs.some((input) => !isAvailable(input.materialId))}
 					{@const disabled =
 						industryLockedReason !== null ||
 						!canStartIndustryExpansion ||
 						optionDisabledReason !== null ||
 						!allowedIndustrySet.has(type.id)}
+					{@const unavailable = disabled || missingInput}
 					<button
 						type="button"
 						class="build-option"
-						class:is-disabled={disabled}
+						class:is-disabled={unavailable}
 						{disabled}
 						onclick={() => chooseIndustry(type.id)}
 					>
@@ -472,7 +475,7 @@
 								{formatIndustryDisabledReason(optionDisabledReason)}
 							</small>
 						{/if}
-						{#if disabled}
+						{#if unavailable}
 							<span class="disabled-badge">{i18n.t('buildMenu.unavailable')}</span>
 						{/if}
 					</button>
@@ -701,8 +704,22 @@
 	}
 
 	.build-option.is-disabled img {
-		filter: grayscale(0.7);
+		filter: grayscale(0.85);
 		opacity: 0.8;
+	}
+
+	.build-option.is-disabled {
+		border-color: var(--paper-edge);
+		background: color-mix(in srgb, var(--paper-200) 55%, var(--paper-50));
+	}
+
+	.build-option.is-disabled strong,
+	.build-option.is-disabled small {
+		color: var(--ink-500);
+	}
+
+	.build-option.is-disabled .art-frame {
+		opacity: 0.78;
 	}
 
 	.art-frame {
@@ -735,17 +752,22 @@
 
 	.disabled-badge {
 		position: absolute;
-		top: 0.5rem;
-		right: 0.5rem;
+		top: 0.55rem;
+		right: 0.55rem;
 		font-family: var(--font-ui);
-		font-size: 0.6rem;
+		font-size: 0.62rem;
 		font-weight: 700;
-		letter-spacing: 0.18em;
+		letter-spacing: 0.22em;
+		text-transform: uppercase;
 		color: var(--wax-red);
 		border: 1px solid var(--wax-red);
-		background: var(--paper-50);
-		padding: 0.1rem 0.3rem;
-		transform: rotate(-4deg);
+		/* Double-ruled wax stamp (mock): line, paper gap, line. */
+		box-shadow:
+			inset 0 0 0 2px var(--paper-50),
+			inset 0 0 0 3px var(--wax-red);
+		background: color-mix(in srgb, var(--wax-red) 7%, var(--paper-50));
+		padding: 0.14rem 0.42rem;
+		transform: rotate(-6deg);
 	}
 
 	.starter {

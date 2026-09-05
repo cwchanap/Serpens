@@ -1660,7 +1660,7 @@ describe('ReportsPanel scorecard plate', () => {
 	}
 
 	it('defaults to the 14-day window and summarizes real revenue, margin, footfall, and spoilage', async () => {
-		expect.assertions(7);
+		expect.assertions(8);
 		const reports = Array.from({ length: 10 }, (_, index) =>
 			plateDailyReport(index + 1, {
 				revenue: (index + 1) * 100,
@@ -1685,6 +1685,12 @@ describe('ReportsPanel scorecard plate', () => {
 			.toHaveAttribute('aria-pressed', 'true');
 		// Minimal chart: two sparse lines (moss revenue, wax cost) over the window.
 		expect(document.querySelectorAll('.chart .line')).toHaveLength(2);
+		// Boxed stat cells carry decorative brass glyphs.
+		expect(
+			Array.from(document.querySelectorAll('.cells .cell svg[data-icon]'), (icon) =>
+				icon.getAttribute('data-icon')
+			)
+		).toEqual(['cash', 'staff', 'alerts']);
 
 		await plate.getByRole('button', { name: '7d' }).click();
 		// 7d window slices the last seven reports: average = (400 + … + 1000) / 7.
@@ -1692,7 +1698,7 @@ describe('ReportsPanel scorecard plate', () => {
 	});
 
 	it('renders by-store cards with direction delta and sparkline, capped at four stores', async () => {
-		expect.assertions(7);
+		expect.assertions(8);
 		const reports = Array.from({ length: 21 }, (_, index) => {
 			const day = index + 1;
 			const revenue = day <= 7 ? 100 : 200;
@@ -1729,6 +1735,13 @@ describe('ReportsPanel scorecard plate', () => {
 		expect(directions).toEqual(['up', 'flat', 'flat', 'flat']);
 		const deltas = Array.from(cards, (card) => card.querySelector('.delta')?.textContent?.trim());
 		expect(deltas).toEqual(['▲ 300.0%', '—', '—', '—']);
+		// Direction stripe mirrors the delta on the card itself.
+		expect(Array.from(cards, (card) => card.getAttribute('data-direction'))).toEqual([
+			'up',
+			'flat',
+			'flat',
+			'flat'
+		]);
 	});
 
 	it('renders art-first by-product cards with contribution values and share bars', async () => {

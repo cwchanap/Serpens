@@ -567,6 +567,24 @@ describe('BuildMenu industry recipe cards', () => {
 			.toBeDisabled();
 	});
 
+	it('stamps missing-input industry cards unavailable while keeping them clickable', async () => {
+		expect.assertions(3);
+
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				retailOptions: [],
+				availableMaterialIds: []
+			})
+		);
+
+		const bottler = page.getByRole('button', { name: /build water bottler/i });
+		await expect.element(bottler).toBeVisible();
+		await expect.element(bottler.getByText('Unavailable')).toBeVisible();
+		await expect.element(bottler).toBeEnabled();
+	});
+
 	it('shows the producer hint for a missing recipe ingredient', async () => {
 		expect.assertions(1);
 
