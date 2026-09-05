@@ -74,8 +74,10 @@
 		}
 	});
 
-	// Mock parity: donut is moss for adequately covered stores (mock shows an
-	// 80% store in moss and a 40% store in wax), wax once coverage drops below.
+	// Mock parity: the whole donut reads wax for under-covered stores (mock
+	// shows an 80% store in moss and a 40%/0% store in red), so the track picks
+	// up a wax tint and the arc paints wax; only no-requirement/healthy stores
+	// stay on the muted paper track.
 	const COVERAGE_HEALTHY_THRESHOLD = 75;
 
 	function isCoverageHealthy(coverage: number): boolean {
@@ -233,7 +235,11 @@
 			{#each staffedStores as item, itemIndex (item.store.id)}
 				<article class="coverage-card">
 					<div class="donut-wrap" aria-hidden="true">
-						<svg class="donut" viewBox="0 0 36 36">
+						<svg
+							class="donut"
+							class:under={!isCoverageHealthy(item.summary.coverage)}
+							viewBox="0 0 36 36"
+						>
 							<circle class="track" cx="18" cy="18" r="15.9" pathLength="100" />
 							<circle
 								class="arc"
@@ -716,6 +722,15 @@
 
 	.donut .track {
 		stroke: var(--paper-200);
+	}
+
+	.donut.under .track {
+		stroke: color-mix(in srgb, var(--wax-red) 85%, var(--paper-200));
+	}
+
+	.donut.under + .donut-value,
+	.donut-wrap:has(.donut.under) .donut-value {
+		color: var(--wax-red);
 	}
 
 	.donut .arc {
