@@ -3,44 +3,27 @@
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 	import { focusTrap } from '$lib/a11y/focusTrap';
-	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 	import { SUPPORTED_LOCALE_METADATA, type I18nBundle, type SupportedLocale } from '$lib/i18n';
+	import GameIcon from './GameIcon.svelte';
 
 	interface Props {
-		activeMapView: MapViewId;
 		i18n: I18nBundle;
 		activeLocale: SupportedLocale;
-		onSelectView: (view: MapViewId) => void;
 		onSelectLocale: (locale: SupportedLocale) => void;
 		menuContent?: Snippet;
 		open?: boolean;
 	}
 
 	let {
-		activeMapView,
 		i18n,
 		activeLocale,
-		onSelectView,
 		onSelectLocale,
 		menuContent,
 		open = $bindable(false)
 	}: Props = $props();
 
-	const views: Array<{
-		id: MapViewId;
-		eyebrowKey: 'route.mapEyebrow.retail' | 'route.mapEyebrow.industry' | 'route.mapEyebrow.world';
-	}> = [
-		{ id: 'retail', eyebrowKey: 'route.mapEyebrow.retail' },
-		{ id: 'industry', eyebrowKey: 'route.mapEyebrow.industry' },
-		{ id: 'world', eyebrowKey: 'route.mapEyebrow.world' }
-	];
 	function toggleMenu(): void {
 		open = !open;
-	}
-
-	function selectView(view: MapViewId): void {
-		onSelectView(view);
-		open = false;
 	}
 
 	function handleLocaleChange(event: Event): void {
@@ -78,11 +61,7 @@
 		data-testid="game-menu-trigger"
 		onclick={toggleMenu}
 	>
-		<svg aria-hidden="true" viewBox="0 0 24 24">
-			<path d="M4 7h16" />
-			<path d="M4 12h16" />
-			<path d="M4 17h16" />
-		</svg>
+		<GameIcon name="menu" />
 	</button>
 	{#if open}
 		<div
@@ -94,23 +73,6 @@
 			onkeydown={handleMenuKeydown}
 			{@attach focusTrap}
 		>
-			<div class="menu-section">
-				<p class="menu-label">{i18n.t('gameMenu.mapView')}</p>
-				<div class="views" role="group" aria-label={i18n.t('gameMenu.mapView')}>
-					{#each views as view (view.id)}
-						<button
-							type="button"
-							class="view-tab"
-							class:active-view={activeMapView === view.id}
-							aria-label={i18n.t(view.eyebrowKey)}
-							aria-pressed={activeMapView === view.id}
-							onclick={() => selectView(view.id)}
-						>
-							{i18n.labels.mapView(view.id)}
-						</button>
-					{/each}
-				</div>
-			</div>
 			<div class="menu-section">
 				<label class="menu-label" for="language-selector">{i18n.t('gameMenu.language')}</label>
 				<select
@@ -160,35 +122,6 @@
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 		color: var(--brass-700);
-	}
-
-	.views {
-		display: flex;
-		border: 1px solid var(--brass-500);
-		border-radius: 2px;
-		overflow: hidden;
-	}
-
-	.view-tab {
-		flex: 1;
-		border: 0;
-		border-right: 1px solid var(--brass-500);
-		background: var(--paper-50);
-		color: var(--ink-500);
-		font-family: var(--font-ui);
-		font-size: 0.85rem;
-		font-weight: 600;
-		padding: 0.5rem 0.85rem;
-	}
-
-	.views .view-tab:last-child {
-		border-right: 0;
-	}
-
-	.view-tab.active-view {
-		background: var(--paper-300);
-		color: var(--ink-900);
-		font-weight: 700;
 	}
 
 	.language-selector {

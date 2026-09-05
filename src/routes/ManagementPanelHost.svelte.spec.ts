@@ -7,11 +7,17 @@ import {
 	buildLogisticsPanelView,
 	type LogisticsPanelView
 } from '$lib/components/game/logisticsPanel';
-import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
+import {
+	createTwoIndustryCityGame,
+	withRecurringRoutes
+} from '$lib/game/interCityLogistics.testUtils';
 import { decisionContextCashPressure } from '$lib/game/decisionContext';
 import { getFinanceMetrics, type FinanceMetrics } from '$lib/game/financeMetrics';
+import { buildStoreCategoryChainSummaries } from '$lib/game/productChainTree';
+import type { ProductChainCategorySummary } from '$lib/game/productChainGraph';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
-import { summarizeReports, type ReportSummary } from '$lib/game/reports';
+import { simulateDay } from '$lib/game/simulateDay';
+import { cashTrendFromReports, summarizeReports, type ReportSummary } from '$lib/game/reports';
 import { createNewGame } from '$lib/game/state';
 import type {
 	CompanyPolicy,
@@ -30,6 +36,7 @@ import type {
 import type { I18nBundle } from '$lib/i18n';
 import { createI18n } from '$lib/i18n';
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
+import type { ManagementPanelMenuItem } from '$lib/components/game/gameNavigation';
 import { createMutationAvailability, type MutationAvailability } from './gameRouteController';
 import ManagementPanelHost from './ManagementPanelHost.svelte';
 
@@ -37,8 +44,10 @@ interface ManagementPanelHostProps {
 	panelId: ManagementPanelId;
 	panelLabel: string;
 	panelGame: GameState;
+	live: boolean;
 	summary: ReportSummary;
 	financeMetrics: FinanceMetrics | null;
+	chainSummaries: ProductChainCategorySummary[] | null;
 	retailSupplyViews: RetailCitySupplyView[];
 	mutations: MutationAvailability;
 	retailSupplyDisabled: boolean;
@@ -50,6 +59,9 @@ interface ManagementPanelHostProps {
 	logisticsRoutePreset: RecurringRouteInput | null;
 	i18n: I18nBundle;
 	disabledReason: string | null;
+
+	managementItems: ManagementPanelMenuItem[];
+	onSelectPanel: (panelId: ManagementPanelId) => void;
 
 	onClose: () => void;
 	onChangePolicy: (patch: Partial<CompanyPolicy>) => void;
@@ -82,6 +94,18 @@ interface ManagementPanelHostProps {
 	) => Promise<GameRouteCommitResult>;
 	onRemoveRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
 }
+
+const managementItems: ManagementPanelMenuItem[] = [
+	{ id: 'dashboard', label: 'Dashboard', shortcut: 'O', icon: 'dashboard' },
+	{ id: 'policies', label: 'Policies', shortcut: 'P', icon: 'policies' },
+	{ id: 'staff', label: 'Staff', shortcut: 'H', icon: 'staff' },
+	{ id: 'stores', label: 'Stores', shortcut: 'T', icon: 'stores' },
+	{ id: 'decisions', label: 'Decisions', shortcut: 'C', icon: 'decisions' },
+	{ id: 'reports', label: 'Reports', shortcut: 'R', icon: 'reports' },
+	{ id: 'productChains', label: 'Product Chains', shortcut: 'G', icon: 'productChains' },
+	{ id: 'finance', label: 'Finance', shortcut: 'F', icon: 'finance' },
+	{ id: 'logistics', label: 'Logistics', shortcut: 'L', icon: 'logistics' }
+];
 
 function compositionGame(): GameState {
 	const baseGame = createNewGame('convenience', 20_260_808);
@@ -146,8 +170,10 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		panelId: 'dashboard',
 		panelLabel: 'Dashboard',
 		panelGame,
+		live: true,
 		summary: summarizeReports(panelGame.reports),
 		financeMetrics: null,
+		chainSummaries: buildStoreCategoryChainSummaries(panelGame),
 		retailSupplyViews: buildRetailCitySupplyViews(panelGame, i18n),
 		mutations: mutationAvailability(),
 		retailSupplyDisabled: false,
@@ -155,6 +181,8 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		focusedRetailSupplyCityId: null,
 		i18n,
 		disabledReason: 'Unavailable in this challenge.',
+		managementItems,
+		onSelectPanel: vi.fn(),
 		logisticsView: buildLogisticsPanelView(panelGame, i18n),
 		manageLogistics: true,
 		focusedLogisticsRouteId: null,
@@ -188,6 +216,26 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 }
 
 describe('ManagementPanelHost', () => {
+	it('delegates shared workspace navigation without owning panel state', async () => {
+		expect.assertions(3);
+		const onSelectPanel = vi.fn();
+		render(
+			ManagementPanelHost,
+			hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard', managementItems, onSelectPanel })
+		);
+
+		const dialog = page.getByRole('dialog', { name: /dashboard/i });
+		const dashboard = dialog.getByRole('button', { name: /^dashboard$/i });
+		const finance = dialog.getByRole('button', { name: /^finance$/i });
+
+		await expect.element(dashboard).toHaveAttribute('aria-pressed', 'true');
+		await finance.click();
+		expect(onSelectPanel).toHaveBeenCalledWith('finance');
+		await expect
+			.element(document.querySelector<SVGElement>('svg[data-icon="finance"]'))
+			.toBeVisible();
+	});
+
 	it('renders the dashboard dialog shell with its label, day, and cash', async () => {
 		expect.assertions(4);
 		const props = hostProps();
@@ -207,8 +255,132 @@ describe('ManagementPanelHost', () => {
 			)
 			.toBeVisible();
 		await expect
-			.element(page.getByText(props.i18n.format.currency(props.panelGame.cash)))
+			.element(page.getByText(props.i18n.format.currency(props.panelGame.cash)).first())
 			.toBeVisible();
+	});
+
+	it('renders real summary cards above the scorecard on the dashboard', async () => {
+		const props = hostProps();
+		render(ManagementPanelHost, props);
+		const dialog = page.getByRole('dialog', { name: props.panelLabel });
+
+		for (const key of ['stores', 'cash', 'activeRoutes', 'chainHealth'] as const) {
+			await expect
+				.element(dialog.getByRole('heading', { name: props.i18n.t(`workspaceSummary.${key}`) }))
+				.toBeVisible();
+		}
+		await expect.element(page.getByRole('heading', { name: /scorecard/i })).toBeVisible();
+		await vi.waitFor(() => {
+			const thumb = document.querySelector<HTMLImageElement>('img.summary-thumb');
+			expect(thumb?.src).toMatch(/\/anime-storefront\.png$/);
+		});
+
+		await vi.waitFor(() => {
+			const values = [...document.querySelectorAll<HTMLElement>('.summary-value')].map(
+				(element) => element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+			);
+			const summaries = buildStoreCategoryChainSummaries(props.panelGame);
+			const healthy = summaries.filter((summary) => summary.health === 'healthy').length;
+			expect(values).toEqual([
+				props.i18n.format.integer(props.panelGame.stores.length),
+				props.i18n.format.currency(props.panelGame.cash),
+				props.i18n.format.integer(0),
+				`${props.i18n.format.integer(healthy)} / ${props.i18n.format.integer(summaries.length)}`
+			]);
+		});
+	});
+
+	it('adds real editorial treatments to the dashboard summary cards', async () => {
+		const base = { ...createNewGame('grocery', 44), cash: 50_000 };
+		let game: GameState = base;
+		let days = 0;
+		while (days < 30) {
+			game = simulateDay(game);
+			days += 1;
+			// Keep ticking until the trailing 7-day window is full AND the last
+			// day moved cash, so the chip, the spark, and the route split all
+			// render from real data.
+			if (days >= 7 && cashTrendFromReports(game.reports) !== null) break;
+		}
+		const panelGame = withRecurringRoutes(game, [
+			{
+				id: 'route-1',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 30,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2,
+				priority: 1,
+				state: 'active',
+				nextDispatchOnDay: 0
+			},
+			{
+				id: 'route-2',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 30,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2,
+				priority: 1,
+				state: 'paused',
+				nextDispatchOnDay: 0
+			}
+		]);
+		const props = hostProps({
+			panelGame,
+			summary: summarizeReports(panelGame.reports),
+			chainSummaries: buildStoreCategoryChainSummaries(panelGame)
+		});
+		render(ManagementPanelHost, props);
+
+		// Stores card: the trailing-7-day revenue spark, one bar per report.
+		const series = panelGame.reports.slice(-7).map((report) => report.revenue);
+		const peak = Math.max(...series);
+		await vi.waitFor(() => {
+			expect(document.querySelectorAll('.summary-card .spark-bar')).toHaveLength(7);
+		});
+		const heights = [...document.querySelectorAll<HTMLElement>('.summary-card .spark-bar')].map(
+			(bar) => Number.parseFloat(bar.style.height)
+		);
+		expect(
+			heights.every((height, index) => height === Math.round((series[index]! / peak) * 100))
+		).toBe(true);
+
+		// Cash card: the netCashChange-derived trend chip.
+		const chip = document.querySelector<HTMLElement>('.summary-card [data-testid="cash-trend"]');
+		expect(chip).not.toBeNull();
+		expect(chip?.getAttribute('aria-label')).toMatch(/^(Up|Down)/);
+
+		// Routes card: active / total split with the route-state caption.
+		const values = [...document.querySelectorAll<HTMLElement>('.summary-value')].map(
+			(element) => element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+		);
+		expect(values[2]).toBe('1 / 2');
+		await expect.element(page.getByText('Active', { exact: true })).toBeVisible();
+
+		// Chain card: wax/moss status dot + worst-category label.
+		const dot = document.querySelector<HTMLElement>('.summary-card .status-dot');
+		const statusLabel = document.querySelector<HTMLElement>('.summary-card .status-label');
+		expect(dot).not.toBeNull();
+		expect(statusLabel?.textContent?.trim().length ?? 0).toBeGreaterThan(0);
+	});
+
+	it('renders muted placeholders on dashboard cards and the header before a game exists', async () => {
+		const props = hostProps({ live: false });
+		render(ManagementPanelHost, props);
+
+		await expect.element(page.getByText('Day —')).toBeVisible();
+		await vi.waitFor(() => {
+			const values = [...document.querySelectorAll<HTMLElement>('.summary-value')].map(
+				(element) => element.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+			);
+			expect(values).toEqual(['—', '—', '—', '—']);
+			expect(document.querySelector('.tower-actions strong.ticker')?.textContent).toBe('—');
+		});
 	});
 
 	it('forwards a backdrop close to the route callback', async () => {
@@ -314,7 +486,7 @@ describe('ManagementPanelHost', () => {
 		});
 		render(ManagementPanelHost, props);
 
-		await expect.element(page.getByRole('combobox', { name: 'Pricing' })).toBeDisabled();
+		await expect.element(page.getByRole('radio', { name: 'Standard' })).toBeDisabled();
 	});
 
 	it('keeps company policy editable while scoped policy controls are unavailable', async () => {
@@ -326,9 +498,9 @@ describe('ManagementPanelHost', () => {
 		});
 		render(ManagementPanelHost, props);
 
-		await expect.element(page.getByLabelText('Pricing')).toBeEnabled();
-		await page.getByLabelText('Policy scope').selectOptions('city');
-		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		await expect.element(page.getByRole('radio', { name: 'Standard' })).toBeEnabled();
+		await page.getByRole('tab', { name: 'City' }).click();
+		await expect.element(page.getByRole('radio', { name: 'Standard' })).toBeDisabled();
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 	});
 
@@ -372,6 +544,10 @@ describe('ManagementPanelHost', () => {
 			})
 		});
 		render(ManagementPanelHost, props);
+
+		// The assignment machinery lives in the compacted "Manage assignments"
+		// disclosure; open it before driving those controls.
+		await page.getByText('Manage assignments').click();
 
 		const candidate = props.panelGame.hiringCandidates[0]!;
 		await expect

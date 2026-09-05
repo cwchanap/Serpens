@@ -164,34 +164,29 @@
 <style>
 	.inspector-overlay {
 		position: absolute;
-		top: 5.9rem;
+		top: 6rem;
 		right: 1rem;
-		bottom: 8.5rem;
+		/* Hug the card content instead of stretching a parchment slab to the
+		   bottom; max-height keeps the 1rem bottom gap and scrolls tall cards. */
+		bottom: auto;
 		z-index: 10;
-		width: min(360px, calc(100% - 2rem));
-		/* The eight management launchers wrap the desktop control desk to two
-		   rows at common laptop widths. Pin the inspector above that measured
-		   footprint so its upgrade/detail actions remain ordinary pointer targets. */
+		width: min(24.5rem, calc(100% - 2rem));
+		/* The floating control desk spans the full bottom edge at every width,
+		   so tall cards must stop above its band (5.75rem dock + 0.5rem gap
+		   + top 6rem anchor). */
+		max-height: calc(100% - var(--control-desk-compact-height) - 6.5rem);
 		overflow: auto;
 		padding: 0;
-	}
-
-	@media (min-width: 981px) and (max-width: 1023px) {
-		.inspector-overlay {
-			/* Just above the compact breakpoint the desktop launcher cluster
-			   wraps to three rows before .manage is hidden at 980px. */
-			bottom: 11.5rem;
-		}
 	}
 
 	@media (max-width: 980px) {
 		.inspector-overlay {
 			position: fixed;
-			/* Sit above the fixed control desk (compact here — .manage is hidden)
-			   so the store card's Open Details button is never covered. */
-			inset: auto 0 5rem 0;
+			/* Sit above the fixed compact control dock so the store card's Open
+			   Details button is never covered. */
+			inset: auto 0 calc(var(--control-desk-compact-height) + 0.5rem) 0;
 			width: auto;
-			max-height: 60dvh;
+			max-height: calc(100dvh - var(--control-desk-compact-height) - 6.5rem);
 		}
 	}
 </style>

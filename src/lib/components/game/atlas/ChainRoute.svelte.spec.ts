@@ -44,7 +44,7 @@ describe('ChainRoute', () => {
 		expect(group.getAttribute('role')).toBe('img');
 	});
 
-	it('renders a shortage edge with dashed stroke and correct health', async () => {
+	it('renders a shortage edge with a dotted wax stroke and correct health', async () => {
 		expect.assertions(2);
 		const edge = makeEdge({ health: 'shortage', label: '0/day used' });
 		renderRoute(edge);
@@ -52,7 +52,18 @@ describe('ChainRoute', () => {
 		const group = getRouteGroup(edge.id);
 		expect(group.getAttribute('data-edge-health')).toBe('shortage');
 		const path = group.querySelector('path');
-		expect(path?.getAttribute('stroke-dasharray')).toBe('8 4');
+		expect(path?.getAttribute('stroke-dasharray')).toBe('2 5');
+	});
+
+	it('renders a healthy edge with a solid brass stroke', async () => {
+		expect.assertions(2);
+		const edge = makeEdge({ health: 'healthy', label: '5/day used' });
+		renderRoute(edge);
+
+		const group = getRouteGroup(edge.id);
+		const path = group.querySelector('path');
+		expect(path?.getAttribute('stroke-dasharray')).toBe('none');
+		expect(path?.getAttribute('stroke')).toBe('var(--brass-700)');
 	});
 
 	it('renders a watch edge with brass dash and correct health', async () => {
@@ -64,14 +75,24 @@ describe('ChainRoute', () => {
 		expect(group.getAttribute('data-edge-health')).toBe('watch');
 	});
 
-	it('renders the edge label text inside the route group', async () => {
-		expect.assertions(1);
-		const edge = makeEdge({ label: '10/day produced' });
-		renderRoute(edge);
+	it('renders a labels-only copy without the route path, hidden from assistive tech', async () => {
+		expect.assertions(4);
+		const edge = makeEdge();
+		render(ChainRoute, {
+			props: {
+				edge,
+				source: { x: 0, y: 0 },
+				target: { x: 200, y: 0 },
+				markerPrefix: 'test',
+				labels: true
+			}
+		});
 
 		const group = getRouteGroup(edge.id);
-		const text = group.querySelector('text');
-		expect(text?.textContent).toBe('10/day produced');
+		expect(group.querySelector('path')).toBeNull();
+		expect(group.getAttribute('aria-hidden')).toBe('true');
+		expect(group.getAttribute('role')).toBeNull();
+		expect(group.textContent).toContain(edge.label);
 	});
 
 	it('renders a <title> matching the aria-label for accessibility', async () => {
@@ -100,7 +121,15 @@ describe('ChainRoute', () => {
 		const shortLabel = '5/day';
 		const longLabel = '99999/day produced here';
 		const edge = makeEdge({ label: shortLabel });
-		const view = renderRoute(edge);
+		const view = render(ChainRoute, {
+			props: {
+				edge,
+				source: { x: 0, y: 0 },
+				target: { x: 200, y: 0 },
+				markerPrefix: 'test',
+				labels: true
+			}
+		});
 
 		const group = getRouteGroup(edge.id);
 		const text = group.querySelector('text');
@@ -110,7 +139,8 @@ describe('ChainRoute', () => {
 			edge: makeEdge({ label: longLabel }),
 			source: { x: 0, y: 0 },
 			target: { x: 200, y: 0 },
-			markerPrefix: 'test'
+			markerPrefix: 'test',
+			labels: true
 		});
 
 		await new Promise((r) => setTimeout(r, 0));
@@ -128,7 +158,7 @@ describe('ChainRoute', () => {
 		expect(updatedRect?.hasAttribute('width')).toBe(true);
 	});
 
-	it('renders a no-local-capacity edge with dashed stroke and correct health', async () => {
+	it('renders a no-local-capacity edge with a dotted stroke and correct health', async () => {
 		expect.assertions(2);
 		const edge = makeEdge({ health: 'no-local-capacity', label: '0/day used' });
 		renderRoute(edge);
@@ -136,6 +166,6 @@ describe('ChainRoute', () => {
 		const group = getRouteGroup(edge.id);
 		expect(group.getAttribute('data-edge-health')).toBe('no-local-capacity');
 		const path = group.querySelector('path');
-		expect(path?.getAttribute('stroke-dasharray')).toBe('8 4');
+		expect(path?.getAttribute('stroke-dasharray')).toBe('2 5');
 	});
 });

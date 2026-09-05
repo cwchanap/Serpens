@@ -14,7 +14,13 @@ export const ja = {
 			one: '通知 {count} 件',
 			other: '通知 {count} 件'
 		},
-		alertsList: '通知一覧'
+		alertsList: '通知一覧',
+		cashTrend: {
+			up: '{percent}増加',
+			down: '{percent}減少',
+			upOnly: '増加',
+			downOnly: '減少'
+		}
 	},
 	gameMenu: {
 		menu: 'メニュー',
@@ -71,26 +77,17 @@ export const ja = {
 		},
 		industry: {
 			filter: {
+				chainLabel: 'チェーン',
+				title: '商品チェーンフィルター',
+				allShortLabel: '全て',
 				allProducts: 'フィルター: すべての商品',
 				selected: 'フィルター: {name}',
-				clear: '商品フィルターを解除',
-				dialog: '商品チェーンフィルター',
-				title: '商品フィルター',
-				close: '商品チェーンフィルターを閉じる',
-				search: '商品を検索',
-				allProductsLabel: 'すべての商品',
-				allBuildings: 'すべての工業施設',
-				chainBuildings: {
-					one: 'チェーン施設 {count} 件',
-					other: 'チェーン施設 {count} 件'
-				},
-				noChain: '対応する工業チェーンはまだありません',
-				noMatches: '一致する商品がありません'
+				noChain: '対応する工業チェーンはまだありません'
 			},
 			supplyAdvisor: '供給アドバイザー - 何を建てるべき？',
 			buildType: '{name}を建設',
 			starter: '初期向け',
-			costOperating: '建設費 {cost} | 維持費 {operating}/日',
+			costOperating: '{cost} · {operating}/日',
 			recipe: 'レシピ',
 			needsProducer: '{producer} が必要です',
 			needsResource: '{resource} の資源タイルが必要です',
@@ -106,6 +103,7 @@ export const ja = {
 		revenuePerDay: '日次売上',
 		stockHealth: '在庫健全度',
 		staffMorale: '従業員士気',
+		last7Days: '過去7日間',
 		level: 'レベル {level} / {max}',
 		nextLabel: '次: {benefit}',
 		nextBenefit: {
@@ -239,6 +237,12 @@ export const ja = {
 		routeSummary: '{origin} → {destination} · {material} · {state} · {condition}',
 		cityDetails: '都市詳細',
 		closeCityDetails: '都市詳細を閉じる',
+		stats: {
+			stores: '店舗',
+			plants: '工場',
+			opening: '開設費',
+			status: '状態'
+		},
 		cityEyebrow: {
 			retail: '小売都市',
 			industry: '工業都市'
@@ -439,6 +443,29 @@ export const ja = {
 			destinationFull: '到着先が満杯',
 			recoveriesTitle: '修正効果の回復'
 		},
+		window: '期間',
+		windowDays: '{days}日',
+		revenueVsCost: '収益対費用',
+		perDay: '{amount} /日',
+		legendRevenue: '収益',
+		legendCost: '費用',
+		margin: 'マージン',
+		footfall: '来店数',
+		spoilage: '廃棄損',
+		scenarioGrade: 'シナリオ評価',
+		companyStanding: '会社の状況',
+		scoreOutOf: '{score} / {max}',
+		dayOf: '{limit}日中の{day}日目',
+		dayOnly: '{day}日目',
+		byStore: '店舗別',
+		moreStores: '+{count} 件',
+		byProduct: '商品別',
+		detailedEvidence: '詳細なエビデンス',
+		chartLabel: '選択した期間の日次収益と費用の折れ線グラフ',
+		sparklineLabel: '{storeName} の日次収益スパークライン',
+		objectivesMet: '達成',
+		objectivesInProgress: '進行中',
+		objectivesMissed: '未達成',
 		dailyWarnings: '日次警告',
 		empty: 'まだレポートがありません。最初の日を進めると結果が生成されます。'
 	},
@@ -515,6 +542,14 @@ export const ja = {
 		candidates: '候補者',
 		unassigned: '未割当',
 		storeStaffing: '店舗の人員配置',
+		storeCoverage: '店舗の充足状況',
+		manageAssignments: '配置を管理',
+		addStaff: '{storeName}に人員を追加',
+		hireCta: '雇用',
+		ratio: {
+			manager: '店長 {assigned}/{required}',
+			general: '一般 {assigned}/{required}'
+		},
 		assigned: '割当済み',
 		coverage:
 			'{storeName}: マネージャー {managerAssigned}/{managerRequired}、一般 {generalAssigned}/{generalRequired}',
@@ -665,14 +700,12 @@ export const ja = {
 	},
 	productChainsPanel: {
 		ariaLabel: '商品チェーン',
-		eyebrow: 'Folio II · 生産チェーン',
+		eyebrow: '供給アトラス',
 		modeGroup: '商品チェーン表示',
 		storeCategoryChains: '店舗カテゴリチェーン',
 		cityInventoryFlow: '都市在庫フロー',
-		scopeAria: '都市在庫の範囲',
+		capacityLabel: '在庫容量',
 		activeIndustryInventory: '都市在庫 — {cityName}',
-		activeRetailSupply:
-			'{retailCityName} のローカル供給 — {sourceCityName}: 都市在庫を {used} / {capacity} 使用中。',
 		supplyState: {
 			importsOnly: '{retailCityName} の供給: 輸入のみ — 補充は外部輸入で行われます。',
 			zeroCapacity:
@@ -886,25 +919,22 @@ export const ja = {
 	},
 	atlas: {
 		categoryIndex: {
-			ariaLabel: '商品カテゴリ索引',
-			tier: 'Tier {tier}',
-			metrics: '在庫 {stock} · 生産 {produced}/日 · 販売 {consumed}/日'
+			ariaLabel: '商品カテゴリ索引'
+		},
+		capacityStrip: {
+			figures: '{used} / {capacity}'
 		},
 		nodeBroadside: {
 			inspected: '検査中のノード',
 			emptyTitle: 'チェーンノード',
 			empty: 'グラフノードを選択して最新のフロー指標を確認します。',
 			sharedProducer: '共有生産者 - このチェーンの {count} 分岐に描画されています。',
+			recipe: 'レシピ',
 			metrics: {
-				buildings: '建物',
-				capacity: '容量',
-				capacityValue: '出力 {output} / 入力 {input}',
-				produced: '生産',
-				consumed: '消費',
-				imported: '輸入',
-				sold: '販売',
-				missed: '機会損失',
-				stock: '在庫'
+				throughput: 'スループット',
+				shortfall: '不足',
+				health: '状態',
+				perDay: '{value}/日'
 			}
 		},
 		legend: {
@@ -937,7 +967,6 @@ export const ja = {
 		},
 		controlTower: {
 			eyebrow: '管理',
-			close: '閉じる',
 			dismiss: '{panel}を閉じる',
 			closePanel: '{panel}を閉じる',
 			panelStatus: '{panel}の状態'
@@ -1055,13 +1084,17 @@ export const ja = {
 	financePanel: {
 		title: '財務',
 		metrics: {
+			outstanding: '未返済',
 			outstandingPrincipal: '未返済元本',
 			amountDue: '支払総額',
 			nextPayment: '次回支払',
 			debtServiceCoverage: '債務返済カバレッジ',
 			cashRunway: '資金余力',
 			availableCredit: '84日間の利用可能枠',
-			noDebtServiceDue: '予定されている債務返済はありません'
+			noDebtServiceDue: '予定されている債務返済はありません',
+			latestProfit: '直近の日次利益',
+			revenueTrend: '日次売上',
+			noReport: 'レポートはまだありません。'
 		},
 		credit: {
 			baseApr: '基本APR',
@@ -1153,6 +1186,7 @@ export const ja = {
 			days: '{days}日',
 			ninetyPlusDays: '90日以上',
 			apr: 'APR',
+			ledger: '台帳',
 			healthAdjustment: '健全性 +{amount}',
 			historyAdjustment: '履歴 +{amount}',
 			principal: '元本',
@@ -1165,8 +1199,17 @@ export const ja = {
 			reviewSubmission: '{amount} は確定後に実行されます。',
 			refinanceReview: '{amount} を {term} で借換えます。現金受取は含まれません。',
 			replacementComparison:
-				'借換後APR {apr} · 初回支払 {firstPayment} · 最大支払 {peakPayment} · 現金受取は含まれません。'
+				'借換後APR {apr} · 初回支払 {firstPayment} · 最大支払 {peakPayment} · 現金受取は含まれません。',
+			runwayLeverage: '資金余力・カバレッジ',
+			leverage: 'レバレッジ',
+			netPosition: '純資産残高'
 		}
+	},
+	workspaceSummary: {
+		stores: '店舗',
+		cash: '現金',
+		activeRoutes: '稼働中の物流ルート',
+		chainHealth: '製品チェーンの健全性'
 	},
 	game: {
 		archetypes: {
@@ -1728,8 +1771,9 @@ export const ja = {
 			},
 			warehouseNode: '都市在庫',
 			nodeStats: {
-				recipe: '{buildings} 棟 · 1日 {output}',
-				stock: '在庫 {stock}'
+				recipe: '▲ 1日 {output}',
+				stock: '{stock} 保有',
+				shortage: '▼ 不足 {short}'
 			},
 			health: {
 				healthy: '健全',

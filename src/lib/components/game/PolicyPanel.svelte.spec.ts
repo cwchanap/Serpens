@@ -46,6 +46,12 @@ function renderPolicyPanel(
 	return props;
 }
 
+function policyRadio(groupLabel: string, optionLabel: string) {
+	return page
+		.getByRole('radiogroup', { name: groupLabel })
+		.getByRole('radio', { name: optionLabel });
+}
+
 describe('PolicyPanel', () => {
 	it('renders the Policies heading', async () => {
 		expect.assertions(1);
@@ -63,16 +69,16 @@ describe('PolicyPanel', () => {
 		await expect.element(page.getByLabelText('価格戦略')).toBeVisible();
 	});
 
-	it('renders five selects with correct current values', async () => {
+	it('renders five segmented policy groups with correct current values', async () => {
 		expect.assertions(5);
 
 		renderPolicyPanel();
 
-		await expect.element(page.getByLabelText('Pricing')).toHaveValue('competitive');
-		await expect.element(page.getByLabelText('Inventory')).toHaveValue('balanced');
-		await expect.element(page.getByLabelText('Staffing')).toHaveValue('efficient');
-		await expect.element(page.getByLabelText('Marketing')).toHaveValue('awareness');
-		await expect.element(page.getByLabelText('Service')).toHaveValue('balanced');
+		await expect.element(policyRadio('Pricing', 'Competitive')).toBeChecked();
+		await expect.element(policyRadio('Inventory', 'Balanced')).toBeChecked();
+		await expect.element(policyRadio('Staffing', 'Efficient')).toBeChecked();
+		await expect.element(policyRadio('Marketing', 'Awareness')).toBeChecked();
+		await expect.element(policyRadio('Service', 'Balanced')).toBeChecked();
 	});
 
 	it('fires onChange with { pricing: "premium" } when the pricing select changes', async () => {
@@ -81,7 +87,7 @@ describe('PolicyPanel', () => {
 
 		renderPolicyPanel({ onChange });
 
-		await page.getByLabelText('Pricing').selectOptions('premium');
+		await policyRadio('Pricing', 'Premium').click();
 
 		expect(onChange).toHaveBeenCalledWith({ pricing: 'premium' });
 	});
@@ -92,7 +98,7 @@ describe('PolicyPanel', () => {
 
 		renderPolicyPanel({ onChange });
 
-		await page.getByLabelText('Staffing').selectOptions('service');
+		await policyRadio('Staffing', 'Service').click();
 
 		expect(onChange).toHaveBeenCalledWith({ staffing: 'service' });
 	});
@@ -103,7 +109,7 @@ describe('PolicyPanel', () => {
 
 		renderPolicyPanel({ onChange });
 
-		await page.getByLabelText('Marketing').selectOptions('loyalty');
+		await policyRadio('Marketing', 'Loyalty').click();
 
 		expect(onChange).toHaveBeenCalledWith({ marketing: 'loyalty' });
 	});
@@ -114,7 +120,7 @@ describe('PolicyPanel', () => {
 
 		renderPolicyPanel({ onChange });
 
-		await page.getByLabelText('Inventory').selectOptions('generous');
+		await policyRadio('Inventory', 'Generous').click();
 
 		expect(onChange).toHaveBeenCalledWith({ inventory: 'generous' });
 	});
@@ -125,7 +131,7 @@ describe('PolicyPanel', () => {
 
 		renderPolicyPanel({ onChange });
 
-		await page.getByLabelText('Service').selectOptions('highTouch');
+		await policyRadio('Service', 'High Touch').click();
 
 		expect(onChange).toHaveBeenCalledWith({ service: 'highTouch' });
 	});
@@ -139,7 +145,7 @@ describe('PolicyPanel', () => {
 			disabledReason: 'Unavailable in this challenge.'
 		});
 
-		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		await expect.element(policyRadio('Pricing', 'Competitive')).toBeDisabled();
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 		expect(onChange).not.toHaveBeenCalled();
 	});
@@ -149,7 +155,7 @@ describe('PolicyPanel', () => {
 		const onChange = vi.fn();
 		renderPolicyPanel({ onChange, canUpdate: false });
 
-		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		await expect.element(policyRadio('Pricing', 'Competitive')).toBeDisabled();
 		// The disabled-copy paragraph only renders when a disabledReason is
 		// supplied, so the status region stays empty here.
 		await expect.element(page.getByRole('status')).not.toBeInTheDocument();
@@ -163,8 +169,8 @@ describe('PolicyPanel', () => {
 
 		// A programmatic change event still reaches the onchange handler, which
 		// must bail out via the `if (!canUpdate) return` guard.
-		const select = await page.getByLabelText('Pricing').element();
-		select.dispatchEvent(new Event('change', { bubbles: true }));
+		const radio = await policyRadio('Pricing', 'Competitive').element();
+		radio.dispatchEvent(new Event('change', { bubbles: true }));
 		expect(onChange).not.toHaveBeenCalled();
 	});
 
@@ -188,13 +194,13 @@ describe('PolicyPanel', () => {
 		renderPolicyPanel({ game });
 
 		await expect.element(page.getByText('Company policy').first()).toBeVisible();
-		await page.getByLabelText('Policy scope').selectOptions('city');
-		await expect.element(page.getByLabelText('Pricing')).toHaveValue('premium');
+		await page.getByRole('tab', { name: 'City' }).click();
+		await expect.element(policyRadio('Pricing', 'Premium')).toBeChecked();
 		await expect.element(page.getByText('Parent: Standard')).toBeVisible();
 		await expect.element(page.getByText('Explicit override (City override)')).toBeVisible();
 
-		await page.getByLabelText('Policy scope').selectOptions('store');
-		await expect.element(page.getByLabelText('Pricing')).toHaveValue('discount');
+		await page.getByRole('tab', { name: 'Store' }).click();
+		await expect.element(policyRadio('Pricing', 'Discount')).toBeChecked();
 		await expect.element(page.getByText('Parent: Premium')).toBeVisible();
 		await expect.element(page.getByText('Explicit override (Store override)')).toBeVisible();
 	});
@@ -210,7 +216,7 @@ describe('PolicyPanel', () => {
 			}
 		);
 		renderPolicyPanel({ game });
-		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('tab', { name: 'City' }).click();
 
 		await expect.element(page.getByText('Explicit override (City override)')).toBeVisible();
 		expect(document.querySelectorAll('small.provenance[data-provenance="city"]')).toHaveLength(1);
@@ -228,7 +234,7 @@ describe('PolicyPanel', () => {
 			}
 		);
 		renderPolicyPanel({ game, onClearPolicyOverrideField });
-		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('tab', { name: 'City' }).click();
 		await page.getByRole('button', { name: 'Inherit Pricing' }).click();
 
 		expect(onClearPolicyOverrideField).toHaveBeenCalledWith(
@@ -249,7 +255,7 @@ describe('PolicyPanel', () => {
 			}
 		);
 		renderPolicyPanel({ game, onResetPolicyOverrideScope });
-		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('tab', { name: 'City' }).click();
 		await page.getByRole('button', { name: 'Reset scope' }).click();
 
 		expect(onResetPolicyOverrideScope).toHaveBeenCalledWith({
@@ -263,12 +269,14 @@ describe('PolicyPanel', () => {
 		renderPolicyPanel();
 
 		for (const field of Object.keys(POLICY_FIELD_OPTIONS) as (keyof CompanyPolicy)[]) {
-			const options = Array.from(
+			const values = Array.from(
 				(
-					await page.getByLabelText(field[0]!.toUpperCase() + field.slice(1)).element()
-				).querySelectorAll('option')
-			).map((option) => option.value);
-			expect(options).toEqual([...POLICY_FIELD_OPTIONS[field]]);
+					await page
+						.getByRole('radiogroup', { name: field[0]!.toUpperCase() + field.slice(1) })
+						.element()
+				).querySelectorAll('input[type="radio"]')
+			).map((input) => (input as HTMLInputElement).value);
+			expect(values).toEqual([...POLICY_FIELD_OPTIONS[field]]);
 		}
 	});
 
@@ -284,9 +292,9 @@ describe('PolicyPanel', () => {
 			}
 		);
 		renderPolicyPanel({ game, onSetPolicyOverride });
-		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('tab', { name: 'City' }).click();
 
-		await page.getByLabelText('Pricing').selectOptions('discount');
+		await policyRadio('Pricing', 'Discount').click();
 
 		expect(onSetPolicyOverride).toHaveBeenCalledWith(
 			{ kind: 'city', cityId: 'harbor-city' },
@@ -309,7 +317,7 @@ describe('PolicyPanel', () => {
 			'campus-junction'
 		);
 		renderPolicyPanel({ game: opened });
-		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('tab', { name: 'City' }).click();
 		await page.getByLabelText('Target').selectOptions('campus-junction');
 
 		await expect.element(page.getByText('City: Campus Junction')).toBeVisible();
@@ -333,9 +341,9 @@ describe('PolicyPanel', () => {
 		const secondStore = { ...opened.stores[0]!, id: 'store-2', name: 'Second Store' };
 		const game = { ...opened, stores: [...opened.stores, secondStore] };
 		renderPolicyPanel({ game, onSetPolicyOverride });
-		await page.getByLabelText('Policy scope').selectOptions('store');
+		await page.getByRole('tab', { name: 'Store' }).click();
 		await page.getByLabelText('Target').selectOptions(secondStore.id);
-		await page.getByLabelText('Pricing').selectOptions('discount');
+		await policyRadio('Pricing', 'Discount').click();
 
 		expect(onSetPolicyOverride).toHaveBeenCalledWith(
 			{ kind: 'store', storeId: secondStore.id },
@@ -360,9 +368,9 @@ describe('PolicyPanel', () => {
 			canUpdateScoped: false,
 			disabledReason: 'Scenario mode'
 		});
-		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('tab', { name: 'City' }).click();
 
-		await expect.element(page.getByLabelText('Pricing')).toBeDisabled();
+		await expect.element(policyRadio('Pricing', 'Premium')).toBeDisabled();
 		await expect.element(page.getByText('Scenario mode')).toBeVisible();
 	});
 
@@ -382,7 +390,7 @@ describe('PolicyPanel', () => {
 			onResetPolicyOverrideScope,
 			canUpdateScoped: false
 		});
-		await page.getByLabelText('Policy scope').selectOptions('city');
+		await page.getByRole('tab', { name: 'City' }).click();
 
 		await expect.element(page.getByRole('button', { name: 'Inherit Pricing' })).toBeDisabled();
 		await expect.element(page.getByRole('button', { name: 'Reset scope' })).toBeDisabled();
@@ -395,10 +403,7 @@ describe('PolicyPanel', () => {
 		const game: GameState = { ...base, cities: [], stores: [] };
 		renderPolicyPanel({ game });
 
-		const scopeSelect = await page.getByLabelText('Policy scope').element();
-		const cityOption = scopeSelect.querySelector('option[value="city"]') as HTMLOptionElement;
-		const storeOption = scopeSelect.querySelector('option[value="store"]') as HTMLOptionElement;
-		expect(cityOption.disabled).toBe(true);
-		expect(storeOption.disabled).toBe(true);
+		await expect.element(page.getByRole('tab', { name: 'City' })).toBeDisabled();
+		await expect.element(page.getByRole('tab', { name: 'Store' })).toBeDisabled();
 	});
 });

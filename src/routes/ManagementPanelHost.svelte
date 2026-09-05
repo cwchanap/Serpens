@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { focusTrap } from '$lib/a11y/focusTrap';
+	import GameIcon from '$lib/components/game/GameIcon.svelte';
+	import type { ManagementPanelMenuItem } from '$lib/components/game/gameNavigation';
 	import ActiveModifiers from '$lib/components/game/ActiveModifiers.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
@@ -10,6 +12,8 @@
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import RetailSupplySources from '$lib/components/game/RetailSupplySources.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
+	import { getStoreArt } from '$lib/assets/gameArt';
+	import { asset } from '$app/paths';
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import ManagerDelegationPanel from '$lib/components/game/ManagerDelegationPanel.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
@@ -23,6 +27,12 @@
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { ReportSummary } from '$lib/game/reports';
+	import { cashTrendFromReports } from '$lib/game/reports';
+	import type { ScenarioDefinition, ScenarioRun } from '$lib/scenarios/types';
+	import type {
+		ProductChainCategorySummary,
+		ProductChainHealth
+	} from '$lib/game/productChainGraph';
 	import type {
 		CompanyPolicy,
 		GameState,
@@ -37,9 +47,13 @@
 	interface Props {
 		panelId: ManagementPanelId;
 		panelLabel: string;
+		managementItems: ManagementPanelMenuItem[];
+		onSelectPanel: (panelId: ManagementPanelId) => void;
 		panelGame: GameState;
+		live: boolean;
 		summary: ReportSummary;
 		financeMetrics: FinanceMetrics | null;
+		chainSummaries: ProductChainCategorySummary[] | null;
 		retailSupplyViews: RetailCitySupplyView[];
 		mutations: MutationAvailability;
 		retailSupplyDisabled: boolean;
@@ -49,6 +63,7 @@
 		manageLogistics?: boolean;
 		focusedLogisticsRouteId?: string | null;
 		logisticsRoutePreset?: RecurringRouteInput | null;
+		scenario?: { definition: ScenarioDefinition; run: ScenarioRun } | null;
 		i18n: I18nBundle;
 		disabledReason: string | null;
 
@@ -89,9 +104,13 @@
 	let {
 		panelId,
 		panelLabel,
+		managementItems,
+		onSelectPanel,
 		panelGame,
+		live,
 		summary,
 		financeMetrics,
+		chainSummaries,
 		retailSupplyViews,
 		mutations,
 		retailSupplyDisabled,
@@ -101,6 +120,7 @@
 		manageLogistics = false,
 		focusedLogisticsRouteId = null,
 		logisticsRoutePreset = null,
+		scenario = null,
 		i18n,
 		disabledReason,
 		onClose,
@@ -138,12 +158,50 @@
 		return financeMetrics;
 	}
 
+	function requireChainSummaries(): ProductChainCategorySummary[] {
+		if (chainSummaries === null) {
+			throw new Error('ManagementPanelHost invariant: chainSummaries required for dashboard panel');
+		}
+		return chainSummaries;
+	}
+
+	// Worst-category chain status for the dashboard card's dot + label: moss
+	// only while every supported category is healthy; otherwise the label of the
+	// most severe category present (severity follows materialHealth ordering).
+	const CHAIN_HEALTH_SEVERITY: readonly ProductChainHealth[] = [
+		'shortage',
+		'no-local-capacity',
+		'watch',
+		'no-report'
+	];
+
+	function overallChainStatus(
+		summaries: ProductChainCategorySummary[]
+	): { healthy: boolean; label: string } | null {
+		if (summaries.length === 0) return null;
+		for (const health of CHAIN_HEALTH_SEVERITY) {
+			const worst = summaries.find((summary) => summary.health === health);
+			if (worst) return { healthy: false, label: worst.healthLabel };
+		}
+		return { healthy: true, label: summaries[0]!.healthLabel };
+	}
+
 	function requireLogisticsView(): LogisticsPanelView {
 		if (logisticsView === null) {
 			throw new Error('ManagementPanelHost invariant: logisticsView required for logistics panel');
 		}
 		return logisticsView;
 	}
+
+	// Combined staff & policies plate: the `policies` destination opens the same
+	// plate anchored on the policies band (staff destination starts at the top).
+	let policiesBandEl = $state<HTMLElement | null>(null);
+
+	$effect(() => {
+		if (panelId === 'policies' && policiesBandEl) {
+			policiesBandEl.scrollIntoView({ block: 'start' });
+		}
+	});
 </script>
 
 <div class="tower-backdrop">
@@ -163,139 +221,292 @@
 			: undefined}
 		{@attach focusTrap}
 	>
-		<div class="tower-header">
-			<div>
-				<p class="eyebrow">{i18n.t('route.controlTower.eyebrow')}</p>
-				<h2>{panelLabel}</h2>
+		<div class="workspace-grid">
+			<div class="workspace-rail" role="group" aria-label={i18n.t('controlDesk.management')}>
+				{#each managementItems as item (item.id)}
+					<button
+						type="button"
+						class="btn-icon rail-stamp"
+						class:active={item.id === panelId}
+						aria-pressed={item.id === panelId}
+						aria-label={item.label}
+						title={`${item.label} (${item.shortcut})`}
+						onclick={() => onSelectPanel(item.id)}
+					>
+						<GameIcon name={item.icon} />
+					</button>
+				{/each}
 			</div>
-			<div
-				class="tower-actions"
-				role="group"
-				aria-label={i18n.t('route.controlTower.panelStatus', { panel: panelLabel })}
-			>
-				<span class="ticker"
-					>{i18n.t('topBar.day', { day: i18n.format.integer(panelGame.day) })}</span
-				>
-				<strong class="ticker">{i18n.format.currency(panelGame.cash)}</strong>
-				<button
-					type="button"
-					class="close-tower btn-danger"
-					aria-label={i18n.t('route.controlTower.closePanel', { panel: panelLabel })}
-					onclick={onClose}
-				>
-					{i18n.t('route.controlTower.close')}
-				</button>
+			<div class="tower-main">
+				<div class="tower-header">
+					<div>
+						<p class="eyebrow">{i18n.t('route.controlTower.eyebrow')}</p>
+						<h2>{panelLabel}</h2>
+					</div>
+					<div
+						class="tower-actions"
+						role="group"
+						aria-label={i18n.t('route.controlTower.panelStatus', { panel: panelLabel })}
+					>
+						<span class="ticker" class:placeholder={!live}
+							>{i18n.t('topBar.day', {
+								day: live ? i18n.format.integer(panelGame.day) : '—'
+							})}</span
+						>
+						<strong class="ticker" class:placeholder={!live}
+							>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
+						>
+						<button
+							type="button"
+							class="close-tower"
+							aria-label={i18n.t('route.controlTower.closePanel', { panel: panelLabel })}
+							onclick={onClose}
+						>
+							×
+						</button>
+					</div>
+				</div>
+
+				<div class="workspace-content">
+					{#key panelId}
+						{#if panelId === 'dashboard'}
+							{@const summaries = requireChainSummaries()}
+							{@const healthyChains = summaries.filter(
+								(summary) => summary.health === 'healthy'
+							).length}
+							{@const recurringRoutes = panelGame.logistics.recurringRoutes}
+							{@const totalRoutes = recurringRoutes.length}
+							{@const activeRoutes = recurringRoutes.filter(
+								(route) => route.state === 'active'
+							).length}
+							{@const cashTrend = cashTrendFromReports(panelGame.reports)}
+							{@const revenueSeries = panelGame.reports.slice(-7).map((report) => report.revenue)}
+							{@const revenuePeak = revenueSeries.length > 0 ? Math.max(...revenueSeries) : 0}
+							<div class="workspace-dashboard">
+								<div class="summary-grid">
+									<article class="summary-card">
+										<h3>{i18n.t('workspaceSummary.stores')}</h3>
+										{#if live && panelGame.stores.length > 0}
+											{@const storeArt = getStoreArt(panelGame.stores[0]!.archetypeId)}
+											<img
+												class="summary-thumb"
+												src={asset(storeArt.path)}
+												alt=""
+												width="96"
+												height="72"
+											/>
+										{/if}
+										<strong class="summary-value" class:placeholder={!live}
+											>{live ? i18n.format.integer(panelGame.stores.length) : '—'}</strong
+										>
+										{#if live && revenueSeries.length > 0}
+											<span class="summary-note" aria-hidden="true">
+												<span class="spark">
+													{#each revenueSeries as value, index (index)}
+														<span
+															class="spark-bar"
+															style:height={`${revenuePeak > 0 ? Math.round((value / revenuePeak) * 100) : 0}%`}
+														></span>
+													{/each}
+												</span>
+											</span>
+										{/if}
+									</article>
+									<article class="summary-card">
+										<h3>{i18n.t('workspaceSummary.cash')}</h3>
+										<strong class="summary-value" class:placeholder={!live}
+											>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
+										>
+										{#if live && cashTrend}
+											<span class="summary-note">
+												<span
+													class="trend-chip"
+													class:up={cashTrend.direction === 'up'}
+													class:down={cashTrend.direction === 'down'}
+													data-testid="cash-trend"
+													aria-label={cashTrend.percent !== null
+														? i18n.t(
+																cashTrend.direction === 'up'
+																	? 'topBar.cashTrend.up'
+																	: 'topBar.cashTrend.down',
+																{ percent: i18n.format.percent1(cashTrend.percent) }
+															)
+														: i18n.t(
+																cashTrend.direction === 'up'
+																	? 'topBar.cashTrend.upOnly'
+																	: 'topBar.cashTrend.downOnly'
+															)}
+												>
+													{cashTrend.direction === 'up' ? '▲' : '▼'}
+													{cashTrend.percent !== null
+														? i18n.format.percent1(cashTrend.percent)
+														: ''}
+												</span>
+											</span>
+										{/if}
+									</article>
+									<article class="summary-card">
+										<h3>{i18n.t('workspaceSummary.activeRoutes')}</h3>
+										<strong class="summary-value" class:placeholder={!live}
+											>{live
+												? totalRoutes > 0
+													? `${i18n.format.integer(activeRoutes)} / ${i18n.format.integer(totalRoutes)}`
+													: i18n.format.integer(activeRoutes)
+												: '—'}</strong
+										>
+										{#if live && totalRoutes > 0}
+											<span class="summary-note">
+												<span class="route-caption">{i18n.t('logisticsPanel.states.active')}</span>
+											</span>
+										{:else if live}
+											<span class="summary-note note-icon" aria-hidden="true">
+												<GameIcon name="logistics" />
+											</span>
+										{/if}
+									</article>
+									<article class="summary-card">
+										<h3>{i18n.t('workspaceSummary.chainHealth')}</h3>
+										<strong class="summary-value" class:placeholder={!live}
+											>{live
+												? `${i18n.format.integer(healthyChains)} / ${i18n.format.integer(summaries.length)}`
+												: '—'}</strong
+										>
+										{#if live && summaries.length > 0}
+											{@const status = overallChainStatus(summaries)}
+											<span class="summary-note">
+												<span class="status-dot" class:good={status?.healthy} aria-hidden="true"
+												></span>
+												<span class="status-label">{status?.label}</span>
+											</span>
+										{/if}
+									</article>
+								</div>
+								<div class="workspace-scorecard">
+									<Scorecard {i18n} scorecard={panelGame.scorecard} />
+								</div>
+							</div>
+						{:else if panelId === 'staff' || panelId === 'policies'}
+							<div class="staff-policies-plate" class:policies-emphasis={panelId === 'policies'}>
+								<div class="plate-staff">
+									<StaffPanel
+										{i18n}
+										stores={panelGame.stores}
+										staff={panelGame.staff}
+										hiringCandidates={panelGame.hiringCandidates}
+										cash={panelGame.cash}
+										onHire={onHireStaff}
+										onAssign={onAssignStaff}
+										onUnassign={onUnassignStaff}
+										onPromote={onPromoteStaff}
+										canHire={mutations.hireStaff}
+										canAssign={mutations.assignStaff}
+										canUnassign={mutations.unassignStaff}
+										canPromote={mutations.promoteStaff}
+										{disabledReason}
+									/>
+								</div>
+								<div class="plate-policies" bind:this={policiesBandEl}>
+									<PolicyPanel
+										{i18n}
+										game={panelGame}
+										onChange={onChangePolicy}
+										{onSetPolicyOverride}
+										{onClearPolicyOverrideField}
+										{onResetPolicyOverrideScope}
+										canUpdate={mutations.updatePolicy}
+										canUpdateScoped={mutations.scopedPolicy}
+										{disabledReason}
+									/>
+								</div>
+								{#if panelId === 'staff'}
+									<ManagerDelegationPanel
+										{i18n}
+										game={panelGame}
+										onChange={onSetManagerDelegation}
+										onRemove={onRemoveManagerDelegation}
+										canUpdate={mutations.delegation}
+										{disabledReason}
+									/>
+								{/if}
+							</div>
+						{:else if panelId === 'stores'}
+							<div class="stores-surfaces">
+								<RetailSupplySources
+									retailCities={retailSupplyViews}
+									disabled={retailSupplyDisabled}
+									focusedRetailCityId={focusedRetailSupplyCityId}
+									onChange={onSetRetailSupplySource}
+								/>
+								<StoreOverview
+									{i18n}
+									stores={panelGame.stores}
+									staff={panelGame.staff}
+									latestReports={summary.latest?.storeReports ?? []}
+								/>
+							</div>
+						{:else if panelId === 'decisions'}
+							<div class="decisions-surfaces">
+								<DecisionQueue
+									{i18n}
+									game={panelGame}
+									decisions={panelGame.decisions}
+									onResolve={onChooseDecision}
+									canResolve={mutations.resolveDecision}
+									{disabledReason}
+								/>
+								<ActiveModifiers
+									{i18n}
+									day={panelGame.day}
+									modifiers={panelGame.events.activeModifiers}
+									routes={panelGame.logistics.recurringRoutes}
+									competitors={panelGame.competitors}
+								/>
+							</div>
+						{:else if panelId === 'reports'}
+							<ReportsPanel
+								{i18n}
+								{summary}
+								game={panelGame}
+								stores={panelGame.stores}
+								{scenario}
+							/>
+						{:else if panelId === 'productChains'}
+							<ProductChainsPanel {i18n} game={panelGame} {onPlanProduct} {plannerProductIds} />
+						{:else if panelId === 'logistics'}
+							<LogisticsPanel
+								game={panelGame}
+								view={requireLogisticsView()}
+								canMutate={manageLogistics}
+								focusedRouteId={focusedLogisticsRouteId}
+								routePreset={logisticsRoutePreset}
+								{disabledReason}
+								{i18n}
+								{onDispatchManualTransfer}
+								{onCreateRecurringRoute}
+								{onUpdateRecurringRoute}
+								{onPauseRecurringRoute}
+								{onResumeRecurringRoute}
+								{onReprioritizeRecurringRoute}
+								{onRemoveRecurringRoute}
+							/>
+						{:else if panelId === 'finance'}
+							<FinancePanel
+								game={panelGame}
+								metrics={requireFinanceMetrics()}
+								{live}
+								{i18n}
+								focusedLoanId={focusedFinanceLoanId}
+								mutationPending={mutations.pending}
+								{onBorrow}
+								{onRepay}
+								{onPayoff}
+								{onRefinance}
+							/>
+						{/if}
+					{/key}
+				</div>
 			</div>
 		</div>
-
-		{#if panelId === 'dashboard'}
-			<Scorecard {i18n} scorecard={panelGame.scorecard} />
-		{:else if panelId === 'policies'}
-			<PolicyPanel
-				{i18n}
-				game={panelGame}
-				onChange={onChangePolicy}
-				{onSetPolicyOverride}
-				{onClearPolicyOverrideField}
-				{onResetPolicyOverrideScope}
-				canUpdate={mutations.updatePolicy}
-				canUpdateScoped={mutations.scopedPolicy}
-				{disabledReason}
-			/>
-		{:else if panelId === 'staff'}
-			<div class="staff-surfaces">
-				<StaffPanel
-					{i18n}
-					stores={panelGame.stores}
-					staff={panelGame.staff}
-					hiringCandidates={panelGame.hiringCandidates}
-					cash={panelGame.cash}
-					onHire={onHireStaff}
-					onAssign={onAssignStaff}
-					onUnassign={onUnassignStaff}
-					onPromote={onPromoteStaff}
-					canHire={mutations.hireStaff}
-					canAssign={mutations.assignStaff}
-					canUnassign={mutations.unassignStaff}
-					canPromote={mutations.promoteStaff}
-					{disabledReason}
-				/>
-				<ManagerDelegationPanel
-					{i18n}
-					game={panelGame}
-					onChange={onSetManagerDelegation}
-					onRemove={onRemoveManagerDelegation}
-					canUpdate={mutations.delegation}
-					{disabledReason}
-				/>
-			</div>
-		{:else if panelId === 'stores'}
-			<div class="stores-surfaces">
-				<RetailSupplySources
-					retailCities={retailSupplyViews}
-					disabled={retailSupplyDisabled}
-					focusedRetailCityId={focusedRetailSupplyCityId}
-					onChange={onSetRetailSupplySource}
-				/>
-				<StoreOverview
-					{i18n}
-					stores={panelGame.stores}
-					staff={panelGame.staff}
-					latestReports={summary.latest?.storeReports ?? []}
-				/>
-			</div>
-		{:else if panelId === 'decisions'}
-			<div class="decisions-surfaces">
-				<DecisionQueue
-					{i18n}
-					game={panelGame}
-					decisions={panelGame.decisions}
-					onResolve={onChooseDecision}
-					canResolve={mutations.resolveDecision}
-					{disabledReason}
-				/>
-				<ActiveModifiers
-					{i18n}
-					day={panelGame.day}
-					modifiers={panelGame.events.activeModifiers}
-					routes={panelGame.logistics.recurringRoutes}
-					competitors={panelGame.competitors}
-				/>
-			</div>
-		{:else if panelId === 'reports'}
-			<ReportsPanel {i18n} {summary} game={panelGame} stores={panelGame.stores} />
-		{:else if panelId === 'productChains'}
-			<ProductChainsPanel {i18n} game={panelGame} {onPlanProduct} {plannerProductIds} />
-		{:else if panelId === 'logistics'}
-			<LogisticsPanel
-				game={panelGame}
-				view={requireLogisticsView()}
-				canMutate={manageLogistics}
-				focusedRouteId={focusedLogisticsRouteId}
-				routePreset={logisticsRoutePreset}
-				{disabledReason}
-				{i18n}
-				{onDispatchManualTransfer}
-				{onCreateRecurringRoute}
-				{onUpdateRecurringRoute}
-				{onPauseRecurringRoute}
-				{onResumeRecurringRoute}
-				{onReprioritizeRecurringRoute}
-				{onRemoveRecurringRoute}
-			/>
-		{:else if panelId === 'finance'}
-			<FinancePanel
-				game={panelGame}
-				metrics={requireFinanceMetrics()}
-				{i18n}
-				focusedLoanId={focusedFinanceLoanId}
-				mutationPending={mutations.pending}
-				{onBorrow}
-				{onRepay}
-				{onPayoff}
-				{onRefinance}
-			/>
-		{/if}
 	</div>
 </div>
 
@@ -313,6 +524,12 @@
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		color: var(--ink-700);
+	}
+
+	.placeholder,
+	.summary-value.placeholder,
+	.tower-actions .placeholder {
+		color: var(--ink-400);
 	}
 
 	.tower-backdrop {
@@ -337,22 +554,255 @@
 	.control-tower-overlay {
 		position: relative;
 		z-index: 1;
-		width: min(1180px, 100%);
+		width: min(74rem, calc(100vw - 2rem));
+		height: auto;
 		max-height: calc(100vh - 2rem);
-		overflow: auto;
-		display: grid;
+		display: flex;
+		flex-direction: column;
 		gap: 1rem;
 		padding: 1.25rem;
 		animation-delay: 160ms;
 	}
 
+	.workspace-grid {
+		display: grid;
+		grid-template-columns: 5rem minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr);
+		gap: 0.75rem;
+		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.tower-main {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.workspace-rail {
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+		padding: 0.75rem;
+		overflow-y: auto;
+	}
+
+	.workspace-rail .btn-icon {
+		width: 3.25rem;
+		height: 3.25rem;
+		flex: none;
+	}
+
+	/* Stamp-style rail tabs: square, with the paper/brass double-frame of the
+	 * parchment framing so the workspace rail reads as ink stamps against the
+	 * gameplay rail's circular buttons. */
+	.workspace-rail .btn-icon.rail-stamp {
+		border-radius: 6px;
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			inset 0 0 0 2px var(--brass-300),
+			var(--shadow-paper);
+	}
+
+	/* Active rail tab: the mock's clearly-filled brass/gold stamp (same fill +
+	 * ink border + inset-ring family as .btn-icon-primary, in brass). */
+	.workspace-rail .btn-icon.rail-stamp.active {
+		background: var(--brass-500);
+		border-color: var(--ink-900);
+		color: var(--ink-900);
+		border-radius: 6px;
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			inset 0 0 0 2px var(--ink-700),
+			var(--shadow-paper);
+	}
+
+	.workspace-content {
+		min-width: 0;
+		min-height: 0;
+		flex: 1 1 auto;
+		padding: 1rem;
+		overflow: auto;
+	}
+
+	.workspace-dashboard {
+		display: flex;
+		flex-direction: column;
+		gap: 1.1rem;
+	}
+
+	/* Scorecard stretch wrapper: a grid row so the child panel fills the
+	   dashboard's leftover height and its gauge cards grow with it. */
+	.workspace-scorecard {
+		flex: 1 1 auto;
+		min-height: 0;
+		display: grid;
+		grid-template-rows: minmax(0, 1fr);
+	}
+
+	.summary-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+		gap: 1rem;
+	}
+
+	.summary-card {
+		display: grid;
+		justify-items: center;
+		align-content: center;
+		gap: 0.6rem;
+		min-width: 0;
+		min-height: 12rem;
+		padding: 1.3rem 0.9rem 1.2rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 2px;
+		background: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
+		/* Warm plaque double-frame: 1px parchment inner ring on the brass border. */
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			0 1px 0 rgba(20, 16, 10, 0.08);
+	}
+
+	.summary-card h3 {
+		margin: 0;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.8rem;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		text-align: center;
+	}
+
+	.summary-thumb {
+		width: 6.25rem;
+		height: auto;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+	}
+
+	.summary-value {
+		color: var(--ink-700);
+		font-family: var(--font-mono);
+		font-size: 2rem;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums lining-nums;
+		text-align: center;
+		overflow-wrap: anywhere;
+	}
+
+	/* Card treatment zone: each summary card may carry one compact annotation
+	   (sparkline / trend chip / route caption / chain dot+label). Reserving the
+	   strip keeps the cards' centered content visually aligned. */
+	.summary-note {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		min-height: 2.6rem;
+		max-width: 100%;
+	}
+
+	.summary-note .spark {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.16rem;
+		height: 2.2rem;
+		width: min(100%, 7.5rem);
+	}
+
+	.summary-note .spark-bar {
+		display: block;
+		flex: 1;
+		min-width: 0;
+		border-radius: 1px 1px 0 0;
+		background: var(--brass-500);
+	}
+
+	.trend-chip {
+		padding: 0.16rem 0.55rem;
+		border: 1px solid var(--ink-900);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums lining-nums;
+		line-height: 1.1;
+		color: var(--paper-50);
+	}
+
+	.trend-chip.up {
+		background: var(--moss);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
+	}
+
+	.trend-chip.down {
+		background: var(--wax-red);
+		box-shadow: inset 0 0 0 1px var(--wax-red-2);
+	}
+
+	.route-caption,
+	.status-label {
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.note-icon {
+		color: var(--brass-700);
+	}
+
+	.status-dot {
+		width: 0.62rem;
+		height: 0.62rem;
+		flex: none;
+		border-radius: 999px;
+		background: var(--wax-red);
+		box-shadow: inset 0 0 0 1px var(--wax-red-2);
+	}
+
+	.status-dot.good {
+		background: var(--moss);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
+	}
+
 	.decisions-surfaces,
-	.stores-surfaces,
-	.staff-surfaces {
+	.stores-surfaces {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		align-items: start;
 		gap: 1rem;
+	}
+
+	/* Combined staff & policies plate: glanceable staff band on top, policies
+	 * footer band below. The policies destination anchors on the footer band. */
+	.staff-policies-plate {
+		display: grid;
+		gap: 1rem;
+		align-content: start;
+	}
+
+	.plate-staff {
+		display: grid;
+		gap: 1rem;
+		align-content: start;
+	}
+
+	.plate-policies {
+		scroll-margin-top: 0.75rem;
+	}
+
+	.staff-policies-plate.policies-emphasis .plate-policies {
+		border-top: 1px solid var(--brass-500);
+		padding-top: 0.5rem;
 	}
 
 	.tower-header {
@@ -383,7 +833,25 @@
 	}
 
 	.close-tower {
-		white-space: nowrap;
+		display: grid;
+		place-items: center;
+		width: 2.4rem;
+		height: 2.4rem;
+		padding: 0;
+		border: 1px solid var(--ink-900);
+		border-radius: 2px;
+		background: var(--wax-red);
+		color: var(--paper-50);
+		font-family: var(--font-ui);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1;
+		box-shadow: inset 0 0 0 1px var(--wax-red-2);
+	}
+
+	.close-tower:hover,
+	.close-tower:focus-visible {
+		background: var(--wax-red-2);
 	}
 
 	@media (max-width: 980px) {
@@ -392,9 +860,17 @@
 			padding: 0.85rem;
 		}
 
+		.workspace-rail {
+			flex-direction: row;
+			flex-wrap: wrap;
+		}
+
+		.workspace-content {
+			padding: 0.6rem;
+		}
+
 		.decisions-surfaces,
-		.stores-surfaces,
-		.staff-surfaces {
+		.stores-surfaces {
 			grid-template-columns: 1fr;
 		}
 

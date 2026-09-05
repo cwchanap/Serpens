@@ -158,6 +158,36 @@ function surfaceProps(overrides: Partial<SurfaceProps> = {}): SurfaceProps {
 }
 
 describe('MapSurfaceHost', () => {
+	it('keeps the map full-bleed at desktop and compact widths', async () => {
+		expect.assertions(8);
+		await page.viewport(1280, 800);
+		render(MapSurfaceHost, surfaceProps());
+
+		const surfaces = () => {
+			const el = document.querySelector<HTMLElement>('.map-surfaces');
+			if (!el) throw new Error('Map surfaces container did not render');
+			const box = el.getBoundingClientRect();
+			const style = getComputedStyle(el);
+			return { box, style };
+		};
+
+		// Desktop: full-bleed map — no left rail and no bottom band reserved;
+		// the floating medallion dock overlays the map instead.
+		const desktop = surfaces();
+		expect(desktop.box.left).toBeLessThanOrEqual(2);
+		expect(desktop.style.left).toBe('0px');
+		expect(desktop.style.bottom).toBe('0px');
+		expect(desktop.style.top).toBe('0px');
+
+		// Compact: the same full-bleed geometry.
+		await page.viewport(760, 800);
+		const compact = surfaces();
+		expect(compact.box.left).toBeLessThanOrEqual(2);
+		expect(compact.box.width).toBeGreaterThanOrEqual(758);
+		expect(compact.box.height).toBeGreaterThanOrEqual(798);
+		expect(compact.style.bottom).toBe('0px');
+	});
+
 	it('keeps visited surfaces mounted and exposes only the active surface', async () => {
 		expect.assertions(7);
 		const onSelectWorldCity = vi.fn();

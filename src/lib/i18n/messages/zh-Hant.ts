@@ -14,7 +14,13 @@ export const zhHant = {
 			one: '{count} 則警示',
 			other: '{count} 則警示'
 		},
-		alertsList: '警示列表'
+		alertsList: '警示列表',
+		cashTrend: {
+			up: '上升{percent}',
+			down: '下降{percent}',
+			upOnly: '上升',
+			downOnly: '下降'
+		}
 	},
 	gameMenu: {
 		menu: '選單',
@@ -71,26 +77,17 @@ export const zhHant = {
 		},
 		industry: {
 			filter: {
+				chainLabel: '鏈條',
+				title: '商品鏈篩選',
+				allShortLabel: '全部',
 				allProducts: '篩選：全部商品',
 				selected: '篩選：{name}',
-				clear: '清除商品篩選',
-				dialog: '商品鏈篩選',
-				title: '商品篩選',
-				close: '關閉商品鏈篩選',
-				search: '搜尋商品',
-				allProductsLabel: '全部商品',
-				allBuildings: '全部工業建築',
-				chainBuildings: {
-					one: '{count} 個鏈條建築',
-					other: '{count} 個鏈條建築'
-				},
-				noChain: '尚無對應的工業鏈',
-				noMatches: '找不到符合的商品'
+				noChain: '尚無對應的工業鏈'
 			},
 			supplyAdvisor: '供應顧問 - 我該蓋什麼？',
 			buildType: '建設{name}',
 			starter: '起步',
-			costOperating: '成本 {cost} | 營運費 {operating}/天',
+			costOperating: '{cost} · {operating}/天',
 			recipe: '配方',
 			needsProducer: '需要 {producer}',
 			needsResource: '需要 {resource} 資源地塊',
@@ -106,6 +103,7 @@ export const zhHant = {
 		revenuePerDay: '每日營收',
 		stockHealth: '庫存健康度',
 		staffMorale: '員工士氣',
+		last7Days: '最近 7 天',
 		level: '等級 {level} / {max}',
 		nextLabel: '下一步：{benefit}',
 		nextBenefit: {
@@ -239,6 +237,12 @@ export const zhHant = {
 		routeSummary: '{origin} → {destination} · {material} · {state} · {condition}',
 		cityDetails: '城市詳情',
 		closeCityDetails: '關閉城市詳情',
+		stats: {
+			stores: '商店',
+			plants: '工廠',
+			opening: '開設費',
+			status: '狀態'
+		},
 		cityEyebrow: {
 			retail: '零售城市',
 			industry: '工業城市'
@@ -439,6 +443,29 @@ export const zhHant = {
 			destinationFull: '目的地已滿',
 			recoveriesTitle: '修正效果回復'
 		},
+		window: '區間',
+		windowDays: '{days}天',
+		revenueVsCost: '營收對成本',
+		perDay: '{amount} /天',
+		legendRevenue: '營收',
+		legendCost: '成本',
+		margin: '毛利',
+		footfall: '來客數',
+		spoilage: '耗損',
+		scenarioGrade: '劇本評級',
+		companyStanding: '公司狀況',
+		scoreOutOf: '{score} / {max}',
+		dayOf: '第 {day} 天（共 {limit} 天）',
+		dayOnly: '第 {day} 天',
+		byStore: '各分店',
+		moreStores: '+{count} 間',
+		byProduct: '各商品',
+		detailedEvidence: '詳細證據',
+		chartLabel: '所選區間內每日營收與成本的折線圖',
+		sparklineLabel: '{storeName} 的每日營收走勢線',
+		objectivesMet: '已達成',
+		objectivesInProgress: '進行中',
+		objectivesMissed: '未達成',
 		dailyWarnings: '每日警告',
 		empty: '尚未有報表。推進第一天後會產生結果。'
 	},
@@ -515,6 +542,14 @@ export const zhHant = {
 		candidates: '候選人',
 		unassigned: '未分派',
 		storeStaffing: '店鋪人力配置',
+		storeCoverage: '店鋪人力',
+		manageAssignments: '管理人力分配',
+		addStaff: '為{storeName}增加人手',
+		hireCta: '僱用',
+		ratio: {
+			manager: '經理 {assigned}/{required}',
+			general: '一般 {assigned}/{required}'
+		},
 		assigned: '已分派',
 		coverage:
 			'{storeName}：經理 {managerAssigned}/{managerRequired}，一般 {generalAssigned}/{generalRequired}',
@@ -665,14 +700,12 @@ export const zhHant = {
 	},
 	productChainsPanel: {
 		ariaLabel: '商品鏈',
-		eyebrow: 'Folio II · 生產鏈',
+		eyebrow: '供給圖譜',
 		modeGroup: '商品鏈檢視',
 		storeCategoryChains: '店鋪類別鏈',
 		cityInventoryFlow: '城市庫存流向',
-		scopeAria: '城市庫存範圍',
+		capacityLabel: '庫存容量',
 		activeIndustryInventory: '城市庫存 — {cityName}',
-		activeRetailSupply:
-			'{retailCityName}的本地供應 — {sourceCityName}：已使用 {used} / {capacity} 城市庫存。',
 		supplyState: {
 			importsOnly: '{retailCityName}供應：僅進口 — 補貨使用外部進口。',
 			zeroCapacity: '{retailCityName}的本地供應 — 供應來源 {sourceCityName} 的城市庫存容量為 0。',
@@ -883,25 +916,22 @@ export const zhHant = {
 	},
 	atlas: {
 		categoryIndex: {
-			ariaLabel: '商品類別索引',
-			tier: 'Tier {tier}',
-			metrics: '庫存 {stock} · 生產 {produced}/日 · 售出 {consumed}/日'
+			ariaLabel: '商品類別索引'
+		},
+		capacityStrip: {
+			figures: '{used} / {capacity}'
 		},
 		nodeBroadside: {
 			inspected: '檢視節點',
 			emptyTitle: '鏈條節點',
 			empty: '選擇圖節點以檢視最新流量指標。',
 			sharedProducer: '共享生產者 - 繪製在此鏈條的 {count} 個分支中。',
+			recipe: '配方',
 			metrics: {
-				buildings: '建築',
-				capacity: '產能',
-				capacityValue: '輸出 {output} / 輸入 {input}',
-				produced: '生產',
-				consumed: '消耗',
-				imported: '進口',
-				sold: '售出',
-				missed: '錯失',
-				stock: '庫存'
+				throughput: '吞吐量',
+				shortfall: '短缺',
+				health: '狀態',
+				perDay: '{value}/天'
 			}
 		},
 		legend: {
@@ -934,7 +964,6 @@ export const zhHant = {
 		},
 		controlTower: {
 			eyebrow: '管理',
-			close: '關閉',
 			dismiss: '關閉{panel}',
 			closePanel: '關閉{panel}',
 			panelStatus: '{panel}狀態'
@@ -1052,13 +1081,17 @@ export const zhHant = {
 	financePanel: {
 		title: '財務',
 		metrics: {
+			outstanding: '未償還',
 			outstandingPrincipal: '未償還本金',
 			amountDue: '應付總額',
 			nextPayment: '下次付款',
 			debtServiceCoverage: '債務償付覆蓋率',
 			cashRunway: '現金續航',
 			availableCredit: '84 天可用信用額度',
-			noDebtServiceDue: '沒有到期債務服務'
+			noDebtServiceDue: '沒有到期債務服務',
+			latestProfit: '最新每日利潤',
+			revenueTrend: '每日營收',
+			noReport: '尚未有報表'
 		},
 		credit: {
 			baseApr: '基本年利率',
@@ -1149,6 +1182,7 @@ export const zhHant = {
 			days: '{days} 天',
 			ninetyPlusDays: '90 天以上',
 			apr: '年利率',
+			ledger: '帳目',
 			healthAdjustment: '健康度 +{amount}',
 			historyAdjustment: '歷史 +{amount}',
 			principal: '本金',
@@ -1161,8 +1195,17 @@ export const zhHant = {
 			reviewSubmission: '{amount} 僅會在確認後送出。',
 			refinanceReview: '以 {term} 再融資 {amount}。不包含現金套現。',
 			replacementComparison:
-				'替換年利率 {apr} · 首次付款 {firstPayment} · 最高付款 {peakPayment} · 不包含現金套現。'
+				'替換年利率 {apr} · 首次付款 {firstPayment} · 最高付款 {peakPayment} · 不包含現金套現。',
+			runwayLeverage: '續航・覆蓋',
+			leverage: '槓桿',
+			netPosition: '淨資產餘額'
 		}
+	},
+	workspaceSummary: {
+		stores: '商店',
+		cash: '現金',
+		activeRoutes: '運作中的物流路線',
+		chainHealth: '產品鏈健全度'
 	},
 	game: {
 		archetypes: {
@@ -1712,8 +1755,9 @@ export const zhHant = {
 			},
 			warehouseNode: '城市庫存',
 			nodeStats: {
-				recipe: '{buildings} 棟 · 每日 {output}',
-				stock: '庫存 {stock}'
+				recipe: '▲ 每日 {output}',
+				stock: '{stock} 庫存',
+				shortage: '▼ 短缺 {short}'
 			},
 			health: {
 				healthy: '健康',

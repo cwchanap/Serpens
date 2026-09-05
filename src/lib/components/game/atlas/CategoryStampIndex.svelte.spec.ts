@@ -24,8 +24,8 @@ function summary(
 }
 
 describe('CategoryStampIndex', () => {
-	it('renders one stamp per summary with status seal text', async () => {
-		expect.assertions(2);
+	it('renders one art-only circular stamp per summary with the category name as its accessible name', async () => {
+		expect.assertions(3);
 		const onSelectProduct = vi.fn();
 		render(CategoryStampIndex, {
 			i18n: createI18n('en'),
@@ -43,8 +43,14 @@ describe('CategoryStampIndex', () => {
 			onSelectProduct
 		});
 
-		await expect.element(page.getByRole('button', { name: /Snacks/i })).toBeVisible();
-		await expect.element(page.getByText('Shortage')).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'Snacks' })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'Drinks' })).toBeVisible();
+		// Art-first: the accessible name comes from aria-label, images are decorative.
+		expect(
+			document
+				.querySelector<HTMLImageElement>('[data-testid="category-stamp-snacks"] img')
+				?.getAttribute('alt')
+		).toBe('');
 	});
 
 	it('marks the active stamp with aria-pressed when in store-categories mode', async () => {
@@ -59,7 +65,7 @@ describe('CategoryStampIndex', () => {
 		});
 
 		await expect
-			.element(page.getByRole('button', { name: /Snacks/i }))
+			.element(page.getByRole('button', { name: 'Snacks' }))
 			.toHaveAttribute('aria-pressed', 'true');
 	});
 
@@ -75,7 +81,7 @@ describe('CategoryStampIndex', () => {
 		});
 
 		await expect
-			.element(page.getByRole('button', { name: /Snacks/i }))
+			.element(page.getByRole('button', { name: 'Snacks' }))
 			.toHaveAttribute('aria-pressed', 'false');
 	});
 
@@ -90,23 +96,8 @@ describe('CategoryStampIndex', () => {
 			onSelectProduct
 		});
 
-		await page.getByRole('button', { name: /Snacks/i }).click();
+		await page.getByRole('button', { name: 'Snacks' }).click();
 		expect(onSelectProduct).toHaveBeenCalledWith('snacks');
-	});
-
-	it('shows a tier badge on tiered categories', async () => {
-		expect.assertions(1);
-		const onSelectProduct = vi.fn();
-		render(CategoryStampIndex, {
-			i18n: createI18n('en'),
-			summaries: [summary({ productId: 'bottled-water', name: 'Bottled Water', tier: 1 })],
-			activeProductId: null,
-			mode: 'store-categories',
-			onSelectProduct
-		});
-
-		const stamp = document.querySelector('[data-testid="category-stamp-bottled-water"]');
-		expect(stamp?.textContent).toContain('Tier 1');
 	});
 
 	it('resolves soft-drinks stamp art through its drinks material', async () => {
@@ -127,48 +118,30 @@ describe('CategoryStampIndex', () => {
 		);
 	});
 
-	it('formats metric quantities with the active locale formatter', async () => {
+	it('shows a wax attention badge on shortage categories', async () => {
 		expect.assertions(2);
 		const onSelectProduct = vi.fn();
 
 		render(CategoryStampIndex, {
-			i18n: createI18n('zh-Hant'),
+			i18n: createI18n('en'),
 			summaries: [
-				summary({
-					productId: 'snacks',
-					name: 'Snacks',
-					warehouseStock: 1234.5,
-					produced: 9876,
-					consumed: 12.25
-				})
+				summary({ productId: 'snacks', name: 'Snacks', health: 'shortage' }),
+				summary({ productId: 'soft-drinks', name: 'Drinks' })
 			],
 			activeProductId: null,
 			mode: 'store-categories',
 			onSelectProduct
 		});
 
-		const stamp = document.querySelector('[data-testid="category-stamp-snacks"]');
-		expect(stamp?.textContent).toContain('庫存 1,234.5 · 生產 9,876/日 · 售出 12.25/日');
-		expect(stamp?.textContent).not.toContain('庫存 1234.5');
+		const badge = document.querySelector('[data-testid="category-stamp-snacks"] .attention');
+		expect(badge?.textContent).toBe('!');
+		expect(
+			document.querySelector('[data-testid="category-stamp-soft-drinks"] .attention')
+		).toBeNull();
 	});
 
-	it('does not show a tier badge for categories without a tier', async () => {
-		expect.assertions(1);
-		const onSelectProduct = vi.fn();
-		render(CategoryStampIndex, {
-			i18n: createI18n('en'),
-			summaries: [summary({ productId: 'snacks', name: 'Snacks', tier: null })],
-			activeProductId: null,
-			mode: 'store-categories',
-			onSelectProduct
-		});
-
-		const stamp = document.querySelector('[data-testid="category-stamp-snacks"]');
-		expect(stamp?.textContent).not.toContain('Tier');
-	});
-
-	it('omits the icon image for categories without industry material art', async () => {
-		expect.assertions(2);
+	it('shows a dash instead of art for categories without industry material art', async () => {
+		expect.assertions(3);
 		const onSelectProduct = vi.fn();
 
 		render(CategoryStampIndex, {
@@ -181,6 +154,7 @@ describe('CategoryStampIndex', () => {
 
 		const stamp = document.querySelector('[data-testid="category-stamp-apparel"]');
 		expect(stamp?.querySelector('img')).toBeNull();
-		await expect.element(page.getByRole('button', { name: /Apparel/i })).toBeVisible();
+		expect(stamp?.querySelector('.dash')).not.toBeNull();
+		await expect.element(page.getByRole('button', { name: 'Apparel' })).toBeVisible();
 	});
 });

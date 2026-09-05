@@ -1208,11 +1208,12 @@ async function expectMapToFillViewport(page: Page) {
 	expect(box.height).toBeGreaterThanOrEqual(viewport.height - 2);
 }
 
-async function openManagementPanel(page: Page, panelName: string | RegExp): Promise<Locator> {
-	await page.getByRole('button', { name: panelName }).click();
-	const panel = page.getByRole('dialog', { name: panelName });
-	await expect(panel).toBeVisible();
-	return panel;
+async function openManagementPanel(page: Page, panelName: RegExp): Promise<Locator> {
+	const desk = page.getByLabel('Control desk');
+	await desk.getByRole('button', { name: panelName }).click();
+	const dialog = page.getByRole('dialog', { name: panelName });
+	await expect(dialog).toBeVisible();
+	return dialog;
 }
 
 async function openSaves(page: Page) {
@@ -1266,16 +1267,28 @@ async function openStoreDetail(page: Page): Promise<Locator> {
 	return modal;
 }
 
-async function expectActionAboveControlDesk(page: Page, action: Locator): Promise<void> {
+async function expectActionDoesNotOverlapControlDesk(page: Page, action: Locator): Promise<void> {
 	await action.scrollIntoViewIfNeeded();
 	const [actionBox, controlDeskBox] = await Promise.all([
 		action.boundingBox(),
 		page.getByLabel('Control desk').boundingBox()
 	]);
+
 	if (!actionBox || !controlDeskBox) {
 		throw new Error('Inspector action or control desk has no bounding box');
 	}
-	expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(controlDeskBox.y);
+
+	const actionRight = actionBox.x + actionBox.width;
+	const actionBottom = actionBox.y + actionBox.height;
+	const deskRight = controlDeskBox.x + controlDeskBox.width;
+	const deskBottom = controlDeskBox.y + controlDeskBox.height;
+
+	expect(
+		actionRight <= controlDeskBox.x ||
+			actionBox.x >= deskRight ||
+			actionBottom <= controlDeskBox.y ||
+			actionBox.y >= deskBottom
+	).toBe(true);
 }
 
 async function getStoreDetailPanelLayout(page: Page) {
@@ -1301,10 +1314,7 @@ async function getStoreDetailPanelLayout(page: Page) {
 	});
 }
 
-async function openMapMenuItem(page: Page, itemName: RegExp) {
-	// Map-view tabs live inside the control-desk hamburger popover; open it first.
-	// Selecting a view auto-closes the popover.
-	await page.getByRole('button', { name: /^menu$/i }).click();
+async function selectMapView(page: Page, itemName: RegExp): Promise<void> {
 	await page.getByRole('button', { name: itemName }).click();
 }
 
@@ -1716,6 +1726,7 @@ test('living market sandbox persists a brand edit and reports market evidence', 
 	});
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(reports.getByRole('region', { name: 'Brand performance' })).toContainText(
 		'Budget Bay'
 	);
@@ -1749,7 +1760,7 @@ test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly
 	await installSandboxAutoSave(page, seededGame);
 	await expect(activeMapCanvas(page)).toHaveAttribute('data-competitor-marker-count', '2');
 
-	const decisions = await openManagementPanel(page, 'Decisions');
+	const decisions = await openManagementPanel(page, /^decisions$/i);
 	const promotion = decisions
 		.getByRole('article')
 		.filter({ has: page.getByRole('heading', { name: 'Rival promotion', exact: true }) });
@@ -1791,6 +1802,7 @@ test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly
 		if (day === 4) {
 			expiryReport = getLatestReport(saved);
 			const reports = await openManagementPanel(page, /reports/i);
+			await reports.getByText('Detailed evidence').click();
 			await expect(
 				reports.getByRole('region', { name: 'Latest-day modifier lifecycle' })
 			).toContainText('Status: Expired');
@@ -1811,6 +1823,7 @@ test('rival promotion applies 1.18 attraction, lowers share, and expires cleanly
 	expect(stableMarket.playerShare).toBeCloseTo(baselineMarket.playerShare, 12);
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(reports.getByRole('region', { name: 'Market snapshot' })).toContainText(
 		'event multiplier: ×1'
 	);
@@ -1852,7 +1865,7 @@ test('production supplier bulk discount stays active through its final import an
 
 	await installSandboxAutoSave(page, seededGame);
 
-	let decisions = await openManagementPanel(page, 'Decisions');
+	let decisions = await openManagementPanel(page, /^decisions$/i);
 	const bulkDiscount = decisions
 		.getByRole('region', { name: 'Decision Queue' })
 		.getByRole('button', { name: /Bulk discount/ });
@@ -1908,7 +1921,7 @@ test('production supplier bulk discount stays active through its final import an
 		modifierImpacts: [],
 		modifierLifecycle: [{ status: 'activated', modifier: { id: modifierId } }]
 	});
-	decisions = await openManagementPanel(page, 'Decisions');
+	decisions = await openManagementPanel(page, /^decisions$/i);
 	await expect(
 		decisions.getByRole('article', { name: 'Supplier terms', exact: true })
 	).toContainText('2 days remaining');
@@ -1922,7 +1935,7 @@ test('production supplier bulk discount stays active through its final import an
 		modifierImpacts: [],
 		modifierLifecycle: []
 	});
-	decisions = await openManagementPanel(page, 'Decisions');
+	decisions = await openManagementPanel(page, /^decisions$/i);
 	await expect(
 		decisions.getByRole('article', { name: 'Supplier terms', exact: true })
 	).toContainText('1 day remaining');
@@ -1950,7 +1963,8 @@ test('production supplier bulk discount stays active through its final import an
 		})
 	]);
 
-	const reports = await openManagementPanel(page, 'Reports');
+	const reports = await openManagementPanel(page, /^reports$/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(reports.getByRole('region', { name: 'Latest-day modifier impacts' })).toContainText(
 		'Multiplier: ×0.9'
 	);
@@ -1959,7 +1973,7 @@ test('production supplier bulk discount stays active through its final import an
 	).toContainText('Status: Expired');
 	await reports.getByRole('button', { name: 'Close Reports', exact: true }).click();
 
-	decisions = await openManagementPanel(page, 'Decisions');
+	decisions = await openManagementPanel(page, /^decisions$/i);
 	await expect(decisions.getByRole('region', { name: 'Active modifiers' })).toContainText(
 		'No active modifiers.'
 	);
@@ -2005,13 +2019,13 @@ test('manager lifecycle preserves manual policy control and records authority ex
 		values: { pricing: 'premium' }
 	});
 
-	const policies = await openManagementPanel(page, 'Policies');
-	await policies.getByLabel('Scope').selectOption('store');
+	const policies = await openManagementPanel(page, /^policies$/i);
+	await policies.getByRole('tab', { name: 'Store' }).click();
 	await expect(policies.locator('[data-provenance="store"]')).toHaveCount(1);
-	await expect(policies.getByLabel('Pricing')).toHaveValue('premium');
+	await expect(policies.getByRole('radio', { name: 'Premium' })).toBeChecked();
 	await policies.getByRole('button', { name: 'Close Policies', exact: true }).click();
 
-	const staff = await openManagementPanel(page, 'Staff');
+	const staff = await openManagementPanel(page, /^staff$/i);
 	const managerCard = staff.locator('.manager-card').filter({ hasText: manager.name });
 	await expect(managerCard.locator('li[data-outcome="applied"]')).toHaveCount(1);
 	const pricingAuthority = managerCard.getByRole('checkbox', {
@@ -2022,12 +2036,12 @@ test('manager lifecycle preserves manual policy control and records authority ex
 	await expect(pricingAuthority).not.toBeChecked();
 	await staff.getByRole('button', { name: 'Close Staff', exact: true }).click();
 
-	const manualPolicies = await openManagementPanel(page, 'Policies');
-	await manualPolicies.getByLabel('Scope').selectOption('store');
-	const pricing = manualPolicies.getByLabel('Pricing');
+	const manualPolicies = await openManagementPanel(page, /^policies$/i);
+	await manualPolicies.getByRole('tab', { name: 'Store' }).click();
+	const pricing = manualPolicies.getByRole('radio', { name: 'Competitive' });
 	await expect(pricing).toBeEnabled();
-	await pricing.selectOption('competitive');
-	await expect(pricing).toHaveValue('competitive');
+	await pricing.check();
+	await expect(pricing).toBeChecked();
 	await expect
 		.poll(async () => {
 			const saved = await readAutoSaveGame(page);
@@ -2055,7 +2069,7 @@ test('manager lifecycle preserves manual policy control and records authority ex
 		values: { pricing: 'competitive' }
 	});
 
-	const finalStaff = await openManagementPanel(page, 'Staff');
+	const finalStaff = await openManagementPanel(page, /^staff$/i);
 	const finalManagerCard = finalStaff.locator('.manager-card').filter({ hasText: manager.name });
 	await expect(finalManagerCard.locator('li[data-outcome="out-of-authority"]')).toHaveCount(1);
 });
@@ -2212,7 +2226,7 @@ test('challenge commits a non-day negative-cash decision before showing failure'
 	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toHaveCount(0);
 	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-result', '');
 
-	const decisions = await openManagementPanel(page, 'Decisions');
+	const decisions = await openManagementPanel(page, /^decisions$/i);
 	await decisions.getByRole('button', { name: /Bulk discount/ }).click();
 
 	const results = page.getByRole('dialog', { name: 'Challenge results' });
@@ -2275,7 +2289,7 @@ test('challenge reload clears transient failed, unranked, and non-best results w
 
 	await installChallengeSnapshot(page, challengeSnapshot({ activeRun: negativeCashDecisionRun() }));
 	await resumeFirstProfitChallenge(page, { day: 1, eligibility: 'Ranked' });
-	const decisions = await openManagementPanel(page, 'Decisions');
+	const decisions = await openManagementPanel(page, /^decisions$/i);
 	await decisions.getByRole('button', { name: /Bulk discount/ }).click();
 	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toContainText(
 		'Challenge failed'
@@ -2347,10 +2361,11 @@ test('player can found a store from the city map and advance a day', async ({ pa
 
 	await dashboard.getByRole('button', { name: /close dashboard/i }).click();
 	const policies = await openManagementPanel(page, /policies/i);
-	await policies.getByLabel(/pricing/i).selectOption('premium');
+	await policies.getByRole('radio', { name: 'Premium' }).check();
 	await policies.getByRole('button', { name: /close policies/i }).click();
 	await advanceSimulationDay(page);
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 
 	await expect(
 		reports.getByRole('group', { name: /reports status/i }).getByText(/^Day 2$/i)
@@ -2396,7 +2411,11 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 700 });
 	await page.goto('/');
 
-	await clickMapTile(page, 6, 6);
+	// The top HUD stacks the location plaque (and its map-view cluster) onto
+	// the status readouts below ~600px viewports, reaching y≈190 at 390×700
+	// (probe-measured), so pick a tile clear of the wrapped HUD: column 6 rows
+	// 5-14 are all residential ground; rows 6-9 still sit under the chrome.
+	await clickMapTile(page, 6, 11);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 	await expectOverlayToCoverMap(page);
 	await expect(page.getByRole('button', { name: /open .* here/i })).toHaveCount(0);
@@ -2406,7 +2425,7 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 	const mapCanvas = await expectRetailMapReady(page);
 	await expect(mapCanvas).toHaveAttribute('data-store-sprite-count', '0');
 	await chooseRetailBuildTool(page, /build boutique goods/i);
-	await clickCanvasTile(page, mapCanvas, 6, 6);
+	await clickCanvasTile(page, mapCanvas, 6, 11);
 	await expect(page.getByRole('dialog', { name: /confirm store opening/i })).toHaveCount(0);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 
@@ -2443,15 +2462,8 @@ test('tile popup can be closed from the map', async ({ page }) => {
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toHaveCount(0);
 });
 
-test('management panels open from the map menu and close as overlays', async ({ page }) => {
+test('management panels open from the control desk and close as overlays', async ({ page }) => {
 	await page.goto('/');
-
-	// The map-view tabs are tucked inside the control-desk hamburger popover.
-	await page.getByRole('button', { name: /^menu$/i }).click();
-	await expect(page.getByRole('button', { name: /world map/i })).toBeEnabled();
-	await expect(page.getByRole('button', { name: /retail city map/i })).toBeEnabled();
-	await expect(page.getByRole('button', { name: /industry city map/i })).toBeEnabled();
-	await page.getByRole('button', { name: /^menu$/i }).click();
 
 	await buildRetailStoreAt(page, {
 		x: 1,
@@ -2469,9 +2481,39 @@ test('management panels open from the map menu and close as overlays', async ({ 
 	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
 });
 
-test('keyboard shortcuts toggle build, switch views, and Esc closes the hamburger', async ({
+test('management workspace switches panels in place and keeps focus contained', async ({
 	page
 }) => {
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build boutique goods/i,
+		expectedStoreCount: 1
+	});
+
+	let dialog = await openManagementPanel(page, /^dashboard$/i);
+	await dialog.getByRole('button', { name: /^finance$/i }).click();
+
+	dialog = page.getByRole('dialog', { name: /^finance$/i });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole('button', { name: /^finance$/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const modal = document.querySelector('[role="dialog"][aria-modal="true"]');
+				return Boolean(modal && document.activeElement && modal.contains(document.activeElement));
+			})
+		)
+		.toBe(true);
+});
+
+test('keyboard shortcuts toggle build and switch views', async ({ page }) => {
 	await page.goto('/');
 	// Wait for the scene to boot so the window keydown handler is mounted before
 	// dispatching shortcuts, otherwise the first keypress races hydration.
@@ -2485,16 +2527,10 @@ test('keyboard shortcuts toggle build, switch views, and Esc closes the hamburge
 
 	// Number keys still switch views.
 	await page.keyboard.press('2');
-	// The view tabs now live in the hamburger popover; open it to read the pressed state.
-	await page.getByRole('button', { name: /^menu$/i }).click();
 	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
 		'aria-pressed',
 		'true'
 	);
-
-	// Escape closes the hamburger menu.
-	await page.keyboard.press('Escape');
-	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveCount(0);
 });
 
 test('Escape toggles the hamburger menu when nothing else is open', async ({ page }) => {
@@ -2502,16 +2538,16 @@ test('Escape toggles the hamburger menu when nothing else is open', async ({ pag
 	await expectRetailMapReady(page);
 
 	// With no overlay or selection active, Escape opens the hamburger menu.
-	await expect(page.getByRole('button', { name: /^menu$/i })).toHaveAttribute(
-		'aria-expanded',
-		'false'
-	);
-	await page.keyboard.press('Escape');
-	await expect(page.getByRole('button', { name: /retail city map/i })).toBeVisible();
+	const menu = page.getByRole('button', { name: /^menu$/i });
+	await expect(menu).toHaveAttribute('aria-expanded', 'false');
 
-	// A second Escape closes it again — the key toggles the menu.
 	await page.keyboard.press('Escape');
-	await expect(page.getByRole('button', { name: /retail city map/i })).toHaveCount(0);
+	await expect(menu).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('dialog', { name: /^menu$/i })).toBeVisible();
+
+	await page.keyboard.press('Escape');
+	await expect(menu).toHaveAttribute('aria-expanded', 'false');
+	await expect(page.getByRole('dialog', { name: /^menu$/i })).toHaveCount(0);
 });
 
 test('Escape closes the alerts popover', async ({ page }) => {
@@ -2645,7 +2681,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 		expectedStoreCount: 1
 	});
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
@@ -2723,7 +2759,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await expectIndustryMapReady(page);
 	await expect(industryCanvas).toHaveAttribute('data-industry-building-count', '1');
 
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await expectRetailMapReady(page);
 	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
@@ -2734,7 +2770,7 @@ test('player can switch to the industry city map and back to retail', async ({ p
 test('industry build menu shows construction status before founding a store', async ({ page }) => {
 	await page.goto('/');
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
 
@@ -2742,14 +2778,11 @@ test('industry build menu shows construction status before founding a store', as
 	const buildMenu = page.getByRole('dialog', { name: /build menu/i });
 	await expect(buildMenu).toBeVisible();
 	await expect(buildMenu.getByText(/open a retail store to unlock construction/i)).toBeVisible();
-	await buildMenu.getByRole('button', { name: /filter: all products/i }).click();
-	const filterPopup = buildMenu.getByRole('dialog', { name: /product chain filter/i });
-	await expect(filterPopup).toBeVisible();
-	await filterPopup.getByLabel(/search products/i).fill('gift');
-	await expect(filterPopup.getByRole('button', { name: /gifts/i })).toBeVisible();
-	await expect(filterPopup.getByRole('button', { name: /snacks/i })).toHaveCount(0);
-	await filterPopup.getByRole('button', { name: /gifts/i }).click();
-	await expect(buildMenu.getByRole('button', { name: /filter: gifts/i })).toBeVisible();
+	await buildMenu.getByRole('button', { name: /filter: gifts/i }).click();
+	await expect(buildMenu.getByRole('button', { name: /filter: gifts/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
 	await expect(buildMenu.getByRole('button', { name: /build gift workshop/i })).toBeDisabled();
 	await expect(buildMenu.getByRole('button', { name: /build packaging plant/i })).toBeDisabled();
 	await expect(buildMenu.getByRole('button', { name: /build drink bottling plant/i })).toHaveCount(
@@ -2765,8 +2798,8 @@ test('player builds convenience production and refills from city inventory', asy
 	// runners the cumulative wait exceeds the default 60s timeout, so allow
 	// extra time.
 	test.setTimeout(120_000);
-	// Width must exceed the control desk's 980px breakpoint so the management
-	// launchers (Reports, Stores, Product Chains) stay on the desk. Height keeps
+	// The dock fits all nine management launchers at this width without
+	// horizontal scroll (scroll is only needed below ~1050px). Height keeps
 	// the industry map tall enough for the build tiles used below.
 	await page.setViewportSize({ width: 1200, height: 1000 });
 	await page.goto('/');
@@ -2782,7 +2815,7 @@ test('player builds convenience production and refills from city inventory', asy
 	// cash; grant funds up front like the other industrial-build tests.
 	await injectCashAndReload(page, 1_000_000);
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 
@@ -2859,7 +2892,7 @@ test('player builds convenience production and refills from city inventory', asy
 	);
 	expect(visibleCityInventoryBottledWater).toBeGreaterThan(0);
 
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await expectRetailMapReady(page);
 	await clickMapTile(page, 1, 6);
@@ -2927,6 +2960,7 @@ test('player builds convenience production and refills from city inventory', asy
 	).toBe(bottledWaterReport.importedUnits);
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	const railShipmentUnits = latestReport.productionReport.railShipments.reduce(
 		(total, shipment) => total + shipment.quantity,
 		0
@@ -2984,7 +3018,7 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 
 	const staffPanel = staffDialog.getByRole('region', { name: 'Staff' });
 	await expect(staffPanel.getByRole('heading', { name: 'Staff' })).toBeVisible();
-	await expect(staffDialog.getByText('Store #1: 1/1 managers, 2/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Gen 2/2')).toBeVisible();
 	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
 	const generalCandidate = candidatesSection
 		.locator('article')
@@ -2999,12 +3033,13 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 	await generalCandidate
 		.getByRole('button', { name: new RegExp(`^Hire ${candidateNamePattern},`) })
 		.click();
+	await staffPanel.getByText('Manage assignments').click();
 	await staffPanel
 		.getByRole('region', { name: 'Unassigned' })
 		.getByLabel(new RegExp(`^Assign ${candidateNamePattern},`))
 		.selectOption({ label: 'Store #1' });
 
-	await expect(staffDialog.getByText('Store #1: 1/1 managers, 3/2 general')).toBeVisible();
+	await expect(staffDialog.getByText('Gen 3/2')).toBeVisible();
 });
 
 test('locked map tiles still show inspector feedback', async ({ page }) => {
@@ -3058,17 +3093,17 @@ test('player opens a revealed retail city from the world map and builds there', 
 		expectedStoreCount: 1
 	});
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await expect(page.getByRole('region', { name: /world map/i })).toBeVisible();
 	await expect(page.getByRole('button', { name: /harbor city/i })).toBeVisible();
 
 	await revealCityAndGrantFunds(page, 'campus-junction');
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await page.getByRole('button', { name: /campus junction/i }).click();
 	await page.getByRole('button', { name: /open for/i }).click();
 	await page.getByRole('button', { name: /campus junction/i }).click();
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
 
 	await buildRetailStoreAt(page, {
@@ -3159,6 +3194,7 @@ test('finance flow borrows, reconciles a scheduled payment, focuses its alert, a
 	);
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(
 		reports.getByText('Operating cash flow', { exact: true }).locator('..')
 	).toContainText(`$${scheduledReport.operatingCashFlow.toLocaleString('en-US')}`);
@@ -3268,7 +3304,7 @@ test('financed expansion opens one city with its exact shortfall and no cash-out
 	await revealCityAndGrantFunds(page, 'campus-junction', 17_000);
 
 	const beforeFinancing = await readAutoSaveGame(page);
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await page.getByRole('button', { name: /campus junction/i }).click();
 	await page.getByRole('button', { name: 'Finance opening', exact: true }).click();
 	const review = page.getByRole('dialog', { name: 'Review financing' });
@@ -3348,11 +3384,11 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 	await revealCityAndGrantFunds(page, 'campus-junction');
 
 	// Open campus-junction and build a store there.
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await page.getByRole('button', { name: /campus junction/i }).click();
 	await page.getByRole('button', { name: /open for/i }).click();
 	await page.getByRole('button', { name: /campus junction/i }).click();
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
 
 	await buildRetailStoreAt(page, {
@@ -3432,14 +3468,6 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	await expect(inspector.getByRole('table', { name: /Store #1 stock/i })).toHaveCount(0);
 	const openDetails = inspector.getByRole('button', { name: /open details/i });
 	await openDetails.scrollIntoViewIfNeeded();
-	const [openDetailsBox, controlDeskBox] = await Promise.all([
-		openDetails.boundingBox(),
-		page.getByLabel('Control desk').boundingBox()
-	]);
-	if (!openDetailsBox || !controlDeskBox) {
-		throw new Error('Open Details or control desk has no bounding box');
-	}
-	expect(openDetailsBox.y + openDetailsBox.height).toBeLessThan(controlDeskBox.y);
 
 	const storeModal = await openStoreDetail(page);
 	// The modal opens on the Stock tab by default.
@@ -3508,6 +3536,7 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 	}
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	const importsMetric = reports
 		.getByLabel('Reports')
 		.locator('.metrics > div')
@@ -3624,7 +3653,7 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 	await expect(inspector.getByText(/Level 2 \/ 10/i)).toBeVisible();
 });
 
-test('store card Open Details stays reachable above the control desk on a narrow viewport', async ({
+test('store card Open Details stays reachable clear of the control desk on a narrow viewport', async ({
 	page
 }) => {
 	// At <=980px the inspector is a bottom sheet; the fixed control desk must not
@@ -3648,62 +3677,65 @@ test('store card Open Details stays reachable above the control desk on a narrow
 	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
 });
 
-test('store card Open Details clears the three-row control desk just above compact mode', async ({
-	page
-}) => {
-	// At 981–1023px the desktop management launchers remain visible and wrap the
-	// Control Desk to three rows. The inspector must reserve that taller footprint
-	// until the <=980px compact bottom-sheet rule takes over.
-	await page.setViewportSize({ width: 1000, height: 800 });
-	await page.goto('/');
-
-	await buildRetailStoreAt(page, {
-		x: 1,
-		y: 6,
-		storeTypeName: /build convenience store/i,
-		expectedStoreCount: 1
-	});
-
-	await clickMapTile(page, 1, 6);
-	const inspector = page.getByRole('dialog', { name: /tile details/i });
-	await expect(inspector).toBeVisible();
-
-	const openDetails = inspector.getByRole('button', { name: /open details/i });
-	await openDetails.scrollIntoViewIfNeeded();
-	const [openDetailsBox, controlDeskBox] = await Promise.all([
-		openDetails.boundingBox(),
-		page.getByLabel('Control desk').boundingBox()
-	]);
-	if (!openDetailsBox || !controlDeskBox) {
-		throw new Error('Open Details or control desk has no bounding box');
-	}
-	expect(openDetailsBox.y + openDetailsBox.height).toBeLessThanOrEqual(controlDeskBox.y);
-
-	await openDetails.click();
-	const modal = page.locator('[role="dialog"][aria-modal="true"]');
-	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
-});
-
-test('management panels stay reachable from the hamburger menu on a narrow viewport', async ({
-	page
-}) => {
-	// At <=980px the control desk hides the .manage cluster, so the only clickable
-	// path to management panels is the hamburger menu. Regression: the menu used to
-	// only surface Saves + Audio, leaving Dashboard/Reports/etc. unreachable without
-	// keyboard shortcuts on touch/narrow layouts.
-	await page.setViewportSize({ width: 960, height: 800 });
+test('management panels stay reachable from the compact dock', async ({ page }) => {
+	await page.setViewportSize({ width: 960, height: 720 });
 	await page.goto('/');
 	await expectRetailMapReady(page);
 
-	// The desk management launchers are hidden at this width.
-	await expect(page.getByRole('group', { name: /management/i })).not.toBeVisible();
+	const desk = page.getByLabel('Control desk');
+	const management = desk.getByRole('group', { name: /management/i });
+	await expect(management).toBeVisible();
 
-	// The hamburger menu surfaces a Management section that opens the Dashboard.
-	await page.getByRole('button', { name: /^menu$/i }).click();
-	const menuManagement = page.getByRole('group', { name: /management panels/i });
-	await expect(menuManagement).toBeVisible();
-	await menuManagement.getByRole('button', { name: /dashboard/i }).click();
-	await expect(page.getByRole('dialog', { name: /dashboard/i })).toBeVisible();
+	await management.getByRole('button', { name: /^policies$/i }).click();
+	await expect(page.getByRole('dialog', { name: /^policies$/i })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: /^menu$/i })).toHaveCount(0);
+});
+
+test('time plaque controls take real clicks at compact viewports', async ({ page }) => {
+	// Regression: at widths where the dock row overflows, the 5× speed sits at
+	// the row tail, whose clickable point is under the dock's right-edge veil
+	// strip at every scroll position where the button is fully visible. The
+	// veil is decorative (pointer-events: none), so a real Playwright click
+	// must pass through it to the button; if the veil or any band layer ever
+	// becomes interactive again, this click fails with an interception error
+	// even though the button is in viewport (visibility-only assertions in the
+	// component specs cannot catch that — they dispatch to the element
+	// directly).
+	for (const [width, tile] of [
+		[760, { x: 1, y: 6 }],
+		[414, { x: 6, y: 11 }]
+	] as const) {
+		await page.setViewportSize({ width, height: 800 });
+		await page.goto('/');
+		await expectRetailMapReady(page);
+		await buildRetailStoreAt(page, {
+			...tile,
+			storeTypeName: /build convenience store/i,
+			expectedStoreCount: 1
+		});
+
+		const desk = page.getByLabel('Control desk');
+		// The veil must stay non-interactive or the tail 5× becomes unhittable.
+		await expect(page.locator('.dock-edge-fade')).toHaveCSS('pointer-events', 'none');
+
+		// Founding pauses the sim (resume label is showing). Click the tail 5×
+		// — Playwright auto-scrolls the dock and must hit the button through
+		// the veil strip — then assert the pressed state actually flipped.
+		const fiveX = desk.getByRole('button', { name: /^5×$/i });
+		await expect(fiveX).toBeEnabled();
+		await fiveX.click();
+		await expect(fiveX).toHaveAttribute('aria-pressed', 'true');
+
+		// Resume (runs at 5×) then pause again: both plaque controls must take
+		// real clicks after scrolling.
+		const resume = desk.getByRole('button', { name: /^resume$/i });
+		await expect(resume).toBeVisible();
+		await resume.click();
+		const pause = desk.getByRole('button', { name: /^pause$/i });
+		await expect(pause).toBeVisible();
+		await pause.click();
+		await expect(desk.getByRole('button', { name: /^resume$/i })).toBeVisible();
+	}
 });
 
 test('player upgrades an industrial building from the tile inspector', async ({ page }) => {
@@ -3722,7 +3754,7 @@ test('player upgrades an industrial building from the tile inspector', async ({ 
 		expectedStoreCount: 1
 	});
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 
@@ -3735,7 +3767,7 @@ test('player upgrades an industrial building from the tile inspector', async ({ 
 
 	await injectCashAndReload(page, 1_000_000);
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	const reloadedCanvas = await expectIndustryMapReady(page);
 
 	await clickCanvasTile(page, reloadedCanvas, GRAIN_FIELD_TILE.x, GRAIN_FIELD_TILE.y);
@@ -3793,12 +3825,12 @@ test('camera zoom and scroll persist across map view switches', async ({ page })
 
 	// Switch to the industry city map. The retail scene stays alive (keep-alive)
 	// so its camera state should be preserved on the hidden canvas.
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
 
 	// Switch back to the retail city map.
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	const restoredCanvas = await expectRetailMapReady(page);
 
@@ -3822,7 +3854,7 @@ test('supply advisor recommends and arms a starter build', async ({ page }) => {
 	});
 	await waitForAutoSaveDay(page, 1);
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
 
@@ -3847,7 +3879,7 @@ test('supply planner warehouse', async ({ page }) => {
 	await page.setViewportSize({ width: 1200, height: 1000 });
 	await installSandboxAutoSave(page, warehousePressurePlannerGame());
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 
@@ -3919,7 +3951,7 @@ test('supply planner logistics lifecycle hands off a route recommendation withou
 	await page.setViewportSize({ width: 1200, height: 1000 });
 	await installSandboxAutoSave(page, supplyPlannerLogisticsLifecycleGame());
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	await expectIndustryMapReady(page);
 
@@ -4049,7 +4081,7 @@ test('rail-fed production connects two industrial buildings and records a rail s
 	// industrial-upgrade tests do.
 	await injectCashAndReload(page, 1_000_000);
 
-	await openMapMenuItem(page, /industry city map/i);
+	await selectMapView(page, /industry city map/i);
 	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
 	const industryCanvas = await expectIndustryMapReady(page);
 
@@ -4239,6 +4271,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	]);
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	const productionCloseInventory = reports.getByRole('region', {
 		name: 'Production-close inventory (before retail replenishment)'
 	});
@@ -4346,6 +4379,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	await reloadedStores.getByRole('button', { name: 'Close Stores' }).click();
 
 	const reloadedReports = await openManagementPanel(page, /reports/i);
+	await reloadedReports.getByText('Detailed evidence').click();
 	const reloadedCurrentInventory = reloadedReports.getByRole('region', {
 		name: 'Current city inventory (after the latest replenishment)'
 	});
@@ -4451,6 +4485,7 @@ test('logistics manual inter-city transfer completes with inline validation and 
 	await deliveredLogistics.getByRole('button', { name: 'Close Logistics' }).click();
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	const latestLogistics = reports.getByRole('region', { name: 'Latest-day logistics' });
 	await expect(latestLogistics).toBeVisible();
 	await expect(latestLogistics.getByText('Delivered units: 2', { exact: true })).toBeVisible();
@@ -4522,7 +4557,7 @@ test('logistics recurring route dispatches, delivers, and exposes active/paused 
 	await expect(deliveredRow).toContainText(/Transport cost\s+\$4/i);
 	await deliveredLogistics.getByRole('button', { name: 'Close Logistics' }).click();
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
 	const routeButton = worldMap.getByRole('button', {
@@ -4565,7 +4600,7 @@ test('logistics recurring route dispatches, delivers, and exposes active/paused 
 	await expect(worldRoute.locator('line')).not.toHaveAttribute('stroke-dasharray', '6 4');
 });
 
-test('inspector clearance keeps route, retail, and industry actions above the ninth-launcher desk', async ({
+test('inspector clearance keeps route, retail, and industry actions clear of gameplay controls', async ({
 	page
 }) => {
 	test.setTimeout(90_000);
@@ -4576,7 +4611,7 @@ test('inspector clearance keeps route, retail, and industry actions above the ni
 	const managementLaunchers = desk.getByRole('group', { name: /management/i });
 	await expect(managementLaunchers.getByRole('button')).toHaveCount(9);
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
 	const routeButton = worldMap.getByRole('button', {
@@ -4587,7 +4622,7 @@ test('inspector clearance keeps route, retail, and industry actions above the ni
 	const routeInspector = page.getByRole('dialog', { name: /logistics route inspector/i });
 	await expect(routeInspector).toBeVisible();
 	const manageRoute = routeInspector.getByRole('button', { name: /manage route/i });
-	await expectActionAboveControlDesk(page, manageRoute);
+	await expectActionDoesNotOverlapControlDesk(page, manageRoute);
 	await manageRoute.click();
 	await expect(page.getByRole('dialog', { name: /^logistics$/i })).toBeVisible();
 	await page
@@ -4606,7 +4641,7 @@ test('inspector clearance keeps route, retail, and industry actions above the ni
 	const retailInspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(retailInspector).toBeVisible();
 	const openDetails = retailInspector.getByRole('button', { name: /open details/i });
-	await expectActionAboveControlDesk(page, openDetails);
+	await expectActionDoesNotOverlapControlDesk(page, openDetails);
 	await openDetails.click();
 	await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
 	await page.keyboard.press('Escape');
@@ -4624,9 +4659,29 @@ test('inspector clearance keeps route, retail, and industry actions above the ni
 	const closeIndustry = industryInspector.getByRole('button', {
 		name: /close industry tile inspector/i
 	});
-	await expectActionAboveControlDesk(page, closeIndustry);
+	await expectActionDoesNotOverlapControlDesk(page, closeIndustry);
 	await closeIndustry.click();
 	await expect(industryInspector).toHaveCount(0);
+});
+
+test('keeps retail inspector actions clear of the compact gameplay dock', async ({ page }) => {
+	await page.setViewportSize({ width: 760, height: 800 });
+	await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+	const canvas = await expectRetailMapReady(page);
+	const game = await readAutoSaveGame(page);
+	const store = game.stores[0];
+
+	if (!store) throw new Error('Missing starter store for compact inspector test');
+
+	await clickCanvasTile(page, canvas, store.mapX, store.mapY);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	const details = inspector.getByRole('button', { name: /open details/i });
+
+	await expect(details).toBeVisible();
+	await expectActionDoesNotOverlapControlDesk(page, details);
+	await details.click();
+	await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
 });
 
 test('logistics route navigation', async ({ page }) => {
@@ -4637,11 +4692,7 @@ test('logistics route navigation', async ({ page }) => {
 	// inspector before the route selection replaces it.
 	await revealCityAndGrantFunds(page, 'garden-borough');
 
-	await page.getByRole('button', { name: /^menu$/i }).click();
-	await page
-		.getByRole('dialog', { name: /^menu$/i })
-		.getByRole('button', { name: /world map/i })
-		.click();
+	await selectMapView(page, /world map/i);
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
 
@@ -4718,7 +4769,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 
 	// Step 2: the unresolved decision names the concrete route — origin,
 	// destination, material, and route id are all visible pre-resolution.
-	let decisions = await openManagementPanel(page, 'Decisions');
+	let decisions = await openManagementPanel(page, /^decisions$/i);
 	const freightDecision = freightDecisionArticle(decisions, page);
 	await expect(freightDecision).toContainText(
 		'Shipments of Bottled Water between Industry City and Breadbasket Basin are disrupted.'
@@ -4738,7 +4789,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	await expect(routeRow).toContainText(/Paused/i);
 	await logistics.getByRole('button', { name: 'Close Logistics', exact: true }).click();
 
-	decisions = await openManagementPanel(page, 'Decisions');
+	decisions = await openManagementPanel(page, /^decisions$/i);
 	const pausedTargetDecision = freightDecisionArticle(decisions, page);
 	await expect(pausedTargetDecision).toBeVisible();
 	await expect(pausedTargetDecision.getByRole('button', { name: /^Accept delay/ })).toBeEnabled();
@@ -4774,7 +4825,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	await expect(capacityCard).toContainText('Capacity: 2 → 1 units');
 	await decisions.getByRole('button', { name: 'Close Decisions', exact: true }).click();
 
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	const worldMap = page.getByRole('region', { name: /world map/i });
 	await expect(worldMap).toBeVisible();
 	const worldRoute = worldMap.getByTestId('world-logistics-route-route-1');
@@ -4798,7 +4849,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	// Step 5 (second half): edit the base route while the modifier is active,
 	// then resume. The Active Modifiers card re-derives against the edited
 	// base, and the next dispatch combines edited base × still-active modifier.
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	const editedLogistics = await openManagementPanel(page, /logistics/i);
 	const editedRow = editedLogistics.locator('#logistics-route-route-1');
@@ -4843,7 +4894,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 
 	await editedLogistics.getByRole('button', { name: 'Close Logistics', exact: true }).click();
 
-	const resumedDecisions = await openManagementPanel(page, 'Decisions');
+	const resumedDecisions = await openManagementPanel(page, /^decisions$/i);
 	await expect(
 		activeFreightModifierCard(resumedDecisions, 'Capacity ×0.75 on this route for three days.')
 	).toContainText('Capacity: 4 → 3 units');
@@ -4929,6 +4980,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	});
 
 	const reports = await openManagementPanel(page, /reports/i);
+	await reports.getByText('Detailed evidence').click();
 	await expect(reports.getByText('Modifier recoveries', { exact: true })).toBeVisible();
 	await expect(
 		reports.getByText('Route route-1 lead time recovered: 3 days → 2 days', { exact: true })
@@ -4939,7 +4991,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	await reports.getByRole('button', { name: 'Close Reports', exact: true }).click();
 
 	// The disrupted marker clears once no route modifier contributes.
-	await openMapMenuItem(page, /world map/i);
+	await selectMapView(page, /world map/i);
 	await expect(worldMap).toBeVisible();
 	await expect(worldMap.getByTestId('world-logistics-route-route-1')).toHaveAttribute(
 		'data-disrupted',
@@ -4949,7 +5001,7 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	// The current route returns to the edited base behavior with no stale
 	// restoration: the next dispatch uses capacity 4 / lead 2 / cost 2 and
 	// carries no modifier impacts.
-	await openMapMenuItem(page, /retail city map/i);
+	await selectMapView(page, /retail city map/i);
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await advanceSimulationDay(page);
 	saved = await waitForAutoSaveDay(page, 9);
@@ -4988,5 +5040,77 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	});
 	expect(getLatestReport(saved).logistics.arrivals).toContainEqual(
 		expect.objectContaining({ transferOrderId: 'transfer-1', quantity: 3 })
+	);
+});
+
+// --- HPA-304 final viewport parity: 1920x1080 / 1280x800 journeys ---
+
+for (const viewport of [
+	{ width: 1920, height: 1080 },
+	{ width: 1280, height: 800 }
+]) {
+	test(`revamped HUD remains usable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+		await page.setViewportSize(viewport);
+		await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+		await expectRetailMapReady(page);
+		await expect(page.getByRole('button', { name: /retail city map/i })).toBeVisible();
+		await expect(page.getByLabel('Control desk')).toBeVisible();
+
+		await selectMapView(page, /industry city map/i);
+		await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
+			'aria-pressed',
+			'true'
+		);
+	});
+}
+
+test('keeps retail inspector actions clear of the control desk at 1280x800', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+	// Round-trip through the Industry map so the Retail switch-back is itself
+	// exercised at the desktop-regression viewport before the inspector steps.
+	await selectMapView(page, /industry city map/i);
+	await expect(page.getByRole('button', { name: /industry city map/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await selectMapView(page, /retail city map/i);
+	await expect(page.getByRole('button', { name: /retail city map/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+
+	const canvas = await expectRetailMapReady(page);
+	const game = await readAutoSaveGame(page);
+	const store = game.stores[0];
+	if (!store) throw new Error('Missing starter store for 1280x800 inspector journey');
+
+	await clickCanvasTile(page, canvas, store.mapX, store.mapY);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	const details = inspector.getByRole('button', { name: /open details/i });
+	await expect(details).toBeVisible();
+	await expectActionDoesNotOverlapControlDesk(page, details);
+	await details.click();
+	await expect(page.locator('[role="dialog"][aria-modal="true"]')).toBeVisible();
+});
+
+test('management workspace switches from Dashboard to Reports inside the dialog', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await installSandboxAutoSave(page, logisticsRouteNavigationGame());
+
+	let dialog = await openManagementPanel(page, /^dashboard$/i);
+	await dialog.getByRole('button', { name: /^reports$/i }).click();
+
+	// The same dialog stays mounted while its rail label moves to Reports; the
+	// in-dialog rail button is the one pressed after the switch.
+	dialog = page.getByRole('dialog', { name: /^reports$/i });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole('button', { name: /^reports$/i })).toHaveAttribute(
+		'aria-pressed',
+		'true'
 	);
 });

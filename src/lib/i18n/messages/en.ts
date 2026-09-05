@@ -14,7 +14,13 @@ export const en = {
 			one: '{count} alert',
 			other: '{count} alerts'
 		},
-		alertsList: 'Alerts list'
+		alertsList: 'Alerts list',
+		cashTrend: {
+			up: 'Up {percent}',
+			down: 'Down {percent}',
+			upOnly: 'Up',
+			downOnly: 'Down'
+		}
 	},
 	gameMenu: {
 		menu: 'Menu',
@@ -71,26 +77,17 @@ export const en = {
 		},
 		industry: {
 			filter: {
+				chainLabel: 'Chain',
+				title: 'Product chain filters',
+				allShortLabel: 'All',
 				allProducts: 'Filter: All products',
 				selected: 'Filter: {name}',
-				clear: 'Clear product filter',
-				dialog: 'Product chain filter',
-				title: 'Product filter',
-				close: 'Close product chain filter',
-				search: 'Search products',
-				allProductsLabel: 'All products',
-				allBuildings: 'All industrial buildings',
-				chainBuildings: {
-					one: '{count} chain building',
-					other: '{count} chain buildings'
-				},
-				noChain: 'No industry chain yet',
-				noMatches: 'No matching products'
+				noChain: 'No industry chain yet'
 			},
 			supplyAdvisor: 'Supply Advisor — what should I build?',
 			buildType: 'Build {name}',
 			starter: 'Starter',
-			costOperating: 'Cost {cost} | Operating {operating}/day',
+			costOperating: '{cost} · {operating}/d',
 			recipe: 'Recipe',
 			needsProducer: 'Needs {producer}',
 			needsResource: 'Needs a {resource} resource tile',
@@ -106,6 +103,7 @@ export const en = {
 		revenuePerDay: 'Revenue/day',
 		stockHealth: 'Stock health',
 		staffMorale: 'Staff morale',
+		last7Days: 'Last 7 days',
 		level: 'Level {level} / {max}',
 		nextLabel: 'Next: {benefit}',
 		nextBenefit: {
@@ -239,6 +237,12 @@ export const en = {
 		routeSummary: '{origin} to {destination} · {material} · {state} · {condition}',
 		cityDetails: 'City details',
 		closeCityDetails: 'Close city details',
+		stats: {
+			stores: 'Stores',
+			plants: 'Plants',
+			opening: 'Opening',
+			status: 'Status'
+		},
 		cityEyebrow: {
 			retail: 'Retail city',
 			industry: 'Industrial city'
@@ -440,6 +444,29 @@ export const en = {
 			destinationFull: 'Destination full',
 			recoveriesTitle: 'Modifier recoveries'
 		},
+		window: 'Window',
+		windowDays: '{days}d',
+		revenueVsCost: 'Revenue vs cost',
+		perDay: '{amount} /d',
+		legendRevenue: 'Revenue',
+		legendCost: 'Cost',
+		margin: 'Margin',
+		footfall: 'Footfall',
+		spoilage: 'Spoilage',
+		scenarioGrade: 'Scenario grade',
+		companyStanding: 'Company standing',
+		scoreOutOf: '{score} / {max}',
+		dayOf: 'day {day} of {limit}',
+		dayOnly: 'day {day}',
+		byStore: 'By store',
+		moreStores: '+{count} more',
+		byProduct: 'By product',
+		detailedEvidence: 'Detailed evidence',
+		chartLabel: 'Line chart of daily revenue and cost across the selected window',
+		sparklineLabel: 'Daily revenue sparkline for {storeName}',
+		objectivesMet: 'Met',
+		objectivesInProgress: 'In progress',
+		objectivesMissed: 'Missed',
 		dailyWarnings: 'Daily warnings',
 		empty: 'No reports yet. Advance the first day to generate results.'
 	},
@@ -516,6 +543,14 @@ export const en = {
 		candidates: 'Candidates',
 		unassigned: 'Unassigned',
 		storeStaffing: 'Store staffing',
+		storeCoverage: 'Store coverage',
+		manageAssignments: 'Manage assignments',
+		addStaff: 'Add staff to {storeName}',
+		hireCta: 'Hire',
+		ratio: {
+			manager: 'Mgr {assigned}/{required}',
+			general: 'Gen {assigned}/{required}'
+		},
 		assigned: 'Assigned',
 		coverage:
 			'{storeName}: {managerAssigned}/{managerRequired} managers, {generalAssigned}/{generalRequired} general',
@@ -666,14 +701,12 @@ export const en = {
 	},
 	productChainsPanel: {
 		ariaLabel: 'Product Chains',
-		eyebrow: 'Folio II · Production Chain',
+		eyebrow: 'Atlas of Supply',
 		modeGroup: 'Product chain view',
 		storeCategoryChains: 'Store category chains',
 		cityInventoryFlow: 'City inventory flow',
-		scopeAria: 'City inventory scope',
+		capacityLabel: 'Inventory capacity',
 		activeIndustryInventory: 'City inventory — {cityName}',
-		activeRetailSupply:
-			'Local supply for {retailCityName} — {sourceCityName}: {used} / {capacity} city inventory used.',
 		supplyState: {
 			importsOnly: '{retailCityName} supply: Imports only — replenishment uses external imports.',
 			zeroCapacity:
@@ -892,25 +925,22 @@ export const en = {
 	},
 	atlas: {
 		categoryIndex: {
-			ariaLabel: 'Product category index',
-			tier: 'Tier {tier}',
-			metrics: 'stock {stock} · made {produced}/d · sold {consumed}/d'
+			ariaLabel: 'Product category index'
+		},
+		capacityStrip: {
+			figures: '{used} / {capacity}'
 		},
 		nodeBroadside: {
 			inspected: 'Inspected node',
 			emptyTitle: 'Chain node',
 			empty: 'Select a graph node to inspect its latest flow metrics.',
 			sharedProducer: 'Shared producer — drawn in {count} branches of this chain.',
+			recipe: 'Recipe',
 			metrics: {
-				buildings: 'Buildings',
-				capacity: 'Capacity',
-				capacityValue: '{output} out / {input} in',
-				produced: 'Produced',
-				consumed: 'Consumed',
-				imported: 'Imported',
-				sold: 'Sold',
-				missed: 'Missed',
-				stock: 'Stock'
+				throughput: 'Throughput',
+				shortfall: 'Shortfall',
+				health: 'Status',
+				perDay: '{value}/d'
 			}
 		},
 		legend: {
@@ -943,7 +973,6 @@ export const en = {
 		},
 		controlTower: {
 			eyebrow: 'Management',
-			close: 'Close',
 			dismiss: 'Dismiss {panel}',
 			closePanel: 'Close {panel}',
 			panelStatus: '{panel} status'
@@ -1061,13 +1090,17 @@ export const en = {
 	financePanel: {
 		title: 'Finance',
 		metrics: {
+			outstanding: 'Outstanding',
 			outstandingPrincipal: 'Outstanding principal',
 			amountDue: 'Amount due',
 			nextPayment: 'Next payment',
 			debtServiceCoverage: 'Debt-service coverage',
 			cashRunway: 'Cash runway',
 			availableCredit: '84-day available credit',
-			noDebtServiceDue: 'No debt service due'
+			noDebtServiceDue: 'No debt service due',
+			latestProfit: 'Latest daily profit',
+			revenueTrend: 'Daily revenue',
+			noReport: 'No report yet'
 		},
 		credit: {
 			baseApr: 'Base APR',
@@ -1159,6 +1192,7 @@ export const en = {
 			days: '{days} days',
 			ninetyPlusDays: '90+ days',
 			apr: 'APR',
+			ledger: 'Ledger',
 			healthAdjustment: 'Health +{amount}',
 			historyAdjustment: 'History +{amount}',
 			principal: 'Principal',
@@ -1171,8 +1205,17 @@ export const en = {
 			reviewSubmission: '{amount} will be submitted only after confirmation.',
 			refinanceReview: 'Refinance {amount} with {term}. No cash-out is included.',
 			replacementComparison:
-				'Replacement APR {apr} · First payment {firstPayment} · Peak payment {peakPayment} · No cash-out is included.'
+				'Replacement APR {apr} · First payment {firstPayment} · Peak payment {peakPayment} · No cash-out is included.',
+			runwayLeverage: 'Runway · Coverage',
+			leverage: 'Leverage',
+			netPosition: 'Net position'
 		}
+	},
+	workspaceSummary: {
+		stores: 'Stores',
+		cash: 'Cash',
+		activeRoutes: 'Active logistics routes',
+		chainHealth: 'Product chain health'
 	},
 	game: {
 		archetypes: {
@@ -1755,8 +1798,9 @@ export const en = {
 			},
 			warehouseNode: 'City inventory',
 			nodeStats: {
-				recipe: '{buildings} bldg · {output}/d',
-				stock: 'stock {stock}'
+				recipe: '▲ {output}/d',
+				stock: '{stock} held',
+				shortage: '▼ short {short}'
 			},
 			health: {
 				healthy: 'Healthy',

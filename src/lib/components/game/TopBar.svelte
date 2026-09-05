@@ -5,6 +5,8 @@
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle, SupportedLocale } from '$lib/i18n';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
+	import type { CashTrend } from '$lib/game/reports';
+	import GameIcon from './GameIcon.svelte';
 	import GameMenu from './GameMenu.svelte';
 
 	interface Props {
@@ -12,6 +14,7 @@
 		title: string;
 		day: number | null;
 		cash: number | null;
+		cashTrend?: CashTrend | null;
 		alerts: LocalizedGameAlert[];
 		i18n: I18nBundle;
 		activeLocale: SupportedLocale;
@@ -29,6 +32,7 @@
 		title,
 		day,
 		cash,
+		cashTrend = null,
 		alerts,
 		i18n,
 		activeLocale,
@@ -68,25 +72,83 @@
 			count
 		});
 	}
+
+	const mapViews = $derived([
+		{ id: 'retail', icon: 'retail', label: i18n.t('route.mapEyebrow.retail') },
+		{ id: 'industry', icon: 'industry', label: i18n.t('route.mapEyebrow.industry') },
+		{ id: 'world', icon: 'world', label: i18n.t('route.mapEyebrow.world') }
+	] as const);
 </script>
 
 <header class="top-bar" aria-label={i18n.t('topBar.statusBar')}>
-	<div class="location plaque">
-		<p class="eyebrow">{eyebrow}</p>
-		<h1>{title}</h1>
+	<div class="location-stack">
+		<div class="location plaque">
+			<span class="medallion" aria-hidden="true">
+				<GameIcon name={activeMapView} />
+			</span>
+			<span class="plaque-divider" aria-hidden="true"></span>
+			<div>
+				<p class="eyebrow">{eyebrow}</p>
+				<h1>{title}</h1>
+			</div>
+		</div>
+
+		<div class="map-controls" role="group" aria-label={i18n.t('gameMenu.mapView')}>
+			{#each mapViews as view (view.id)}
+				<button
+					type="button"
+					class="btn-icon map-button"
+					class:active={activeMapView === view.id}
+					aria-label={view.label}
+					aria-pressed={activeMapView === view.id}
+					onclick={() => onSelectView(view.id)}
+				>
+					<GameIcon name={view.icon} />
+				</button>
+			{/each}
+		</div>
 	</div>
 
 	<div class="readouts plaque">
-		{#if day !== null}
-			<span class="ticker" aria-label={i18n.t('topBar.day', { day: i18n.format.integer(day) })}>
-				{i18n.t('topBar.day', { day: i18n.format.integer(day) })}
-			</span>
-		{/if}
-		{#if cash !== null}
-			<span class="ticker" aria-label={i18n.t('topBar.cash')} data-testid="cash-readout">
-				{i18n.format.currency(cash)}
-			</span>
-		{/if}
+		<span class="ticker">
+			<GameIcon name="day" />
+			{#if day !== null}
+				<span aria-label={i18n.t('topBar.day', { day: i18n.format.integer(day) })}>
+					{i18n.t('topBar.day', { day: i18n.format.integer(day) })}
+				</span>
+			{:else}
+				<span class="placeholder">{i18n.t('topBar.day', { day: '—' })}</span>
+			{/if}
+		</span>
+		<span class="ticker" data-testid="cash-readout">
+			<GameIcon name="cash" />
+			{#if cash !== null}
+				<span aria-label={i18n.t('topBar.cash')}>{i18n.format.currency(cash)}</span>
+			{:else}
+				<span class="placeholder" aria-label={i18n.t('topBar.cash')}>—</span>
+			{/if}
+			{#if cashTrend}
+				<span
+					class="trend-chip"
+					class:up={cashTrend.direction === 'up'}
+					class:down={cashTrend.direction === 'down'}
+					data-testid="cash-trend"
+					aria-label={cashTrend.percent !== null
+						? i18n.t(
+								cashTrend.direction === 'up' ? 'topBar.cashTrend.up' : 'topBar.cashTrend.down',
+								{ percent: i18n.format.percent1(cashTrend.percent) }
+							)
+						: i18n.t(
+								cashTrend.direction === 'up'
+									? 'topBar.cashTrend.upOnly'
+									: 'topBar.cashTrend.downOnly'
+							)}
+				>
+					{cashTrend.direction === 'up' ? '▲' : '▼'}
+					{cashTrend.percent !== null ? i18n.format.percent1(cashTrend.percent) : ''}
+				</span>
+			{/if}
+		</span>
 
 		<div class="alerts" {@attach alertsOpen && dismissAlertsOnOutsidePointer}>
 			<button
@@ -96,10 +158,7 @@
 				aria-expanded={alertsOpen}
 				onclick={toggleAlerts}
 			>
-				<svg aria-hidden="true" viewBox="0 0 24 24">
-					<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" />
-					<path d="M10 20a2 2 0 0 0 4 0" />
-				</svg>
+				<GameIcon name="alerts" />
 				{#if alerts.length > 0}
 					<span class="seal alert-count" data-urgent="true">{alerts.length}</span>
 				{/if}
@@ -125,15 +184,7 @@
 			{/if}
 		</div>
 
-		<GameMenu
-			{activeMapView}
-			{i18n}
-			{activeLocale}
-			{onSelectView}
-			{onSelectLocale}
-			{menuContent}
-			bind:open={menuOpen}
-		/>
+		<GameMenu {i18n} {activeLocale} {onSelectLocale} {menuContent} bind:open={menuOpen} />
 	</div>
 </header>
 
@@ -145,9 +196,10 @@
 		right: 0.75rem;
 		z-index: 30;
 		display: flex;
+		flex-wrap: wrap;
 		align-items: flex-start;
 		justify-content: space-between;
-		gap: 1rem;
+		gap: 0.5rem 1rem;
 		pointer-events: none;
 	}
 
@@ -156,14 +208,59 @@
 		padding: 0.5rem 0.85rem;
 	}
 
+	.location-stack {
+		pointer-events: none;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		/* >=1.5rem column gap keeps the floating map-view medallions clear of
+		   the location plaque (mock: the cluster breathes beside the plaque). */
+		gap: 0.5rem 1.5rem;
+	}
+
 	.location {
 		pointer-events: none;
+		display: flex;
+		align-items: center;
+		gap: 0.7rem;
+	}
+
+	/* Slim vertical divider between the brass medallion and the copy. */
+	.plaque-divider {
+		flex: none;
+		align-self: stretch;
+		width: 1px;
+		background: linear-gradient(
+			to bottom,
+			transparent,
+			var(--brass-500) 22%,
+			var(--brass-500) 78%,
+			transparent
+		);
+	}
+
+	.medallion {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 3.5rem;
+		height: 3.5rem;
+		color: var(--walnut-900);
+		background: radial-gradient(
+			circle at 32% 28%,
+			var(--brass-100) 0%,
+			var(--brass-500) 62%,
+			var(--brass-700) 100%
+		);
+		border: 1.5px solid var(--brass-700);
+		border-radius: 999px;
+		box-shadow: inset 0 0 0 2px var(--brass-100);
 	}
 
 	.location h1 {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: 1.35rem;
+		font-size: 1.7rem;
 		font-weight: 400;
 		line-height: 1.05;
 		color: var(--ink-700);
@@ -173,19 +270,60 @@
 		margin: 0;
 	}
 
+	.map-controls {
+		pointer-events: auto;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.map-button.active {
+		background: var(--brass-500);
+		color: var(--paper-50);
+	}
+
 	.readouts {
 		pointer-events: auto;
 		display: flex;
 		align-items: center;
-		gap: 0.85rem;
+		flex-wrap: wrap;
+		gap: 0.3rem 0.85rem;
 	}
 
 	.ticker {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
 		font-size: 0.9rem;
 		color: var(--ink-700);
 		white-space: nowrap;
+	}
+
+	.placeholder {
+		color: var(--ink-400);
+	}
+
+	.trend-chip {
+		padding: 0.12rem 0.45rem;
+		border: 1px solid var(--ink-900);
+		border-radius: 999px;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		font-variant-numeric: tabular-nums lining-nums;
+		line-height: 1.1;
+		color: var(--paper-50);
+	}
+
+	.trend-chip.up {
+		background: var(--moss);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
+	}
+
+	.trend-chip.down {
+		background: var(--wax-red);
+		box-shadow: inset 0 0 0 1px var(--wax-red-2);
 	}
 
 	.alerts {
@@ -203,11 +341,6 @@
 		clip: rect(0 0 0 0);
 		clip-path: inset(50%);
 		white-space: nowrap;
-	}
-
-	.alerts-bell {
-		width: 2.4rem;
-		height: 2.4rem;
 	}
 
 	.alert-count {

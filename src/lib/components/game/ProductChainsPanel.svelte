@@ -2,7 +2,7 @@
 	import CategoryStampIndex from '$lib/components/game/atlas/CategoryStampIndex.svelte';
 	import NodeBroadside from '$lib/components/game/atlas/NodeBroadside.svelte';
 	import ProductChainAtlas from '$lib/components/game/atlas/ProductChainAtlas.svelte';
-	import { getCityInventoryStats } from '$lib/game/cityInventory';
+	import { getCityInventory, getCityInventoryStats } from '$lib/game/cityInventory';
 	import {
 		buildWarehouseFlowGraph,
 		getSupportedStoreChainCategories
@@ -80,37 +80,56 @@
 				? i18n.labels.productCategory(activeCategory.productId)
 				: i18n.t('productChainsPanel.ariaLabel')
 	);
+
 	function cityName(cityId: string): string {
 		return i18n.labels.worldCity(cityId).name;
 	}
 
-	function activeIndustryScopeLabel(): string {
-		return i18n.t('productChainsPanel.activeIndustryInventory', {
-			cityName: cityName(game.activeIndustryCityId)
-		});
-	}
-
-	function retailSupplyScopeLabel(): string {
-		const retailCityName = cityName(game.activeCityId);
-		const supplyState = categorySupplyState;
-
-		switch (supplyState.code) {
-			case 'available': {
-				const stats = getCityInventoryStats(game, supplyState.cityId);
-				return i18n.t('productChainsPanel.activeRetailSupply', {
-					retailCityName,
-					sourceCityName: cityName(supplyState.cityId),
-					used: i18n.format.integer(stats.used),
-					capacity: i18n.format.integer(stats.capacity)
-				});
+	const capacityStrip = $derived.by(() => {
+		if (mode === 'warehouse-flow') {
+			const cityId = game.activeIndustryCityId;
+			if (!cityId || !getCityInventory(game, cityId).ok) {
+				return null;
 			}
+			const stats = getCityInventoryStats(game, cityId);
+			return {
+				label: i18n.t('productChainsPanel.activeIndustryInventory', {
+					cityName: cityName(cityId)
+				}),
+				used: stats.used,
+				capacity: stats.capacity
+			};
+		}
+		const supplyState = categorySupplyState;
+		if (supplyState.code !== 'available' || !getCityInventory(game, supplyState.cityId).ok) {
+			return null;
+		}
+		const stats = getCityInventoryStats(game, supplyState.cityId);
+		return { label: cityName(supplyState.cityId), used: stats.used, capacity: stats.capacity };
+	});
+	const capacityFillPercent = $derived(
+		capacityStrip && capacityStrip.capacity > 0
+			? Math.min(100, (capacityStrip.used / capacityStrip.capacity) * 100)
+			: 0
+	);
+
+	function supplyStateCaption(): string | null {
+		if (mode !== 'store-categories') {
+			return null;
+		}
+		const supplyState = categorySupplyState;
+		switch (supplyState.code) {
 			case 'imports-only':
-				return i18n.t('productChainsPanel.supplyState.importsOnly', { retailCityName });
+				return i18n.t('productChainsPanel.supplyState.importsOnly', {
+					retailCityName: cityName(game.activeCityId)
+				});
 			case 'zero-capacity':
 				return i18n.t('productChainsPanel.supplyState.zeroCapacity', {
-					retailCityName,
+					retailCityName: cityName(game.activeCityId),
 					sourceCityName: cityName(supplyState.cityId)
 				});
+			default:
+				return null;
 		}
 	}
 
@@ -163,70 +182,85 @@
 </script>
 
 <section
-	class="panel paper product-chains-panel atlas-sheet"
+	class="panel product-chains-panel atlas-sheet"
 	aria-label={i18n.t('productChainsPanel.ariaLabel')}
 >
 	<div class="sheet-head">
 		<div>
 			<p class="eyebrow">{i18n.t('productChainsPanel.eyebrow')}</p>
 			<h2>{headingText}</h2>
-			{#if graph}
-				<p class="chain-title">{graph.title}</p>
+		</div>
+		<div class="head-controls">
+			<div class="mode-toggle" role="group" aria-label={i18n.t('productChainsPanel.modeGroup')}>
+				<button
+					type="button"
+					class:active={mode === 'store-categories'}
+					aria-pressed={mode === 'store-categories'}
+					onclick={() => selectMode('store-categories')}
+				>
+					{i18n.t('productChainsPanel.storeCategoryChains')}
+				</button>
+				<button
+					type="button"
+					class:active={mode === 'warehouse-flow'}
+					aria-pressed={mode === 'warehouse-flow'}
+					onclick={() => selectMode('warehouse-flow')}
+				>
+					{i18n.t('productChainsPanel.cityInventoryFlow')}
+				</button>
+			</div>
+			{#if activeCategory}
+				<button
+					type="button"
+					class="plan-category"
+					aria-label={i18n.t('supplyAdvisor.dialog')}
+					disabled={!plannerProductIds.includes(activeCategory.productId)}
+					onclick={() => onPlanProduct(activeCategory.productId)}
+				>
+					{i18n.t('supplyAdvisor.title')}
+				</button>
 			{/if}
 		</div>
-		{#if activeCategory}
-			<button
-				type="button"
-				class="plan-category"
-				aria-label={i18n.t('supplyAdvisor.dialog')}
-				disabled={!plannerProductIds.includes(activeCategory.productId)}
-				onclick={() => onPlanProduct(activeCategory.productId)}
-			>
-				{i18n.t('supplyAdvisor.title')}
-			</button>
-		{/if}
-		<div class="mode-toggle" role="group" aria-label={i18n.t('productChainsPanel.modeGroup')}>
-			<button
-				type="button"
-				class:active={mode === 'store-categories'}
-				aria-pressed={mode === 'store-categories'}
-				onclick={() => selectMode('store-categories')}
-			>
-				{i18n.t('productChainsPanel.storeCategoryChains')}
-			</button>
-			<button
-				type="button"
-				class:active={mode === 'warehouse-flow'}
-				aria-pressed={mode === 'warehouse-flow'}
-				onclick={() => selectMode('warehouse-flow')}
-			>
-				{i18n.t('productChainsPanel.cityInventoryFlow')}
-			</button>
-		</div>
 	</div>
-
-	<section class="scope" aria-label={i18n.t('productChainsPanel.scopeAria')}>
-		<p>{mode === 'warehouse-flow' ? activeIndustryScopeLabel() : retailSupplyScopeLabel()}</p>
-		{#each selectedInventoryStateLabels() as stateLabel (stateLabel)}
-			<p>{stateLabel}</p>
-		{/each}
-	</section>
 
 	<div class="sheet-rule" aria-hidden="true"></div>
 
 	{#if summaries.length > 0}
-		<CategoryStampIndex
-			{summaries}
-			{i18n}
-			activeProductId={activeCategory?.productId ?? null}
-			{mode}
-			onSelectProduct={selectProduct}
-		/>
+		<div class="index-band">
+			<CategoryStampIndex
+				{summaries}
+				{i18n}
+				activeProductId={activeCategory?.productId ?? null}
+				{mode}
+				onSelectProduct={selectProduct}
+			/>
+			{#if capacityStrip}
+				<div class="capacity-strip" aria-label={i18n.t('productChainsPanel.capacityLabel')}>
+					<span class="cap-name">{capacityStrip.label}</span>
+					<span class="cap-bar">
+						<span class="cap-fill" style:width={`${capacityFillPercent}%`}></span>
+					</span>
+					<span class="cap-figures">
+						{i18n.t('atlas.capacityStrip.figures', {
+							used: i18n.format.integer(capacityStrip.used),
+							capacity: i18n.format.integer(capacityStrip.capacity)
+						})}
+					</span>
+				</div>
+			{/if}
+		</div>
 	{:else}
 		<p class="empty">{i18n.t('productChainsPanel.emptyCategories')}</p>
 	{/if}
+	{#if supplyStateCaption()}
+		<p class="scope-note wax">{supplyStateCaption()}</p>
+	{/if}
+	{#each selectedInventoryStateLabels() as stateLabel (stateLabel)}
+		<p class="scope-note">{stateLabel}</p>
+	{/each}
 
 	{#if graph}
+		<p class="chain-title">{graph.title}</p>
 		<ProductChainAtlas {graph} {i18n} selectedNodeId={activeNodeId} onSelectNode={selectNode}>
 			{#snippet broadside()}
 				<NodeBroadside {i18n} node={selectedNode} />
@@ -240,7 +274,7 @@
 <style>
 	.product-chains-panel {
 		display: grid;
-		gap: 1rem;
+		gap: 0.9rem;
 		padding: 1.1rem 1.2rem;
 	}
 
@@ -255,6 +289,14 @@
 		min-width: 0;
 		display: grid;
 		gap: 2px;
+	}
+
+	.head-controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.4rem;
 	}
 
 	.sheet-rule {
@@ -282,20 +324,69 @@
 		color: var(--ink-500);
 	}
 
-	.scope {
-		display: grid;
-		gap: 0.3rem;
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		padding: 0.6rem 0.7rem;
+	.index-band {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
 	}
 
-	.scope p {
-		font-family: var(--font-body);
-		font-size: 0.85rem;
-		line-height: 1.4;
+	.capacity-strip {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.45rem 0.6rem;
+		border: 1px solid var(--brass-700);
+		border-radius: 2px;
+		background: color-mix(in srgb, var(--brass-100) 35%, var(--paper-50));
+	}
+
+	.cap-name {
+		font-family: var(--font-ui);
+		font-size: 0.66rem;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
 		color: var(--ink-700);
+		white-space: nowrap;
+	}
+
+	.cap-bar {
+		position: relative;
+		display: inline-block;
+		width: 110px;
+		height: 8px;
+		background: var(--paper-200);
+		border: 1px solid var(--brass-700);
+		border-radius: 1px;
+		overflow: hidden;
+	}
+
+	.cap-fill {
+		position: absolute;
+		inset: 0 auto 0 0;
+		background: var(--brass-700);
+	}
+
+	.cap-figures {
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-700);
+		white-space: nowrap;
+	}
+
+	.scope-note {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		line-height: 1.35;
+		color: var(--ink-500);
+	}
+
+	.scope-note.wax {
+		color: var(--wax-red);
 	}
 
 	.eyebrow {
@@ -315,10 +406,10 @@
 	}
 
 	.mode-toggle button {
-		min-height: 2rem;
-		padding: 0.35rem 0.55rem;
+		min-height: 1.9rem;
+		padding: 0.3rem 0.5rem;
 		font-family: var(--font-ui);
-		font-size: 0.72rem;
+		font-size: 0.7rem;
 		font-weight: 700;
 		background: var(--paper-50);
 		border: 1px solid var(--paper-edge);
@@ -328,10 +419,10 @@
 	}
 
 	.plan-category {
-		min-height: 2rem;
-		padding: 0.35rem 0.6rem;
+		min-height: 1.9rem;
+		padding: 0.3rem 0.6rem;
 		font-family: var(--font-ui);
-		font-size: 0.72rem;
+		font-size: 0.7rem;
 		font-weight: 700;
 		background: var(--moss);
 		border: 1px solid var(--ink-900);
@@ -370,6 +461,10 @@
 	@media (max-width: 980px) {
 		.sheet-head {
 			display: grid;
+		}
+
+		.head-controls {
+			justify-content: flex-start;
 		}
 
 		.mode-toggle {

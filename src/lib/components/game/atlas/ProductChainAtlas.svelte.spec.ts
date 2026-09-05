@@ -1,6 +1,7 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import type { Snippet } from 'svelte';
 import { buildProductChainTree } from '$lib/game/productChainTree';
 import { createNewGame } from '$lib/game/state';
 import type { LocalizedProductChainGraph } from '$lib/i18n/localizedTypes';
@@ -8,6 +9,9 @@ import { createI18n } from '$lib/i18n';
 import ProductChainAtlas from './ProductChainAtlas.svelte';
 
 const i18n = createI18n('en');
+
+// A no-op stand-in for a snippet (structural side-column checks only).
+const noopSnippet = (() => {}) as unknown as Snippet;
 
 // The atlas accepts LocalizedProductChainGraph (string fields). The raw builder
 // emits structured objects; localizeProductChainGraph (Task 8) is the bridge.
@@ -87,6 +91,28 @@ describe('ProductChainAtlas', () => {
 		await expect
 			.element(page.getByRole('button', { name: `${firstNode.label}, ${firstNode.healthLabel}` }))
 			.toHaveAttribute('aria-pressed', 'true');
+	});
+
+	it('repaints edge labels in an overlay above the node buttons', async () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 20260518);
+		const graph = buildProductChainTree({
+			game,
+			store: game.stores[0]!,
+			productId: 'snacks'
+		});
+		expect(graph.edges.length).toBeGreaterThan(0);
+		const onSelectNode = vi.fn();
+		render(ProductChainAtlas, {
+			graph: localizedGraph(graph),
+			i18n,
+			selectedNodeId: null,
+			onSelectNode
+		});
+
+		const overlay = document.querySelector('.route-labels');
+		expect(overlay).not.toBeNull();
+		expect(overlay?.querySelectorAll('g[data-edge-id]').length).toBe(graph.edges.length);
 	});
 
 	it('clears selection when the graph id changes', async () => {
@@ -189,11 +215,12 @@ describe('ProductChainAtlas', () => {
 			onSelectNode
 		});
 
-		const edgeGroups = document.querySelectorAll('g[data-edge-id]');
+		// Route paths live in the .routes svg; labels repaint in the .route-labels overlay.
+		const edgeGroups = document.querySelectorAll('.routes g[data-edge-id]');
 		expect(edgeGroups).toHaveLength(graph.edges.length);
 	});
 
-	it('broadside overlay has pointer-events: none so clicks pass through', async () => {
+	it('renders the broadside as a side column next to the chain map', async () => {
 		expect.assertions(2);
 		const game = createNewGame('convenience', 20260518);
 		const graph = buildProductChainTree({
@@ -206,33 +233,15 @@ describe('ProductChainAtlas', () => {
 			graph: localizedGraph(graph),
 			i18n,
 			selectedNodeId: null,
-			onSelectNode
+			onSelectNode,
+			onInteractionFeedback: () => {},
+			// Structural check only: a no-op snippet still mounts the side column.
+			broadside: noopSnippet
 		});
 
-		// The broadside slot is rendered when compact is false (default).
-		// Verify the CSS rule directly from the stylesheet.
-		const chainMap = document.querySelector('[class*="chain-map"]');
-		expect(chainMap).toBeTruthy();
-
-		// Find the scoped broadside-slot rule and verify pointer-events: none.
-		const sheets = document.styleSheets;
-		let foundRule = false;
-		let rule: CSSStyleRule | null = null;
-		for (const sheet of sheets) {
-			try {
-				for (const r of sheet.cssRules) {
-					if (r instanceof CSSStyleRule && r.selectorText.includes('broadside-slot')) {
-						foundRule = true;
-						rule = r;
-						break;
-					}
-				}
-			} catch {
-				// Cross-origin stylesheets throw
-			}
-			if (foundRule) break;
-		}
-		expect(rule?.style.pointerEvents).toBe('none');
+		const body = document.querySelector<HTMLElement>('.atlas-body');
+		expect(body).not.toBeNull();
+		expect(document.querySelector('.atlas-body > .broadside-slot')).not.toBeNull();
 	});
 
 	it('uses instance-scoped marker IDs in <defs>', async () => {

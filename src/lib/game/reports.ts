@@ -1,5 +1,29 @@
 import type { DailyReport } from './types';
 
+export interface CashTrend {
+	direction: 'up' | 'down';
+	/** Cash change as a ratio (e.g. 0.062); null when only the direction is known. */
+	percent: number | null;
+}
+
+/**
+ * Day-over-day cash trend from the latest report's own net cash change, so the
+ * first report already yields a percent against its opening cash (cashBefore).
+ * When the percent is not meaningful (no positive opening cash) only the
+ * direction is returned; null before the first report or when cash did not move.
+ */
+export function cashTrendFromReports(reports: readonly DailyReport[]): CashTrend | null {
+	const latest = reports[reports.length - 1];
+	if (!latest) return null;
+	const change = latest.netCashChange;
+	if (change === 0) return null;
+	const direction = change > 0 ? 'up' : 'down';
+	return {
+		direction,
+		percent: latest.cashBefore > 0 ? Math.abs(change) / latest.cashBefore : null
+	};
+}
+
 export interface ReportWindowSummary {
 	days: number;
 	revenue: number;

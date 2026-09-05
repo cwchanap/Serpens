@@ -2,7 +2,7 @@
 	import { asset } from '$app/paths';
 	import { getIndustrialBuildingArt, getIndustryMaterialArt } from '$lib/assets/gameArt';
 	import { getCityInventoryStats } from '$lib/game/cityInventory';
-	import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+	import { INDUSTRIAL_BUILDING_TYPES, PRODUCTION_RECIPES } from '$lib/game/industry';
 	import {
 		MAX_BUILDING_LEVEL,
 		canUpgradeBuilding,
@@ -73,6 +73,18 @@
 	);
 	const canAffordBuildingUpgrade = $derived(building ? game.cash >= buildingUpgradeCost : false);
 	const throughput = $derived(building ? getBuildingThroughputMultiplier(building.level) : 1);
+	const recipe = $derived(
+		building && buildingType?.recipeId ? (PRODUCTION_RECIPES[buildingType.recipeId] ?? null) : null
+	);
+	const lastProductionUnits = $derived(
+		building ? building.lastProduction.reduce((total, movement) => total + movement.quantity, 0) : 0
+	);
+	const bufferUnits = $derived(
+		bufferMaterials.reduce((total, material) => total + material.quantity, 0)
+	);
+	const isWarningStatus = $derived(
+		building ? building.status === 'stalled' || building.status === 'blocked' : false
+	);
 
 	function getCityInventoryMaterialRows(): CityInventoryMaterialRow[] {
 		if (!building || building.typeId !== 'warehouse') {
@@ -208,20 +220,59 @@
 
 		{#if building && buildingType}
 			<section aria-label={i18n.t('industryTileInspector.detailsAria')}>
-				<div class="building-heading">
-					<h3>{i18n.labels.industrialBuilding(building.typeId)}</h3>
-					<span>{buildingStatusLabel(building.status)}</span>
+				<div class="ops-header">
+					<img
+						class="building-thumbnail"
+						src={buildingArtSrc(building.typeId)}
+						alt=""
+						data-testid={`industry-building-thumbnail-${building.typeId}`}
+						width="96"
+						height="96"
+						loading="lazy"
+						decoding="async"
+					/>
+					<div>
+						<p class="ops-eyebrow">{cityInventoryCityName} · {tile?.x},{tile?.y}</p>
+						<h3 class="ops-name">{i18n.labels.industrialBuilding(building.typeId)}</h3>
+						<span class="ops-status" class:warning={isWarningStatus}>
+							{buildingStatusLabel(building.status)}
+						</span>
+					</div>
 				</div>
-				<img
-					class="building-thumbnail"
-					src={buildingArtSrc(building.typeId)}
-					alt=""
-					data-testid={`industry-building-thumbnail-${building.typeId}`}
-					width="96"
-					height="96"
-					loading="lazy"
-					decoding="async"
-				/>
+
+				{#if recipe}
+					<div class="recipe-strip">
+						{#each recipe.inputs as input (input.materialId)}
+							<span class="recipe-chip">
+								<img src={materialArtSrc(input.materialId)} alt="" width="28" height="28" />
+								{i18n.labels.material(input.materialId)} ×{i18n.format.integer(input.quantity)}
+							</span>
+							<span class="recipe-arrow" aria-hidden="true">→</span>
+						{/each}
+						{#each recipe.outputs as output (output.materialId)}
+							<span class="recipe-chip out">
+								<img src={materialArtSrc(output.materialId)} alt="" width="28" height="28" />
+								{i18n.labels.material(output.materialId)} ×{i18n.format.integer(output.quantity)}
+							</span>
+						{/each}
+					</div>
+				{/if}
+
+				<div class="gauge-row" aria-hidden="true">
+					<div class="gauge">
+						<span class="gauge-value">{i18n.format.integer(bufferUnits)}</span>
+						<span class="gauge-label">{i18n.t('industryTileInspector.buffer')}</span>
+					</div>
+					<div class="gauge">
+						<span class="gauge-value">{i18n.format.integer(lastProductionUnits)}</span>
+						<span class="gauge-label">{i18n.t('industryTileInspector.lastProduction')}</span>
+					</div>
+					<div class="gauge" class:warning={building.blockedDays > 0}>
+						<span class="gauge-value">{i18n.format.integer(building.blockedDays)}</span>
+						<span class="gauge-label">{i18n.t('industryTileInspector.blockedDays')}</span>
+					</div>
+				</div>
+
 				<dl>
 					<div>
 						<dt>{i18n.t('industryTileInspector.statusLabel')}</dt>
@@ -274,6 +325,17 @@
 						{/if}
 					{/if}
 				</div>
+
+				{#if isWarningStatus}
+					<p class="warning-strip" role="status">
+						<span class="warning-dot" aria-hidden="true">!</span>
+						{buildingStatusLabel(building.status)}
+						{#if building.blockedDays > 0}
+							· {i18n.t('industryTileInspector.blockedDays')}
+							{i18n.format.integer(building.blockedDays)}
+						{/if}
+					</p>
+				{/if}
 
 				<div class="production-log">
 					<h4>{i18n.t('industryTileInspector.lastProduction')}</h4>
@@ -521,23 +583,154 @@
 		overflow-wrap: anywhere;
 	}
 
-	.building-heading {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 0.75rem;
+	.ops-header {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		align-items: center;
+		column-gap: 0.7rem;
 	}
 
-	.building-heading span {
-		flex: 0 0 auto;
+	.ops-eyebrow {
+		margin: 0;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.66rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	.ops-name {
+		margin: 0;
+		font-family: var(--font-display);
+		font-size: 1.45rem;
+		font-weight: 400;
+		color: var(--ink-900);
+	}
+
+	.ops-status {
+		display: inline-block;
+		margin-top: 0.15rem;
 		border: 1px solid var(--brass-500);
 		border-radius: 999px;
-		color: var(--ink-700);
+		padding: 0.05rem 0.5rem;
+		color: var(--brass-700);
 		background: var(--paper-50);
-		padding: 0.2rem 0.55rem;
 		font-family: var(--font-ui);
-		font-size: 0.74rem;
-		font-weight: 600;
+		font-size: 0.66rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+
+	.ops-status.warning {
+		border-color: var(--wax-red);
+		color: var(--wax-red);
+	}
+
+	.recipe-strip {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
+		border: 1px solid color-mix(in srgb, var(--brass-500) 60%, transparent);
+		background: var(--paper-50);
+		padding: 0.45rem 0.55rem;
+	}
+
+	.recipe-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		color: var(--ink-700);
+		font-family: var(--font-mono);
+		font-size: 0.78rem;
+		font-weight: 700;
+	}
+
+	.recipe-chip img {
+		width: 28px;
+		height: 28px;
+		object-fit: contain;
+	}
+
+	.recipe-chip.out {
+		color: var(--ink-900);
+	}
+
+	.recipe-arrow {
+		color: var(--brass-700);
+		font-family: var(--font-mono);
+		font-weight: 700;
+	}
+
+	.gauge-row {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 0.5rem;
+	}
+
+	.gauge {
+		display: grid;
+		justify-items: center;
+		gap: 0.15rem;
+		border: 2px solid var(--brass-500);
+		border-radius: 999px;
+		background: var(--paper-50);
+		padding: 0.6rem 0.3rem 0.45rem;
+		box-shadow: var(--shadow-paper);
+	}
+
+	.gauge.warning {
+		border-color: var(--wax-red);
+	}
+
+	.gauge-value {
+		font-family: var(--font-mono);
+		font-size: 1.05rem;
+		font-weight: 700;
+		color: var(--ink-900);
+	}
+
+	.gauge.warning .gauge-value {
+		color: var(--wax-red);
+	}
+
+	.gauge-label {
+		max-width: 100%;
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.58rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		text-align: center;
+		overflow-wrap: anywhere;
+	}
+
+	.warning-strip {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		margin: 0;
+		border: 1px solid color-mix(in srgb, var(--wax-red) 55%, transparent);
+		background: color-mix(in srgb, var(--wax-red) 10%, var(--paper-50));
+		color: var(--ink-700);
+		padding: 0.45rem 0.6rem;
+		font-family: var(--font-ui);
+		font-size: 0.8rem;
+		font-weight: 700;
+	}
+
+	.warning-dot {
+		display: inline-grid;
+		place-items: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		border-radius: 999px;
+		background: var(--wax-red);
+		color: var(--paper-50);
+		font-size: 0.8rem;
 	}
 
 	h4 {

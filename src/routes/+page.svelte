@@ -3,6 +3,7 @@
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
+	import type { ManagementPanelMenuItem } from '$lib/components/game/gameNavigation';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
 	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
@@ -92,7 +93,7 @@
 		type TranslationKey
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
-	import { summarizeReports } from '$lib/game/reports';
+	import { cashTrendFromReports, summarizeReports } from '$lib/game/reports';
 	import {
 		createEmptyFinanceState,
 		getExpansionFinanceOffer,
@@ -109,6 +110,7 @@
 		type RouteOperationalSummary
 	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
+	import { buildStoreCategoryChainSummaries } from '$lib/game/productChainTree';
 	import { DEFAULT_POLICY } from '$lib/game/state';
 	import { getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
@@ -198,12 +200,6 @@
 	import MapInspectorHost from './MapInspectorHost.svelte';
 	import MapSurfaceHost from './MapSurfaceHost.svelte';
 
-	interface ManagementPanelMenuItem {
-		id: ManagementPanelId;
-		label: string;
-		shortcut: string;
-	}
-
 	type SimulationSpeed = 1 | 2 | 5;
 	type SaveFeedbackKind = 'status' | 'error';
 
@@ -255,16 +251,20 @@
 		return languages;
 	}
 
-	const managementPanelMenuConfig: Array<{ id: ManagementPanelId; shortcut: string }> = [
-		{ id: 'dashboard', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.dashboard },
-		{ id: 'policies', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.policies },
-		{ id: 'staff', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.staff },
-		{ id: 'stores', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.stores },
-		{ id: 'decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions },
-		{ id: 'reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports },
-		{ id: 'productChains', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains },
-		{ id: 'finance', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.finance },
-		{ id: 'logistics', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.logistics }
+	const managementPanelMenuConfig: Array<Omit<ManagementPanelMenuItem, 'label'>> = [
+		{ id: 'dashboard', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.dashboard, icon: 'dashboard' },
+		{ id: 'policies', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.policies, icon: 'policies' },
+		{ id: 'staff', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.staff, icon: 'staff' },
+		{ id: 'stores', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.stores, icon: 'stores' },
+		{ id: 'decisions', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.decisions, icon: 'decisions' },
+		{ id: 'reports', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.reports, icon: 'reports' },
+		{
+			id: 'productChains',
+			shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.productChains,
+			icon: 'productChains'
+		},
+		{ id: 'finance', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.finance, icon: 'finance' },
+		{ id: 'logistics', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.logistics, icon: 'logistics' }
 	];
 
 	const starterCity = generateCity({
@@ -657,6 +657,11 @@
 	let financeMetrics = $derived(
 		activeManagementPanelId === 'finance' ? getFinanceMetrics(game ?? starterMapState) : null
 	);
+	let dashboardChainSummaries = $derived(
+		activeManagementPanelId === 'dashboard'
+			? buildStoreCategoryChainSummaries(game ?? starterMapState)
+			: null
+	);
 	let activeCity = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		return currentGame?.cities.find((city) => city.id === currentGame.activeCityId) ?? starterCity;
@@ -688,6 +693,8 @@
 				? i18n.labels.worldCity(industryCity.id).name
 				: i18n.labels.worldCity(activeCity.id).name
 	);
+	// Day-over-day cash trend for the HUD delta chip and the Dashboard cash card.
+	let cashTrend = $derived.by(() => cashTrendFromReports(game?.reports ?? []));
 	let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
 		const currentGame: GameState | null = game;
 		return WORLD_CITY_CATALOG.map((city) =>
@@ -1766,15 +1773,11 @@
 		isGameMenuOpen = false;
 		isSavePanelOpen = false;
 		isBuildMenuOpen = false;
-		if (panelId !== 'logistics') {
-			focusedLogisticsRouteId = null;
-			logisticsRoutePreset = null;
-		}
+		focusedLogisticsRouteId = null;
+		logisticsRoutePreset = null;
 		if (panelId !== 'stores') {
 			focusedRetailSupplyCityId = null;
 		}
-		// Panels open even before a store is founded; they fall back to an empty
-		// starter state and their action handlers no-op until a game exists.
 		activeManagementPanelId = panelId;
 	}
 
@@ -2844,8 +2847,7 @@
 			if (activeManagementPanelId === action.panel) {
 				closeManagementPanel();
 			} else {
-				if (action.panel === 'logistics') openLogisticsManagement();
-				else openManagementPanel(action.panel);
+				openManagementPanel(action.panel);
 			}
 		} else if (action.type === 'toggle-pause') {
 			toggleSimulationPause();
@@ -2909,6 +2911,7 @@
 			title={mapTitle}
 			day={game?.day ?? null}
 			cash={game?.cash ?? null}
+			{cashTrend}
 			{alerts}
 			{i18n}
 			{activeLocale}
@@ -2924,26 +2927,6 @@
 			bind:alertsOpen={isAlertsMenuOpen}
 		>
 			{#snippet menuContent()}
-				<div class="menu-section">
-					<p class="menu-label">{i18n.t('route.menu.management')}</p>
-					<div
-						class="menu-management"
-						role="group"
-						aria-label={i18n.t('route.menu.managementPanels')}
-					>
-						{#each managementPanelMenuItems as item (item.id)}
-							<button
-								type="button"
-								onclick={() =>
-									item.id === 'logistics'
-										? openLogisticsManagement()
-										: openManagementPanel(item.id)}
-							>
-								{item.label}
-							</button>
-						{/each}
-					</div>
-				</div>
 				{#if playMode === 'scenario' && activeScenarioRun}
 					<ScenarioMenuSection
 						{i18n}
@@ -2994,8 +2977,7 @@
 			disabledReason={mutationDisabledReason}
 			{i18n}
 			onBuild={openBuildMenu}
-			onOpenManagement={(id) =>
-				id === 'logistics' ? openLogisticsManagement() : openManagementPanel(id)}
+			onOpenManagement={openManagementPanel}
 			paused={simulationPaused}
 			{simulationSpeed}
 			onTogglePause={toggleSimulationPause}
@@ -3124,54 +3106,59 @@
 	{/if}
 
 	{#if activeManagementPanel}
-		{#key activeManagementPanel.id}
-			{@const panelGame = game ?? starterMapState}
-			{@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
-			<ManagementPanelHost
-				panelId={activeManagementPanel.id}
-				panelLabel={activeManagementPanel.label}
-				{panelGame}
-				{summary}
-				{financeMetrics}
-				{retailSupplyViews}
-				mutations={mutationAvailability}
-				retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
-				{focusedFinanceLoanId}
-				{focusedRetailSupplyCityId}
-				logisticsView={logisticsPanelView}
-				manageLogistics={mutationAvailability.manageLogistics}
-				{focusedLogisticsRouteId}
-				{logisticsRoutePreset}
-				{i18n}
-				disabledReason={mutationDisabledReason}
-				onClose={closeManagementPanel}
-				onChangePolicy={changePolicy}
-				onSetPolicyOverride={setPolicyOverride}
-				onClearPolicyOverrideField={clearPolicyOverrideField}
-				onResetPolicyOverrideScope={resetPolicyOverrideScope}
-				onSetManagerDelegation={setManagerDelegation}
-				onRemoveManagerDelegation={removeManagerDelegation}
-				onHireStaff={hireStaff}
-				onAssignStaff={assignStaff}
-				onUnassignStaff={unassignStoreStaff}
-				onPromoteStaff={promoteStaffMember}
-				onSetRetailSupplySource={setRetailSupplySource}
-				onChooseDecision={chooseDecision}
-				onBorrow={borrowWorkingCapital}
-				onRepay={repayFinanceLoan}
-				onPayoff={payOffFinanceLoan}
-				onRefinance={refinanceFinanceLoan}
-				onPlanProduct={planSupplyProduct}
-				{plannerProductIds}
-				onDispatchManualTransfer={dispatchManualTransfer}
-				onCreateRecurringRoute={createRecurringRoute}
-				onUpdateRecurringRoute={updateRecurringRoute}
-				onPauseRecurringRoute={pauseRecurringRoute}
-				onResumeRecurringRoute={resumeRecurringRoute}
-				onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
-				onRemoveRecurringRoute={removeRecurringRoute}
-			/>
-		{/key}
+		{@const panelGame = game ?? starterMapState}
+		{@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
+		<ManagementPanelHost
+			panelId={activeManagementPanel.id}
+			panelLabel={activeManagementPanel.label}
+			managementItems={managementPanelMenuItems}
+			onSelectPanel={openManagementPanel}
+			{panelGame}
+			live={game !== null}
+			{summary}
+			{financeMetrics}
+			chainSummaries={dashboardChainSummaries}
+			{retailSupplyViews}
+			mutations={mutationAvailability}
+			retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
+			{focusedFinanceLoanId}
+			{focusedRetailSupplyCityId}
+			logisticsView={logisticsPanelView}
+			manageLogistics={mutationAvailability.manageLogistics}
+			{focusedLogisticsRouteId}
+			{logisticsRoutePreset}
+			scenario={activeScenarioDefinition && activeScenarioRun
+				? { definition: activeScenarioDefinition, run: activeScenarioRun }
+				: null}
+			{i18n}
+			disabledReason={mutationDisabledReason}
+			onClose={closeManagementPanel}
+			onChangePolicy={changePolicy}
+			onSetPolicyOverride={setPolicyOverride}
+			onClearPolicyOverrideField={clearPolicyOverrideField}
+			onResetPolicyOverrideScope={resetPolicyOverrideScope}
+			onSetManagerDelegation={setManagerDelegation}
+			onRemoveManagerDelegation={removeManagerDelegation}
+			onHireStaff={hireStaff}
+			onAssignStaff={assignStaff}
+			onUnassignStaff={unassignStoreStaff}
+			onPromoteStaff={promoteStaffMember}
+			onSetRetailSupplySource={setRetailSupplySource}
+			onChooseDecision={chooseDecision}
+			onBorrow={borrowWorkingCapital}
+			onRepay={repayFinanceLoan}
+			onPayoff={payOffFinanceLoan}
+			onRefinance={refinanceFinanceLoan}
+			onPlanProduct={planSupplyProduct}
+			{plannerProductIds}
+			onDispatchManualTransfer={dispatchManualTransfer}
+			onCreateRecurringRoute={createRecurringRoute}
+			onUpdateRecurringRoute={updateRecurringRoute}
+			onPauseRecurringRoute={pauseRecurringRoute}
+			onResumeRecurringRoute={resumeRecurringRoute}
+			onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
+			onRemoveRecurringRoute={removeRecurringRoute}
+		/>
 	{/if}
 
 	{#if isSavePanelOpen}
@@ -3272,46 +3259,5 @@
 		font-family: var(--font-body);
 		font-size: 0.9rem;
 		font-style: italic;
-	}
-
-	/* Management launchers surfaced inside the hamburger menu so they remain
-	   reachable on narrow viewports where the control desk hides the .manage
-	   cluster. Mirrors GameMenu's .menu-label and .view-tab look. */
-	.menu-section {
-		display: grid;
-		gap: 0.4rem;
-	}
-
-	.menu-label {
-		margin: 0;
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--brass-700);
-	}
-
-	.menu-management {
-		display: grid;
-		gap: 0.3rem;
-	}
-
-	.menu-management button {
-		width: 100%;
-		text-align: left;
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-size: 0.85rem;
-		padding: 0.45rem 0.6rem;
-	}
-
-	.menu-management button:hover,
-	.menu-management button:focus-visible {
-		background: var(--paper-200);
-		border-color: var(--brass-500);
 	}
 </style>

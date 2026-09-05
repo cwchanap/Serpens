@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { INDUSTRY_MATERIAL_ART, chainNodeArt } from '$lib/assets/gameArt';
+	import { PRODUCTION_RECIPES } from '$lib/game/industry';
 	import type { LocalizedProductChainNode } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
+	import type { MaterialId } from '$lib/game/types';
 
 	interface Props {
 		i18n: I18nBundle;
@@ -11,53 +14,77 @@
 
 	const headingId = $props.id();
 
-	const metrics = $derived.by(() => {
-		if (!node) return [];
-		return [
-			{
-				label: i18n.t('atlas.nodeBroadside.metrics.buildings'),
-				value: i18n.format.integer(node.capacity.buildingCount)
-			},
-			{
-				label: i18n.t('atlas.nodeBroadside.metrics.capacity'),
-				value: i18n.t('atlas.nodeBroadside.metrics.capacityValue', {
-					output: i18n.format.decimal(node.capacity.outputPerDay),
-					input: i18n.format.decimal(node.capacity.inputPerDay)
-				})
-			},
-			{
-				label: i18n.t('atlas.nodeBroadside.metrics.produced'),
-				value: i18n.format.integer(node.actual.produced)
-			},
-			{
-				label: i18n.t('atlas.nodeBroadside.metrics.consumed'),
-				value: i18n.format.integer(node.actual.consumed)
-			},
-			{
-				label: i18n.t('atlas.nodeBroadside.metrics.imported'),
-				value: i18n.format.integer(node.actual.importedInput + node.actual.shopImported)
-			},
-			{
-				label: i18n.t('atlas.nodeBroadside.metrics.sold'),
-				value: i18n.format.integer(node.actual.unitsSold)
-			},
-			{
-				label: i18n.t('atlas.nodeBroadside.metrics.missed'),
-				value: i18n.format.integer(node.actual.demandMissed)
-			},
-			{
-				label: i18n.t('atlas.nodeBroadside.metrics.stock'),
-				value: i18n.format.integer(node.warehouseStock)
-			}
-		];
-	});
+	const art = $derived(node ? chainNodeArt(node) : null);
+	const recipe = $derived(node?.recipeId ? (PRODUCTION_RECIPES[node.recipeId] ?? null) : null);
+	const throughput = $derived(
+		node ? (node.kind === 'recipe' ? node.capacity.outputPerDay : node.actual.produced) : 0
+	);
+	const shortfall = $derived(node?.actual.demandMissed ?? 0);
+
+	function materialArt(materialId: MaterialId): string {
+		return INDUSTRY_MATERIAL_ART[materialId];
+	}
+
+	function materialName(materialId: MaterialId): string {
+		return i18n.labels.material(materialId);
+	}
+
+	function perDay(value: number): string {
+		return i18n.t('atlas.nodeBroadside.metrics.perDay', { value: i18n.format.decimal(value) });
+	}
 </script>
 
 <section class="broadside" aria-labelledby={headingId}>
 	{#if node}
 		<span class="sub">{i18n.t('atlas.nodeBroadside.inspected')}</span>
-		<h3 id={headingId}>{node.label}</h3>
-		<span class={['status', `status-${node.health}`]}>{node.healthLabel}</span>
+		<div class="node-head">
+			{#if art?.src}
+				<img src={art.src} alt={art.alt} class="art" />
+			{:else}
+				<span class="glyph" aria-hidden="true">{node.label.charAt(0)}</span>
+			{/if}
+			<h3 id={headingId}>{node.label}</h3>
+		</div>
+		{#if recipe || node.materialId}
+			<div class="recipe-strip" aria-label={i18n.t('atlas.nodeBroadside.recipe')}>
+				{#if recipe}
+					{#each recipe.inputs as input (input.materialId)}
+						<span class="chip">
+							<img src={materialArt(input.materialId)} alt={materialName(input.materialId)} />
+							{input.quantity}
+						</span>
+					{/each}
+					<span class="arrow" aria-hidden="true">→</span>
+					{#each recipe.outputs as output (output.materialId)}
+						<span class="chip">
+							<img src={materialArt(output.materialId)} alt={materialName(output.materialId)} />
+							{output.quantity}
+						</span>
+					{/each}
+				{:else if node.materialId}
+					<span class="chip">
+						<img src={materialArt(node.materialId)} alt={materialName(node.materialId)} />
+						{i18n.format.decimal(node.warehouseStock)}
+					</span>
+				{/if}
+			</div>
+		{/if}
+		<div class="metrics">
+			<div class="metric">
+				<span class="metric-label">{i18n.t('atlas.nodeBroadside.metrics.throughput')}</span>
+				<span class="metric-value">{perDay(throughput)}</span>
+			</div>
+			<div class={['metric', shortfall > 0 && 'is-wax']}>
+				<span class="metric-label">
+					{shortfall > 0
+						? i18n.t('atlas.nodeBroadside.metrics.shortfall')
+						: i18n.t('atlas.nodeBroadside.metrics.health')}
+				</span>
+				<span class="metric-value">
+					{shortfall > 0 ? perDay(shortfall) : node.healthLabel}
+				</span>
+			</div>
+		</div>
 		{#if node.bottleneck}
 			<p class="verdict">{node.bottleneck}</p>
 		{/if}
@@ -68,14 +95,6 @@
 				})}
 			</p>
 		{/if}
-		<dl>
-			{#each metrics as metric (metric.label)}
-				<div>
-					<dt>{metric.label}</dt>
-					<dd>{metric.value}</dd>
-				</div>
-			{/each}
-		</dl>
 	{:else}
 		<h3 id={headingId}>{i18n.t('atlas.nodeBroadside.emptyTitle')}</h3>
 		<p>{i18n.t('atlas.nodeBroadside.empty')}</p>
@@ -87,6 +106,7 @@
 		display: grid;
 		gap: 0.65rem;
 		min-width: 0;
+		align-content: start;
 		padding: 14px 14px 12px;
 		background: linear-gradient(
 			180deg,
@@ -96,8 +116,7 @@
 		border: 1px solid var(--brass-700);
 		box-shadow:
 			inset 0 0 0 3px var(--paper-50),
-			inset 0 0 0 4px var(--brass-700),
-			0 12px 20px rgba(20, 12, 4, 0.25);
+			inset 0 0 0 4px var(--brass-700);
 		color: var(--ink-700);
 	}
 
@@ -110,36 +129,118 @@
 		color: var(--brass-700);
 	}
 
+	.node-head {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		min-width: 0;
+	}
+
+	.art {
+		flex: 0 0 auto;
+		width: 48px;
+		height: 48px;
+		image-rendering: pixelated;
+	}
+
+	.glyph {
+		flex: 0 0 auto;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 48px;
+		height: 48px;
+		font-family: var(--font-display);
+		font-size: 24px;
+		color: var(--ink-500);
+		background: var(--paper-100);
+		border: 1px solid var(--paper-edge);
+	}
+
 	h3 {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: 17px;
+		font-size: 19px;
 		font-weight: 400;
 		color: var(--ink-700);
 		overflow-wrap: anywhere;
 	}
 
-	.status {
-		width: fit-content;
-		padding: 2px 6px;
+	.recipe-strip {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		padding: 0.45rem 0.55rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: color-mix(in srgb, var(--brass-100) 40%, var(--paper-50));
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.1rem 0.35rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-700);
+	}
+
+	.chip img {
+		width: 20px;
+		height: 20px;
+		image-rendering: pixelated;
+	}
+
+	.arrow {
+		color: var(--brass-700);
+		font-family: var(--font-mono);
+	}
+
+	.metrics {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.5rem;
+	}
+
+	.metric {
+		display: grid;
+		gap: 2px;
+		padding: 0.5rem 0.55rem;
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+	}
+
+	.metric-label {
 		font-family: var(--font-ui);
 		font-size: 9px;
 		font-weight: 700;
-		letter-spacing: 0.18em;
+		letter-spacing: 0.16em;
 		text-transform: uppercase;
-		color: var(--paper-50);
-		background: var(--moss);
-		border-radius: 1px;
+		color: var(--brass-700);
 	}
 
-	.status-watch,
-	.status-no-report {
-		background: var(--brass-700);
+	.metric-value {
+		font-family: var(--font-mono);
+		font-size: 15px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-700);
 	}
 
-	.status-shortage,
-	.status-no-local-capacity {
-		background: var(--wax-red);
+	.metric.is-wax {
+		border-color: var(--wax-red);
+	}
+
+	.metric.is-wax .metric-label,
+	.metric.is-wax .metric-value {
+		color: var(--wax-red);
 	}
 
 	.verdict {
@@ -161,33 +262,7 @@
 		color: var(--ink-500);
 	}
 
-	dl {
+	p {
 		margin: 0;
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 6px 12px;
-	}
-
-	dl > div {
-		border-top: 1px solid var(--paper-edge);
-		padding-top: 3px;
-	}
-
-	dt {
-		margin: 0;
-		font-family: var(--font-ui);
-		font-size: 9px;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--brass-700);
-	}
-
-	dd {
-		margin: 1px 0 0;
-		font-family: var(--font-mono);
-		font-size: 12px;
-		font-variant-numeric: tabular-nums;
-		color: var(--ink-700);
 	}
 </style>

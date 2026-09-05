@@ -1,11 +1,14 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import type { ComponentProps } from 'svelte';
 import type { ReportSummary } from '$lib/game/reports';
 import {
 	createRouteDispatchAttempt,
 	emptyLogisticsReport
 } from '$lib/game/logisticsReport.testUtils';
+import { SCENARIO_CATALOG } from '$lib/scenarios/catalog';
+import type { ObjectiveEvidence, ScenarioRun } from '$lib/scenarios/types';
 import type {
 	DailyProductReport,
 	DailyProductionReport,
@@ -18,7 +21,17 @@ import type {
 } from '$lib/game/types';
 import { createI18n } from '$lib/i18n';
 import { createNewGame } from '$lib/game/state';
+import type { DailyReport } from '$lib/game/types';
 import ReportsPanel from './ReportsPanel.svelte';
+
+type PanelProps = ComponentProps<typeof ReportsPanel>;
+
+/** Every detailed evidence section lives in a collapsed disclosure; open it once after mount. */
+function renderPanel(props: PanelProps) {
+	const result = render(ReportsPanel, props);
+	document.querySelector<HTMLElement>('.evidence-disclosure > summary')?.click();
+	return result;
+}
 
 const store: Store = {
 	id: 'store-1',
@@ -335,7 +348,7 @@ describe('ReportsPanel', () => {
 			grossMargin: 14
 		};
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -420,7 +433,7 @@ describe('ReportsPanel', () => {
 			grossMargin: 6
 		};
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -448,7 +461,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260821);
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -475,7 +488,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260821);
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -505,7 +518,7 @@ describe('ReportsPanel', () => {
 
 	it('shows latest-day modifier impact provenance without adding rolling modifier totals', async () => {
 		expect.assertions(9);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -552,7 +565,7 @@ describe('ReportsPanel', () => {
 	] as const)(
 		'localizes resolved multiplier and actual rounded cost in %s',
 		async (locale, resolvedCopy, actualCostCopy) => {
-			render(ReportsPanel, {
+			renderPanel({
 				i18n: createI18n(locale),
 				stores: [],
 				summary: {
@@ -589,7 +602,7 @@ describe('ReportsPanel', () => {
 
 	it('shows latest-day replacement and exclusive-expiry lifecycle evidence', async () => {
 		expect.assertions(5);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -618,7 +631,7 @@ describe('ReportsPanel', () => {
 	it('renders empty latest-day logistics evidence as read-only sections', async () => {
 		expect.assertions(8);
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -676,7 +689,7 @@ describe('ReportsPanel', () => {
 			baselineCapacity: 40
 		});
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -723,7 +736,7 @@ describe('ReportsPanel', () => {
 
 	it('shows activated lifecycle status without a replaced-by line', async () => {
 		expect.assertions(3);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -748,7 +761,7 @@ describe('ReportsPanel', () => {
 
 	it('shows expired lifecycle status without a replaced-by line', async () => {
 		expect.assertions(3);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -774,7 +787,7 @@ describe('ReportsPanel', () => {
 	it('shows production external imports and city inventory overflow metrics with daily imports', async () => {
 		expect.assertions(6);
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -806,7 +819,7 @@ describe('ReportsPanel', () => {
 	it('shows latest import spend with the daily metrics', async () => {
 		expect.assertions(2);
 
-		render(ReportsPanel, { i18n: createI18n('en'), stores: [], summary });
+		renderPanel({ i18n: createI18n('en'), stores: [], summary });
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
@@ -818,7 +831,7 @@ describe('ReportsPanel', () => {
 
 	it('surfaces product waste, shrink, markdown, stockout, and inventory-loss evidence', async () => {
 		expect.assertions(7);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [store],
 			summary: {
@@ -844,7 +857,7 @@ describe('ReportsPanel', () => {
 	it('labels reconciled operating and financing movements without calling principal amount due', async () => {
 		expect.assertions(9);
 
-		render(ReportsPanel, { i18n: createI18n('en'), stores: [], summary });
+		renderPanel({ i18n: createI18n('en'), stores: [], summary });
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
@@ -864,7 +877,7 @@ describe('ReportsPanel', () => {
 	it('lists the latest daily warnings when present', async () => {
 		expect.assertions(1);
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -882,7 +895,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(3);
 		const i18n = createI18n('ja');
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n,
 			stores: [store],
 			summary: {
@@ -917,7 +930,7 @@ describe('ReportsPanel', () => {
 
 		const store2: Store = { ...store, id: 'store-2', name: 'Second Store' };
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [store, store2],
 			summary: {
@@ -941,7 +954,7 @@ describe('ReportsPanel', () => {
 	it('renders the rail shipment total when the latest report has rail shipments', async () => {
 		expect.assertions(2);
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -984,7 +997,7 @@ describe('ReportsPanel', () => {
 	it('shows the empty state when there is no latest report', async () => {
 		expect.assertions(1);
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: { ...summary, latest: undefined }
@@ -999,7 +1012,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(8);
 		const game = currentInventoryGame();
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -1077,7 +1090,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(2);
 		const game = currentInventoryGame();
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -1136,7 +1149,7 @@ describe('ReportsPanel', () => {
 			]
 		};
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -1159,7 +1172,7 @@ describe('ReportsPanel', () => {
 			cityInventories: [{ cityId: 'industry-city', materials: {} }]
 		};
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -1175,7 +1188,7 @@ describe('ReportsPanel', () => {
 	it('shows the current city inventory unavailable state when game is not provided', async () => {
 		expect.assertions(1);
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [store],
 			summary
@@ -1189,7 +1202,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(2);
 		const game = currentInventoryGame();
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -1228,7 +1241,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(2);
 		const game = currentInventoryGame();
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -1264,7 +1277,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(1);
 		const game = currentInventoryGame();
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -1294,7 +1307,7 @@ describe('ReportsPanel', () => {
 
 	it('renders the top-level empty state when summary.latest is null', async () => {
 		expect.assertions(1);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -1311,7 +1324,7 @@ describe('ReportsPanel', () => {
 
 	it('renders the production-close inventory unavailable state when cityInventories is missing', async () => {
 		expect.assertions(1);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -1336,7 +1349,7 @@ describe('ReportsPanel', () => {
 		expect.assertions(1);
 		const game = currentInventoryGame();
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			game,
 			stores: [store],
@@ -1407,7 +1420,7 @@ describe('ReportsPanel', () => {
 			instanceId: 'event-instance-1',
 			optionId: 'bulk-discount'
 		};
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -1485,7 +1498,7 @@ describe('ReportsPanel', () => {
 			baselineCapacity: 0
 		});
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -1530,7 +1543,7 @@ describe('ReportsPanel', () => {
 			inventoryLossExpense: 0
 		};
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [store],
 			summary: {
@@ -1550,7 +1563,7 @@ describe('ReportsPanel', () => {
 
 	it('renders the empty pressure copy when only inventory loss expense is present', async () => {
 		expect.assertions(2);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -1572,7 +1585,7 @@ describe('ReportsPanel', () => {
 
 	it('hides the product pressure section when there is no latest report', async () => {
 		expect.assertions(1);
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: { ...summary, latest: undefined }
@@ -1588,7 +1601,7 @@ describe('ReportsPanel', () => {
 			storeId: 'unknown-store'
 		};
 
-		render(ReportsPanel, {
+		renderPanel({
 			i18n: createI18n('en'),
 			stores: [],
 			summary: {
@@ -1603,5 +1616,253 @@ describe('ReportsPanel', () => {
 
 		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
 		await expect.element(pressure.getByText(/unknown-store/)).toBeVisible();
+	});
+});
+
+describe('ReportsPanel scorecard plate', () => {
+	function baseStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStoreReport {
+		return {
+			storeId: store.id,
+			revenue: 0,
+			costOfGoods: 0,
+			grossMargin: 0,
+			operatingCosts: 0,
+			importSpend: 0,
+			netIncome: 0,
+			customersServed: 0,
+			demandMissed: 0,
+			staffingCoverage: 100,
+			staffingShortage: { manager: 0, general: 0 },
+			stockHealth: 100,
+			staffMorale: 100,
+			reputation: 50,
+			brandReputationAdjustment: 0,
+			marketPosition: 50,
+			productReports: [],
+			inventoryLossExpense: 0,
+			warnings: [],
+			replenishment: null,
+			...overrides
+		};
+	}
+
+	function plateDailyReport(day: number, overrides: Partial<DailyReport> = {}): DailyReport {
+		return {
+			...summary.latest!,
+			day,
+			storeReports: [],
+			...overrides
+		};
+	}
+
+	function plateGame(reports: DailyReport[], day = reports.at(-1)?.day ?? 1): GameState {
+		return { ...createNewGame('convenience', 20260821), day, reports };
+	}
+
+	it('defaults to the 14-day window and summarizes real revenue, margin, footfall, and spoilage', async () => {
+		expect.assertions(8);
+		const reports = Array.from({ length: 10 }, (_, index) =>
+			plateDailyReport(index + 1, {
+				revenue: (index + 1) * 100,
+				grossMargin: (index + 1) * 50,
+				inventoryLossExpense: 2,
+				storeReports: [baseStoreReport({ customersServed: 5 })]
+			})
+		);
+		renderPanel({ i18n: createI18n('en'), stores: [store], game: plateGame(reports), summary });
+
+		const plate = page.getByRole('region', { name: 'Reports' });
+		// 14d window covers all ten reports: average revenue = (100 + … + 1000) / 10.
+		await expect.element(plate.getByText('$550 /d')).toBeVisible();
+		// Margin = 2750 gross / 5500 revenue.
+		await expect.element(plate.getByText('50.0%')).toBeVisible();
+		// Footfall = 5 customers × 10 days.
+		await expect.element(plate.getByText('50', { exact: true })).toBeVisible();
+		// Spoilage = $2 × 10 days.
+		await expect.element(plate.getByText('$20')).toBeVisible();
+		await expect
+			.element(plate.getByRole('button', { name: '14d' }))
+			.toHaveAttribute('aria-pressed', 'true');
+		// Minimal chart: two sparse lines (moss revenue, wax cost) over the window.
+		expect(document.querySelectorAll('.chart .line')).toHaveLength(2);
+		// Boxed stat cells carry decorative brass glyphs.
+		expect(
+			Array.from(document.querySelectorAll('.cells .cell svg[data-icon]'), (icon) =>
+				icon.getAttribute('data-icon')
+			)
+		).toEqual(['cash', 'staff', 'alerts']);
+
+		await plate.getByRole('button', { name: '7d' }).click();
+		// 7d window slices the last seven reports: average = (400 + … + 1000) / 7.
+		await expect.element(plate.getByText('$700 /d')).toBeVisible();
+	});
+
+	it('renders by-store cards with direction delta and sparkline, capped at four stores', async () => {
+		expect.assertions(8);
+		const reports = Array.from({ length: 21 }, (_, index) => {
+			const day = index + 1;
+			const revenue = day <= 7 ? 100 : 200;
+			return plateDailyReport(day, {
+				revenue,
+				storeReports: [baseStoreReport({ storeId: 'store-1', revenue })]
+			});
+		});
+		renderPanel({
+			i18n: createI18n('en'),
+			stores: [
+				store,
+				{ ...store, id: 'store-2', name: 'Second Store' },
+				{ ...store, id: 'store-3', name: 'Third Store' },
+				{ ...store, id: 'store-4', name: 'Fourth Store' },
+				{ ...store, id: 'store-5', name: 'Fifth Store' }
+			],
+			game: plateGame(reports),
+			summary
+		});
+
+		const region = page.getByRole('region', { name: 'By store' });
+		await expect.element(region.getByText('Founding Store')).toBeVisible();
+		// Current window (days 8–21) = 14 × $200.
+		await expect.element(region.getByText('$2,800')).toBeVisible();
+		// Prior window (days 1–7) = 7 × $100 → ▲ 300%.
+		await expect.element(region.getByText('▲ 300.0%')).toBeVisible();
+		await expect.element(region.getByText('+1 more')).toBeVisible();
+		const cards = document.querySelectorAll('.store-cards article:not(.more-card)');
+		expect(cards).toHaveLength(4);
+		const directions = Array.from(cards, (card) =>
+			card.querySelector('.spark-line')?.getAttribute('data-direction')
+		);
+		expect(directions).toEqual(['up', 'flat', 'flat', 'flat']);
+		const deltas = Array.from(cards, (card) => card.querySelector('.delta')?.textContent?.trim());
+		expect(deltas).toEqual(['▲ 300.0%', '—', '—', '—']);
+		// Direction stripe mirrors the delta on the card itself.
+		expect(Array.from(cards, (card) => card.getAttribute('data-direction'))).toEqual([
+			'up',
+			'flat',
+			'flat',
+			'flat'
+		]);
+	});
+
+	it('renders art-first by-product cards with contribution values and share bars', async () => {
+		expect.assertions(6);
+		const snacks = replenishedStoreReport().productReports[0]!;
+		const produce = { ...snacks, productId: 'produce' as const, revenue: 10 };
+		const reports = [
+			plateDailyReport(1, {
+				storeReports: [baseStoreReport({ productReports: [{ ...snacks, revenue: 10 }, produce] })]
+			}),
+			plateDailyReport(2, {
+				storeReports: [baseStoreReport({ productReports: [{ ...snacks, revenue: 10 }] })]
+			}),
+			plateDailyReport(3, {
+				storeReports: [baseStoreReport({ productReports: [{ ...snacks, revenue: 10 }] })]
+			})
+		];
+		renderPanel({ i18n: createI18n('en'), stores: [store], game: plateGame(reports), summary });
+
+		const region = page.getByRole('region', { name: 'By product' });
+		// Snacks: $10 × 3 days; produce: $10 total → snacks sorted first.
+		await expect.element(region.getByText('Snacks')).toBeVisible();
+		await expect.element(region.getByText('$30')).toBeVisible();
+		await expect.element(region.getByText('Produce')).toBeVisible();
+		await expect.element(region.getByText('$10')).toBeVisible();
+		expect(document.querySelectorAll('.product-card')).toHaveLength(2);
+		// Share bar: snacks hold 75% of window product revenue.
+		expect(document.querySelector('.perf-fill')?.getAttribute('style')).toContain('75%');
+	});
+
+	it('renders the scenario grade plate with ring score, letter grade, and objective rows', async () => {
+		expect.assertions(7);
+		const i18n = createI18n('en');
+		const definition = SCENARIO_CATALOG[0]!;
+		const evidence = (
+			conditionId: string,
+			metric: ObjectiveEvidence['metric'],
+			actual: number,
+			target: number
+		): ObjectiveEvidence => ({
+			conditionId,
+			metric,
+			comparator: 'gte',
+			target,
+			actual,
+			day: 12,
+			window: { kind: 'run-to-date' },
+			windowComplete: true,
+			contributingIds: []
+		});
+		const run: ScenarioRun = {
+			runId: 'run-1',
+			definition: { scenarioId: definition.id, version: definition.version },
+			seed: 1,
+			eligibility: 'ranked',
+			status: 'active',
+			game: plateGame([]),
+			evaluation: {
+				day: 12,
+				required: [
+					{
+						conditionId: 'cumulative-net-income',
+						status: 'satisfied',
+						evidence: evidence('cumulative-net-income', 'cumulative-net-income', 52_500, 50_000)
+					},
+					{
+						conditionId: 'positive-income-streak',
+						status: 'pending',
+						evidence: evidence(
+							'positive-income-streak',
+							'consecutive-positive-net-income-reports',
+							2,
+							3
+						)
+					}
+				],
+				optional: [],
+				failures: [
+					{
+						conditionId: 'negative-cash',
+						status: 'triggered',
+						evidence: evidence('negative-cash', 'cash', -1_500, 0)
+					}
+				],
+				deadline: null,
+				risks: [],
+				projection: { score: 770, medal: 'gold', componentPoints: [], componentEvidence: [] }
+			},
+			result: null
+		};
+		renderPanel({ i18n, stores: [store], game: run.game, summary, scenario: { definition, run } });
+
+		const region = page.getByRole('region', { name: 'Scenario grade' });
+		await expect.element(region.getByRole('img', { name: '770 / 1,000' })).toBeVisible();
+		await expect.element(region.getByText('B', { exact: true })).toBeVisible();
+		await expect.element(region.getByText('770 / 1,000 · day 12 of 14')).toBeVisible();
+		const [met, streak, missed] = definition.requiredObjectives.concat(definition.failures);
+		await expect
+			.element(region.getByText(`${i18n.t(met!.labelKey)} · $52,500 / $50,000`))
+			.toBeVisible();
+		await expect.element(region.getByText(`${i18n.t(streak!.labelKey)} · 2 / 3`)).toBeVisible();
+		await expect
+			.element(region.getByText(`${i18n.t(missed!.labelKey)} · -$1,500 / $0`))
+			.toBeVisible();
+		// Screen readers get a spoken status word per glyph.
+		await expect.element(region.getByText('Met', { exact: true })).toBeVisible();
+	});
+
+	it('falls back to the company standing composite when no scenario is active', async () => {
+		expect.assertions(4);
+		const game = {
+			...plateGame([], 5),
+			scorecard: { profit: 50, customerSatisfaction: 70, staffMorale: 90, marketPosition: 40 }
+		};
+		renderPanel({ i18n: createI18n('en'), stores: [], game, summary });
+
+		const region = page.getByRole('region', { name: 'Company standing' });
+		// Composite = round((50 + 70 + 90 + 40) / 4) = 63 → grade C.
+		await expect.element(region.getByText('C', { exact: true })).toBeVisible();
+		await expect.element(region.getByText('63 / 100 · day 5')).toBeVisible();
+		await expect.element(region.getByText('Profit · 50 / 100')).toBeVisible();
+		await expect.element(region.getByText('Staff Morale · 90 / 100')).toBeVisible();
 	});
 });

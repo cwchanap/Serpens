@@ -127,8 +127,11 @@
 </div>
 
 <style>
-	.map-surfaces,
-	.map-surface {
+	.map-surfaces {
+		/* Mock parity: full-bleed map at every width — no left rail and NO
+		   reserved bottom band. The dock floats over the map as transparent
+		   medallions (the dock band passes clicks through to the map), so the
+		   map reads edge-to-edge behind it. */
 		position: absolute;
 		inset: 0;
 		min-width: 0;
@@ -136,6 +139,10 @@
 	}
 
 	.map-surface {
+		position: absolute;
+		inset: 0;
+		min-width: 0;
+		min-height: 0;
 		pointer-events: none;
 		visibility: hidden;
 	}
