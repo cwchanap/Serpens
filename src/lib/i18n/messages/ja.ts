@@ -969,7 +969,16 @@ export const ja = {
 			eyebrow: '管理',
 			dismiss: '{panel}を閉じる',
 			closePanel: '{panel}を閉じる',
-			panelStatus: '{panel}の状態'
+			panelStatus: '{panel}の状態',
+			stat: {
+				delivered: '配送量 {count}',
+				freight: '運賃 {cost}',
+				staff: '{count}名雇用',
+				reportDays: '{first}～{last}日目',
+				stores: '店舗 {count}',
+				decisions: '未処理の判断 {count}件',
+				chains: '健全な系列 {healthy} / {total}'
+			}
 		},
 		save: {
 			errorGeneric: 'セーブに失敗しました',
@@ -1009,6 +1018,7 @@ export const ja = {
 		},
 		actions: {
 			dispatchTransfer: '輸送を開始',
+			newRoute: '新しい航路',
 			createRoute: '航路を作成',
 			updateRoute: '航路の変更を保存',
 			cancelEdit: '編集をキャンセル',

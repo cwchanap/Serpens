@@ -87,6 +87,10 @@
 	let routePriority = $state('0');
 	let appliedRoutePresetKey = $state<string | null>(null);
 	let editingRouteId = $state<string | null>(null);
+	// The recurring-route authoring form starts collapsed behind the compact
+	// "New route" toggle (dispatch → route cards first); it auto-expands for
+	// edit sessions and planner presets.
+	let routeFormExpanded = $state(false);
 	let priorityValues = $state<Record<string, string>>({});
 	let statusMessage = $state('');
 	let submitting = $state(false);
@@ -185,6 +189,7 @@
 		const currentKey = untrack(() => appliedRoutePresetKey);
 		const applied = untrack(() => applyRoutePreset(currentRouteFormValues(), preset, currentKey));
 		if (applied.appliedKey === currentKey) return;
+		routeFormExpanded = true;
 		setRouteFormValues(applied.values);
 		untrack(() => (appliedRoutePresetKey = applied.appliedKey));
 		let cancelled = false;
@@ -365,12 +370,14 @@
 				editingRouteId ? 'logisticsPanel.ui.routeUpdated' : 'logisticsPanel.ui.routeCreated'
 			);
 			editingRouteId = null;
+			routeFormExpanded = false;
 		} finally {
 			submitting = false;
 		}
 	}
 
 	function beginEdit(route: LogisticsRouteView): void {
+		routeFormExpanded = true;
 		routeOriginCityId = route.originCityId;
 		routeDestinationCityId = route.destinationCityId;
 		routeMaterialId = route.materialId;
@@ -554,129 +561,144 @@
 		</form>
 	</section>
 
-	<!-- Recurring route composer: the same desk, one inline row of route fields. -->
+	<!-- Recurring route composer: collapsed by default behind the brass
+		"New route" toggle; the full authoring row renders only when expanded. -->
 	<section class="desk route-desk" aria-labelledby="recurring-heading">
 		<h3 id="recurring-heading" class="visually-hidden">
 			{i18n.t('logisticsPanel.sections.recurringRoutes')}
 		</h3>
-		<form id="logistics-route-form" class="route-form" tabindex="-1" onsubmit={submitRoute}>
-			<span class="desk-label" aria-hidden="true">
-				{i18n.t(
-					editingRouteId
-						? 'logisticsPanel.actions.updateRoute'
-						: 'logisticsPanel.sections.recurringRoutes'
-				)}
-			</span>
-			<label class="field" for="logistics-route-origin">
-				<span class="field-label">{fieldLabel('origin')}</span>
-				<select
-					id="logistics-route-origin"
-					value={routeOriginCityId}
-					onchange={changeRouteOrigin}
-					disabled={!canMutate || submitting}
-				>
-					{#each cityOptionsForSelect() as city (city.cityId)}<option value={city.cityId}
-							>{city.label}</option
-						>{/each}
-				</select>
-			</label>
-			<label class="field" for="logistics-route-destination">
-				<span class="field-label">{fieldLabel('destination')}</span>
-				<select
-					id="logistics-route-destination"
-					value={routeDestinationCityId}
-					onchange={changeRouteDestination}
-					disabled={!canMutate || submitting}
-				>
-					{#each cityOptionsForSelect() as city (city.cityId)}<option value={city.cityId}
-							>{city.label}</option
-						>{/each}
-				</select>
-			</label>
-			<label class="field" for="logistics-route-material">
-				<span class="field-label">{fieldLabel('material')}</span>
-				<select
-					id="logistics-route-material"
-					bind:value={routeMaterialId}
-					disabled={!canMutate || submitting}
-				>
-					{#each view.materialOptions as material (material.materialId)}<option
-							value={material.materialId}>{material.label}</option
-						>{/each}
-				</select>
-			</label>
-			<label class="field" for="logistics-route-capacity">
-				<span class="field-label">{fieldLabel('capacity')}</span>
-				<input
-					id="logistics-route-capacity"
-					type="number"
-					min="1"
-					step="1"
-					bind:value={routeCapacity}
-					disabled={!canMutate || submitting}
-				/>
-			</label>
-			<label class="field" for="logistics-route-frequency">
-				<span class="field-label">{fieldLabel('frequencyDays')}</span>
-				<input
-					id="logistics-route-frequency"
-					type="number"
-					min="1"
-					step="1"
-					bind:value={routeFrequencyDays}
-					disabled={!canMutate || submitting}
-				/>
-			</label>
-			<label class="field" for="logistics-route-lead-time">
-				<span class="field-label">{fieldLabel('leadTimeDays')}</span>
-				<input
-					id="logistics-route-lead-time"
-					type="number"
-					min="1"
-					step="1"
-					bind:value={routeLeadTimeDays}
-					disabled={!canMutate || submitting}
-				/>
-			</label>
-			<label class="field" for="logistics-route-cost">
-				<span class="field-label">{fieldLabel('transportCostPerUnit')}</span>
-				<input
-					id="logistics-route-cost"
-					type="number"
-					min="1"
-					step="1"
-					bind:value={routeTransportCostPerUnit}
-					disabled={!canMutate || submitting}
-				/>
-			</label>
-			{#if !editingRouteId}
-				<label class="field" for="logistics-route-priority">
-					<span class="field-label">{fieldLabel('priority')}</span>
-					<input
-						id="logistics-route-priority"
-						type="number"
-						min="0"
-						step="1"
-						bind:value={routePriority}
-						disabled={!canMutate || submitting}
-					/>
-				</label>
-			{/if}
-			<span class="route-form-actions">
-				{#if editingRouteId}
-					<button type="button" class="cancel-btn" disabled={submitting} onclick={cancelEdit}>
-						{i18n.t('logisticsPanel.actions.cancelEdit')}
-					</button>
-				{/if}
-				<button type="submit" class="route-submit" disabled={!canMutate || submitting}>
+		{#if !editingRouteId}
+			<button
+				type="button"
+				class="route-toggle"
+				aria-expanded={routeFormExpanded}
+				aria-controls="logistics-route-form"
+				onclick={() => (routeFormExpanded = !routeFormExpanded)}
+			>
+				<span class="route-toggle-glyph" aria-hidden="true">{routeFormExpanded ? '−' : '+'}</span>
+				{i18n.t('logisticsPanel.actions.newRoute')}
+			</button>
+		{/if}
+		{#if routeFormExpanded}
+			<form id="logistics-route-form" class="route-form" tabindex="-1" onsubmit={submitRoute}>
+				<span class="desk-label" aria-hidden="true">
 					{i18n.t(
 						editingRouteId
 							? 'logisticsPanel.actions.updateRoute'
-							: 'logisticsPanel.actions.createRoute'
+							: 'logisticsPanel.sections.recurringRoutes'
 					)}
-				</button>
-			</span>
-		</form>
+				</span>
+				<label class="field" for="logistics-route-origin">
+					<span class="field-label">{fieldLabel('origin')}</span>
+					<select
+						id="logistics-route-origin"
+						value={routeOriginCityId}
+						onchange={changeRouteOrigin}
+						disabled={!canMutate || submitting}
+					>
+						{#each cityOptionsForSelect() as city (city.cityId)}<option value={city.cityId}
+								>{city.label}</option
+							>{/each}
+					</select>
+				</label>
+				<label class="field" for="logistics-route-destination">
+					<span class="field-label">{fieldLabel('destination')}</span>
+					<select
+						id="logistics-route-destination"
+						value={routeDestinationCityId}
+						onchange={changeRouteDestination}
+						disabled={!canMutate || submitting}
+					>
+						{#each cityOptionsForSelect() as city (city.cityId)}<option value={city.cityId}
+								>{city.label}</option
+							>{/each}
+					</select>
+				</label>
+				<label class="field" for="logistics-route-material">
+					<span class="field-label">{fieldLabel('material')}</span>
+					<select
+						id="logistics-route-material"
+						bind:value={routeMaterialId}
+						disabled={!canMutate || submitting}
+					>
+						{#each view.materialOptions as material (material.materialId)}<option
+								value={material.materialId}>{material.label}</option
+							>{/each}
+					</select>
+				</label>
+				<label class="field" for="logistics-route-capacity">
+					<span class="field-label">{fieldLabel('capacity')}</span>
+					<input
+						id="logistics-route-capacity"
+						type="number"
+						min="1"
+						step="1"
+						bind:value={routeCapacity}
+						disabled={!canMutate || submitting}
+					/>
+				</label>
+				<label class="field" for="logistics-route-frequency">
+					<span class="field-label">{fieldLabel('frequencyDays')}</span>
+					<input
+						id="logistics-route-frequency"
+						type="number"
+						min="1"
+						step="1"
+						bind:value={routeFrequencyDays}
+						disabled={!canMutate || submitting}
+					/>
+				</label>
+				<label class="field" for="logistics-route-lead-time">
+					<span class="field-label">{fieldLabel('leadTimeDays')}</span>
+					<input
+						id="logistics-route-lead-time"
+						type="number"
+						min="1"
+						step="1"
+						bind:value={routeLeadTimeDays}
+						disabled={!canMutate || submitting}
+					/>
+				</label>
+				<label class="field" for="logistics-route-cost">
+					<span class="field-label">{fieldLabel('transportCostPerUnit')}</span>
+					<input
+						id="logistics-route-cost"
+						type="number"
+						min="1"
+						step="1"
+						bind:value={routeTransportCostPerUnit}
+						disabled={!canMutate || submitting}
+					/>
+				</label>
+				{#if !editingRouteId}
+					<label class="field" for="logistics-route-priority">
+						<span class="field-label">{fieldLabel('priority')}</span>
+						<input
+							id="logistics-route-priority"
+							type="number"
+							min="0"
+							step="1"
+							bind:value={routePriority}
+							disabled={!canMutate || submitting}
+						/>
+					</label>
+				{/if}
+				<span class="route-form-actions">
+					{#if editingRouteId}
+						<button type="button" class="cancel-btn" disabled={submitting} onclick={cancelEdit}>
+							{i18n.t('logisticsPanel.actions.cancelEdit')}
+						</button>
+					{/if}
+					<button type="submit" class="route-submit" disabled={!canMutate || submitting}>
+						{i18n.t(
+							editingRouteId
+								? 'logisticsPanel.actions.updateRoute'
+								: 'logisticsPanel.actions.createRoute'
+						)}
+					</button>
+				</span>
+			</form>
+		{/if}
 	</section>
 
 	<section class="routes-zone" aria-labelledby="recurring-list-heading">
@@ -1127,6 +1149,35 @@
 
 	.route-desk {
 		padding: 0.35rem 0.6rem 0.4rem;
+	}
+
+	.route-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.3rem 0.7rem;
+		border: 1px solid var(--brass-500);
+		border-radius: 3px;
+		background: var(--paper-50);
+		color: var(--brass-700);
+		font-family: var(--font-ui);
+		font-size: 0.76rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+
+	.route-toggle:hover,
+	.route-toggle:focus-visible {
+		border-color: var(--brass-700);
+		background: var(--brass-100);
+	}
+
+	.route-toggle-glyph {
+		font-family: var(--font-mono);
+		font-size: 0.9rem;
+		line-height: 1;
 	}
 
 	.route-form:focus {

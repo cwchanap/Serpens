@@ -202,6 +202,71 @@
 			policiesBandEl.scrollIntoView({ block: 'start' });
 		}
 	});
+
+	// Per-panel header stat line (the mock gives each panel its own identity:
+	// logistics DELIVERED/FREIGHT, staff hired, reports day range, …). Every
+	// figure comes from the same real read-models the panels render; panels
+	// without a natural stat keep Day + Cash. Pre-game the line falls back to
+	// the muted day/cash placeholders.
+	const headerStats = $derived.by((): string[] => {
+		const dayStat = i18n.t('topBar.day', {
+			day: live ? i18n.format.integer(panelGame.day) : '—'
+		});
+		const cashStat = live ? i18n.format.currency(panelGame.cash) : '—';
+		if (!live) return [dayStat, cashStat];
+		switch (panelId) {
+			case 'logistics': {
+				if (logisticsView === null) return [dayStat, cashStat];
+				return [
+					i18n.t('route.controlTower.stat.delivered', {
+						count: i18n.format.integer(logisticsView.totals.deliveredUnits)
+					}),
+					i18n.t('route.controlTower.stat.freight', {
+						cost: i18n.format.currency(logisticsView.totals.transportCost)
+					})
+				];
+			}
+			case 'staff':
+				return [
+					i18n.t('route.controlTower.stat.staff', {
+						count: i18n.format.integer(panelGame.staff.length)
+					})
+				];
+			case 'reports': {
+				if (panelGame.reports.length === 0) return [dayStat];
+				return [
+					i18n.t('route.controlTower.stat.reportDays', {
+						first: i18n.format.integer(panelGame.reports[0]!.day),
+						last: i18n.format.integer(panelGame.reports[panelGame.reports.length - 1]!.day)
+					})
+				];
+			}
+			case 'stores':
+				return [
+					i18n.t('route.controlTower.stat.stores', {
+						count: i18n.format.integer(panelGame.stores.length)
+					})
+				];
+			case 'decisions':
+				return [
+					i18n.t('route.controlTower.stat.decisions', {
+						count: i18n.format.integer(panelGame.decisions.length)
+					})
+				];
+			case 'productChains': {
+				if (chainSummaries === null) return [dayStat, cashStat];
+				const healthy = chainSummaries.filter((entry) => entry.health === 'healthy').length;
+				return [
+					i18n.t('route.controlTower.stat.chains', {
+						healthy: i18n.format.integer(healthy),
+						total: i18n.format.integer(chainSummaries.length)
+					})
+				];
+			}
+			default:
+				return [dayStat, cashStat];
+		}
+	});
 </script>
 
 <div class="tower-backdrop">
@@ -248,14 +313,13 @@
 						role="group"
 						aria-label={i18n.t('route.controlTower.panelStatus', { panel: panelLabel })}
 					>
-						<span class="ticker" class:placeholder={!live}
-							>{i18n.t('topBar.day', {
-								day: live ? i18n.format.integer(panelGame.day) : '—'
-							})}</span
-						>
-						<strong class="ticker" class:placeholder={!live}
-							>{live ? i18n.format.currency(panelGame.cash) : '—'}</strong
-						>
+						{#each headerStats as stat, index (index)}
+							{#if index < headerStats.length - 1}
+								<span class="ticker" class:placeholder={!live}>{stat}</span>
+							{:else}
+								<strong class="ticker" class:placeholder={!live}>{stat}</strong>
+							{/if}
+						{/each}
 						<button
 							type="button"
 							class="close-tower"
@@ -822,14 +886,15 @@
 
 	.tower-actions span,
 	.tower-actions strong {
-		color: var(--ink-700);
+		color: var(--brass-700);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
+		font-weight: 700;
 		white-space: nowrap;
 	}
 
 	.tower-actions strong {
-		font-weight: 700;
+		color: var(--ink-700);
 	}
 
 	.close-tower {

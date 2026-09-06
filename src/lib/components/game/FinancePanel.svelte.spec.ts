@@ -463,7 +463,7 @@ describe('FinancePanel', () => {
 			}
 		});
 		await vi.waitFor(() => {
-			expect(document.querySelectorAll('.txn-row')).toHaveLength(6);
+			expect(document.querySelectorAll('.txn-row')).toHaveLength(5);
 		});
 	});
 
@@ -562,6 +562,27 @@ describe('FinancePanel', () => {
 			expect(article?.textContent).toMatch(/Working capital/);
 			expect(article?.textContent).toMatch(/Payoff quote\s*\$[0-9,]+/);
 			expect(article?.textContent).toMatch(/56 days/);
+		});
+	});
+
+	it('renders a real repayment progress bar on each dossier card', async () => {
+		const borrowed = gameWithLoan();
+		const loan = borrowed.finance.loans.find(
+			(candidate) => candidate.originalPrincipal === 2_000 && candidate.status === 'active'
+		)!;
+		const repaid = repayLoan(borrowed, { loanId: loan.id, amount: 500 });
+		if (!repaid.ok) throw new Error('expected fixture repayment');
+		renderPanel({ game: repaid.game });
+
+		await vi.waitFor(() => {
+			const article = document.getElementById(`finance-loan-${loan.id}`);
+			const fill = article?.querySelector<HTMLElement>('.note-progress-fill');
+			expect(fill).not.toBeNull();
+			const updated = repaid.game.finance.loans.find((candidate) => candidate.id === loan.id)!;
+			const expected = Math.round(
+				(1 - updated.remainingPrincipal / updated.originalPrincipal) * 100
+			);
+			expect(Number.parseFloat(fill!.style.width)).toBeCloseTo(expected, 0);
 		});
 	});
 

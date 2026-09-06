@@ -2368,7 +2368,7 @@ test('player can found a store from the city map and advance a day', async ({ pa
 	await reports.getByText('Detailed evidence').click();
 
 	await expect(
-		reports.getByRole('group', { name: /reports status/i }).getByText(/^Day 2$/i)
+		reports.getByRole('group', { name: /reports status/i }).getByText(/^Days 1\u20131$/i)
 	).toBeVisible();
 	await expect(reports.getByText('Operating cash flow', { exact: true })).toBeVisible();
 });
@@ -4509,6 +4509,7 @@ test('logistics recurring route dispatches, delivers, and exposes active/paused 
 	await installSandboxAutoSave(page, cityLocalInventoryLifecycleGame());
 
 	const logistics = await openManagementPanel(page, /logistics/i);
+	await logistics.getByRole('button', { name: /^new route$/i }).click();
 	await logistics.locator('#logistics-route-origin').selectOption('industry-city');
 	await logistics.locator('#logistics-route-destination').selectOption('breadbasket-basin');
 	await logistics.locator('#logistics-route-material').selectOption('bottled-water');

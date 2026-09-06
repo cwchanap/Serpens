@@ -20,7 +20,7 @@
 		| { kind: 'refinance'; loanId: string; termDays: LoanTermDays; amount: number };
 
 	/** Compact dossier limit for the recent-activity lines below the register. */
-	const RECENT_TRANSACTION_LIMIT = 6;
+	const RECENT_TRANSACTION_LIMIT = 5;
 
 	let {
 		game,
@@ -161,6 +161,15 @@
 
 	function isOpenLoan(loan: LoanInstrument): boolean {
 		return loan.status === 'active' || loan.status === 'delinquent';
+	}
+
+	/** Real repayment progress: repaid share of the original principal; closed
+	 * loans are fully off the books. Presentational mapping on real fields. */
+	function loanRepaidPercent(loan: LoanInstrument): number {
+		if (!isOpenLoan(loan)) return 100;
+		if (loan.originalPrincipal <= 0) return 0;
+		const ratio = 1 - loan.remainingPrincipal / loan.originalPrincipal;
+		return Math.round(Math.min(1, Math.max(0, ratio)) * 100);
 	}
 
 	function fieldIdForLoan(prefix: string, loanId: string): string {
@@ -570,6 +579,13 @@
 									>{i18n.labels.loanStatus(loan.status)}</span
 								>
 							{/if}
+						</div>
+						<div class="note-progress" aria-hidden="true">
+							<span
+								class="note-progress-fill"
+								class:moss={isOpenLoan(loan)}
+								style:width={`${loanRepaidPercent(loan)}%`}
+							></span>
 						</div>
 						<p class="note-facts">
 							<span class="fact">
@@ -1156,18 +1172,27 @@
 		font-weight: 700;
 	}
 
-	/* ---- Loan register: ruled, note-like rows ---- */
+	/* ---- Loan register: stacked dossier cards ---- */
 	.loan-notes {
 		display: grid;
+		gap: 0.55rem;
 		min-width: 0;
 	}
 
 	.loan-note {
 		display: grid;
 		min-width: 0;
-		gap: 0.28rem;
-		padding: 0.5rem 0.15rem 0.45rem;
-		border-bottom: 1px solid color-mix(in srgb, var(--brass-500) 35%, transparent);
+		gap: 0.35rem;
+		padding: 0.55rem 0.65rem 0.55rem;
+		border: 1px solid var(--brass-300);
+		border-radius: 3px;
+		background: var(--paper-50);
+		background-image: var(--grain-svg);
+		background-blend-mode: multiply;
+		background-size: 200px 200px;
+		box-shadow:
+			inset 0 0 0 1px var(--paper-100),
+			0 1px 0 rgba(20, 16, 10, 0.08);
 	}
 
 	.loan-note:focus {
@@ -1175,8 +1200,26 @@
 		outline-offset: 3px;
 	}
 
-	.loan-note:last-child {
-		border-bottom: 0;
+	/* Repayment progress: share of the original principal already repaid
+	   (moss while the loan is open, brass once closed). */
+	.note-progress {
+		display: block;
+		height: 5px;
+		border: 1px solid var(--brass-300);
+		border-radius: 1px;
+		background: color-mix(in srgb, var(--paper-200) 75%, var(--brass-100));
+		overflow: hidden;
+	}
+
+	.note-progress-fill {
+		display: block;
+		height: 100%;
+		background: var(--brass-500);
+	}
+
+	.note-progress-fill.moss {
+		background: var(--moss);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
 	}
 
 	.note-title {

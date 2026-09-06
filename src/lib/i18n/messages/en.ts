@@ -975,7 +975,16 @@ export const en = {
 			eyebrow: 'Management',
 			dismiss: 'Dismiss {panel}',
 			closePanel: 'Close {panel}',
-			panelStatus: '{panel} status'
+			panelStatus: '{panel} status',
+			stat: {
+				delivered: 'Delivered {count}',
+				freight: 'Freight {cost}',
+				staff: '{count} hired',
+				reportDays: 'Days {first}–{last}',
+				stores: '{count} stores',
+				decisions: '{count} open decisions',
+				chains: '{healthy} / {total} chains healthy'
+			}
 		},
 		save: {
 			errorGeneric: 'Save operation failed',
@@ -1015,6 +1024,7 @@ export const en = {
 		},
 		actions: {
 			dispatchTransfer: 'Dispatch transfer',
+			newRoute: 'New route',
 			createRoute: 'Create route',
 			updateRoute: 'Save route changes',
 			cancelEdit: 'Cancel edit',

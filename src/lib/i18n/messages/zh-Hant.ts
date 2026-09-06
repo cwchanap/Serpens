@@ -966,7 +966,16 @@ export const zhHant = {
 			eyebrow: '管理',
 			dismiss: '關閉{panel}',
 			closePanel: '關閉{panel}',
-			panelStatus: '{panel}狀態'
+			panelStatus: '{panel}狀態',
+			stat: {
+				delivered: '已配送 {count}',
+				freight: '運費 {cost}',
+				staff: '已雇用 {count} 名',
+				reportDays: '第 {first}–{last} 天',
+				stores: '{count} 間門店',
+				decisions: '{count} 項待決',
+				chains: '健康鏈 {healthy} / {total}'
+			}
 		},
 		save: {
 			errorGeneric: '存檔操作失敗',
@@ -1006,6 +1015,7 @@ export const zhHant = {
 		},
 		actions: {
 			dispatchTransfer: '派出運輸',
+			newRoute: '新增航線',
 			createRoute: '建立航線',
 			updateRoute: '儲存航線變更',
 			cancelEdit: '取消編輯',

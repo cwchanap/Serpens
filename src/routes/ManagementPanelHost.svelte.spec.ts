@@ -383,6 +383,105 @@ describe('ManagementPanelHost', () => {
 		});
 	});
 
+	it('gives each panel its own real header stat line', async () => {
+		const game = withRecurringRoutes(compositionGame(), [
+			{
+				id: 'route-1',
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 30,
+				frequencyDays: 3,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2,
+				priority: 1,
+				state: 'active',
+				nextDispatchOnDay: 0
+			}
+		]);
+		const i18n = createI18n('en');
+		const dayStat = i18n.t('topBar.day', { day: i18n.format.integer(game.day) });
+		const cashStat = i18n.format.currency(game.cash);
+		const logisticsView = buildLogisticsPanelView(game, i18n);
+		const summaries = buildStoreCategoryChainSummaries(game);
+		const shared = {
+			panelGame: game,
+			summary: summarizeReports(game.reports),
+			retailSupplyViews: buildRetailCitySupplyViews(game, i18n),
+			chainSummaries: summaries,
+			logisticsView,
+			financeMetrics: getFinanceMetrics(game),
+			i18n
+		};
+
+		function headerStatText(): string {
+			return [...document.querySelectorAll<HTMLElement>('.tower-actions .ticker')]
+				.map((element) => element.textContent?.trim() ?? '')
+				.join(' ');
+		}
+
+		async function expectHeader(panelId: ManagementPanelId, expected: string): Promise<void> {
+			const { unmount } = render(ManagementPanelHost, hostProps({ ...shared, panelId }));
+			await vi.waitFor(() => {
+				expect(headerStatText()).toBe(expected);
+			});
+			unmount();
+		}
+
+		// Logistics: the real delivered/freight totals from the read-model.
+		await expectHeader(
+			'logistics',
+			[
+				i18n.t('route.controlTower.stat.delivered', {
+					count: i18n.format.integer(logisticsView.totals.deliveredUnits)
+				}),
+				i18n.t('route.controlTower.stat.freight', {
+					cost: i18n.format.currency(logisticsView.totals.transportCost)
+				})
+			].join(' ')
+		);
+
+		// Staff: hired headcount. Reports: the real report day range.
+		await expectHeader(
+			'staff',
+			i18n.t('route.controlTower.stat.staff', { count: i18n.format.integer(game.staff.length) })
+		);
+		const reports = game.reports;
+		const expectedReports =
+			reports.length > 0
+				? i18n.t('route.controlTower.stat.reportDays', {
+						first: i18n.format.integer(reports[0]!.day),
+						last: i18n.format.integer(reports[reports.length - 1]!.day)
+					})
+				: dayStat;
+		await expectHeader('reports', expectedReports);
+
+		// Stores / decisions / product chains: real counts.
+		await expectHeader(
+			'stores',
+			i18n.t('route.controlTower.stat.stores', {
+				count: i18n.format.integer(game.stores.length)
+			})
+		);
+		await expectHeader(
+			'decisions',
+			i18n.t('route.controlTower.stat.decisions', {
+				count: i18n.format.integer(game.decisions.length)
+			})
+		);
+		const healthy = summaries.filter((entry) => entry.health === 'healthy').length;
+		await expectHeader(
+			'productChains',
+			i18n.t('route.controlTower.stat.chains', {
+				healthy: i18n.format.integer(healthy),
+				total: i18n.format.integer(summaries.length)
+			})
+		);
+
+		// Finance keeps the Day + Cash pair.
+		await expectHeader('finance', `${dayStat} ${cashStat}`);
+	});
+
 	it('forwards a backdrop close to the route callback', async () => {
 		expect.assertions(1);
 		const onClose = vi.fn();

@@ -77,6 +77,11 @@ function routePanelFixture() {
 	};
 }
 
+/** The authoring form is collapsed by default; expand it via the brass toggle. */
+async function openRouteForm() {
+	await page.getByRole('button', { name: /new route/i }).click();
+}
+
 describe('LogisticsPanel', () => {
 	it('submits a quoted manual transfer through the explicit callback', async () => {
 		expect.assertions(2);
@@ -106,6 +111,7 @@ describe('LogisticsPanel', () => {
 	it('keeps recurring endpoint quote fields editable and retains updated values', async () => {
 		expect.assertions(4);
 		renderPanel();
+		await openRouteForm();
 
 		const leadTime = page.getByLabelText(/lead time/i);
 		const cost = page.getByLabelText(/cost per unit/i);
@@ -120,6 +126,7 @@ describe('LogisticsPanel', () => {
 	it('reseeds both recurring quote fields when an endpoint changes', async () => {
 		expect.assertions(4);
 		renderPanel();
+		await openRouteForm();
 		const quote = quoteInterCityRates('breadbasket-basin', 'industry-city');
 		if (!quote) throw new Error('expected a quote for the test endpoints');
 
@@ -139,6 +146,7 @@ describe('LogisticsPanel', () => {
 	it('reports same-city before validating cleared quote fields', async () => {
 		expect.assertions(1);
 		renderPanel();
+		await openRouteForm();
 
 		await page.getByLabelText('Origin city').nth(1).selectOptions('breadbasket-basin');
 		await page.getByRole('button', { name: /create route/i }).click();
@@ -151,13 +159,27 @@ describe('LogisticsPanel', () => {
 	it('invokes create route callback', async () => {
 		expect.assertions(1);
 		const props = renderPanel();
+		await openRouteForm();
 		await page.getByRole('button', { name: /create route/i }).click();
 		expect(props.onCreateRecurringRoute).toHaveBeenCalledOnce();
+	});
+
+	it('starts with the authoring form collapsed behind the new-route toggle', async () => {
+		expect.assertions(4);
+		renderPanel();
+
+		const toggle = page.getByRole('button', { name: /new route/i });
+		await expect.element(toggle).toHaveAttribute('aria-expanded', 'false');
+		await expect.element(toggle).toHaveAttribute('aria-controls', 'logistics-route-form');
+		expect(document.querySelector('#logistics-route-form')).toBeNull();
+		await openRouteForm();
+		await expect.element(document.getElementById('logistics-route-form')).toBeInTheDocument();
 	});
 
 	it('submits a typed recurring route input for valid selections', async () => {
 		expect.assertions(1);
 		const props = renderPanel();
+		await openRouteForm();
 
 		await page.getByLabelText('Origin city').nth(1).selectOptions('industry-city');
 		await page.getByLabelText('Destination city').nth(1).selectOptions('breadbasket-basin');
@@ -271,6 +293,7 @@ describe('LogisticsPanel', () => {
 			i18n,
 			onCreateRecurringRoute
 		});
+		await openRouteForm();
 
 		await page.getByRole('button', { name: /create route/i }).click();
 		expect(onCreateRecurringRoute).not.toHaveBeenCalled();
@@ -333,7 +356,9 @@ describe('LogisticsPanel', () => {
 			expect.objectContaining({ capacity: 14 })
 		);
 
-		await page.getByLabelText('Priority').nth(1).fill('3');
+		// After the committed update the authoring form collapses again, so the
+		// card's priority input is the first (only) "Priority" match.
+		await page.getByLabelText('Priority').nth(0).fill('3');
 		await page.getByRole('button', { name: /save priority/i }).click();
 		expect(onReprioritizeRecurringRoute).toHaveBeenCalledWith(fixture.route.id, 3);
 		await page.getByRole('button', { name: /pause route/i }).click();
@@ -401,6 +426,7 @@ describe('LogisticsPanel', () => {
 	it('reports a capacity validation failure', async () => {
 		expect.assertions(1);
 		renderPanel();
+		await openRouteForm();
 
 		await page.getByLabelText('Capacity per dispatch').fill('');
 		await page.getByRole('button', { name: /create route/i }).click();
@@ -412,6 +438,7 @@ describe('LogisticsPanel', () => {
 	it('reports a frequency validation failure', async () => {
 		expect.assertions(1);
 		renderPanel();
+		await openRouteForm();
 
 		await page.getByLabelText('Frequency (days)').fill('');
 		await page.getByRole('button', { name: /create route/i }).click();
@@ -423,6 +450,7 @@ describe('LogisticsPanel', () => {
 	it('reports a lead-time validation failure', async () => {
 		expect.assertions(1);
 		renderPanel();
+		await openRouteForm();
 
 		await page.getByLabelText(/lead time/i).fill('');
 		await page.getByRole('button', { name: /create route/i }).click();
@@ -434,6 +462,7 @@ describe('LogisticsPanel', () => {
 	it('reports a transport-cost validation failure', async () => {
 		expect.assertions(1);
 		renderPanel();
+		await openRouteForm();
 
 		await page.getByLabelText(/cost per unit/i).fill('');
 		await page.getByRole('button', { name: /create route/i }).click();
@@ -445,6 +474,7 @@ describe('LogisticsPanel', () => {
 	it('reports a priority validation failure', async () => {
 		expect.assertions(1);
 		renderPanel();
+		await openRouteForm();
 
 		await page.getByLabelText('Priority').nth(0).fill('');
 		await page.getByRole('button', { name: /create route/i }).click();
@@ -457,6 +487,7 @@ describe('LogisticsPanel', () => {
 		expect.assertions(1);
 		const busyFn = vi.fn(async () => ({ status: 'busy' }) as const);
 		renderPanel({ onCreateRecurringRoute: busyFn });
+		await openRouteForm();
 		await page.getByRole('button', { name: /create route/i }).click();
 		await expect.element(page.getByRole('status')).toHaveTextContent(/already in progress/i);
 	});
@@ -465,6 +496,7 @@ describe('LogisticsPanel', () => {
 		expect.assertions(1);
 		const unavailableFn = vi.fn(async () => ({ status: 'unavailable' }) as const);
 		renderPanel({ onCreateRecurringRoute: unavailableFn });
+		await openRouteForm();
 		await page.getByRole('button', { name: /create route/i }).click();
 		await expect.element(page.getByRole('status')).toHaveTextContent(/unavailable in this mode/i);
 	});
@@ -473,6 +505,7 @@ describe('LogisticsPanel', () => {
 		expect.assertions(1);
 		const unchangedFn = vi.fn(async () => ({ status: 'unchanged' }) as const);
 		renderPanel({ onCreateRecurringRoute: unchangedFn });
+		await openRouteForm();
 		await page.getByRole('button', { name: /create route/i }).click();
 		await expect
 			.element(page.getByRole('status'))
@@ -480,11 +513,16 @@ describe('LogisticsPanel', () => {
 	});
 
 	it('maps a committed result status to the route-created copy', async () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const committedFn = vi.fn(async () => ({ status: 'committed' }) as const);
 		renderPanel({ onCreateRecurringRoute: committedFn });
+		await openRouteForm();
 		await page.getByRole('button', { name: /create route/i }).click();
 		await expect.element(page.getByRole('status')).toHaveTextContent(/recurring route created/i);
+		// A committed creation returns the panel to the route-card view.
+		await expect
+			.element(page.getByRole('button', { name: /new route/i }))
+			.toHaveAttribute('aria-expanded', 'false');
 	});
 
 	it('treats a sandbox-committed result with no changes as unchanged', async () => {
@@ -493,6 +531,7 @@ describe('LogisticsPanel', () => {
 			async () => ({ status: 'sandbox-committed', changed: false }) as const
 		);
 		renderPanel({ onCreateRecurringRoute: noChangeFn });
+		await openRouteForm();
 		await page.getByRole('button', { name: /create route/i }).click();
 		await expect
 			.element(page.getByRole('status'))
@@ -540,7 +579,7 @@ describe('LogisticsPanel', () => {
 			onReprioritizeRecurringRoute
 		});
 
-		await page.getByLabelText('Priority').nth(1).fill('');
+		await page.getByLabelText('Priority').nth(0).fill('');
 		await page.getByRole('button', { name: /save priority/i }).click();
 		await expect
 			.element(page.getByRole('status'))
@@ -618,6 +657,7 @@ describe('LogisticsPanel', () => {
 		expect.assertions(1);
 		const failedFn = vi.fn(async () => ({ status: 'failed' }) as const);
 		renderPanel({ onCreateRecurringRoute: failedFn });
+		await openRouteForm();
 		await page.getByRole('button', { name: /create route/i }).click();
 		await expect.element(page.getByRole('status')).toHaveTextContent(/failed/i);
 	});
