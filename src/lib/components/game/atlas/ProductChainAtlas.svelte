@@ -29,10 +29,12 @@
 	const markerPrefix = $props.id();
 	let previousGraphId = $state<string | null>(null);
 
-	const xStep = $derived(compact ? 155 : 210);
-	const yStep = $derived(compact ? 112 : 156);
-	const xPad = $derived(compact ? 30 : 60);
-	const yPad = $derived(compact ? 30 : 60);
+	let viewportWidth = $state(0);
+	const lastLayer = $derived(Math.max(1, ...graph.nodes.map((node) => node.layer)));
+	const xStep = $derived(compact ? Math.max(200, (viewportWidth - 138) / lastLayer) : 210);
+	const yStep = $derived(compact ? 180 : 156);
+	const xPad = $derived(compact ? 14 : 60);
+	const yPad = $derived(compact ? 54 : 64);
 
 	const positioned = $derived.by(() =>
 		graph.nodes.map((node) => ({
@@ -46,8 +48,8 @@
 
 	const centers = $derived.by(() => {
 		const map = new SvelteMap<string, { x: number; y: number }>();
-		const halfX = compact ? 52 : 66;
-		const halfY = compact ? 56 : 78;
+		const halfX = compact ? 54 : 66;
+		const halfY = compact ? 76 : 78;
 		for (const { node, position } of positioned) {
 			map.set(node.id, { x: position.x + halfX, y: position.y + halfY });
 		}
@@ -58,12 +60,12 @@
 		let maxX = 0;
 		let maxY = 0;
 		for (const { position } of positioned) {
-			maxX = Math.max(maxX, position.x + (compact ? 104 : 132));
-			maxY = Math.max(maxY, position.y + (compact ? 110 : 152));
+			maxX = Math.max(maxX, position.x + (compact ? 108 : 132));
+			maxY = Math.max(maxY, position.y + 152);
 		}
 		return {
-			width: Math.max(maxX + xPad, compact ? 520 : 880),
-			height: Math.max(maxY + yPad, compact ? 280 : 460)
+			width: Math.max(maxX + xPad, compact ? viewportWidth - 2 : 880),
+			height: Math.max(maxY + yPad, compact ? 262 : 460)
 		};
 	});
 
@@ -95,7 +97,11 @@
 	}
 </script>
 
-<section class={['product-chain-atlas', compact && 'is-compact']} aria-label={graph.title}>
+<section
+	class={['product-chain-atlas', compact && 'is-compact']}
+	aria-label={graph.title}
+	bind:clientWidth={viewportWidth}
+>
 	{#if graph.emptyReason}
 		<p class="empty">{graph.emptyReason}</p>
 	{:else if graph.nodes.length === 0}
@@ -142,7 +148,12 @@
 						{@const source = centers.get(edge.source)}
 						{@const target = centers.get(edge.target)}
 						{#if source && target}
-							<ChainRoute {edge} {source} {target} {markerPrefix} />
+							<ChainRoute
+								{edge}
+								source={{ x: source.x + (compact ? 84 : 0), y: source.y }}
+								target={{ x: target.x - (compact ? 84 : 0), y: target.y }}
+								{markerPrefix}
+							/>
 						{/if}
 					{/each}
 				</svg>
@@ -186,6 +197,19 @@
 		position: absolute;
 		inset: 0;
 		pointer-events: none;
+	}
+
+	.is-compact .routes :global(.chain-route > g) {
+		display: none;
+	}
+
+	.is-compact .routes :global(.chain-route path) {
+		stroke-width: 1.5;
+		stroke-dasharray: none;
+		animation: none;
+	}
+	.routes :global(.chain-route path) {
+		pointer-events: stroke;
 	}
 
 	.warnings {

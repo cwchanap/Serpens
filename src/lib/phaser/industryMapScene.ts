@@ -94,23 +94,14 @@ const PLACEMENT_PREVIEW_INVALID_COLOR = 0x8e2a1f;
 const PLACEMENT_PREVIEW_ALPHA = 0.28;
 
 const STATUS_COLORS: Record<IndustryMapBuildingRender['status'], number> = {
-	idle: 0x94a3b8,
-	produced: 0x22c55e,
-	'imported-inputs': 0xf59e0b,
-	stalled: 0xa855f7,
-	blocked: 0xef4444
+	idle: 0xb8a271,
+	produced: 0x4b5a2b,
+	'imported-inputs': 0xb8862f,
+	stalled: 0x8e2a1f,
+	blocked: 0x8e2a1f
 };
 
 type CameraPanKeys = Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
-type BuildingStage = 'raw' | 'process' | 'final' | 'warehouse';
-
-const STAGE_OUTLINE_COLORS: Record<BuildingStage, number> = {
-	raw: 0x14532d,
-	process: 0x1d4ed8,
-	final: 0x7c2d12,
-	warehouse: 0x4c1d95
-};
-
 interface BuildingSpriteEntry {
 	id: string;
 	sprite: Phaser.GameObjects.Image;
@@ -349,7 +340,7 @@ export class IndustryMapScene extends Phaser.Scene {
 			this.terrainSprites.push(terrainSprite);
 		}
 
-		graphics.lineStyle(1, 0xffffff, 0.3);
+		graphics.lineStyle(1, 0x1b130a, 0.18);
 		graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
 
 		if (tile.locked) {
@@ -364,6 +355,7 @@ export class IndustryMapScene extends Phaser.Scene {
 		}
 
 		this.occupancyGraphics.clear();
+		if (!this.snapshot.placementPreview) return;
 		this.occupancyGraphics.lineStyle(3, 0x0f766e, 0.95);
 
 		for (const building of this.snapshot.buildings) {
@@ -612,7 +604,7 @@ export class IndustryMapScene extends Phaser.Scene {
 
 		this.snapshot.buildings.forEach((building, index) => {
 			if (this.buildingSpriteById.has(building.id)) {
-				this.drawBuildingStatusRing(building, index, time);
+				this.drawBuildingStatusDot(building, index, time);
 			}
 		});
 
@@ -657,7 +649,6 @@ export class IndustryMapScene extends Phaser.Scene {
 			.setDisplaySize(footprintWidth * TILE_SIZE, footprintHeight * TILE_SIZE)
 			.setDepth(MARKER_DEPTH);
 
-		this.applyBuildingSpriteStatus(buildingSprite, building);
 		this.buildingSprites.push(buildingSprite);
 		this.buildingSpriteEntries.push({ id: building.id, sprite: buildingSprite });
 		this.buildingSpriteById.set(building.id, buildingSprite);
@@ -677,23 +668,10 @@ export class IndustryMapScene extends Phaser.Scene {
 
 			const position = this.getBuildingMarkerPosition(building, index, time);
 			sprite.setPosition(position.x, position.y);
-			this.applyBuildingSpriteStatus(sprite, building);
 		});
 	}
 
-	private applyBuildingSpriteStatus(
-		sprite: Phaser.GameObjects.Image,
-		building: IndustryMapBuildingRender
-	): void {
-		sprite.clearTint();
-		sprite.setAlpha(1);
-
-		if (building.status === 'idle') {
-			sprite.setAlpha(0.68).setTint(0x94a3b8);
-		}
-	}
-
-	private drawBuildingStatusRing(
+	private drawBuildingStatusDot(
 		building: IndustryMapBuildingRender,
 		index: number,
 		time: number
@@ -702,19 +680,15 @@ export class IndustryMapScene extends Phaser.Scene {
 			return;
 		}
 
-		const stage = getBuildingStage(building.typeId);
 		const position = this.getBuildingMarkerPosition(building, index, time);
 		const fillColor = STATUS_COLORS[building.status];
-		const outlineColor = STAGE_OUTLINE_COLORS[stage];
-
-		this.markerGraphics.lineStyle(3, outlineColor, 0.95);
-		this.markerGraphics.strokeCircle(position.x, position.y, 15);
-		this.markerGraphics.lineStyle(2, fillColor, 0.98);
-		this.markerGraphics.strokeCircle(position.x, position.y, 12);
+		const zoom = this.cameras.main.zoom || 1;
+		const radius = 12 / zoom;
+		const statusY = position.y - (getBuildingFootprintHeight(building) * TILE_SIZE) / 2 - 15 / zoom;
 		this.markerGraphics.fillStyle(fillColor, 0.98);
-		this.markerGraphics.fillCircle(position.x + 10, position.y - 10, 4);
-		this.markerGraphics.lineStyle(1, 0xffffff, 0.9);
-		this.markerGraphics.strokeCircle(position.x + 10, position.y - 10, 4);
+		this.markerGraphics.fillCircle(position.x, statusY, radius);
+		this.markerGraphics.lineStyle(1 / zoom, 0x4a3b27, 0.9);
+		this.markerGraphics.strokeCircle(position.x, statusY, radius);
 	}
 
 	private getBuildingMarkerPosition(
@@ -741,12 +715,12 @@ export class IndustryMapScene extends Phaser.Scene {
 		const hoveredTile = this.hoverTileId ? this.tileById.get(this.hoverTileId) : null;
 
 		if (hoveredTile) {
-			this.outlineGraphics.lineStyle(3, 0xfacc15, 0.85);
+			this.outlineGraphics.lineStyle(1.5 / (this.cameras.main.zoom || 1), 0xb8862f, 0.85);
 			this.strokeFootprintRect(this.outlineGraphics, this.getInteractionFootprint(hoveredTile), 2);
 		}
 
 		if (this.selectedTile) {
-			this.outlineGraphics.lineStyle(4, 0x2563eb, 1);
+			this.outlineGraphics.lineStyle(2 / (this.cameras.main.zoom || 1), 0xd4a852, 1);
 			this.strokeFootprintRect(
 				this.outlineGraphics,
 				this.getInteractionFootprint(this.selectedTile),
@@ -937,13 +911,33 @@ export class IndustryMapScene extends Phaser.Scene {
 		const viewportWidth = Math.max(1, this.scale.width);
 		const viewportHeight = Math.max(1, this.scale.height);
 		const zoom = Phaser.Math.Clamp(
-			Math.max(viewportWidth / worldWidth, viewportHeight / worldHeight),
+			Math.max(
+				1.5,
+				Math.min(2.2, viewportWidth / 800),
+				viewportWidth / worldWidth,
+				viewportHeight / worldHeight
+			),
 			MIN_ZOOM,
 			MAX_ZOOM
 		);
 
 		this.cameras.main.setZoom(zoom);
-		this.cameras.main.setScroll(0, 0);
+		// Phaser zooms around the viewport center. Frame owned buildings in world
+		// coordinates so the initial zoom does not crop them behind the HUD.
+		const firstOwned = this.snapshot.buildings[0];
+		const halfWidth = viewportWidth / (2 * zoom);
+		const halfHeight = viewportHeight / (2 * zoom);
+		const centerX = Phaser.Math.Clamp(
+			firstOwned ? (firstOwned.x + 1) * TILE_SIZE : halfWidth,
+			halfWidth,
+			Math.max(halfWidth, worldWidth - halfWidth)
+		);
+		const centerY = Phaser.Math.Clamp(
+			firstOwned ? (firstOwned.y + 1) * TILE_SIZE : halfHeight,
+			halfHeight,
+			Math.max(halfHeight, worldHeight - halfHeight)
+		);
+		this.cameras.main.setScroll(centerX - viewportWidth / 2, centerY - viewportHeight / 2);
 		this.updateCanvasCameraAttributes();
 	}
 
@@ -1095,28 +1089,6 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.placementPreviewGraphics = undefined;
 		this.markerGraphics = undefined;
 		this.outlineGraphics = undefined;
-	}
-}
-
-function getBuildingStage(typeId: IndustryMapBuildingRender['typeId']): BuildingStage {
-	switch (typeId) {
-		case 'warehouse':
-			return 'warehouse';
-		case 'snack-factory':
-		case 'drink-bottling-plant':
-		case 'household-goods-factory':
-			return 'final';
-		case 'grain-farm':
-		case 'salt-mine':
-		case 'oilseed-farm':
-		case 'water-pump':
-		case 'fruit-farm':
-		case 'sugar-farm':
-		case 'pulpwood-grove':
-		case 'chemical-feedstock-well':
-			return 'raw';
-		default:
-			return 'process';
 	}
 }
 

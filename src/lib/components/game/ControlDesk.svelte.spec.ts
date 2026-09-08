@@ -28,11 +28,16 @@ function baseProps() {
 }
 
 describe('ControlDesk', () => {
-	// The `.manage` cluster (management launchers) is hidden below the component's
-	// 980px breakpoint. This project's browser tests default to a ~414px viewport, so
-	// widen it here to exercise the desktop layout the brief's tests assert against.
+	// Exercise the desktop stamp rail; the compact dock is covered separately.
 	beforeEach(async () => {
 		await page.viewport(1280, 800);
+	});
+
+	it('keeps the management dock reachable on a narrow viewport', async () => {
+		await page.viewport(390, 844);
+		render(ControlDesk, baseProps());
+		await page.getByRole('button', { name: /finance/i }).click();
+		await expect.element(page.getByRole('button', { name: /^build$/i })).toBeVisible();
 	});
 
 	it('renders build, management launchers, and time controls', async () => {

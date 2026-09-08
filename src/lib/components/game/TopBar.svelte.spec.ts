@@ -16,6 +16,30 @@ const alerts: LocalizedGameAlert[] = [
 ];
 
 describe('TopBar', () => {
+	it('shows active-city stock counters in industry view and updates with the inventory prop', async () => {
+		const props = $state({
+			eyebrow: 'Industry',
+			title: 'Industry City',
+			day: 42,
+			cash: 12000,
+			alerts: [],
+			i18n: createI18n('en'),
+			activeLocale: 'en' as const,
+			onSelectAlert: vi.fn(),
+			activeMapView: 'industry' as const,
+			onSelectView: vi.fn(),
+			onSelectLocale: vi.fn(),
+			industryInventory: { grain: 1200, flour: 80, sugar: 40, water: 2 }
+		});
+		render(TopBar, props);
+		await expect.element(page.getByText('1,200', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('80', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('40', { exact: true })).toBeVisible();
+		expect(document.querySelectorAll('.inventory-count')).toHaveLength(3);
+		props.industryInventory = { grain: 0, flour: 5, sugar: 0, water: 300 };
+		await expect.element(page.getByText('300', { exact: true })).toBeVisible();
+	});
+
 	it('renders the location, day and cash', async () => {
 		expect.assertions(4);
 		render(TopBar, {
@@ -33,7 +57,7 @@ describe('TopBar', () => {
 		});
 		await expect.element(page.getByRole('banner', { name: /status bar/i })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
-		await expect.element(page.getByText(/day 42/i)).toBeVisible();
+		await expect.element(page.getByLabelText('Day 42')).toBeVisible();
 		await expect.element(page.getByText(/\$128,400/)).toBeVisible();
 	});
 
@@ -53,7 +77,11 @@ describe('TopBar', () => {
 			onSelectView: vi.fn(),
 			onSelectLocale: vi.fn()
 		});
-		await expect.element(page.getByText('1', { exact: true })).toBeVisible();
+		await expect
+			.element(
+				page.getByRole('button', { name: '1 alert', exact: true }).getByText('1', { exact: true })
+			)
+			.toBeVisible();
 		await page.getByRole('button', { name: /alert/i }).click();
 		await page.getByRole('button', { name: /corner market/i }).click();
 		expect(onSelectAlert).toHaveBeenCalledWith(alerts[0]);
@@ -80,7 +108,7 @@ describe('TopBar', () => {
 		await expect.element(page.getByRole('group', { name: /alerts list/i })).not.toBeInTheDocument();
 	});
 
-	it('hosts the map-view menu and switches views', async () => {
+	it('switches views directly from the status bar', async () => {
 		expect.assertions(2);
 		const onSelectView = vi.fn();
 		render(TopBar, {
@@ -96,10 +124,7 @@ describe('TopBar', () => {
 			onSelectView,
 			onSelectLocale: vi.fn()
 		});
-		await expect
-			.element(page.getByRole('button', { name: /industry city map/i }))
-			.not.toBeInTheDocument();
-		await page.getByRole('button', { name: /^menu$/i }).click();
+		await expect.element(page.getByRole('button', { name: /industry city map/i })).toBeVisible();
 		await page.getByRole('button', { name: /industry city map/i }).click();
 		expect(onSelectView).toHaveBeenCalledWith('industry');
 	});

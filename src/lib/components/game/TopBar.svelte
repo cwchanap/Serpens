@@ -1,10 +1,14 @@
 <script lang="ts">
+	import { asset } from '$app/paths';
+	import { getIndustryMaterialArt } from '$lib/assets/gameArt';
+	import type { CityInventory, MaterialId } from '$lib/game/types';
 	import type { Snippet } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle, SupportedLocale } from '$lib/i18n';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
+	import HudIcon from './HudIcon.svelte';
 	import GameMenu from './GameMenu.svelte';
 
 	interface Props {
@@ -12,6 +16,8 @@
 		title: string;
 		day: number | null;
 		cash: number | null;
+		cashHistory?: number[];
+		industryInventory?: CityInventory['materials'];
 		alerts: LocalizedGameAlert[];
 		i18n: I18nBundle;
 		activeLocale: SupportedLocale;
@@ -29,6 +35,8 @@
 		title,
 		day,
 		cash,
+		cashHistory = [],
+		industryInventory = {},
 		alerts,
 		i18n,
 		activeLocale,
@@ -41,6 +49,28 @@
 		alertsOpen = $bindable(false)
 	}: Props = $props();
 
+	const inventoryReadouts = $derived(
+		[
+			...new Set<MaterialId>([
+				...(Object.keys(industryInventory) as MaterialId[]).sort(
+					(a, b) => (industryInventory[b] ?? 0) - (industryInventory[a] ?? 0) || a.localeCompare(b)
+				),
+				'grain',
+				'flour',
+				'oilseeds'
+			])
+		].slice(0, 3)
+	);
+	const cashFloor = $derived(Math.min(...cashHistory));
+	const cashRange = $derived(Math.max(1, Math.max(...cashHistory) - cashFloor));
+	const cashPoints = $derived(
+		cashHistory
+			.map(
+				(value, index) =>
+					`${2 + (index * 96) / Math.max(1, cashHistory.length - 1)},${26 - ((value - cashFloor) / cashRange) * 24}`
+			)
+			.join(' ')
+	);
 	function toggleAlerts(): void {
 		alertsOpen = !alertsOpen;
 	}
@@ -70,16 +100,59 @@
 	}
 </script>
 
-<header class="top-bar" aria-label={i18n.t('topBar.statusBar')}>
-	<div class="location plaque">
+<header
+	class="top-bar plaque"
+	class:world-view={activeMapView === 'world'}
+	aria-label={i18n.t('topBar.statusBar')}
+>
+	<div class="location">
 		<p class="eyebrow">{eyebrow}</p>
 		<h1>{title}</h1>
 	</div>
 
-	<div class="readouts plaque">
-		{#if day !== null}
-			<span class="ticker" aria-label={i18n.t('topBar.day', { day: i18n.format.integer(day) })}>
-				{i18n.t('topBar.day', { day: i18n.format.integer(day) })}
+	<nav
+		aria-hidden={menuOpen}
+		inert={menuOpen}
+		class="map-tabs"
+		aria-label={i18n.t('gameMenu.menu')}
+	>
+		{#each ['retail', 'industry', 'world'] as view (view)}
+			<button
+				type="button"
+				aria-label={i18n.t(`route.mapEyebrow.${view}` as 'route.mapEyebrow.retail')}
+				title={i18n.t(`route.mapEyebrow.${view}` as 'route.mapEyebrow.retail')}
+				aria-pressed={activeMapView === view}
+				onclick={() => onSelectView(view as MapViewId)}><HudIcon name={view as MapViewId} /></button
+			>
+		{/each}
+	</nav>
+	<div class="readouts">
+		{#if activeMapView === 'industry'}
+			<div
+				class="inventory-readouts"
+				aria-label={i18n.t('industryTileInspector.cityInventoryMaterials')}
+			>
+				{#each inventoryReadouts as materialId (materialId)}
+					<span
+						class="inventory-count"
+						title={i18n.labels.material(materialId)}
+						aria-label={`${i18n.labels.material(materialId)}: ${i18n.format.integer(industryInventory[materialId] ?? 0)}`}
+					>
+						<img
+							src={asset(getIndustryMaterialArt(materialId))}
+							alt=""
+							width="32"
+							height="32"
+						/>{i18n.format.integer(industryInventory[materialId] ?? 0)}
+					</span>
+				{/each}
+			</div>
+		{:else if day !== null}
+			<span
+				class="ticker day-ticker"
+				aria-label={i18n.t('topBar.day', { day: i18n.format.integer(day) })}
+			>
+				<HudIcon name="clock" />{i18n.format.integer(day)}
 			</span>
 		{/if}
 		{#if cash !== null}
@@ -88,6 +161,11 @@
 			</span>
 		{/if}
 
+		{#if activeMapView !== 'industry' && cashHistory.length > 1}
+			<svg class="cash-trend" viewBox="0 0 100 28" aria-hidden="true"
+				><polyline points={cashPoints} fill="none" stroke="var(--moss)" stroke-width="2" /></svg
+			>
+		{/if}
 		<div class="alerts" {@attach alertsOpen && dismissAlertsOnOutsidePointer}>
 			<button
 				type="button"
@@ -138,22 +216,53 @@
 </header>
 
 <style>
+	.inventory-readouts {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		padding-right: 16px;
+		border-right: 1px solid var(--brass-500);
+	}
+	.inventory-count {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		white-space: nowrap;
+		font: 700 18px var(--font-mono);
+	}
+	.inventory-count img {
+		object-fit: contain;
+	}
+	@media (max-width: 900px) {
+		.inventory-readouts {
+			gap: 6px;
+			padding-right: 8px;
+		}
+		.inventory-count {
+			font-size: 12px;
+		}
+		.inventory-count img {
+			width: 24px;
+			height: 24px;
+		}
+	}
 	.top-bar {
 		position: fixed;
 		top: 0.75rem;
-		left: 0.75rem;
+		left: 6.75rem;
 		right: 0.75rem;
 		z-index: 30;
 		display: flex;
-		align-items: flex-start;
+		align-items: center;
 		justify-content: space-between;
+		padding: 8px 16px;
 		gap: 1rem;
-		pointer-events: none;
+		pointer-events: auto;
 	}
 
 	.location,
 	.readouts {
-		padding: 0.5rem 0.85rem;
+		padding: 0;
 	}
 
 	.location {
@@ -163,7 +272,7 @@
 	.location h1 {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: 1.35rem;
+		font-size: 24px;
 		font-weight: 400;
 		line-height: 1.05;
 		color: var(--ink-700);
@@ -171,6 +280,7 @@
 
 	.location .eyebrow {
 		margin: 0;
+		display: none;
 	}
 
 	.readouts {
@@ -180,10 +290,21 @@
 		gap: 0.85rem;
 	}
 
+	.day-ticker {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.day-ticker :global(svg) {
+		width: 18px;
+		height: 18px;
+		color: var(--brass-700);
+	}
 	.ticker {
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums lining-nums;
-		font-size: 0.9rem;
+		font-size: 20px;
+		font-weight: 700;
 		color: var(--ink-700);
 		white-space: nowrap;
 	}
@@ -255,5 +376,74 @@
 		color: var(--ink-500);
 		font-family: var(--font-body);
 		font-size: 0.85rem;
+	}
+	.map-tabs {
+		display: flex;
+		margin-right: auto;
+	}
+	.map-tabs button {
+		display: grid;
+		place-items: center;
+		width: 2.8rem;
+		height: 2.6rem;
+		border: 1px solid var(--brass-500);
+		background: var(--paper-50);
+		color: var(--ink-700);
+	}
+	.map-tabs button[aria-pressed='true'] {
+		background: var(--paper-300);
+	}
+	.map-tabs button:focus-visible {
+		outline: 2px solid var(--wax-red);
+		outline-offset: 2px;
+	}
+	@media (max-width: 760px) {
+		.top-bar {
+			gap: 0.3rem;
+		}
+		.location,
+		.readouts {
+			padding: 0.3rem;
+		}
+		.location h1 {
+			font-size: 1rem;
+		}
+		.readouts {
+			gap: 0.4rem;
+		}
+		.ticker {
+			font-size: 0.75rem;
+		}
+	}
+	@media (max-width: 600px) {
+		.top-bar {
+			left: 0.5rem;
+			right: 0.5rem;
+			top: 0.5rem;
+			flex-wrap: wrap;
+		}
+		.location {
+			flex: 1;
+		}
+		.readouts {
+			width: 100%;
+			justify-content: flex-end;
+			border-top: 1px solid var(--paper-edge);
+		}
+		.map-tabs {
+			margin-right: 0;
+		}
+	}
+	.cash-trend {
+		width: 6rem;
+		height: 1.75rem;
+	}
+	@media (max-width: 900px) {
+		.cash-trend {
+			display: none;
+		}
+	}
+	.world-view {
+		left: 0.75rem;
 	}
 </style>

@@ -1,3 +1,4 @@
+@import '../lib/styles/fonts.css';
 @import 'tailwindcss';
 @import '../lib/styles/tokens.css';
 @import '../lib/styles/frames.css';

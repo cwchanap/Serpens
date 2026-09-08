@@ -47,8 +47,8 @@ test('simulation advances automatically at the selected speed and stops while pa
 	await page.getByRole('button', { name: /^saves$/i }).click();
 	await page.getByRole('button', { name: /^resume$/i }).click();
 
-	const day = page.getByText(/^Day \d+$/);
-	await expect(day).toHaveText('Day 1');
+	const day = page.locator('.control-desk .day');
+	await expect(day).toHaveText('1');
 	await page.keyboard.press('Escape');
 
 	// Resume the auto-tick (loading a save starts paused so the player can
@@ -76,8 +76,8 @@ test('automatic day clock keeps advancing across a non-day mutation', async ({ p
 	await page.getByRole('button', { name: /^saves$/i }).click();
 	await page.getByRole('button', { name: /^resume$/i }).click();
 
-	const day = page.getByText(/^Day \d+$/);
-	await expect(day).toHaveText('Day 1');
+	const day = page.locator('.control-desk .day');
+	await expect(day).toHaveText('1');
 	await page.keyboard.press('Escape');
 
 	// Resume the auto-tick (loading a save starts paused so the player can
@@ -110,7 +110,7 @@ test('automatic day clock keeps advancing across a non-day mutation', async ({ p
 	// and Day 1 would stall.
 	await page.clock.runFor(200);
 	await expect
-		.poll(async () => (await day.allTextContents()).includes('Day 2'), {
+		.poll(async () => (await day.allTextContents()).includes('2'), {
 			timeout: 2_500
 		})
 		.toBe(true);
@@ -143,8 +143,8 @@ test('automatic day clock keeps advancing across a non-day mutation in scenario 
 	await page.goto('/');
 	await startFirstProfitChallenge(page);
 
-	const day = page.getByText(/^Day \d+$/);
-	await expect(day).toHaveText('Day 1');
+	const day = page.locator('.control-desk .day');
+	await expect(day).toHaveText('1');
 
 	// Resume the auto-tick (starting a challenge begins paused so the player
 	// can review the scenario before time flows).
@@ -192,7 +192,7 @@ test('automatic day clock keeps advancing across a non-day mutation in scenario 
 	// have restarted the 1000ms delay and Day 1 would stall.
 	await page.clock.runFor(200);
 	await expect
-		.poll(async () => (await day.allTextContents()).includes('Day 2'), {
+		.poll(async () => (await day.allTextContents()).includes('2'), {
 			timeout: 2_500
 		})
 		.toBe(true);

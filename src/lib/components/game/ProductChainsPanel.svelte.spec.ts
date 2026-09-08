@@ -9,7 +9,9 @@ import type { GameState, IndustrialBuilding, ProductId, WorldCityId } from '$lib
 import ProductChainsPanel from './ProductChainsPanel.svelte';
 
 function renderProductChainsPanel(game: GameState, i18n: I18nBundle = createI18n('en')) {
-	return render(ProductChainsPanel, { game, i18n });
+	const result = render(ProductChainsPanel, { game, i18n });
+	document.querySelector<HTMLElement>('.scope summary')?.click();
+	return result;
 }
 
 function renderProductChainsPanelWithPlannerProducts(
@@ -17,7 +19,9 @@ function renderProductChainsPanelWithPlannerProducts(
 	plannerProductIds: readonly ProductId[],
 	i18n: I18nBundle = createI18n('en')
 ) {
-	return render(ProductChainsPanel, { game, i18n, plannerProductIds });
+	const result = render(ProductChainsPanel, { game, i18n, plannerProductIds });
+	document.querySelector<HTMLElement>('.scope summary')?.click();
+	return result;
 }
 
 function openCity(game: GameState, cityId: WorldCityId): GameState {
@@ -124,6 +128,27 @@ function withImportedProductChainEdge(game: GameState): GameState {
 }
 
 describe('ProductChainsPanel', () => {
+	it('shows assigned warehouse stock in the overview and preserves the full product graph', async () => {
+		const onClose = vi.fn();
+		render(ProductChainsPanel, { game: cityScopedChainGame(), i18n: createI18n('en'), onClose });
+		await page.getByTestId('category-stamp-snacks').click();
+		await expect.element(page.getByRole('button', { name: /^Warehouse,/ })).toBeVisible();
+		await expect.element(page.getByText('8 held', { exact: true })).toBeVisible();
+		await page.getByRole('button', { name: /^Warehouse,/ }).click();
+		await page.getByText('More metrics', { exact: true }).click();
+		expect(
+			Array.from(document.querySelectorAll('.broadside dl > div'))
+				.find((row) => row.querySelector('dt')?.textContent === 'Buildings')
+				?.querySelector('dd')?.textContent
+		).toBe('1');
+		await page.getByRole('button', { name: 'All inputs', exact: true }).click();
+		expect(
+			document.querySelector('[data-node-id="product:snacks"]')?.getAttribute('data-node-kind')
+		).toBe('material');
+		await page.getByRole('button', { name: 'Close Product Chains', exact: true }).click();
+		expect(onClose).toHaveBeenCalledOnce();
+	});
+
 	it('emits the selected product when the Supply Advisor entry is activated', async () => {
 		expect.assertions(1);
 		const onPlanProduct = vi.fn();
@@ -195,6 +220,26 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByRole('heading', { name: 'City inventory flow' })).toBeVisible();
 	});
 
+	it('shows a compact snacks overview and exposes all input branches on demand', async () => {
+		renderProductChainsPanel(createNewGame('convenience', 20260518));
+		await page.getByTestId('category-stamp-snacks').click();
+		const canvas = () =>
+			document.querySelector('[data-testid="product-chain-graph-chain:snacks"]')!;
+		expect(canvas().querySelectorAll('button')).toHaveLength(4);
+		await page
+			.getByRole('button', { name: 'Snack Factory, No local capacity', exact: true })
+			.click();
+		await expect.element(page.getByRole('img', { name: 'Flour', exact: true })).toBeVisible();
+		await page.getByRole('button', { name: 'All inputs', exact: true }).click();
+		expect(canvas().querySelectorAll('button').length).toBeGreaterThan(4);
+		await expect
+			.element(page.getByRole('button', { name: 'Salt Mine, No local capacity', exact: true }))
+			.toBeVisible();
+		expect(document.querySelector('.chain-map')?.clientHeight).toBeLessThanOrEqual(282);
+		await page.getByRole('button', { name: 'Overview', exact: true }).click();
+		expect(canvas().querySelectorAll('button')).toHaveLength(4);
+	});
+
 	it('renders Japanese mode buttons', async () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260518);
@@ -256,7 +301,7 @@ describe('ProductChainsPanel', () => {
 		const firstNodeButton = graph.getByRole('button').first();
 		await firstNodeButton.click();
 
-		await expect.element(page.getByText('Inspected node')).toBeVisible();
+		await expect.element(page.getByText('Node', { exact: true })).toBeVisible();
 		await expect
 			.element(page.getByText('Select a graph node to inspect its latest flow metrics.'))
 			.not.toBeInTheDocument();
@@ -308,13 +353,13 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByText('Warehouse flow', { exact: true })).not.toBeInTheDocument();
 	});
 
-	it('renders External imports on an imported product-chain edge', async () => {
+	it('exposes External imports in an imported product-chain edge label', async () => {
 		expect.assertions(1);
 		renderProductChainsPanel(withImportedProductChainEdge(cityScopedChainGame()));
 
 		await expect
-			.element(page.getByText('0/day used · 10/cycle · External imports', { exact: true }))
-			.toBeVisible();
+			.element(page.getByRole('img', { name: /0\/day used · 10\/cycle · External imports/ }))
+			.toHaveAttribute('aria-label', '0/day used · 10/cycle · External imports, No local capacity');
 	});
 
 	it.each([

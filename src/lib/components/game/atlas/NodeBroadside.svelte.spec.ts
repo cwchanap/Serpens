@@ -60,7 +60,7 @@ describe('NodeBroadside', () => {
 		await expect.element(page.getByText('Shortage')).toBeVisible();
 		await expect.element(page.getByText('Insufficient flour input for the bakery.')).toBeVisible();
 		await expect.element(page.getByText('Missed').first()).toBeVisible();
-		await expect.element(page.getByText('8')).toBeVisible();
+		await expect.element(page.getByText('8', { exact: true })).toBeVisible();
 	});
 
 	it('renders a shared producer note and omits the verdict when there is no bottleneck', async () => {
@@ -94,6 +94,7 @@ describe('NodeBroadside', () => {
 		};
 
 		render(NodeBroadside, { i18n: createI18n('en'), node });
+		await page.getByText('More metrics', { exact: true }).click();
 
 		await expect.element(page.getByText('11.2 out / 15.4 in')).toBeVisible();
 	});

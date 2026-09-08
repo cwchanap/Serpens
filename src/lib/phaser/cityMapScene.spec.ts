@@ -532,26 +532,23 @@ describe('CityMapScene', () => {
 			expect(darkFill).toBeDefined();
 		});
 
-		it('renders owned tile with green border', () => {
-			expect.assertions(1);
+		it('shows ownership borders only during placement', () => {
+			expect.assertions(2);
 			scene.create();
-			const snap = makeSnapshot({
-				tiles: [makeTile({ id: 'owned', x: 0, y: 0, owned: true })]
-			});
+			const snap = makeSnapshot();
 			scene.updateSnapshot(snap);
-			const ownershipGraphics = s(scene).ownershipGraphics;
-			const lineCalls = ownershipGraphics.lineStyle.mock.calls;
-			const ownedLine = lineCalls.find(
-				(c: any[]) => c[0] === 3 && c[1] === 0x1f8a70 && c[2] === 0.95
-			);
-			expect(ownedLine).toBeDefined();
+			const graphics = s(scene).ownershipGraphics;
+			expect(graphics.lineStyle).not.toHaveBeenCalled();
+			scene.updateSnapshot({ ...snap, placementPreview: { validTileIds: [], invalidTileIds: [] } });
+			expect(graphics.lineStyle).toHaveBeenCalledWith(3, 0x1f8a70, 0.95);
 		});
 
-		it('renders store ownership as a 2x2 footprint border', () => {
+		it('renders store ownership as a 2x2 footprint border during placement', () => {
 			expect.assertions(1);
 			scene.create();
 			scene.updateSnapshot(
 				makeSnapshot({
+					placementPreview: { validTileIds: [], invalidTileIds: [] },
 					stores: [
 						{
 							id: 's1',
@@ -1078,7 +1075,7 @@ describe('CityMapScene', () => {
 			s(scene).drawInteractionOutlines();
 			const outlineGraphics = s(scene).outlineGraphics;
 			const selectedLine = outlineGraphics.lineStyle.mock.calls.find(
-				(c: any[]) => c[1] === 0x2563eb
+				(c: any[]) => c[1] === 0xd4a852
 			);
 			expect(selectedLine).toBeDefined();
 		});
@@ -1622,7 +1619,7 @@ describe('CityMapScene', () => {
 	});
 
 	describe('fitCameraToViewport', () => {
-		it('fits zoom to show entire world', () => {
+		it('keeps initial tiles at the mock 48 pixel scale', () => {
 			expect.assertions(1);
 			scene.create();
 			s(scene).scale.width = 100;
@@ -1630,7 +1627,7 @@ describe('CityMapScene', () => {
 			s(scene).hasUserAdjustedCamera = false;
 			scene.updateSnapshot(makeSnapshot({ width: 3, height: 3 }));
 			const zoom = s(scene).cameras.main.zoom;
-			expect(zoom).toBeGreaterThan(0);
+			expect(zoom).toBe(1.5);
 		});
 
 		it('reframes the camera when the active city changes after a user adjustment', () => {

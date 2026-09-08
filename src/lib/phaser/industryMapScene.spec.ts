@@ -691,13 +691,14 @@ describe('IndustryMapScene', () => {
 			expect(hasLockedCall).toBe(true);
 		});
 
-		test('draws occupied building footprint as a 2x2 outline', () => {
+		test('draws occupied building footprint as a 2x2 outline during placement', () => {
 			expect.assertions(2);
 			const { scene, graphicsInstances, texturesExistsSpy } = setupScene();
 			texturesExistsSpy.mockReturnValue(false);
 			scene.create();
 			const footprintTileIds = new Set(['t-0-0', 't-1-0', 't-0-1', 't-1-1']);
 			const snapshot = makeSnapshot({
+				placementPreview: { validTileIds: [], invalidTileIds: [] },
 				tiles: makeSnapshot().tiles.map((tile) => ({
 					...tile,
 					occupied: footprintTileIds.has(tile.id)
@@ -1039,9 +1040,9 @@ describe('IndustryMapScene', () => {
 			});
 		});
 
-		test('draws status ring for building sprite that exists', () => {
-			expect.assertions(1);
-			const { scene, texturesExistsSpy, graphicsInstances } = setupScene();
+		test('keeps a 24 pixel status dot above the building artwork as the camera zooms', () => {
+			expect.assertions(4);
+			const { scene, cameraMock, texturesExistsSpy, graphicsInstances } = setupScene();
 			texturesExistsSpy.mockReturnValue(true);
 			scene.create();
 			const snapshot = makeSnapshot({
@@ -1061,7 +1062,18 @@ describe('IndustryMapScene', () => {
 			});
 			scene.updateSnapshot(snapshot);
 			scene.update(100);
-			expect(graphicsInstances[3].mock.strokeCircle).toHaveBeenCalled();
+			expect(graphicsInstances[3].mock.strokeCircle).toHaveBeenLastCalledWith(
+				32,
+				expect.any(Number),
+				12
+			);
+			cameraMock.zoom = 2.2;
+			scene.update(200);
+			expect(
+				graphicsInstances[3].mock.strokeCircle.mock.lastCall?.[2] * cameraMock.zoom
+			).toBeCloseTo(12);
+			expect(graphicsInstances[3].mock.strokeCircle.mock.lastCall?.[1]).toBeLessThan(0);
+			expect(graphicsInstances[3].mock.fillStyle).toHaveBeenLastCalledWith(0x4b5a2b, 0.98);
 		});
 
 		test('does not draw process-stage marker fallbacks without texture', () => {
@@ -1158,7 +1170,7 @@ describe('IndustryMapScene', () => {
 			});
 			scene.updateSnapshot(snapshot);
 			const buildingImg = imageInstances[imageInstances.length - 1];
-			expect(buildingImg.mock.setAlpha).toHaveBeenCalled();
+			expect(buildingImg.mock.setAlpha).not.toHaveBeenCalled();
 		});
 
 		test('updates building sprite positions in update loop', () => {
@@ -1285,7 +1297,7 @@ describe('IndustryMapScene', () => {
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
 			const selectedCalls = graphicsInstances[4].mock.lineStyle.mock.calls.filter(
-				(c: unknown[]) => (c as [number, number, number])[1] === 0x2563eb
+				(c: unknown[]) => (c as [number, number, number])[1] === 0xd4a852
 			);
 			expect(selectedCalls.length).toBeGreaterThan(0);
 		});
@@ -1346,6 +1358,22 @@ describe('IndustryMapScene', () => {
 	});
 
 	describe('camera fitting', () => {
+		test('frames initial buildings near the mock 144 pixel scale on a wide viewport', () => {
+			const { scene, cameraMock } = setupScene();
+			Object.assign(scene.scale, { width: 1920, height: 1080 });
+			scene.create();
+			scene.updateSnapshot(makeSnapshot({ width: 56, height: 48 }));
+			expect(cameraMock.setZoom).toHaveBeenLastCalledWith(2.2);
+		});
+
+		test('retains a wider initial building view on a narrow viewport', () => {
+			const { scene, cameraMock } = setupScene();
+			Object.assign(scene.scale, { width: 1104, height: 1000 });
+			scene.create();
+			scene.updateSnapshot(makeSnapshot({ width: 56, height: 48 }));
+			expect(cameraMock.setZoom).toHaveBeenLastCalledWith(1.5);
+		});
+
 		test('fitCameraToViewport adjusts zoom to fit world', () => {
 			expect.assertions(1);
 			const { scene, cameraMock, scaleListeners } = setupScene();
@@ -1663,7 +1691,7 @@ describe('IndustryMapScene', () => {
 			expect(imageInstances.length).toBe(before);
 		});
 
-		test('drawBuildingStatusRing returns early when markerGraphics is missing', () => {
+		test('drawBuildingStatusDot returns early when markerGraphics is missing', () => {
 			expect.assertions(1);
 			const { scene } = setupScene();
 			scene.create();
@@ -1677,7 +1705,7 @@ describe('IndustryMapScene', () => {
 				y: 0,
 				status: 'idle'
 			};
-			expect(() => s(scene).drawBuildingStatusRing(building, 0, 0)).not.toThrow();
+			expect(() => s(scene).drawBuildingStatusDot(building, 0, 0)).not.toThrow();
 		});
 
 		test('drawInteractionOutlines returns early when snapshot is null', () => {
@@ -1762,6 +1790,39 @@ describe('IndustryMapScene', () => {
 			s(scene).updateCanvasCameraAttributes();
 			expect(Number(canvas.dataset.mapViewWidth)).toBe(800);
 			expect(Number(canvas.dataset.mapViewHeight)).toBe(600);
+		});
+
+		test('clears occupancy borders outside placement mode', () => {
+			const { scene, graphicsInstances } = setupScene();
+			scene.create();
+			const snapshot = makeSnapshot({
+				buildings: [
+					{
+						id: 'b-1',
+						name: 'Grain Farm',
+						typeId: 'grain-farm',
+						tileId: 't-0-0',
+						x: 0,
+						y: 0,
+						width: 2,
+						height: 2,
+						status: 'idle'
+					}
+				]
+			});
+			scene.updateSnapshot(snapshot);
+			const graphics = graphicsInstances[1].mock;
+			expect(graphics.strokeRect).not.toHaveBeenCalled();
+			scene.updateSnapshot({
+				...snapshot,
+				placementPreview: { validTileIds: [], invalidTileIds: [] }
+			});
+			expect(graphics.strokeRect).toHaveBeenCalledWith(3, 3, 58, 58);
+			graphics.clear.mockClear();
+			graphics.strokeRect.mockClear();
+			scene.updateSnapshot(snapshot);
+			expect(graphics.clear).toHaveBeenCalled();
+			expect(graphics.strokeRect).not.toHaveBeenCalled();
 		});
 
 		test('drawOccupancyOutlines returns early when occupancyGraphics is missing', () => {

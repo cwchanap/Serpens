@@ -8,6 +8,7 @@ import {
 } from '$lib/game/city';
 import {
 	buildIndustrialBuilding,
+	demolishIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
 import { formatLocation } from '$lib/game/placement';
@@ -1432,6 +1433,35 @@ function createCompleteCompetitorEventGame(): GameState {
 }
 
 describe('saveCodec', () => {
+	test('persists the demolition sequence including its exhausted sentinel and rejects collisions', () => {
+		const base = createNewGame('convenience', 20260512);
+		const tile = base.industryCities[0]!.tiles.find(
+			(tile) => getIndustrialPlacementBlockReason(base, tile.id, 'grain-farm') === null
+		)!;
+		const built = buildIndustrialBuilding(
+			{ ...base, nextIndustrialBuildingSequence: Number.MAX_SAFE_INTEGER - 1 },
+			{ tileId: tile.id, buildingTypeId: 'grain-farm' }
+		);
+		expect(validateCurrentGameState(built).nextIndustrialBuildingSequence).toBe(
+			Number.MAX_SAFE_INTEGER
+		);
+		const removed = demolishIndustrialBuilding(built, built.industrialBuildings[0]!.id);
+		expect(validateCurrentGameState(removed).nextIndustrialBuildingSequence).toBe(
+			Number.MAX_SAFE_INTEGER
+		);
+		expect(() =>
+			validateCurrentGameState({
+				...built,
+				nextIndustrialBuildingSequence: Number.MAX_SAFE_INTEGER - 1
+			})
+		).toThrow('must exceed existing building IDs');
+		for (const sequence of [0, -1, 1.5, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+			expect(() =>
+				validateCurrentGameState({ ...base, nextIndustrialBuildingSequence: sequence })
+			).toThrow('positive safe integer');
+		}
+	});
+
 	describe('schema 19 brand, policy, and manager state validation', () => {
 		test('rejects schema 17 without migration', () => {
 			const record = { ...createManualSaveRecord(), schemaVersion: 17 };

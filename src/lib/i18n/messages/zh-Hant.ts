@@ -71,6 +71,8 @@ export const zhHant = {
 		},
 		industry: {
 			filter: {
+				chain: '產業鏈',
+				allShort: '全部',
 				allProducts: '篩選：全部商品',
 				selected: '篩選：{name}',
 				clear: '清除商品篩選',
@@ -92,12 +94,15 @@ export const zhHant = {
 			starter: '起步',
 			costOperating: '成本 {cost} | 營運費 {operating}/天',
 			recipe: '配方',
+			moreProducers: '{producer} +{count}',
 			needsProducer: '需要 {producer}',
 			needsResource: '需要 {resource} 資源地塊',
 			noOptions: '沒有可建設的工業建築'
 		}
 	},
 	tileInspector: {
+		onShift: '當值',
+		details: '詳情',
 		ariaLabel: '地塊檢視器',
 		close: '關閉地塊檢視器',
 		selectTile: '選擇一個城市地塊',
@@ -123,6 +128,16 @@ export const zhHant = {
 		customerFit: '客群匹配'
 	},
 	industryTileInspector: {
+		demolish: '拆除建築',
+		confirmDemolish: '確定拆除此建築？建築內的緩衝庫存將被丟棄，且不予退款。共享庫存與鐵路將保留。',
+		utilization: '最近產能利用率',
+		recentOutput: '最近產量',
+		baseUpkeep: '每日基本維護費',
+		cityShipping: '城市運輸',
+		routeCount: '{count} 條路線',
+		addRoute: '新增路線',
+		routeNeedsCity: '開放另一座工業城市以新增路線',
+
 		ariaLabel: '工業地塊檢視器',
 		close: '關閉工業地塊檢視器',
 		emptyTitle: '工業地塊',
@@ -233,9 +248,17 @@ export const zhHant = {
 		modifierImpactsTitle: '事件對此運輸的影響'
 	},
 	worldMap: {
+		revenuePerDay: '{revenue}/日',
+		stockHeld: '庫存 {stock}',
+		resources: '資源',
+		buildings: '建築',
+		peakDemand: '最高需求',
+		storeCapacity: '店鋪名額',
+		specialties: '特色商品',
 		ariaLabel: '世界地圖',
 		cities: '城市列表',
 		routes: '物流航線',
+		routesShort: '航線',
 		routeSummary: '{origin} → {destination} · {material} · {state} · {condition}',
 		cityDetails: '城市詳情',
 		closeCityDetails: '關閉城市詳情',
@@ -294,6 +317,13 @@ export const zhHant = {
 		}
 	},
 	policyPanel: {
+		compactValues: {
+			pricing: { discount: '折扣', competitive: '競爭', standard: '標準', premium: '高價' },
+			inventory: { lean: '精簡', balanced: '均衡', generous: '充足' },
+			staffing: { minimal: '最低', efficient: '高效', service: '服務' },
+			marketing: { none: '無', awareness: '品牌', promotions: '促銷', loyalty: '忠誠' },
+			service: { speed: '速度', balanced: '均衡', highTouch: '關懷' }
+		},
 		title: '政策',
 		scopeLabel: '政策範圍',
 		targetLabel: '政策目標',
@@ -315,6 +345,12 @@ export const zhHant = {
 		resetScope: '重設範圍'
 	},
 	reportsPanel: {
+		dayRange: '第 {start}–{end} 日',
+		perDay: '/日',
+		shortDays: '{days}日',
+		byStore: '按店鋪',
+		byProduct: '按商品',
+		chart: { title: '營收與成本', cost: '成本', window: '報表期間' },
 		title: '報表',
 		modifierImpacts: {
 			title: '最近一天的修正效果影響',
@@ -337,6 +373,9 @@ export const zhHant = {
 			replacedBy: '取代者: {modifierId}'
 		},
 		metrics: {
+			margin: '毛利率',
+			customers: '顧客數',
+			spoilage: '耗損',
 			latestDailyResult: '最新每日結果',
 			operatingIncome: '營業利益',
 			operatingCashFlow: '營業現金流',
@@ -510,6 +549,8 @@ export const zhHant = {
 		}
 	},
 	staffPanel: {
+		storeCoverage: '門市人力配置',
+		hiredCountShort: '已僱用 {count} 人',
 		title: '員工',
 		hiredCount: '已雇用 {count} 名員工',
 		candidates: '候選人',
@@ -664,8 +705,11 @@ export const zhHant = {
 		empty: '此店鋪類別尚無可用的本地生產鏈。'
 	},
 	productChainsPanel: {
+		overview: '概覽',
+		fullChain: '所有原料',
 		ariaLabel: '商品鏈',
-		eyebrow: 'Folio II · 生產鏈',
+		eyebrow: '供應圖譜',
+		advisor: '顧問',
 		modeGroup: '商品鏈檢視',
 		storeCategoryChains: '店鋪類別鏈',
 		cityInventoryFlow: '城市庫存流向',
@@ -888,7 +932,8 @@ export const zhHant = {
 			metrics: '庫存 {stock} · 生產 {produced}/日 · 售出 {consumed}/日'
 		},
 		nodeBroadside: {
-			inspected: '檢視節點',
+			moreMetrics: '更多指標',
+			inspected: '節點',
 			emptyTitle: '鏈條節點',
 			empty: '選擇圖節點以檢視最新流量指標。',
 			sharedProducer: '共享生產者 - 繪製在此鏈條的 {count} 個分支中。',
@@ -933,7 +978,7 @@ export const zhHant = {
 			cancel: '取消'
 		},
 		controlTower: {
-			eyebrow: '管理',
+			eyebrow: '控制中心',
 			close: '關閉',
 			dismiss: '關閉{panel}',
 			closePanel: '關閉{panel}',
@@ -987,6 +1032,14 @@ export const zhHant = {
 			removeRoute: '移除航線'
 		},
 		ui: {
+			freight: '運費',
+			dispatch: '派送',
+			from: '起點',
+			to: '終點',
+			qty: '數量',
+			send: '送出',
+			recent: '最近',
+			routeSchedule: '每次 {capacity} · 每 {days} 天 · 每件 {cost}',
 			quote: '運輸天數：{leadTime} 天 · 運輸費：{cost}。',
 			transferSubmitted: '已派出運輸。',
 			routeCreated: '已建立定期航線。',
@@ -1106,6 +1159,13 @@ export const zhHant = {
 			financingCashFlow: '融資現金流'
 		},
 		ui: {
+			outstanding: '未償本金',
+			runwayCoverage: '現金續航・償債保障',
+			borrow: '借款',
+			loans: '貸款',
+			daysShort: '{days}天',
+			compactReview: '審核',
+			ledger: '帳簿',
 			cash: '現金',
 			creditOffer: '信用方案',
 			creditExplanation: '信用額度依營業現金流、債務、健康度、還款紀錄、本金餘裕與償債餘裕決定。',

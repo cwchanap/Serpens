@@ -397,7 +397,7 @@ export const INDUSTRY_TERRAIN_ART: Readonly<Record<IndustryTerrainId, string>> =
 	forest: '/assets/game/industry/terrain/forest-tile.png',
 	water: '/assets/game/industry/terrain/water-tile.png',
 	deposit: '/assets/game/industry/terrain/deposit-tile.png',
-	industrial: '/assets/game/industry/terrain/industrial-tile.png',
+	industrial: '/assets/game/terrain/industrial-tile.png',
 	blocked: '/assets/game/industry/terrain/blocked-tile.png'
 });
 

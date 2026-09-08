@@ -3,7 +3,8 @@
 	import {
 		getIndustrialBuildingArt,
 		getIndustryMaterialArt,
-		getStoreArt
+		getStoreArt,
+		getProductArt
 	} from '$lib/assets/gameArt';
 	import { ARCHETYPES } from '$lib/game/archetypes';
 	import {
@@ -109,6 +110,15 @@
 				filter.name.toLowerCase().includes(query) || filter.id.toLowerCase().includes(query)
 		);
 	});
+	const featuredIndustryTypes: readonly IndustrialBuildingTypeId[] = [
+		'grain-farm',
+		'flour-mill',
+		'snack-factory',
+		'packaging-plant',
+		'water-pump',
+		'warehouse'
+	];
+	const quickProductIds: readonly ProductId[] = ['snacks', 'soft-drinks', 'essentials'];
 	const visibleIndustryBuildingTypes = $derived.by(() => {
 		const productionMaterialId = selectedProductFilterId
 			? getProductDefinition(selectedProductFilterId).productionMaterialId
@@ -120,6 +130,12 @@
 			: Object.values(INDUSTRIAL_BUILDING_TYPES);
 		return [...types].sort(
 			(first, second) =>
+				(featuredIndustryTypes.indexOf(first.id) < 0
+					? 99
+					: featuredIndustryTypes.indexOf(first.id)) -
+					(featuredIndustryTypes.indexOf(second.id) < 0
+						? 99
+						: featuredIndustryTypes.indexOf(second.id)) ||
 				first.tier - second.tier ||
 				first.buildCost - second.buildCost ||
 				first.name.localeCompare(second.name)
@@ -366,20 +382,58 @@
 					type="button"
 					class="filter-trigger"
 					aria-expanded={productFilterOpen}
+					aria-label={filterButtonLabel}
+					title={filterButtonLabel}
 					onclick={toggleProductFilter}
 				>
-					{filterButtonLabel}
+					{i18n.t('buildMenu.industry.filter.chain')}
 				</button>
-				{#if selectedProductFilterId}
+				{#if !productFilterOpen}
 					<button
 						type="button"
-						class="filter-clear"
-						aria-label={i18n.t('buildMenu.industry.filter.clear')}
+						class="chain-filter"
+						aria-label={selectedProductFilterId
+							? i18n.t('buildMenu.industry.filter.clear')
+							: i18n.t('buildMenu.industry.filter.allProductsLabel')}
+						aria-pressed={selectedProductFilterId === null}
 						onclick={() => selectProductFilter(null)}
+						>{i18n.t('buildMenu.industry.filter.allShort')}</button
 					>
-						×
-					</button>
 				{/if}
+				{#if !productFilterOpen}{#each quickProductIds.flatMap( (id) => productFilters.filter((filter) => filter.id === id && filter.buildingCount > 0) ) as filter (filter.id)}
+						<button
+							class="chain-filter"
+							type="button"
+							title={filter.name}
+							aria-label={filter.name}
+							aria-pressed={selectedProductFilterId === filter.id}
+							onclick={() => selectProductFilter(filter.id)}
+							><img
+								src={asset(getProductArt(filter.id).path)}
+								alt=""
+								width="36"
+								height="36"
+							/></button
+						>
+					{/each}{/if}
+
+				<button
+					type="button"
+					class="advisor-open"
+					aria-label={i18n.t('buildMenu.industry.supplyAdvisor')}
+					disabled={industryLockedReason !== null}
+					onclick={onOpenAdvisor}
+				>
+					<svg
+						class="advisor-icon"
+						viewBox="0 0 24 24"
+						aria-hidden="true"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></svg
+					>{i18n.t('supplyAdvisor.title')}
+				</button>
 			</div>
 
 			{#if industryLockedReason}
@@ -444,22 +498,48 @@
 				</div>
 			{/if}
 
-			<button
-				type="button"
-				class="advisor-open"
-				disabled={industryLockedReason !== null}
-				onclick={onOpenAdvisor}
-			>
-				{i18n.t('buildMenu.industry.supplyAdvisor')}
-			</button>
-
 			<div class="option-list">
 				{#each visibleIndustryBuildingTypes as type (type.id)}
 					{@const recipe = recipeForType(type.id)}
+					{@const missingInputs =
+						recipe?.inputs.filter((input) => !isAvailable(input.materialId)) ?? []}
+					{@const missingCopy = missingInputs.length
+						? i18n.t('buildMenu.industry.needsProducer', {
+								producer: missingInputs
+									.map((input) => neededProducerName(input.materialId))
+									.join(', ')
+							})
+						: ''}
 					{@const optionDisabledReason = industryDisabledReason(type.id)}
 					<button
 						type="button"
 						class="build-option"
+						class:catalog-summary={selectedProductFilterId === null &&
+							featuredIndustryTypes.slice(3).includes(type.id)}
+						title={[
+							recipe
+								? [
+										...recipe.inputs.map(
+											(input) => `${materialName(input.materialId)} ×${input.quantity}`
+										),
+										'→',
+										...recipe.outputs.map(
+											(output) => `${materialName(output.materialId)} ×${output.quantity}`
+										)
+									].join(' ')
+								: '',
+							missingCopy,
+							type.requiredResource
+								? i18n.t('buildMenu.industry.needsResource', {
+										resource: i18n.labels.industryResource(type.requiredResource)
+									})
+								: ''
+						]
+							.filter(Boolean)
+							.join('\n')}
+						aria-label={i18n.t('buildMenu.industry.buildType', {
+							name: i18n.labels.industrialBuilding(type.id)
+						})}
 						disabled={industryLockedReason !== null ||
 							!canStartIndustryExpansion ||
 							optionDisabledReason !== null ||
@@ -472,9 +552,7 @@
 						{/if}
 						<span>
 							<strong>
-								{i18n.t('buildMenu.industry.buildType' as never, {
-									name: i18n.labels.industrialBuilding(type.id)
-								})}
+								{i18n.labels.industrialBuilding(type.id)}
 								{#if type.tier === 1}
 									<em class="starter">{i18n.t('buildMenu.industry.starter')}</em>
 								{/if}
@@ -487,11 +565,19 @@
 									{formatIndustryDisabledReason(optionDisabledReason)}
 								</small>
 							{/if}
-							<small>
-								{i18n.t('buildMenu.industry.costOperating' as never, {
+							<small
+								class="cost"
+								aria-label={i18n.t('buildMenu.industry.costOperating', {
 									cost: i18n.format.currency(type.buildCost),
 									operating: i18n.format.currency(type.dailyOperatingCost)
 								})}
+							>
+								{i18n.format.currency(type.buildCost)}
+								<span
+									>{i18n.format.currency(type.dailyOperatingCost)}{i18n.t(
+										'reportsPanel.perDay'
+									)}</span
+								>
 							</small>
 							{#if recipe}
 								<span class="recipe" aria-label={i18n.t('buildMenu.industry.recipe')}>
@@ -506,7 +592,7 @@
 											{input.quantity}
 										</span>
 									{/each}
-									<span class="arrow" aria-hidden="true">→</span>
+									{#if recipe.inputs.length > 0}<span class="arrow" aria-hidden="true">→</span>{/if}
 									{#each recipe.outputs as output (output.materialId)}
 										<span class="chip out">
 											<img
@@ -519,16 +605,25 @@
 										</span>
 									{/each}
 								</span>
-								{#each recipe.inputs.filter((input) => !isAvailable(input.materialId)) as missing (missing.materialId)}
-									<small class="need">
-										{i18n.t('buildMenu.industry.needsProducer' as never, {
-											producer: neededProducerName(missing.materialId)
-										})}
-									</small>
-								{/each}
+								{@const missingInputs = recipe.inputs.filter(
+									(input) => !isAvailable(input.materialId)
+								)}
+								{#if missingInputs.length > 0}
+									<small class="need" title={missingCopy} aria-label={missingCopy}
+										>{i18n.t('buildMenu.industry.needsProducer', {
+											producer:
+												missingInputs.length === 1
+													? neededProducerName(missingInputs[0].materialId)
+													: i18n.t('buildMenu.industry.moreProducers', {
+															producer: neededProducerName(missingInputs[0].materialId),
+															count: missingInputs.length - 1
+														})
+										})}</small
+									>
+								{/if}
 							{/if}
 							{#if type.requiredResource}
-								<small class="need">
+								<small class="need resource">
 									{i18n.t('buildMenu.industry.needsResource' as never, {
 										resource: i18n.labels.industryResource(type.requiredResource)
 									})}
@@ -552,8 +647,7 @@
 		display: grid;
 		place-items: center;
 		padding: 1rem;
-		background: rgba(20, 16, 10, 0.7);
-		backdrop-filter: blur(4px);
+		background: #14100a;
 	}
 
 	.backdrop-button {
@@ -568,17 +662,19 @@
 	.build-menu {
 		position: relative;
 		z-index: 1;
-		display: grid;
-		gap: 0.85rem;
-		width: min(36rem, 100%);
-		max-height: calc(100dvh - 2rem);
-		overflow: auto;
-		padding: 1.1rem 1.2rem;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		width: min(56.25rem, 100%);
+		max-height: calc(100dvh - 3rem);
+		overflow: hidden;
+		padding: 20px;
 		color: var(--ink-700);
 	}
 
 	header,
 	.product-filter {
+		flex-shrink: 0;
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
@@ -598,7 +694,8 @@
 
 	h2 {
 		font-family: var(--font-display);
-		font-size: 1.35rem;
+		font-size: 26px;
+		line-height: 1.1;
 		font-weight: 400;
 		color: var(--ink-700);
 	}
@@ -614,7 +711,8 @@
 	header p {
 		color: var(--brass-700);
 		font-family: var(--font-ui);
-		font-size: 0.7rem;
+		font-size: 11px;
+		line-height: 14px;
 		font-weight: 700;
 		letter-spacing: 0.18em;
 		text-transform: uppercase;
@@ -647,7 +745,7 @@
 		width: 100%;
 		padding: 0.75rem;
 		border: 1px solid var(--paper-edge);
-		border-left: 0;
+		border-left: 1px solid var(--paper-edge);
 		border-radius: 0 2px 2px 0;
 		background: var(--paper-50);
 		color: var(--ink-700);
@@ -695,26 +793,26 @@
 
 	.build-option > span {
 		display: grid;
-		gap: 0.22rem;
+		gap: 8px;
+		width: 100%;
 		min-width: 0;
 	}
 
 	.build-option strong {
 		font-family: var(--font-display);
-		font-size: 1rem;
+		font-size: 18px;
 		font-weight: 400;
 		color: var(--ink-700);
 	}
 
 	.close {
 		flex: 0 0 auto;
-		width: 2rem;
-		height: 2rem;
+		width: 40px;
+		height: 40px;
 		padding: 0;
 		text-align: center;
 	}
 
-	.filter-clear,
 	.filter-close {
 		flex: 0 0 auto;
 		width: 2rem;
@@ -728,20 +826,15 @@
 	}
 
 	.filter-trigger {
-		flex: 1 1 auto;
-		padding: 0.6rem 0.75rem;
-		text-align: left;
-		border: 1px solid var(--ink-700);
-		border-top-color: var(--brass-500);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-	}
-
-	.filter-trigger:hover,
-	.filter-trigger:focus-visible {
-		background: var(--paper-200);
+		flex: 0 0 auto;
+		border: 0;
+		padding: 0;
+		background: transparent;
+		color: var(--brass-700);
+		font: 700 10px var(--font-ui);
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		cursor: pointer;
 	}
 
 	.filter-popup {
@@ -835,7 +928,7 @@
 	}
 
 	.starter {
-		margin-left: 0.4rem;
+		margin-left: auto;
 		border: 1px solid var(--brass-500);
 		border-radius: 999px;
 		background: var(--brass-100);
@@ -888,5 +981,110 @@
 		color: var(--wax-red);
 		font-family: var(--font-body);
 		font-size: 0.76rem;
+	}
+	.option-list {
+		min-height: 0;
+		overflow: auto;
+		grid-auto-rows: max-content;
+		align-content: start;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 12px;
+	}
+	.build-option {
+		flex-direction: column;
+		align-items: flex-start;
+		min-height: 214px;
+		gap: 14px;
+		padding: 12px;
+	}
+	.build-option > img {
+		width: 100%;
+		height: 128px;
+		border: 0;
+		object-fit: contain;
+		background: transparent;
+	}
+	.build-option strong {
+		font-size: 18px;
+		line-height: 1.2;
+	}
+	@media (max-width: 900px) {
+		.option-list {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+	@media (max-width: 700px) {
+		.option-list {
+			grid-template-columns: 1fr;
+		}
+		.build-option > img {
+			width: 4.5rem;
+			height: 4.5rem;
+		}
+		.build-option {
+			flex-direction: row;
+			min-height: 9rem;
+		}
+	}
+
+	.product-filter {
+		flex-wrap: wrap;
+	}
+	.product-filter .advisor-open {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: auto;
+		height: 40px;
+		margin-left: auto;
+		font-size: 13px;
+		padding: 0 14px;
+	}
+	.advisor-icon {
+		width: 17px;
+		height: 17px;
+	}
+
+	.chain-filter {
+		display: grid;
+		place-items: center;
+		width: 52px;
+		height: 52px;
+		padding: 5px;
+		font: 700 12px var(--font-mono);
+		text-transform: uppercase;
+		cursor: pointer;
+		border: 1px solid var(--paper-edge);
+		border-radius: 50%;
+		background: var(--paper-50);
+	}
+	.chain-filter img {
+		object-fit: contain;
+	}
+	.chain-filter[aria-pressed='true'] {
+		background: var(--paper-300);
+		border-color: var(--brass-700);
+	}
+	.build-option strong {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.cost {
+		display: flex;
+		gap: 10px;
+		color: var(--ink-700);
+	}
+	.resource {
+		color: var(--ink-500);
+	}
+	.catalog-summary .recipe,
+	.catalog-summary .need {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
 	}
 </style>

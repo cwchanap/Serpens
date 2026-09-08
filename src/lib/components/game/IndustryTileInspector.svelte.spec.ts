@@ -1,6 +1,6 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
-import { render } from 'vitest-browser-svelte';
+import { render as renderComponent } from 'vitest-browser-svelte';
 import IndustryTileInspector from './IndustryTileInspector.svelte';
 import { getIndustryTilesByResource } from '$lib/game/industry';
 import { createI18n } from '$lib/i18n';
@@ -66,6 +66,59 @@ function withCityInventory(
 }
 
 describe('IndustryTileInspector', () => {
+	it('shows actual capacity use and opens a quoted output route', async () => {
+		const game = openCity(createNewGame('convenience', 20260512), 'breadbasket-basin');
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		const building: IndustrialBuilding = {
+			...warehouseBuilding(tile),
+			typeId: 'grain-farm',
+			lastProduction: [
+				{ cityId: 'industry-city', materialId: 'grain', quantity: 15, value: 15, source: 'local' }
+			]
+		};
+		const onAddRoute = vi.fn();
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building,
+			i18n: createI18n('en'),
+			onClose: vi.fn(),
+			onAddRoute
+		});
+		await expect
+			.element(page.getByLabelText('Capacity use · last production: 50%', { exact: true }))
+			.toBeVisible();
+		await expect
+			.element(page.getByLabelText('Output · last production: 15', { exact: true }))
+			.toBeVisible();
+		await page.getByRole('button', { name: 'Add route', exact: true }).click();
+		expect(onAddRoute).toHaveBeenCalledWith({
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'grain',
+			capacity: 30,
+			frequencyDays: 1,
+			priority: 0,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2
+		});
+	});
+	it('does not offer an invalid route when there is only one industrial city', async () => {
+		const game = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;
+		render(IndustryTileInspector, {
+			game,
+			tile,
+			building: { ...warehouseBuilding(tile), typeId: 'grain-farm' },
+			i18n: createI18n('en'),
+			onClose: vi.fn(),
+			onAddRoute: vi.fn()
+		});
+		await expect
+			.element(page.getByRole('button', { name: 'Add route', exact: true }))
+			.toBeDisabled();
+	});
+
 	it('shows empty industry tile stats without construction controls or product filters', async () => {
 		expect.assertions(9);
 		const game = createNewGame('convenience', 20260512);
@@ -679,7 +732,9 @@ describe('IndustryTileInspector', () => {
 		await expect.element(page.getByText(/Level 3 \/ 10/i)).toBeInTheDocument();
 		// Scope to the building details section so the produced-total reconciliation
 		// is verified against the updated row rather than an unrelated "42" text.
-		await expect.element(buildingDetails.getByText('42')).toBeVisible();
+		await expect
+			.element(buildingDetails.getByRole('definition').filter({ hasText: /^42$/ }))
+			.toBeVisible();
 	});
 
 	it('reconciles selected city inventory materials when rerendered with changed quantities', async () => {
@@ -1050,3 +1105,12 @@ describe('IndustryTileInspector', () => {
 			.toHaveAttribute('src', '/assets/game/industry/materials/drinks.png');
 	});
 });
+
+function render(...args: Parameters<typeof renderComponent<typeof IndustryTileInspector>>) {
+	const result = renderComponent(...args);
+	for (const summary of document.querySelectorAll<HTMLElement>(
+		'.production-log summary, .buffer-details summary'
+	))
+		summary.click();
+	return result;
+}

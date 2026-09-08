@@ -69,7 +69,7 @@
 	}: Props = $props();
 </script>
 
-<div class="map-surfaces">
+<div class="map-surfaces" class:world-view={activeMapView === 'world'}>
 	{#if shouldRenderMapView(visitedMapViews, 'world')}
 		<div
 			class={{ 'map-surface': true, 'active-map-surface': activeMapView === 'world' }}
@@ -143,5 +143,13 @@
 	.active-map-surface {
 		pointer-events: auto;
 		visibility: visible;
+	}
+	@media (min-width: 601px) {
+		.map-surfaces {
+			left: 6rem;
+		}
+	}
+	.map-surfaces.world-view {
+		left: 0;
 	}
 </style>

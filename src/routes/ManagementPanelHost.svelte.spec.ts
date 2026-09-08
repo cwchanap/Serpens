@@ -12,6 +12,7 @@ import { decisionContextCashPressure } from '$lib/game/decisionContext';
 import { getFinanceMetrics, type FinanceMetrics } from '$lib/game/financeMetrics';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
 import { summarizeReports, type ReportSummary } from '$lib/game/reports';
+import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
 import type {
 	CompanyPolicy,
@@ -188,6 +189,48 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 }
 
 describe('ManagementPanelHost', () => {
+	it('changes the report chart window from the tower header', async () => {
+		let panelGame = compositionGame();
+		for (let day = 0; day < 20; day++) panelGame = simulateDay(panelGame);
+		render(
+			ManagementPanelHost,
+			hostProps({
+				panelId: 'reports',
+				panelLabel: 'Reports',
+				panelGame,
+				summary: summarizeReports(panelGame.reports)
+			})
+		);
+		await expect.element(page.getByText('Days 18–31', { exact: true })).toBeVisible();
+		const trend = page.getByTestId('revenue-trend');
+		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(14);
+		const week = page.getByRole('button', { name: '7 days', exact: true });
+		expect(week.element().closest('.tower-header')).not.toBeNull();
+		await week.click();
+		await expect.element(page.getByText('Days 25–31', { exact: true })).toBeVisible();
+		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(7);
+		await page.getByRole('button', { name: '30 days', exact: true }).click();
+		await expect.element(page.getByText('Days 12–31', { exact: true })).toBeVisible();
+		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(20);
+	});
+
+	it('switches tower panels without closing and leaves the active tab alone', async () => {
+		const onClose = vi.fn();
+		const onSelectPanel = vi.fn();
+		render(ManagementPanelHost, {
+			...hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard', onClose }),
+			onSelectPanel,
+			managementItems: [
+				{ id: 'dashboard', label: 'Dashboard', shortcut: 'O' },
+				{ id: 'reports', label: 'Reports', shortcut: 'R' }
+			]
+		});
+		await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+		expect(onSelectPanel).not.toHaveBeenCalled();
+		await page.getByRole('button', { name: 'Reports', exact: true }).click();
+		expect(onSelectPanel).toHaveBeenCalledWith('reports');
+		expect(onClose).not.toHaveBeenCalled();
+	});
 	it('renders the dashboard dialog shell with its label, day, and cash', async () => {
 		expect.assertions(4);
 		const props = hostProps();
@@ -341,6 +384,10 @@ describe('ManagementPanelHost', () => {
 			onSetManagerDelegation
 		});
 		render(ManagementPanelHost, props);
+		await page
+			.getByText(props.i18n.t('managerDelegationPanel.title'), { exact: true })
+			.first()
+			.click();
 
 		await expect
 			.element(page.getByRole('heading', { name: props.i18n.t('managerDelegationPanel.title') }))
@@ -372,6 +419,7 @@ describe('ManagementPanelHost', () => {
 			})
 		});
 		render(ManagementPanelHost, props);
+		document.querySelector<HTMLElement>('.people-list summary')!.click();
 
 		const candidate = props.panelGame.hiringCandidates[0]!;
 		await expect

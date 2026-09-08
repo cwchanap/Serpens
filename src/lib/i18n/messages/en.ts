@@ -71,6 +71,8 @@ export const en = {
 		},
 		industry: {
 			filter: {
+				chain: 'Chain',
+				allShort: 'All',
 				allProducts: 'Filter: All products',
 				selected: 'Filter: {name}',
 				clear: 'Clear product filter',
@@ -92,12 +94,15 @@ export const en = {
 			starter: 'Starter',
 			costOperating: 'Cost {cost} | Operating {operating}/day',
 			recipe: 'Recipe',
+			moreProducers: '{producer} +{count}',
 			needsProducer: 'Needs {producer}',
 			needsResource: 'Needs a {resource} resource tile',
 			noOptions: 'No industrial buildings available'
 		}
 	},
 	tileInspector: {
+		onShift: 'On shift',
+		details: 'Details',
 		ariaLabel: 'Tile inspector',
 		close: 'Close tile inspector',
 		selectTile: 'Select a city tile',
@@ -123,6 +128,17 @@ export const en = {
 		customerFit: 'Customer fit'
 	},
 	industryTileInspector: {
+		demolish: 'Demolish building',
+		confirmDemolish:
+			'Demolish this building? Its buffer inventory will be discarded. There is no refund. Shared inventory and rails will remain.',
+		utilization: 'Capacity use · last production',
+		recentOutput: 'Output · last production',
+		baseUpkeep: 'Base daily upkeep',
+		cityShipping: 'City shipping',
+		routeCount: '{count} routes',
+		addRoute: 'Add route',
+		routeNeedsCity: 'Open another industrial city to add a route',
+
 		ariaLabel: 'Industry tile inspector',
 		close: 'Close industry tile inspector',
 		emptyTitle: 'Industry tile',
@@ -233,9 +249,17 @@ export const en = {
 		modifierImpactsTitle: 'Event impacts on this dispatch'
 	},
 	worldMap: {
+		revenuePerDay: '{revenue}/d',
+		stockHeld: '{stock} held',
+		resources: 'Resources',
+		buildings: 'Buildings',
+		peakDemand: 'Peak demand',
+		storeCapacity: 'Store slots',
+		specialties: 'Specialties',
 		ariaLabel: 'World map',
 		cities: 'Cities',
 		routes: 'Logistics routes',
+		routesShort: 'Routes',
 		routeSummary: '{origin} to {destination} · {material} · {state} · {condition}',
 		cityDetails: 'City details',
 		closeCityDetails: 'Close city details',
@@ -294,6 +318,13 @@ export const en = {
 		}
 	},
 	policyPanel: {
+		compactValues: {
+			pricing: { discount: 'Low', competitive: 'Match', standard: 'Par', premium: 'High' },
+			inventory: { lean: 'Lean', balanced: 'Par', generous: 'Deep' },
+			staffing: { minimal: 'Tight', efficient: 'Full', service: 'Care' },
+			marketing: { none: 'None', awareness: 'Brand', promotions: 'Promo', loyalty: 'Loyal' },
+			service: { speed: 'Speed', balanced: 'Par', highTouch: 'Care' }
+		},
 		title: 'Policies',
 		scopeLabel: 'Policy scope',
 		targetLabel: 'Policy target',
@@ -315,6 +346,12 @@ export const en = {
 		resetScope: 'Reset scope'
 	},
 	reportsPanel: {
+		dayRange: 'Days {start}–{end}',
+		perDay: '/d',
+		shortDays: '{days}d',
+		byStore: 'By store',
+		byProduct: 'By product',
+		chart: { title: 'Revenue vs cost', cost: 'Cost', window: 'Report window' },
 		title: 'Reports',
 		modifierImpacts: {
 			title: 'Latest-day modifier impacts',
@@ -337,6 +374,9 @@ export const en = {
 			replacedBy: 'Replaced by: {modifierId}'
 		},
 		metrics: {
+			margin: 'Margin',
+			customers: 'Customers',
+			spoilage: 'Spoilage',
 			latestDailyResult: 'Latest daily result',
 			operatingIncome: 'Operating income',
 			operatingCashFlow: 'Operating cash flow',
@@ -511,6 +551,8 @@ export const en = {
 		}
 	},
 	staffPanel: {
+		storeCoverage: 'Store coverage',
+		hiredCountShort: '{count} hired',
 		title: 'Staff',
 		hiredCount: '{count} hired staff',
 		candidates: 'Candidates',
@@ -665,8 +707,11 @@ export const en = {
 		empty: "No local production chain available for this store's categories yet."
 	},
 	productChainsPanel: {
+		overview: 'Overview',
+		fullChain: 'All inputs',
 		ariaLabel: 'Product Chains',
-		eyebrow: 'Folio II · Production Chain',
+		eyebrow: 'Atlas of Supply',
+		advisor: 'Advisor',
 		modeGroup: 'Product chain view',
 		storeCategoryChains: 'Store category chains',
 		cityInventoryFlow: 'City inventory flow',
@@ -897,7 +942,8 @@ export const en = {
 			metrics: 'stock {stock} · made {produced}/d · sold {consumed}/d'
 		},
 		nodeBroadside: {
-			inspected: 'Inspected node',
+			moreMetrics: 'More metrics',
+			inspected: 'Node',
 			emptyTitle: 'Chain node',
 			empty: 'Select a graph node to inspect its latest flow metrics.',
 			sharedProducer: 'Shared producer — drawn in {count} branches of this chain.',
@@ -942,7 +988,7 @@ export const en = {
 			cancel: 'Cancel'
 		},
 		controlTower: {
-			eyebrow: 'Management',
+			eyebrow: 'Control tower',
 			close: 'Close',
 			dismiss: 'Dismiss {panel}',
 			closePanel: 'Close {panel}',
@@ -996,6 +1042,14 @@ export const en = {
 			removeRoute: 'Remove route'
 		},
 		ui: {
+			freight: 'Freight',
+			dispatch: 'Dispatch',
+			from: 'From',
+			to: 'To',
+			qty: 'Qty',
+			send: 'Send',
+			recent: 'Recent',
+			routeSchedule: '{capacity} / trip · every {days}d · {cost} / unit',
 			quote: 'Quoted lead time: {leadTime} days · transport cost: {cost}.',
 			transferSubmitted: 'Transfer dispatched.',
 			routeCreated: 'Recurring route created.',
@@ -1115,6 +1169,13 @@ export const en = {
 			financingCashFlow: 'Financing cash flow'
 		},
 		ui: {
+			outstanding: 'Outstanding',
+			runwayCoverage: 'Runway · coverage',
+			borrow: 'Borrow',
+			loans: 'Loans',
+			daysShort: '{days}d',
+			compactReview: 'Review',
+			ledger: 'Ledger',
 			cash: 'Cash',
 			creditOffer: 'Credit offer',
 			creditExplanation:

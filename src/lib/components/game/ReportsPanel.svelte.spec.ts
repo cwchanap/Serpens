@@ -322,6 +322,35 @@ function currentInventoryGame(): GameState {
 }
 
 describe('ReportsPanel', () => {
+	it('charts actual report history, changes windows, and handles a flat zero series', async () => {
+		const game = createNewGame('convenience', 42);
+		game.reports = Array.from({ length: 20 }, (_, index) => ({
+			...summary.latest!,
+			day: index + 1,
+			revenue: 0,
+			operatingIncome: 0
+		}));
+		const props = $state({
+			i18n: createI18n('en'),
+			game,
+			stores: game.stores,
+			summary,
+			chartDays: 14
+		});
+		render(ReportsPanel, props);
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
+		const trend = page.getByTestId('revenue-trend');
+		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(14);
+		props.chartDays = 7;
+		await expect.poll(() => trend.element().getAttribute('points')!.split(' ').length).toBe(7);
+		const points = trend.element().getAttribute('points')!.split(' ');
+		expect(points).toHaveLength(7);
+		expect(points.every((point) => point.endsWith(',190'))).toBe(true);
+		props.chartDays = 30;
+		await expect.poll(() => trend.element().getAttribute('points')!.split(' ').length).toBe(20);
+		expect(document.querySelector('.headline-metrics')!.textContent).toContain('64%');
+	});
 	it('shows latest brand performance and current market rival evidence', async () => {
 		expect.assertions(11);
 		const game = createNewGame('convenience', 20260821);
@@ -378,6 +407,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const brands = page.getByRole('region', { name: 'Brand performance' });
 		await expect.element(brands.getByText('Budget Bay')).toBeVisible();
@@ -437,6 +468,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const brands = page.getByRole('region', { name: 'Brand performance' });
 		await expect.element(brands.getByText('Units sold: 8')).toBeVisible();
@@ -466,6 +499,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const brands = page.getByRole('region', { name: 'Brand performance' });
 		await expect.element(brands.getByText('No brand performance evidence recorded.')).toBeVisible();
@@ -498,6 +533,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const market = page.getByRole('region', { name: 'Market snapshot' });
 		await expect.element(market.getByText('No rival evidence recorded.')).toBeVisible();
@@ -531,6 +568,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const impacts = page.getByRole('region', { name: 'Latest-day modifier impacts' });
 		await expect.element(impacts.getByText('Source: Supplier terms')).toBeVisible();
@@ -578,6 +617,8 @@ describe('ReportsPanel', () => {
 					}
 				}
 			});
+			if (document.querySelector('[data-testid="report-details-toggle"]'))
+				await page.getByTestId('report-details-toggle').click();
 
 			const impacts = page.getByRole('region', {
 				name: locale === 'ja' ? '直近日の修正効果' : '最近一天的修正效果影響'
@@ -606,6 +647,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const lifecycle = page.getByRole('region', { name: 'Latest-day modifier lifecycle' });
 		await expect.element(lifecycle.getByText('Source: Supplier terms')).toBeVisible();
@@ -626,6 +669,8 @@ describe('ReportsPanel', () => {
 				latest: { ...summary.latest!, logistics: emptyLogisticsReport() }
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
 		await expect.element(logistics.getByRole('heading', { name: 'Arrivals' })).toBeVisible();
@@ -693,6 +738,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
 		await expect
@@ -739,6 +786,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const lifecycle = page.getByRole('region', { name: 'Latest-day modifier lifecycle' });
 		await expect.element(lifecycle.getByText('Status: Activated')).toBeVisible();
@@ -764,6 +813,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const lifecycle = page.getByRole('region', { name: 'Latest-day modifier lifecycle' });
 		await expect.element(lifecycle.getByText('Status: Expired')).toBeVisible();
@@ -790,6 +841,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
@@ -807,6 +860,8 @@ describe('ReportsPanel', () => {
 		expect.assertions(2);
 
 		render(ReportsPanel, { i18n: createI18n('en'), stores: [], summary });
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
@@ -830,6 +885,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
 		await expect.element(pressure.getByText('Waste: 2 units ($4)')).toBeVisible();
@@ -845,6 +902,8 @@ describe('ReportsPanel', () => {
 		expect.assertions(9);
 
 		render(ReportsPanel, { i18n: createI18n('en'), stores: [], summary });
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
@@ -872,6 +931,8 @@ describe('ReportsPanel', () => {
 				latest: { ...summary.latest!, warnings: [{ code: 'cashReservesLow' }] }
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const warningsList = page.getByRole('list', { name: 'Daily warnings' });
 
@@ -896,6 +957,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const warningsList = page.getByRole('list', { name: '日次警告' });
 
@@ -931,6 +994,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const warningsList = page.getByRole('list', { name: 'Daily warnings' });
 
@@ -974,6 +1039,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reportsRegion = page.getByRole('region', { name: 'Reports' });
 
@@ -989,6 +1056,8 @@ describe('ReportsPanel', () => {
 			stores: [],
 			summary: { ...summary, latest: undefined }
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		await expect
 			.element(page.getByText('No reports yet. Advance the first day to generate results.'))
@@ -1041,6 +1110,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
@@ -1116,6 +1187,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect.element(reports.getByText('Production — Industry City: 20 units')).toBeVisible();
@@ -1142,6 +1215,8 @@ describe('ReportsPanel', () => {
 			stores: [store],
 			summary
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
@@ -1165,6 +1240,8 @@ describe('ReportsPanel', () => {
 			stores: [store],
 			summary
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
@@ -1180,6 +1257,8 @@ describe('ReportsPanel', () => {
 			stores: [store],
 			summary
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect.element(reports.getByText('Current city inventory is unavailable.')).toBeVisible();
@@ -1214,6 +1293,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
@@ -1252,6 +1333,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
@@ -1285,6 +1368,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
@@ -1302,6 +1387,8 @@ describe('ReportsPanel', () => {
 				latest: null as unknown as ReportSummary['latest']
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
@@ -1325,6 +1412,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect
@@ -1353,6 +1442,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const reports = page.getByRole('region', { name: 'Reports' });
 		await expect.element(reports.getByText(/Local supply —/)).not.toBeInTheDocument();
@@ -1441,6 +1532,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
 		await expect
@@ -1502,6 +1595,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const logistics = page.getByRole('region', { name: 'Latest-day logistics' });
 		await expect.element(logistics.getByText('Utilization: 0%')).toBeVisible();
@@ -1542,6 +1637,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
 		await expect.element(pressure.getByText('Obsolescence: 70% demand')).toBeVisible();
@@ -1562,6 +1659,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
 		await expect
@@ -1577,6 +1676,8 @@ describe('ReportsPanel', () => {
 			stores: [],
 			summary: { ...summary, latest: undefined }
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		expect(document.querySelector('.product-pressure-evidence')).toBeNull();
 	});
@@ -1600,6 +1701,8 @@ describe('ReportsPanel', () => {
 				}
 			}
 		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
 
 		const pressure = page.getByRole('region', { name: 'Product pressure evidence' });
 		await expect.element(pressure.getByText(/unknown-store/)).toBeVisible();

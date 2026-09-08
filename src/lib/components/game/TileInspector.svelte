@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
-	import { getStoreArt } from '$lib/assets/gameArt';
+	import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
+	import HudIcon from './HudIcon.svelte';
+	import { getStoreProductStock } from '$lib/game/stock';
+	import { ARCHETYPES } from '$lib/game/archetypes';
+	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import { getStoreOrdinal } from '$lib/game/state';
 	import {
 		MAX_STORE_LEVEL,
@@ -68,6 +72,24 @@
 	});
 
 	const attentionMessage = $derived(store ? localizeStockTrouble(store.products, i18n) : null);
+	const staffing = $derived(
+		store && ARCHETYPES.some((archetype) => archetype.id === store.archetypeId)
+			? summarizeStoreStaffing(game, store)
+			: null
+	);
+	const revenueHistory = $derived(
+		game.reports
+			.slice(-14)
+			.map((report) => report.storeReports.find((item) => item.storeId === store?.id)?.revenue ?? 0)
+	);
+	const revenuePoints = $derived(
+		revenueHistory
+			.map(
+				(value, index) =>
+					`${(index / Math.max(1, revenueHistory.length - 1)) * 160},${36 - (value / Math.max(1, ...revenueHistory)) * 32}`
+			)
+			.join(' ')
+	);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
 
 	function closeInspector(): void {
@@ -99,363 +121,415 @@
 	aria-label={i18n.t('tileInspector.ariaLabel')}
 	{@attach blockMapInteraction}
 >
-	<button
-		type="button"
-		class="close"
-		aria-label={i18n.t('tileInspector.close')}
-		onclick={closeInspector}>×</button
-	>
-	{#if !tile}
-		<h2>{i18n.t('tileInspector.selectTile')}</h2>
-	{:else}
-		<div class="heading">
-			<div>
-				<p>{i18n.labels.neighborhood(tile.neighborhood)}</p>
-				<h2>{i18n.t('tileInspector.tileHeading', { x: tile.x, y: tile.y })}</h2>
-			</div>
-			<span>{tileLabel}</span>
-		</div>
-
-		{#if store}
-			<div class="basic-card">
-				{#if storeArt}
-					<div class="store-art">
-						<img
-							src={storeArtSrc}
-							alt=""
-							data-testid={`store-art-${store.archetypeId}`}
-							width="1024"
-							height="1024"
-							loading="lazy"
-							decoding="async"
-						/>
-					</div>
-				{/if}
-				<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
-				<p class="location">{formatStoreLocation(store.location, i18n)}</p>
-
-				<dl class="gauges" aria-label={i18n.t('tileInspector.storeVitals')}>
-					<div class="gauge">
-						<dt>{i18n.t('tileInspector.revenuePerDay')}</dt>
-						<dd>{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}</dd>
-					</div>
-					<div class="gauge">
-						<dt>{i18n.t('tileInspector.stockHealth')}</dt>
-						<dd>{store.stockHealth}</dd>
-					</div>
-					<div class="gauge">
-						<dt>{i18n.t('tileInspector.staffMorale')}</dt>
-						<dd>{store.staffMorale}</dd>
-					</div>
-				</dl>
-
-				{#if attentionMessage}
-					<p class="attention"><span class="seal" data-urgent="true">!</span> {attentionMessage}</p>
-				{/if}
-
-				<div class="store-level">
-					<p class="level-label">
-						{i18n.t('tileInspector.level', {
-							level: i18n.format.integer(store.level),
-							max: i18n.format.integer(MAX_STORE_LEVEL)
-						})}
-					</p>
-					<p class="level-next">{i18n.t('tileInspector.nextLabel', { benefit: nextBenefit })}</p>
-					<button
-						type="button"
-						class="upgrade"
-						disabled={!upgradeAllowed || !storeCanUpgrade || !canAffordUpgrade}
-						onclick={() => {
-							if (upgradeAllowed) onUpgradeStore(store.id);
-						}}
-					>
-						{storeCanUpgrade
-							? i18n.t('tileInspector.upgrade', {
-									cost: i18n.format.currency(upgradeCost)
-								})
-							: i18n.t('tileInspector.maxLevel')}
-					</button>
-					{#if storeCanUpgrade && !canAffordUpgrade}
-						<p class="level-hint">{i18n.t('tileInspector.notEnoughCash')}</p>
-					{/if}
-					{#if !upgradeAllowed && disabledReason}
-						<p class="level-hint">{disabledReason}</p>
-					{/if}
+	<div class="dossier paper">
+		<button
+			type="button"
+			class="close"
+			aria-label={i18n.t('tileInspector.close')}
+			onclick={closeInspector}>×</button
+		>
+		{#if store && tile}
+			<header class="store-heading">
+				{#if storeArt}<img
+						class="store-art"
+						src={storeArtSrc}
+						alt=""
+						data-testid={`store-art-${store.archetypeId}`}
+						width="56"
+						height="56"
+					/>{/if}
+				<div>
+					<p class="eyebrow">{formatStoreLocation(store.location, i18n)}</p>
+					<h3>{storeDisplayName(store, getStoreOrdinal(game.stores, store.id), i18n)}</h3>
 				</div>
-
-				<button type="button" class="open-details" onclick={onOpenDetails}
-					>{i18n.t('tileInspector.openDetails')}</button
+				<span
+					class="seal level"
+					title={i18n.t('tileInspector.level', {
+						level: i18n.format.integer(store.level),
+						max: i18n.format.integer(MAX_STORE_LEVEL)
+					})}
+					>{['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][store.level - 1] ??
+						store.level}</span
+				>
+			</header>
+			<div class="revenue">
+				<div>
+					<p class="eyebrow">{i18n.t('tileInspector.revenuePerDay')}</p>
+					<strong>{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}</strong>
+				</div>
+				<svg viewBox="0 0 160 40" aria-hidden="true"
+					><polyline
+						points={revenuePoints}
+						fill="none"
+						stroke="var(--moss)"
+						stroke-width="2"
+					/></svg
 				>
 			</div>
-		{:else}
+			<dl class="vitals" aria-label={i18n.t('tileInspector.storeVitals')}>
+				{#each [{ label: i18n.t('tileInspector.stockHealth'), value: store.stockHealth, icon: 'inventory' as const }, { label: i18n.t('tileInspector.staffMorale'), value: store.staffMorale, icon: 'person' as const }] as metric (metric.label)}
+					<div
+						title={metric.label}
+						style:--meter-color={metric.value < 70 ? 'var(--brass-700)' : 'var(--moss)'}
+					>
+						<dt><HudIcon name={metric.icon} /><span class="sr-only">{metric.label}</span></dt>
+						<dd>
+							<meter min="0" max="100" value={metric.value} aria-label={metric.label}></meter><span
+								>{i18n.format.integer(metric.value)}</span
+							>
+						</dd>
+					</div>
+				{/each}
+			</dl>
+			<div class="product-strip">
+				{#each store.products as product (product.productId)}
+					{@const quantity = getStoreProductStock(product)}
+					<div
+						class="product"
+						class:low-stock={quantity <= product.reorderThreshold}
+						style:--meter-color={quantity <= product.reorderThreshold
+							? 'var(--wax-red)'
+							: 'var(--moss)'}
+						title={`${i18n.labels.productCategory(product.productId)} · ${quantity} / ${product.targetStock}`}
+					>
+						<img
+							src={asset(getProductArt(product.productId).path)}
+							alt={i18n.labels.productCategory(product.productId)}
+							width="72"
+							height="72"
+						/>
+						<meter
+							min="0"
+							max={Math.max(1, product.targetStock)}
+							value={quantity}
+							aria-label={i18n.labels.productCategory(product.productId)}
+						></meter>
+					</div>
+				{/each}
+			</div>
+			{#if staffing}<div class="staff-coverage">
+					<span>{i18n.t('tileInspector.onShift')}</span>
+					<div class="portraits" aria-hidden="true">
+						{#each game.staff
+							.filter((person) => person.assignedStoreId === store.id)
+							.slice(0, 5) as person (person.id)}<span><HudIcon name="person" /></span>{/each}
+					</div>
+					<strong
+						>{staffing.assigned.manager + staffing.assigned.general} / {staffing.requirement
+							.manager + staffing.requirement.general}</strong
+					><meter
+						class="sr-only"
+						min="0"
+						max="100"
+						value={staffing.coverage}
+						aria-label={i18n.t('staffPanel.storeStaffing')}
+					></meter>
+				</div>{/if}
+			<div class="actions">
+				<button
+					type="button"
+					class="upgrade btn-primary"
+					disabled={!upgradeAllowed || !storeCanUpgrade || !canAffordUpgrade}
+					title={i18n.t('tileInspector.nextLabel', { benefit: nextBenefit })}
+					aria-label={storeCanUpgrade
+						? i18n.t('tileInspector.upgrade', { cost: i18n.format.currency(upgradeCost) })
+						: i18n.t('tileInspector.maxLevel')}
+					onclick={() => {
+						if (upgradeAllowed) onUpgradeStore(store.id);
+					}}
+					>{storeCanUpgrade
+						? `↑ ${i18n.format.currency(upgradeCost)}`
+						: i18n.t('tileInspector.maxLevel')}</button
+				><button
+					type="button"
+					onclick={onOpenDetails}
+					aria-label={i18n.t('tileInspector.openDetails')}
+					><HudIcon name="details" />{i18n.t('tileInspector.details')}</button
+				>
+			</div>
+			{#if storeCanUpgrade && !canAffordUpgrade}<p class="hint">
+					{i18n.t('tileInspector.notEnoughCash')}
+				</p>{/if}
+			{#if !upgradeAllowed && disabledReason}<p class="hint">{disabledReason}</p>{/if}
+		{:else if tile}
+			<header>
+				<p class="eyebrow">
+					{i18n.labels.neighborhood(tile.neighborhood)} · <span>{tileLabel}</span>
+				</p>
+				<h2>{i18n.t('tileInspector.tileHeading', { x: tile.x, y: tile.y })}</h2>
+			</header>
 			<section aria-label={i18n.t('tileInspector.tileStats')}>
-				<dl>
-					<div>
-						<dt>{i18n.t('tileInspector.demand')}</dt>
-						<dd>{tile.demand}</dd>
-					</div>
-					<div>
-						<dt>{i18n.t('tileInspector.rent')}</dt>
-						<dd>{i18n.format.currency(tile.rent)}</dd>
-					</div>
-					<div>
-						<dt>{i18n.t('tileInspector.footTraffic')}</dt>
-						<dd>{tile.footTraffic}</dd>
-					</div>
-					<div>
-						<dt>{i18n.t('tileInspector.customerFit')}</dt>
-						<dd>{tile.customerFit}</dd>
-					</div>
+				<dl class="tile-stats">
+					{#each [{ label: i18n.t('tileInspector.demand'), value: tile.demand }, { label: i18n.t('tileInspector.rent'), value: i18n.format.currency(tile.rent) }, { label: i18n.t('tileInspector.footTraffic'), value: tile.footTraffic }, { label: i18n.t('tileInspector.customerFit'), value: tile.customerFit }] as metric (metric.label)}<div
+						>
+							<dt>{metric.label}</dt>
+							<dd>{metric.value}</dd>
+						</div>{/each}
 				</dl>
 			</section>
-		{/if}
-	{/if}
+		{:else}<h2>{i18n.t('tileInspector.selectTile')}</h2>{/if}
+	</div>
+	{#if attentionMessage}<p class="attention plaque">
+			<span class="seal">!</span>{attentionMessage}
+		</p>{/if}
 </aside>
 
 <style>
 	.inspector {
-		position: relative;
 		display: grid;
-		align-content: start;
-		gap: 1rem;
-		min-width: 0;
-		padding: 1rem 1.1rem 1.1rem;
-		border: 1px solid var(--ink-700);
-		border-radius: 2px;
-		background-color: var(--paper-100);
-		background-image: var(--grain-svg);
-		background-blend-mode: multiply;
-		background-size: 200px 200px;
+		gap: 12px;
 		color: var(--ink-700);
-		box-shadow:
-			inset 0 0 0 2px var(--paper-100),
-			inset 0 0 0 3px var(--brass-500),
-			var(--shadow-paper);
 	}
-
+	.dossier {
+		padding: 14px;
+		display: grid;
+		gap: 12px;
+	}
 	.close {
 		position: absolute;
-		top: 0.7rem;
-		right: 0.7rem;
-		width: 1.9rem;
-		height: 1.9rem;
-		padding: 0;
-		border: 1px solid var(--ink-700);
-		border-radius: 999px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-weight: 700;
-		text-align: center;
+		right: 6px;
+		top: 4px;
+		z-index: 2;
+		width: 20px;
+		height: 20px;
+		padding: 0 !important;
+		border: 0 !important;
+		background: transparent !important;
+		font-size: 12px !important;
+		color: var(--ink-500) !important;
 	}
-
-	.close:hover {
-		background: var(--paper-200);
-	}
-
-	.heading {
+	.store-heading {
 		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 0.75rem;
-		padding-right: 2.2rem;
+		align-items: center;
+		gap: 10px;
+		min-height: 64px;
 	}
-
+	.store-heading > div {
+		flex: 1;
+		min-width: 0;
+	}
+	.store-art {
+		width: 64px;
+		height: 64px;
+		object-fit: cover;
+		border: 1px solid var(--brass-500);
+		border-radius: 50%;
+	}
 	h2,
 	h3,
 	p,
-	dl {
+	dl,
+	dd {
 		margin: 0;
 	}
-
-	h2 {
-		font-family: var(--font-display);
-		font-size: 1.25rem;
-		font-weight: 400;
-		line-height: 1.1;
-		color: var(--ink-700);
-	}
-
+	h2,
 	h3 {
 		font-family: var(--font-display);
-		font-size: 1rem;
 		font-weight: 400;
-		color: var(--ink-700);
 	}
-
-	.heading p {
-		color: var(--brass-700);
-		font-family: var(--font-ui);
-		font-size: 0.7rem;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
+	h3 {
+		font-size: 24px;
+		line-height: 1.05;
 	}
-
-	.location {
-		color: var(--ink-500);
-		font-family: var(--font-body);
-		font-size: 0.86rem;
+	.eyebrow {
+		font-size: 10px;
+		letter-spacing: 0.12em;
+		margin: 0 0 5px;
 	}
-
-	dt {
-		font-family: var(--font-ui);
-		font-size: 0.7rem;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--brass-700);
+	.level {
+		width: 40px;
+		height: 40px;
+		flex-shrink: 0;
 	}
-
-	.heading span {
-		flex: 0 0 auto;
-		border: 1px solid var(--brass-500);
-		border-radius: 999px;
-		color: var(--ink-700);
-		background: var(--paper-50);
-		padding: 0.2rem 0.55rem;
-		font-family: var(--font-ui);
-		font-size: 0.74rem;
-		font-weight: 600;
-	}
-
-	dl {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
-		gap: 0.6rem;
-	}
-
-	dd {
-		margin: 0.2rem 0 0;
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums lining-nums;
-		font-weight: 700;
-		color: var(--ink-700);
-		overflow-wrap: anywhere;
-	}
-
-	.basic-card {
-		display: grid;
-		gap: 0.85rem;
-	}
-
-	.gauges {
-		grid-template-columns: repeat(3, 1fr);
-		gap: 0.5rem;
-	}
-
-	.gauge {
+	.revenue {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 14px;
+		padding: 10px 12px;
 		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
 		background: var(--paper-50);
-		padding: 0.45rem 0.5rem;
-		text-align: center;
+		min-height: 66px;
+		box-sizing: border-box;
 	}
-
-	.gauge dt {
+	.revenue strong {
+		font: 700 26px/1.1 var(--font-mono);
+	}
+	.revenue svg {
+		width: 55%;
+		height: 40px;
+	}
+	.vitals {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+	}
+	.vitals > div,
+	.vitals dd {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.vitals dd {
+		flex: 1;
+		min-width: 0;
+		font: 700 14px var(--font-mono);
+	}
+	.vitals dt {
+		width: 16px;
+		flex-shrink: 0;
 		color: var(--brass-700);
-		font-family: var(--font-ui);
-		font-size: 0.62rem;
-		font-weight: 700;
+	}
+	.vitals meter {
+		width: 100%;
+		min-width: 0;
+		height: 6px;
+	}
+	.product-strip {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: 8px;
+	}
+	.product {
+		background: var(--paper-50);
+		border: 1px solid var(--paper-edge);
+		padding: 4px 4px 0;
+		display: grid;
+	}
+	.product img {
+		width: 100%;
+		height: 72px;
+		object-fit: contain;
+	}
+	.product meter {
+		width: calc(100% + 8px);
+		height: 5px;
+		margin: 4px -4px 0;
+	}
+	.staff-coverage {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		border: 1px solid var(--paper-edge);
+		background: var(--paper-50);
+		padding: 8px 10px;
+		min-width: 0;
+		min-height: 54px;
+		box-sizing: border-box;
+		font: 700 10px var(--font-ui);
+	}
+	.staff-coverage > span {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 	}
-
-	.gauge dd {
-		margin: 0.25rem 0 0;
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums lining-nums;
-		font-weight: 700;
-		color: var(--ink-700);
+	.staff-coverage strong {
+		margin-left: auto;
+		font: 12px var(--font-mono);
 	}
-
+	.portraits {
+		display: flex;
+		gap: 6px;
+		min-width: 0;
+		overflow-x: auto;
+	}
+	.portraits span {
+		display: grid;
+		place-items: center;
+		width: 34px;
+		height: 34px;
+		flex-shrink: 0;
+		color: var(--brass-700);
+		background: var(--paper-100);
+		border: 1px solid var(--brass-500);
+		border-radius: 50%;
+	}
+	.actions {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+	}
+	.actions button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		font: 700 12px var(--font-ui);
+		min-height: 40px;
+		padding: 6px;
+	}
+	.actions .upgrade {
+		font-family: var(--font-mono);
+		background: var(--moss);
+		color: var(--paper-50);
+	}
+	.actions button :global(svg) {
+		width: 16px;
+		height: 16px;
+	}
+	.vitals > div {
+		min-width: 0;
+		height: 36px;
+		box-sizing: border-box;
+		padding: 8px 10px;
+		border: 1px solid var(--paper-edge);
+		background: var(--paper-50);
+	}
+	.vitals dt :global(svg) {
+		width: 16px;
+		height: 16px;
+	}
+	.vitals dd > span {
+		flex-shrink: 0;
+	}
+	meter:not(.sr-only) {
+		appearance: none;
+		border: none;
+		background: none;
+	}
+	meter::-webkit-meter-bar {
+		height: 6px;
+		border: none;
+		border-radius: 0;
+		background: var(--paper-300);
+		box-shadow: none;
+	}
+	meter::-webkit-meter-optimum-value {
+		background: var(--meter-color, var(--moss));
+	}
+	meter::-moz-meter-bar {
+		background: var(--meter-color, var(--moss));
+	}
+	.product meter::-webkit-meter-bar {
+		height: 5px;
+	}
+	.product.low-stock {
+		border-color: var(--wax-red);
+	}
 	.attention {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin: 0;
+		gap: 10px;
+		padding: 10px 12px;
+		font: 14px var(--font-body);
 		color: var(--wax-red);
-		font-family: var(--font-body);
-		font-size: 0.85rem;
 	}
-
-	.store-art {
+	.hint {
+		color: var(--wax-red);
+		font: 12px var(--font-body);
+	}
+	.tile-stats {
 		display: grid;
-		place-items: center;
-		padding: 0.5rem;
-		background: var(--paper-50);
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
 	}
-
-	.store-art img {
-		width: min(160px, 100%);
-		height: auto;
+	.tile-stats dd {
+		font-family: var(--font-mono);
 	}
-
-	.store-level {
-		display: grid;
-		gap: 0.4rem;
-		padding: 0.75rem;
-		border: 1px solid var(--brass-500);
-		border-radius: 2px;
-		background: var(--paper-50);
-	}
-
-	.level-label {
-		font-family: var(--font-ui);
-		font-size: 0.8rem;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		color: var(--ink-700);
-	}
-
-	.level-next {
-		font-family: var(--font-body);
-		font-size: 0.8rem;
-		color: var(--ink-500);
-	}
-
-	.level-hint {
-		font-family: var(--font-body);
-		font-size: 0.78rem;
-		color: var(--ink-500);
-	}
-
-	.upgrade {
-		padding: 0.45rem 0.85rem;
-		border: 1px solid var(--brass-500);
-		border-radius: 2px;
-		background: var(--paper-100);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-size: 0.82rem;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.upgrade:hover:not(:disabled) {
-		background: var(--paper-200);
-	}
-
-	.upgrade:disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
-	}
-
-	.open-details {
-		width: 100%;
-		border: 1px solid var(--brass-500);
-		border-radius: 2px;
-		background: var(--paper-100);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-weight: 700;
-		padding: 0.55rem 0.75rem;
-	}
-
-	.open-details:hover,
-	.open-details:focus-visible {
-		background: var(--paper-200);
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
 	}
 </style>

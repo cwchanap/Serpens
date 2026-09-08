@@ -10,6 +10,7 @@ import {
 } from '$lib/game/finance';
 import {
 	buildIndustrialBuilding,
+	demolishIndustrialBuilding,
 	financeIndustrialBuilding,
 	upgradeBuilding
 } from '$lib/game/industryPlacement';
@@ -1117,6 +1118,13 @@ export class GameRouteController {
 			transition: (game) => buildIndustrialBuilding(game!, { tileId, buildingTypeId }),
 			scenarioCommand: { kind: 'buildIndustrialBuilding', tileId, buildingTypeId },
 			cueId: 'sfx.build.industry-place'
+		});
+	}
+
+	demolishIndustrialBuilding(buildingId: string): Promise<GameRouteCommitResult> {
+		// Like logistics management, demolition is sandbox-only until a scenario explicitly supports it.
+		return this.commitMutation({
+			transition: (game) => demolishIndustrialBuilding(game!, buildingId)
 		});
 	}
 

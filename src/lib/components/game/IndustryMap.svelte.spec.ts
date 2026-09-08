@@ -9,6 +9,7 @@ const i18n: I18nBundle = createI18n('en');
 const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
 const mockSetKeyboardEnabled = vi.fn();
+const mockSetParentSize = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
 let shouldFail = false;
@@ -17,7 +18,13 @@ vi.mock('phaser', () => {
 	const mockCanvas = { dataset: {} as Record<string, string> };
 	const FakeGame = vi.fn().mockImplementation(function () {
 		if (shouldFail) throw new Error('Phaser unavailable');
-		return { destroy: vi.fn(), pause: mockPause, resume: mockResume, canvas: mockCanvas };
+		return {
+			scale: { setParentSize: mockSetParentSize },
+			destroy: vi.fn(),
+			pause: mockPause,
+			resume: mockResume,
+			canvas: mockCanvas
+		};
 	});
 	return {
 		default: {
@@ -64,6 +71,18 @@ describe('IndustryMap', () => {
 	beforeEach(() => {
 		shouldFail = false;
 		vi.clearAllMocks();
+	});
+
+	it('resizes the canvas when its container changes while paused', async () => {
+		render(IndustryMap, { snapshot: emptySnapshot, onTileSelected: vi.fn(), paused: true, i18n });
+		const container = document.querySelector<HTMLDivElement>('.map-canvas')!;
+		container.style.width = '800px';
+		container.style.height = '600px';
+		await expect.poll(() => mockSetParentSize.mock.lastCall).toEqual([800, 600]);
+		container.style.width = '1100px';
+		container.style.height = '720px';
+		await expect.poll(() => mockSetParentSize.mock.lastCall).toEqual([1100, 720]);
+		expect(mockPause).toHaveBeenCalled();
 	});
 
 	it('renders the industry map section', async () => {

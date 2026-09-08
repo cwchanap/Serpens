@@ -237,7 +237,7 @@ export class CityMapScene extends Phaser.Scene {
 		const x = tile.x * TILE_SIZE;
 		const y = tile.y * TILE_SIZE;
 
-		graphics.lineStyle(1, 0xffffff, 0.35);
+		graphics.lineStyle(1, 0x1b130a, 0.18);
 		graphics.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
 
 		if (tile.locked) {
@@ -252,6 +252,7 @@ export class CityMapScene extends Phaser.Scene {
 		}
 
 		this.ownershipGraphics.clear();
+		if (!this.snapshot.placementPreview) return;
 		this.ownershipGraphics.lineStyle(3, 0x1f8a70, 0.95);
 
 		for (const store of this.snapshot.stores) {
@@ -433,13 +434,28 @@ export class CityMapScene extends Phaser.Scene {
 		const viewportWidth = Math.max(1, this.scale.width);
 		const viewportHeight = Math.max(1, this.scale.height);
 		const zoom = Phaser.Math.Clamp(
-			Math.max(viewportWidth / worldWidth, viewportHeight / worldHeight),
+			Math.max(1.5, viewportWidth / worldWidth, viewportHeight / worldHeight),
 			MIN_ZOOM,
 			MAX_ZOOM
 		);
 
 		this.cameras.main.setZoom(zoom);
-		this.cameras.main.setScroll(0, 0);
+		// Phaser zooms around the viewport center. Frame owned buildings in world
+		// coordinates so the initial zoom does not crop them behind the HUD.
+		const firstOwned = this.snapshot.stores[0];
+		const halfWidth = viewportWidth / (2 * zoom);
+		const halfHeight = viewportHeight / (2 * zoom);
+		const centerX = Phaser.Math.Clamp(
+			firstOwned ? (firstOwned.x + 1) * TILE_SIZE : halfWidth,
+			halfWidth,
+			Math.max(halfWidth, worldWidth - halfWidth)
+		);
+		const centerY = Phaser.Math.Clamp(
+			firstOwned ? (firstOwned.y + 1) * TILE_SIZE : halfHeight,
+			halfHeight,
+			Math.max(halfHeight, worldHeight - halfHeight)
+		);
+		this.cameras.main.setScroll(centerX - viewportWidth / 2, centerY - viewportHeight / 2);
 		this.updateCanvasCameraAttributes();
 	}
 
@@ -487,7 +503,7 @@ export class CityMapScene extends Phaser.Scene {
 		}
 
 		if (this.selectedTile) {
-			this.outlineGraphics.lineStyle(4, 0x2563eb, 1);
+			this.outlineGraphics.lineStyle(2, 0xd4a852, 1);
 			this.strokeFootprintRect(
 				this.outlineGraphics,
 				this.getInteractionFootprint(this.selectedTile),

@@ -114,7 +114,7 @@ describe('WorldMap', () => {
 	});
 
 	it('selects cities and opens a revealed city from the inspector', async () => {
-		expect.assertions(4);
+		expect.assertions(7);
 		const onSelectCity = vi.fn();
 		const onOpenCity = vi.fn();
 		const onCloseInspector = vi.fn();
@@ -127,6 +127,9 @@ describe('WorldMap', () => {
 			onCloseInspector
 		});
 
+		await expect.element(page.getByText('1.35×', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('+1', { exact: true })).toBeVisible();
+		await expect.element(page.getByRole('img', { name: 'Games', exact: true })).toBeVisible();
 		await page.getByRole('button', { name: /^Campus Junction$/i }).click();
 		expect(onSelectCity).toHaveBeenCalledWith('campus-junction');
 		await expect.element(page.getByRole('dialog', { name: /city details/i })).toBeVisible();

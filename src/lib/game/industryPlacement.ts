@@ -160,6 +160,7 @@ export function buildIndustrialBuilding(
 	game: GameState,
 	input: BuildIndustrialBuildingInput
 ): GameState {
+	if ((game.nextIndustrialBuildingSequence ?? 1) >= Number.MAX_SAFE_INTEGER) return game;
 	const city = getActiveIndustryCity(game);
 	const tile = city ? getIndustryTileById(city, input.tileId) : undefined;
 	const buildingType = INDUSTRIAL_BUILDING_TYPES[input.buildingTypeId];
@@ -202,7 +203,10 @@ export function buildIndustrialBuilding(
 	const builtGame: GameState = {
 		...game,
 		cash: game.cash - buildingType.buildCost,
-		industrialBuildings: [...game.industrialBuildings, building]
+		industrialBuildings: [...game.industrialBuildings, building],
+		...(game.nextIndustrialBuildingSequence === undefined
+			? {}
+			: { nextIndustrialBuildingSequence: game.nextIndustrialBuildingSequence + 1 })
 	};
 	return refreshWorldProgress(builtGame);
 }
@@ -231,6 +235,23 @@ export function financeIndustrialBuilding(
 				(building) => building.tileId === input.tileId && building.typeId === input.buildingTypeId
 			)
 	});
+}
+
+/** Remove a production building and its buffer. Shared inventory and rails stay in place. */
+export function demolishIndustrialBuilding(game: GameState, buildingId: string): GameState {
+	const building = game.industrialBuildings.find((candidate) => candidate.id === buildingId);
+	if (!building || !INDUSTRIAL_BUILDING_TYPES[building.typeId]?.recipeId) return game;
+	const nextSequence =
+		game.nextIndustrialBuildingSequence ??
+		game.industrialBuildings.reduce((next, candidate) => {
+			const match = /^industry-building-(\d+)$/.exec(candidate.id);
+			return match ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(next, Number(match[1]) + 1)) : next;
+		}, game.industrialBuildings.length + 1);
+	return {
+		...game,
+		nextIndustrialBuildingSequence: nextSequence,
+		industrialBuildings: game.industrialBuildings.filter((candidate) => candidate.id !== buildingId)
+	};
 }
 
 export function upgradeBuilding(game: GameState, buildingId: string): GameState {
@@ -280,7 +301,7 @@ function createIndustrialBuilding(
 	buildingType: IndustrialBuildingType
 ): IndustrialBuilding {
 	return {
-		id: `industry-building-${game.industrialBuildings.length + 1}`,
+		id: `industry-building-${game.nextIndustrialBuildingSequence ?? game.industrialBuildings.length + 1}`,
 		level: 1,
 		typeId: buildingType.id,
 		cityId: tile.cityId,
