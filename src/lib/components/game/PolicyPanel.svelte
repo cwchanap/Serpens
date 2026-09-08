@@ -7,9 +7,10 @@
 	} from '$lib/game/policyInheritance';
 	import { getWorldCityDefinition, isWorldCityId } from '$lib/game/worldCatalog';
 	import type { CompanyPolicy, GameState, PolicyOverrideScope, WorldCityId } from '$lib/game/types';
-	import type { I18nBundle } from '$lib/i18n';
+	import type { I18nBundle, TranslationKey } from '$lib/i18n';
 
 	interface Props {
+		compact?: boolean;
 		game: GameState;
 		i18n: I18nBundle;
 		onChange: (patch: Partial<CompanyPolicy>) => void;
@@ -22,6 +23,7 @@
 	}
 
 	let {
+		compact = false,
 		game,
 		i18n,
 		onChange,
@@ -163,26 +165,35 @@
 	}
 </script>
 
-<section class="panel paper" aria-labelledby="policy-heading">
+<section class="panel" class:paper={!compact} class:compact aria-labelledby="policy-heading">
 	<h2 id="policy-heading">{i18n.t('policyPanel.title')}</h2>
 
 	<div class="scope-controls">
-		<label>
-			<span>{i18n.t('policyPanel.scopeLabel')}</span>
-			<select
-				aria-label={i18n.t('policyPanel.scopeLabel')}
-				value={selectedScopeKind}
-				onchange={(event) => setScopeKind(event.currentTarget.value)}
-			>
-				<option value="company">{i18n.t('policyPanel.scopes.company')}</option>
-				<option value="city" disabled={cityOptions.length === 0}>
-					{i18n.t('policyPanel.scopes.city')}
-				</option>
-				<option value="store" disabled={storeOptions.length === 0}>
-					{i18n.t('policyPanel.scopes.store')}
-				</option>
-			</select>
-		</label>
+		{#if compact}<div class="segments" role="group" aria-label={i18n.t('policyPanel.scopeLabel')}>
+				{#each ['company', 'city', 'store'] as const as scope (scope)}<button
+						type="button"
+						aria-pressed={selectedScopeKind === scope}
+						disabled={(scope === 'city' && !cityOptions.length) ||
+							(scope === 'store' && !storeOptions.length)}
+						onclick={() => setScopeKind(scope)}>{i18n.t(`policyPanel.scopes.${scope}`)}</button
+					>{/each}
+			</div>{:else}
+			<label>
+				<span>{i18n.t('policyPanel.scopeLabel')}</span>
+				<select
+					aria-label={i18n.t('policyPanel.scopeLabel')}
+					value={selectedScopeKind}
+					onchange={(event) => setScopeKind(event.currentTarget.value)}
+				>
+					<option value="company">{i18n.t('policyPanel.scopes.company')}</option>
+					<option value="city" disabled={cityOptions.length === 0}>
+						{i18n.t('policyPanel.scopes.city')}
+					</option>
+					<option value="store" disabled={storeOptions.length === 0}>
+						{i18n.t('policyPanel.scopes.store')}
+					</option>
+				</select>
+			</label>{/if}
 		{#if selectedScopeKind === 'city'}
 			<label>
 				<span>{i18n.t('policyPanel.targetLabel')}</span>
@@ -231,17 +242,51 @@
 			{@const source = effectivePolicy.provenance[field]}
 			{@const parent = parentPolicy?.values[field]}
 			<div class="policy-field">
-				<span>{fieldLabelText}</span>
-				<select
-					aria-label={fieldLabelText}
-					disabled={scopedControlsDisabled}
-					value={effectivePolicy.values[field]}
-					onchange={(event) => update(field, event.currentTarget.value)}
+				<span class="field-heading"
+					>{#if compact}<svg
+							viewBox="0 0 24 24"
+							aria-hidden="true"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						>
+							{#if field === 'pricing'}<path d="M4 12h16" /><path d="M8 7l-4 5 4 5" /><path
+									d="M16 7l4 5-4 5"
+								/>
+							{:else if field === 'inventory'}<path d="M3 8 12 4l9 4v8l-9 4-9-4Z" /><path
+									d="M3 8l9 4 9-4"
+								/>
+							{:else if field === 'staffing'}<circle cx="12" cy="8" r="3.4" /><path
+									d="M5 20c1.6-4 12.8-4 14 0"
+								/>
+							{:else if field === 'marketing'}<path d="M4 10v4h4l6 4V6l-6 4z" /><path
+									d="M18 8.5a5 5 0 0 1 0 7"
+								/>
+							{:else}<path d="M12 4l7 3v5c0 4-3 6.6-7 8-4-1.4-7-4-7-8V7z" />{/if}
+						</svg>{/if}{fieldLabelText}</span
 				>
-					{#each POLICY_FIELD_OPTIONS[field] as option (option)}
-						<option value={option}>{valueLabel(field, option)}</option>
-					{/each}
-				</select>
+				{#if compact}<div class="segments" role="group" aria-label={fieldLabelText}>
+						{#each POLICY_FIELD_OPTIONS[field] as option (option)}<button
+								type="button"
+								disabled={scopedControlsDisabled}
+								aria-pressed={effectivePolicy.values[field] === option}
+								onclick={() => update(field, option)}
+								aria-label={valueLabel(field, option)}
+								title={valueLabel(field, option)}
+								>{i18n.t(`policyPanel.compactValues.${field}.${option}` as TranslationKey)}</button
+							>{/each}
+					</div>{:else}
+					<select
+						aria-label={fieldLabelText}
+						disabled={scopedControlsDisabled}
+						value={effectivePolicy.values[field]}
+						onchange={(event) => update(field, event.currentTarget.value)}
+					>
+						{#each POLICY_FIELD_OPTIONS[field] as option (option)}
+							<option value={option}>{valueLabel(field, option)}</option>
+						{/each}
+					</select>{/if}
 				{#if parent !== undefined}
 					<small>{i18n.t('policyPanel.parent', { value: valueLabel(field, parent) })}</small>
 				{/if}
@@ -378,5 +423,98 @@
 		.policy-grid {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	.compact {
+		padding: 0.75rem 0 0;
+		border-top: 1px solid var(--paper-edge);
+		grid-template-columns: auto 1fr;
+		align-items: center;
+	}
+	.compact .policy-grid,
+	.compact .scope-summary,
+	.compact .disabled-copy,
+	.compact .reset {
+		grid-column: 1 / -1;
+	}
+	.compact .scope-controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-self: start;
+		gap: 12px;
+	}
+	.compact .scope-controls .segments button {
+		flex: 0 0 auto;
+		padding: 6px 12px;
+		font-size: 12px;
+		font-weight: 700;
+	}
+	.compact .policy-grid {
+		gap: 10px;
+	}
+	.compact {
+		gap: 10px;
+	}
+	.compact .policy-field .segments button {
+		font: 11px var(--font-mono);
+		padding: 6px 2px;
+	}
+
+	.compact .policy-field {
+		background: var(--paper-50);
+		border: 1px solid var(--paper-edge);
+		padding: 10px;
+	}
+
+	.compact .policy-field > .provenance {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	.segments {
+		display: flex;
+		min-width: 0;
+		gap: 0;
+	}
+	.segments button {
+		width: auto;
+		flex: 1;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		padding: 0.4rem 0.2rem;
+		font-size: 0.65rem;
+		border-color: var(--paper-edge);
+	}
+	.segments button {
+		border-radius: 0;
+		border-color: var(--brass-500);
+	}
+	.segments button + button {
+		border-left: 0;
+	}
+	.segments button:focus-visible {
+		outline: 2px solid var(--wax-red);
+		outline-offset: 2px;
+		z-index: 1;
+	}
+	.segments button[aria-pressed='true'] {
+		background: var(--paper-300);
+		border-color: var(--brass-500);
+	}
+	.segments button:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+	.field-heading {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+	.field-heading svg {
+		width: 1rem;
+		height: 1rem;
 	}
 </style>

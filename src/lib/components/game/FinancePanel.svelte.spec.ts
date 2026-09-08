@@ -52,6 +52,8 @@ function renderPanel(
 		...overrides
 	};
 	render(FinancePanel, props);
+	for (const summary of document.querySelectorAll<HTMLElement>('.loan-controls summary'))
+		summary.click();
 	return props;
 }
 
@@ -59,12 +61,13 @@ describe('FinancePanel', () => {
 	it('renders distinct overview, credit, loan register, and activity labels', async () => {
 		expect.assertions(10);
 		renderPanel();
+		await page.getByText('Credit offer · APR', { exact: true }).click();
+		document.querySelector<HTMLElement>('.ledger-history summary')?.click();
 		for (const label of [
-			'Outstanding principal',
+			'Outstanding',
 			'Amount due',
 			'Next payment',
-			'Debt-service coverage',
-			'Cash runway',
+			'Runway · coverage',
 			'84-day available credit',
 			'Operating cash flow',
 			'Principal headroom',
@@ -73,6 +76,7 @@ describe('FinancePanel', () => {
 		]) {
 			await expect.element(page.getByText(label, { exact: true })).toBeVisible();
 		}
+		await expect.element(page.getByLabelText('Debt-service coverage')).toBeVisible();
 	});
 
 	it('validates a whole-dollar borrow before showing an explicit review', async () => {
@@ -174,6 +178,7 @@ describe('FinancePanel', () => {
 			}
 		};
 		renderPanel({ game: delinquent });
+		Array.from(document.querySelectorAll<HTMLElement>('.loan-info summary')).at(-1)?.click();
 		await expect.element(page.getByText('$725').first()).toBeVisible();
 		expect(document.body.textContent).toMatch(/Payoff quote\s+\$725/);
 	});
@@ -237,7 +242,9 @@ describe('FinancePanel', () => {
 		const expectedAprBps = assessCredit(creditworthyGame(), 84).annualInterestRateBps;
 		const expectedAprPercent = (expectedAprBps / 100).toFixed(2).replace('.', '\\.');
 		await expect.element(page.getByRole('heading', { name: '信用方案' })).toBeVisible();
-		await expect.element(page.getByText(new RegExp(`${expectedAprPercent}%`))).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: '84 天', exact: true }))
+			.toHaveTextContent(new RegExp(`${expectedAprPercent}%`));
 	});
 
 	it('focuses the alert-target loan row', async () => {

@@ -166,6 +166,13 @@ describe('TileInspector storefront art', () => {
 });
 
 describe('TileInspector basic card', () => {
+	it('shows staffing coverage from the assigned staff', async () => {
+		renderInspector({ game: { ...defaultGame, staff: [] }, store });
+		expect(
+			(page.getByRole('meter', { name: 'Store staffing' }).element() as HTMLMeterElement).value
+		).toBe(0);
+		await expect.element(page.getByText('0 / 2', { exact: true })).toBeVisible();
+	});
 	it('shows store identity, an out-of-stock attention flag, and opens details', async () => {
 		expect.assertions(3);
 		const onOpenDetails = vi.fn();
@@ -198,8 +205,8 @@ describe('TileInspector basic card', () => {
 		renderInspector({ store, latestStoreReport });
 
 		await expect.element(page.getByText('Revenue/day')).toBeVisible();
-		await expect.element(page.getByText('Stock health')).toBeVisible();
-		await expect.element(page.getByText('Staff morale')).toBeVisible();
+		await expect.element(page.getByRole('meter', { name: 'Stock health' })).toBeVisible();
+		await expect.element(page.getByRole('meter', { name: 'Staff morale' })).toBeVisible();
 	});
 
 	it('does not render the stock/chain/staff tabs on the basic card', async () => {
@@ -232,7 +239,7 @@ describe('TileInspector store upgrade', () => {
 			onUpgradeStore
 		});
 
-		const heading = page.getByText(/Level 2 \/ 10/i);
+		const heading = page.getByTitle(/Level 2 \/ 10/i);
 		await expect.element(heading).toBeInTheDocument();
 
 		const button = page.getByRole('button', { name: /Upgrade/i });
@@ -252,7 +259,7 @@ describe('TileInspector store upgrade', () => {
 
 		renderInspector({ game: richGame, store: maxStore });
 
-		await expect.element(page.getByText(/Level 10 \/ 10/i)).toBeInTheDocument();
+		await expect.element(page.getByTitle(/Level 10 \/ 10/i)).toBeInTheDocument();
 		const button = page.getByRole('button', { name: /Max level/i });
 		await expect.element(button).toBeDisabled();
 		await expect.element(page.getByText('Not enough cash.')).not.toBeInTheDocument();
@@ -269,7 +276,7 @@ describe('TileInspector store upgrade', () => {
 
 		renderInspector({ game: brokeGame, store: level2Store });
 
-		await expect.element(page.getByText(/Level 2 \/ 10/i)).toBeInTheDocument();
+		await expect.element(page.getByTitle(/Level 2 \/ 10/i)).toBeInTheDocument();
 		const button = page.getByRole('button', { name: /Upgrade/i });
 		await expect.element(button).toBeDisabled();
 		await expect.element(page.getByText('Not enough cash.')).toBeVisible();
@@ -286,9 +293,9 @@ describe('TileInspector store upgrade', () => {
 
 		renderInspector({ game: richGame, store: level3Store });
 
-		await expect.element(page.getByText(/Level 3 \/ 10/i)).toBeInTheDocument();
+		await expect.element(page.getByTitle(/Level 3 \/ 10/i)).toBeInTheDocument();
 		await expect
-			.element(page.getByText('Next: Unlocks product #2 + 8 staff capacity'))
+			.element(page.getByTitle('Next: Unlocks product #2 + 8 staff capacity'))
 			.toBeVisible();
 	});
 
@@ -303,7 +310,7 @@ describe('TileInspector store upgrade', () => {
 
 		renderInspector({ game: richGame, store: level2Store });
 
-		await expect.element(page.getByText('Next: +10% revenue')).toBeVisible();
+		await expect.element(page.getByTitle('Next: +10% revenue')).toBeVisible();
 	});
 });
 

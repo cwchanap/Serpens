@@ -65,6 +65,8 @@ export interface WorldCityStatus {
 	blockedReason: DecisionContext | null;
 	storeCount: number;
 	buildingCount: number;
+	latestRevenue?: number;
+	warehouseStock?: number;
 	financeOffer: ExpansionFinanceOffer | null;
 }
 
@@ -83,7 +85,9 @@ export function getWorldCityStatus(game: GameState, cityId: string): WorldCitySt
 	const opened = game.world.openedCityIds.includes(city.id);
 	const revealed = game.world.revealedCityIds.includes(city.id);
 	const state: WorldCityState = opened ? 'opened' : revealed ? 'revealed' : 'locked';
-	const storeCount = game.stores.filter((store) => store.cityId === city.id).length;
+	const cityStores = game.stores.filter((store) => store.cityId === city.id);
+	const storeCount = cityStores.length;
+	const storeIds = new Set(cityStores.map((store) => store.id));
 	const buildingCount = game.industrialBuildings.filter(
 		(building) => building.cityId === city.id
 	).length;
@@ -101,6 +105,12 @@ export function getWorldCityStatus(game: GameState, cityId: string): WorldCitySt
 		blockedReason,
 		storeCount,
 		buildingCount,
+		latestRevenue: (game.reports.at(-1)?.storeReports ?? [])
+			.filter((report) => storeIds.has(report.storeId))
+			.reduce((total, report) => total + report.revenue, 0),
+		warehouseStock: Object.values(
+			game.cityInventories.find((inventory) => inventory.cityId === city.id)?.materials ?? {}
+		).reduce((total, quantity) => total + (quantity ?? 0), 0),
 		financeOffer:
 			state === 'revealed' && game.cash < city.openingCost
 				? getExpansionFinanceOffer(game, city.openingCost)

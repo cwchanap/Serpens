@@ -1058,7 +1058,12 @@
 	}
 
 	onMount(() => {
-		void initializeSaves();
+		void initializeSaves().then(async () => {
+			if (new URLSearchParams(window.location.search).get('ui-comparison') === '1' && autoSave) {
+				await resumeAutoSave();
+				selectedTileId = game?.stores[0]?.tileId ?? null;
+			}
+		});
 		void gameRouteController.initializeScenarios();
 
 		const controller = createGameAudioController({
@@ -2909,6 +2914,10 @@
 			title={mapTitle}
 			day={game?.day ?? null}
 			cash={game?.cash ?? null}
+			cashHistory={game?.reports.slice(-14).map((report) => report.cashAfter) ?? []}
+			industryInventory={game?.cityInventories.find(
+				(inventory) => inventory.cityId === industryCity.id
+			)?.materials ?? {}}
 			{alerts}
 			{i18n}
 			{activeLocale}
@@ -2985,6 +2994,8 @@
 		{/if}
 
 		<ControlDesk
+			worldView={activeMapView === 'world'}
+			day={game?.day ?? 1}
 			managementItems={managementPanelMenuItems}
 			buildDisabled={activeMapView === 'world' ||
 				(activeMapView === 'retail' ? !canStartRetailExpansion : !canStartIndustryExpansion)}
@@ -3087,6 +3098,11 @@
 			canUpgradeRail={mutationAvailability.upgradeRail}
 			canDemolishRail={mutationAvailability.demolishRail}
 			onUpgradeIndustryBuilding={upgradeBuildingHandler}
+			onAddIndustryRoute={(preset) => openLogisticsManagement(null, preset)}
+			canDemolishIndustryBuilding={playMode === 'sandbox' && game !== null}
+			onDemolishIndustryBuilding={(id) => {
+				void gameRouteController.demolishIndustrialBuilding(id);
+			}}
 			onUpgradeRailSegment={upgradeRailSegmentHandler}
 			onDemolishRailSegment={demolishRailSegmentHandler}
 			onCloseIndustryInspector={closeIndustryInspector}
@@ -3124,54 +3140,55 @@
 	{/if}
 
 	{#if activeManagementPanel}
-		{#key activeManagementPanel.id}
-			{@const panelGame = game ?? starterMapState}
-			{@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
-			<ManagementPanelHost
-				panelId={activeManagementPanel.id}
-				panelLabel={activeManagementPanel.label}
-				{panelGame}
-				{summary}
-				{financeMetrics}
-				{retailSupplyViews}
-				mutations={mutationAvailability}
-				retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
-				{focusedFinanceLoanId}
-				{focusedRetailSupplyCityId}
-				logisticsView={logisticsPanelView}
-				manageLogistics={mutationAvailability.manageLogistics}
-				{focusedLogisticsRouteId}
-				{logisticsRoutePreset}
-				{i18n}
-				disabledReason={mutationDisabledReason}
-				onClose={closeManagementPanel}
-				onChangePolicy={changePolicy}
-				onSetPolicyOverride={setPolicyOverride}
-				onClearPolicyOverrideField={clearPolicyOverrideField}
-				onResetPolicyOverrideScope={resetPolicyOverrideScope}
-				onSetManagerDelegation={setManagerDelegation}
-				onRemoveManagerDelegation={removeManagerDelegation}
-				onHireStaff={hireStaff}
-				onAssignStaff={assignStaff}
-				onUnassignStaff={unassignStoreStaff}
-				onPromoteStaff={promoteStaffMember}
-				onSetRetailSupplySource={setRetailSupplySource}
-				onChooseDecision={chooseDecision}
-				onBorrow={borrowWorkingCapital}
-				onRepay={repayFinanceLoan}
-				onPayoff={payOffFinanceLoan}
-				onRefinance={refinanceFinanceLoan}
-				onPlanProduct={planSupplyProduct}
-				{plannerProductIds}
-				onDispatchManualTransfer={dispatchManualTransfer}
-				onCreateRecurringRoute={createRecurringRoute}
-				onUpdateRecurringRoute={updateRecurringRoute}
-				onPauseRecurringRoute={pauseRecurringRoute}
-				onResumeRecurringRoute={resumeRecurringRoute}
-				onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
-				onRemoveRecurringRoute={removeRecurringRoute}
-			/>
-		{/key}
+		{@const panelGame = game ?? starterMapState}
+		{@const retailSupplyViews = buildRetailCitySupplyViews(panelGame, i18n)}
+		<ManagementPanelHost
+			panelId={activeManagementPanel.id}
+			panelLabel={activeManagementPanel.label}
+			managementItems={managementPanelMenuItems}
+			onSelectPanel={(id) =>
+				id === 'logistics' ? openLogisticsManagement() : openManagementPanel(id)}
+			{panelGame}
+			{summary}
+			{financeMetrics}
+			{retailSupplyViews}
+			mutations={mutationAvailability}
+			retailSupplyDisabled={game === null || !mutationAvailability.setRetailSupplySource}
+			{focusedFinanceLoanId}
+			{focusedRetailSupplyCityId}
+			logisticsView={logisticsPanelView}
+			manageLogistics={mutationAvailability.manageLogistics}
+			{focusedLogisticsRouteId}
+			{logisticsRoutePreset}
+			{i18n}
+			disabledReason={mutationDisabledReason}
+			onClose={closeManagementPanel}
+			onChangePolicy={changePolicy}
+			onSetPolicyOverride={setPolicyOverride}
+			onClearPolicyOverrideField={clearPolicyOverrideField}
+			onResetPolicyOverrideScope={resetPolicyOverrideScope}
+			onSetManagerDelegation={setManagerDelegation}
+			onRemoveManagerDelegation={removeManagerDelegation}
+			onHireStaff={hireStaff}
+			onAssignStaff={assignStaff}
+			onUnassignStaff={unassignStoreStaff}
+			onPromoteStaff={promoteStaffMember}
+			onSetRetailSupplySource={setRetailSupplySource}
+			onChooseDecision={chooseDecision}
+			onBorrow={borrowWorkingCapital}
+			onRepay={repayFinanceLoan}
+			onPayoff={payOffFinanceLoan}
+			onRefinance={refinanceFinanceLoan}
+			onPlanProduct={planSupplyProduct}
+			{plannerProductIds}
+			onDispatchManualTransfer={dispatchManualTransfer}
+			onCreateRecurringRoute={createRecurringRoute}
+			onUpdateRecurringRoute={updateRecurringRoute}
+			onPauseRecurringRoute={pauseRecurringRoute}
+			onResumeRecurringRoute={resumeRecurringRoute}
+			onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
+			onRemoveRecurringRoute={removeRecurringRoute}
+		/>
 	{/if}
 
 	{#if isSavePanelOpen}
@@ -3257,7 +3274,7 @@
 
 	.placement-status {
 		position: absolute;
-		left: 1rem;
+		left: 6rem;
 		bottom: 4.5rem;
 		display: flex;
 		align-items: center;
@@ -3313,5 +3330,11 @@
 	.menu-management button:focus-visible {
 		background: var(--paper-200);
 		border-color: var(--brass-500);
+	}
+	@media (max-width: 600px) {
+		.placement-status {
+			left: 0.5rem;
+			bottom: 8.6rem;
+		}
 	}
 </style>

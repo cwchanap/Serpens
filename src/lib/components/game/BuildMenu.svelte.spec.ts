@@ -147,22 +147,20 @@ describe('BuildMenu', () => {
 		expect(onClose).not.toHaveBeenCalled();
 	});
 
-	it('sorts industry building options by tier, then cost, then name', async () => {
-		expect.assertions(3);
-
+	it('shows the reference catalog first and keeps the remaining industry buildings', async () => {
 		render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
-
-		const dialog = getBuildMenuDialog();
-		const labels = Array.from(
-			dialog.querySelectorAll<HTMLElement>('button.build-option strong')
-		).map((element) => element.textContent ?? '');
-
-		const waterBottlerIndex = labels.findIndex((label) => label.includes('Water Bottler'));
-		const snackFactoryIndex = labels.findIndex((label) => label.includes('Snack Factory'));
-
-		expect(waterBottlerIndex).toBeGreaterThanOrEqual(0);
-		expect(snackFactoryIndex).toBeGreaterThanOrEqual(0);
-		expect(waterBottlerIndex).toBeLessThan(snackFactoryIndex);
+		const labels = Array.from(getBuildMenuDialog().querySelectorAll('button.build-option')).map(
+			(button) => button.getAttribute('aria-label')
+		);
+		expect(labels.slice(0, 6)).toEqual([
+			'Build Grain Farm',
+			'Build Flour Mill',
+			'Build Snack Factory',
+			'Build Packaging Plant',
+			'Build Water Pump',
+			'Build Warehouse'
+		]);
+		expect(labels).toContain('Build Water Bottler');
 	});
 
 	it('explains locked industry construction before a store exists', async () => {

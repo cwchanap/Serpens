@@ -18,6 +18,7 @@ const defaultPolicy: CompanyPolicy = {
 
 function renderPolicyPanel(
 	overrides: Partial<{
+		compact: boolean;
 		game: GameState;
 		i18n: I18nBundle;
 		onChange: (patch: Partial<CompanyPolicy>) => void;
@@ -47,6 +48,16 @@ function renderPolicyPanel(
 }
 
 describe('PolicyPanel', () => {
+	it('routes compact pricing buttons through the existing policy transition', async () => {
+		const onChange = vi.fn();
+		renderPolicyPanel({ compact: true, onChange });
+		await page
+			.getByRole('group', { name: 'Pricing', exact: true })
+			.getByRole('button', { name: 'Premium', exact: true })
+			.click();
+		expect(onChange).toHaveBeenCalledWith({ pricing: 'premium' });
+	});
+
 	it('renders the Policies heading', async () => {
 		expect.assertions(1);
 

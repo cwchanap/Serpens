@@ -23,8 +23,10 @@
 	data-map-width={width}
 	data-map-height={height}
 >
-	<div class="lat-grid" aria-hidden="true"></div>
-	{#if !compact}
+	{#if compact}
+		<span class="north" aria-hidden="true">↑ N</span>
+	{:else}
+		<div class="lat-grid" aria-hidden="true"></div>
 		<div class="compass-slot">
 			<CompassRose />
 		</div>
@@ -63,6 +65,20 @@
 		min-width: var(--map-width);
 	}
 
+	.is-compact {
+		min-height: 264px;
+		height: 264px;
+		background: var(--paper-50);
+	}
+
+	.north {
+		position: absolute;
+		right: 12px;
+		top: 8px;
+		z-index: 1;
+		font: 700 11px var(--font-ui);
+		color: var(--brass-700);
+	}
 	.lat-grid {
 		position: absolute;
 		inset: 0;

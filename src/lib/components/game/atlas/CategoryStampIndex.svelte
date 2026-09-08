@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { INDUSTRY_MATERIAL_ART } from '$lib/assets/gameArt';
-	import { getProductDefinition } from '$lib/game/products';
+	import { getProductArt } from '$lib/assets/gameArt';
 	import type { LocalizedProductChainCategorySummary } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { ProductId } from '$lib/game/types';
@@ -14,17 +13,12 @@
 	}
 
 	let { i18n, summaries, activeProductId, mode, onSelectProduct }: Props = $props();
-
-	function iconFor(productId: ProductId): string | null {
-		const materialId = getProductDefinition(productId).productionMaterialId;
-		return materialId ? (INDUSTRY_MATERIAL_ART[materialId] ?? null) : null;
-	}
 </script>
 
 <div class="stamp-index" role="group" aria-label={i18n.t('atlas.categoryIndex.ariaLabel')}>
 	{#each summaries as summary (summary.productId)}
 		{@const active = mode === 'store-categories' && activeProductId === summary.productId}
-		{@const icon = iconFor(summary.productId)}
+		{@const icon = getProductArt(summary.productId).path}
 		{@const categoryName = i18n.labels.productCategory(summary.productId)}
 		<button
 			type="button"
@@ -32,6 +26,7 @@
 			data-category-id={summary.productId}
 			data-testid={`category-stamp-${summary.productId}`}
 			aria-pressed={active}
+			title={`${categoryName} · ${i18n.t(`copy.productChainGraph.health.${summary.health}`)}`}
 			onclick={() => onSelectProduct(summary.productId)}
 		>
 			<span class={['seal', `seal-${summary.health}`]}>
@@ -57,96 +52,69 @@
 
 <style>
 	.stamp-index {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-		gap: 0.75rem;
-	}
-
-	.stamp {
-		display: grid;
-		gap: 4px;
-		padding: 12px 14px;
-		background: color-mix(in srgb, var(--paper-50) 92%, var(--brass-100));
-		border: 1px solid var(--paper-edge);
-		text-align: left;
-		color: var(--ink-700);
-		font: inherit;
-		cursor: pointer;
-	}
-
-	.stamp:hover {
-		border-color: var(--brass-700);
-	}
-
-	.stamp.is-active {
-		border-color: var(--brass-700);
-		box-shadow:
-			inset 0 0 0 1px var(--brass-700),
-			0 0 0 3px color-mix(in srgb, var(--brass-700) 18%, transparent);
-	}
-
-	.seal {
-		width: fit-content;
-		padding: 2px 6px;
-		font-family: var(--font-ui);
-		font-size: 9px;
-		font-weight: 700;
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
-		color: var(--paper-50);
-		background: var(--moss);
-	}
-
-	.seal-watch,
-	.seal-no-report {
-		background: var(--brass-700);
-	}
-
-	.seal-shortage,
-	.seal-no-local-capacity {
-		background: var(--wax-red);
-	}
-
-	.name {
-		font-family: var(--font-display);
-		font-size: 17px;
-		line-height: 1.1;
-		color: var(--ink-700);
-	}
-
-	.tier {
-		width: fit-content;
-		padding: 1px 5px;
-		font-family: var(--font-ui);
-		font-size: 8.5px;
-		font-weight: 700;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		color: var(--brass-700);
-		border: 1px solid var(--brass-700);
-		border-radius: 1px;
-	}
-
-	.icons {
 		display: flex;
-		gap: 4px;
-		margin-top: 2px;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
-
-	.icons img {
-		width: 22px;
-		height: 22px;
-		padding: 1px;
+	.stamp {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 74px;
+		height: 74px;
+		padding: 7px;
 		background: var(--paper-50);
 		border: 1px solid var(--paper-edge);
 		border-radius: 50%;
+		color: var(--ink-700);
+		cursor: pointer;
+	}
+	.stamp:hover,
+	.stamp.is-active {
+		border-color: var(--brass-700);
+	}
+	.stamp.is-active {
+		background: var(--paper-300);
+	}
+	.stamp:focus-visible {
+		outline: 2px solid var(--brass-700);
+		outline-offset: 3px;
+	}
+	.icons {
+		display: contents;
+	}
+	.icons img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
 		image-rendering: pixelated;
 	}
-
+	.seal,
+	.name,
+	.tier,
 	.nums {
-		font-family: var(--font-mono);
-		font-size: 11px;
-		font-variant-numeric: tabular-nums;
-		color: var(--ink-500);
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+	.stamp-shortage::after,
+	.stamp-no-local-capacity::after {
+		content: '!';
+		position: absolute;
+		bottom: -2px;
+		right: -2px;
+		display: grid;
+		place-items: center;
+		width: 22px;
+		height: 22px;
+		font: 700 13px var(--font-ui);
+		border-radius: 50%;
+		background: var(--wax-red);
+		color: var(--paper-50);
+		border: 2px solid var(--paper-50);
 	}
 </style>

@@ -71,6 +71,8 @@ export const ja = {
 		},
 		industry: {
 			filter: {
+				chain: 'チェーン',
+				allShort: 'すべて',
 				allProducts: 'フィルター: すべての商品',
 				selected: 'フィルター: {name}',
 				clear: '商品フィルターを解除',
@@ -92,12 +94,15 @@ export const ja = {
 			starter: '初期向け',
 			costOperating: '建設費 {cost} | 維持費 {operating}/日',
 			recipe: 'レシピ',
+			moreProducers: '{producer} +{count}',
 			needsProducer: '{producer} が必要です',
 			needsResource: '{resource} の資源タイルが必要です',
 			noOptions: '建設可能な工業施設がありません'
 		}
 	},
 	tileInspector: {
+		onShift: '勤務中',
+		details: '詳細',
 		ariaLabel: 'タイルインスペクター',
 		close: 'タイルインスペクターを閉じる',
 		selectTile: '都市タイルを選択',
@@ -123,6 +128,17 @@ export const ja = {
 		customerFit: '顧客適合度'
 	},
 	industryTileInspector: {
+		demolish: '建物を解体',
+		confirmDemolish:
+			'この建物を解体しますか？建物内の在庫は廃棄され、返金はありません。共有在庫と線路は残ります。',
+		utilization: '直近の稼働率',
+		recentOutput: '直近の生産量',
+		baseUpkeep: '基本維持費 / 日',
+		cityShipping: '都市の輸送',
+		routeCount: '{count} 路線',
+		addRoute: '路線を追加',
+		routeNeedsCity: '別の工業都市を開放して路線を追加',
+
 		ariaLabel: '工業タイルインスペクター',
 		close: '工業タイルインスペクターを閉じる',
 		emptyTitle: '工業タイル',
@@ -233,9 +249,17 @@ export const ja = {
 		modifierImpactsTitle: 'この輸送へのイベント影響'
 	},
 	worldMap: {
+		revenuePerDay: '{revenue}/日',
+		stockHeld: '在庫 {stock}',
+		resources: '資源',
+		buildings: '建物',
+		peakDemand: '最大需要',
+		storeCapacity: '店舗枠',
+		specialties: '特産品',
 		ariaLabel: 'ワールドマップ',
 		cities: '都市一覧',
 		routes: '物流航路',
+		routesShort: '航路',
 		routeSummary: '{origin} → {destination} · {material} · {state} · {condition}',
 		cityDetails: '都市詳細',
 		closeCityDetails: '都市詳細を閉じる',
@@ -294,6 +318,13 @@ export const ja = {
 		}
 	},
 	policyPanel: {
+		compactValues: {
+			pricing: { discount: '安値', competitive: '競争', standard: '標準', premium: '高値' },
+			inventory: { lean: '最小', balanced: '均衡', generous: '豊富' },
+			staffing: { minimal: '最小', efficient: '効率', service: '接客' },
+			marketing: { none: 'なし', awareness: '認知', promotions: '販促', loyalty: '常連' },
+			service: { speed: '速度', balanced: '均衡', highTouch: '丁寧' }
+		},
 		title: 'ポリシー',
 		scopeLabel: 'ポリシーの範囲',
 		targetLabel: 'ポリシーの対象',
@@ -315,6 +346,12 @@ export const ja = {
 		resetScope: '範囲をリセット'
 	},
 	reportsPanel: {
+		dayRange: '{start}〜{end}日目',
+		perDay: '/日',
+		shortDays: '{days}日',
+		byStore: '店舗別',
+		byProduct: '商品別',
+		chart: { title: '売上と費用', cost: '費用', window: 'レポート期間' },
 		title: 'レポート',
 		modifierImpacts: {
 			title: '直近日の修正効果',
@@ -337,6 +374,9 @@ export const ja = {
 			replacedBy: '置換後: {modifierId}'
 		},
 		metrics: {
+			margin: '粗利益率',
+			customers: '来客数',
+			spoilage: '廃棄',
 			latestDailyResult: '直近日次結果',
 			operatingIncome: '営業利益',
 			operatingCashFlow: '営業キャッシュフロー',
@@ -510,6 +550,8 @@ export const ja = {
 		}
 	},
 	staffPanel: {
+		storeCoverage: '店舗配置',
+		hiredCountShort: '雇用済み {count} 人',
 		title: 'スタッフ',
 		hiredCount: '雇用済みスタッフ {count} 名',
 		candidates: '候補者',
@@ -664,8 +706,11 @@ export const ja = {
 		empty: 'この店舗カテゴリで利用できるローカル生産チェーンはまだありません。'
 	},
 	productChainsPanel: {
+		overview: '概要',
+		fullChain: 'すべての原料',
 		ariaLabel: '商品チェーン',
-		eyebrow: 'Folio II · 生産チェーン',
+		eyebrow: '供給アトラス',
+		advisor: 'アドバイザー',
 		modeGroup: '商品チェーン表示',
 		storeCategoryChains: '店舗カテゴリチェーン',
 		cityInventoryFlow: '都市在庫フロー',
@@ -891,7 +936,8 @@ export const ja = {
 			metrics: '在庫 {stock} · 生産 {produced}/日 · 販売 {consumed}/日'
 		},
 		nodeBroadside: {
-			inspected: '検査中のノード',
+			moreMetrics: 'その他の指標',
+			inspected: 'ノード',
 			emptyTitle: 'チェーンノード',
 			empty: 'グラフノードを選択して最新のフロー指標を確認します。',
 			sharedProducer: '共有生産者 - このチェーンの {count} 分岐に描画されています。',
@@ -936,7 +982,7 @@ export const ja = {
 			cancel: 'キャンセル'
 		},
 		controlTower: {
-			eyebrow: '管理',
+			eyebrow: 'コントロールタワー',
 			close: '閉じる',
 			dismiss: '{panel}を閉じる',
 			closePanel: '{panel}を閉じる',
@@ -990,6 +1036,14 @@ export const ja = {
 			removeRoute: '航路を削除'
 		},
 		ui: {
+			freight: '運賃',
+			dispatch: '発送',
+			from: '出発',
+			to: '到着',
+			qty: '数量',
+			send: '送る',
+			recent: '最近',
+			routeSchedule: '1便 {capacity} · {days}日ごと · 1個 {cost}',
 			quote: '所要日数: {leadTime} 日 · 輸送費: {cost}。',
 			transferSubmitted: '輸送を開始しました。',
 			routeCreated: '定期航路を作成しました。',
@@ -1109,6 +1163,13 @@ export const ja = {
 			financingCashFlow: '財務キャッシュフロー'
 		},
 		ui: {
+			outstanding: '借入残高',
+			runwayCoverage: '資金余力・返済余力',
+			borrow: '借入',
+			loans: '借入一覧',
+			daysShort: '{days}日',
+			compactReview: '確認',
+			ledger: '元帳',
 			cash: '現金',
 			creditOffer: '信用オファー',
 			creditExplanation:

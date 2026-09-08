@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
 	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
 	import LogisticsRouteInspector from '$lib/components/game/LogisticsRouteInspector.svelte';
 	import RailSegmentInspector from '$lib/components/game/RailSegmentInspector.svelte';
@@ -40,6 +41,9 @@
 		canUpgradeRail: boolean;
 		canDemolishRail: boolean;
 		onUpgradeIndustryBuilding: (buildingId: string) => void;
+		onAddIndustryRoute?: (preset: RecurringRouteInput) => void;
+		onDemolishIndustryBuilding?: (buildingId: string) => void;
+		canDemolishIndustryBuilding?: boolean;
 		onUpgradeRailSegment: (segmentId: string) => void;
 		onDemolishRailSegment: (segmentId: string) => void;
 		onCloseIndustryInspector: () => void;
@@ -73,6 +77,9 @@
 		canUpgradeRail,
 		canDemolishRail,
 		onUpgradeIndustryBuilding,
+		onAddIndustryRoute,
+		onDemolishIndustryBuilding,
+		canDemolishIndustryBuilding = false,
 		onUpgradeRailSegment,
 		onDemolishRailSegment,
 		onCloseIndustryInspector,
@@ -85,7 +92,7 @@
 
 {#if selectedRetailTile && showRetailInspector}
 	<div
-		class="inspector-overlay paper"
+		class="inspector-overlay"
 		role="dialog"
 		aria-modal="false"
 		aria-label={i18n.t('route.inspectors.retailDetails')}
@@ -107,7 +114,7 @@
 {/if}
 {#if showLogisticsRouteInspector && selectedLogisticsRoute}
 	<div
-		class="inspector-overlay paper"
+		class="inspector-overlay"
 		role="dialog"
 		aria-modal="false"
 		aria-label={i18n.t('logisticsRouteInspector.ariaLabel')}
@@ -122,7 +129,7 @@
 {/if}
 {#if selectedRailSegments && showIndustryInspector}
 	<div
-		class="inspector-overlay paper"
+		class="inspector-overlay"
 		role="dialog"
 		aria-modal="false"
 		aria-label={i18n.t('railSegmentInspector.title')}
@@ -143,7 +150,7 @@
 	</div>
 {:else if selectedIndustryTile && showIndustryInspector}
 	<div
-		class="inspector-overlay paper"
+		class="inspector-overlay"
 		role="dialog"
 		aria-modal="false"
 		aria-label={i18n.t('route.inspectors.industryDetails')}
@@ -154,6 +161,9 @@
 			building={selectedIndustryBuilding}
 			{i18n}
 			onUpgradeBuilding={onUpgradeIndustryBuilding}
+			onAddRoute={onAddIndustryRoute}
+			onDemolishBuilding={onDemolishIndustryBuilding}
+			canDemolishBuilding={canDemolishIndustryBuilding}
 			canUpgradeBuilding={canUpgradeIndustryBuilding}
 			{disabledReason}
 			onClose={onCloseIndustryInspector}
@@ -164,34 +174,20 @@
 <style>
 	.inspector-overlay {
 		position: absolute;
-		top: 5.9rem;
+		top: 5.25rem;
 		right: 1rem;
-		bottom: 8.5rem;
 		z-index: 10;
-		width: min(360px, calc(100% - 2rem));
-		/* The eight management launchers wrap the desktop control desk to two
-		   rows at common laptop widths. Pin the inspector above that measured
-		   footprint so its upgrade/detail actions remain ordinary pointer targets. */
+		width: min(400px, calc(100% - 7rem));
+		max-height: calc(100dvh - 10.5rem);
 		overflow: auto;
 		padding: 0;
 	}
-
-	@media (min-width: 981px) and (max-width: 1023px) {
-		.inspector-overlay {
-			/* Just above the compact breakpoint the desktop launcher cluster
-			   wraps to three rows before .manage is hidden at 980px. */
-			bottom: 11.5rem;
-		}
-	}
-
-	@media (max-width: 980px) {
+	@media (max-width: 600px) {
 		.inspector-overlay {
 			position: fixed;
-			/* Sit above the fixed control desk (compact here — .manage is hidden)
-			   so the store card's Open Details button is never covered. */
-			inset: auto 0 5rem 0;
+			inset: auto 0.5rem 8.7rem 0.5rem;
 			width: auto;
-			max-height: 60dvh;
+			max-height: calc(100dvh - 16rem);
 		}
 	}
 </style>

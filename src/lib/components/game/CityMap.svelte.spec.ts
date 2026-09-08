@@ -10,12 +10,19 @@ const i18n: I18nBundle = createI18n('en');
 const mockUpdateSnapshot = vi.fn();
 const mockSetEventHandler = vi.fn();
 const mockSetKeyboardEnabled = vi.fn();
+const mockSetParentSize = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
 const mockCanvas = { dataset: {} as Record<string, string> };
 const MockGame = vi.fn().mockImplementation(function () {
 	if (shouldFail) throw new Error('Phaser unavailable');
-	return { destroy: vi.fn(), pause: mockPause, resume: mockResume, canvas: mockCanvas };
+	return {
+		scale: { setParentSize: mockSetParentSize },
+		destroy: vi.fn(),
+		pause: mockPause,
+		resume: mockResume,
+		canvas: mockCanvas
+	};
 });
 
 let shouldFail = false;
@@ -65,6 +72,18 @@ describe('CityMap', () => {
 		shouldFail = false;
 		vi.clearAllMocks();
 		mockCanvas.dataset = {};
+	});
+
+	it('resizes the canvas when its container changes while paused', async () => {
+		render(CityMap, { snapshot: stubSnapshot, onTileSelected: vi.fn(), paused: true, i18n });
+		const container = document.querySelector<HTMLDivElement>('.map-canvas')!;
+		container.style.width = '800px';
+		container.style.height = '600px';
+		await expect.poll(() => mockSetParentSize.mock.lastCall).toEqual([800, 600]);
+		container.style.width = '1100px';
+		container.style.height = '720px';
+		await expect.poll(() => mockSetParentSize.mock.lastCall).toEqual([1100, 720]);
+		expect(mockPause).toHaveBeenCalled();
 	});
 
 	it('renders the city map section and initializes the scene', async () => {

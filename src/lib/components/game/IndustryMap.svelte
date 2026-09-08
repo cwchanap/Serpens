@@ -38,6 +38,8 @@
 	}: Props = $props();
 
 	let container: HTMLDivElement | undefined = $state();
+	let containerWidth = $state(0);
+	let containerHeight = $state(0);
 	let loadFailed = $state(false);
 	let scene: import('$lib/phaser/industryMapScene').IndustryMapScene | undefined = $state();
 	let game: import('phaser').Game | undefined = $state();
@@ -90,14 +92,14 @@
 
 	$effect(() => {
 		const currentGame = game;
-		const currentContainer = container;
-		if (!currentGame || !currentContainer || !active) {
+		if (!currentGame || !active || !containerWidth || !containerHeight) {
 			return;
 		}
 
-		currentGame.scale?.resize?.(
-			Math.max(currentContainer.clientWidth, 640),
-			Math.max(currentContainer.clientHeight, 520)
+		// RESIZE mode reads parentSize during refresh; resize() alone restores stale dimensions.
+		currentGame.scale?.setParentSize?.(
+			Math.max(containerWidth, 640),
+			Math.max(containerHeight, 520)
 		);
 	});
 
@@ -150,7 +152,12 @@
 </script>
 
 <section class="map-shell" aria-label={i18n.t('mapRenderer.industryMapAriaLabel')}>
-	<div class="map-canvas" bind:this={container}>
+	<div
+		class="map-canvas"
+		bind:this={container}
+		bind:clientWidth={containerWidth}
+		bind:clientHeight={containerHeight}
+	>
 		{#if loadFailed}
 			<p class="map-fallback">{i18n.t('mapRenderer.industryMapUnavailable')}</p>
 		{/if}

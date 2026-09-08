@@ -1240,6 +1240,8 @@ export interface GameState {
 	industryCities: IndustryCity[];
 	activeIndustryCityId: string;
 	industrialBuildings: IndustrialBuilding[];
+	/** Retained after demolition so a new building never reuses a removed ID. */
+	nextIndustrialBuildingSequence?: number;
 	cityInventories: CityInventory[];
 	retailSupplyAssignments: RetailSupplyAssignment[];
 	logistics: LogisticsState;

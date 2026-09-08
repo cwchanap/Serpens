@@ -7,6 +7,10 @@ import type {
 } from '$lib/game/interCityLogistics';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import { createNewGame } from '$lib/game/state';
+import {
+	buildIndustrialBuilding,
+	getIndustrialPlacementBlockReason
+} from '$lib/game/industryPlacement';
 import type { BrandId, EventDecisionItem, GameState, WorldCityId } from '$lib/game/types';
 import { createEmptySaveStore } from '$lib/persistence/saveCodec';
 import {
@@ -1774,6 +1778,32 @@ describe('GameRouteController', () => {
 			expect(harness.onStateChange).toHaveBeenCalledTimes(1);
 			await flushMicrotasks();
 			expect(harness.onAutoSave).toHaveBeenCalledTimes(1);
+		});
+
+		it('autosaves sandbox demolition and rejects the same command in scenario mode', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const base = createNewGame('convenience', 20260512);
+			const tile = base.industryCities[0]!.tiles.find(
+				(tile) => getIndustrialPlacementBlockReason(base, tile.id, 'grain-farm') === null
+			)!;
+			const game = buildIndustrialBuilding(base, { tileId: tile.id, buildingTypeId: 'grain-farm' });
+			harness.controller.loadSandboxGame(game);
+			const result = await harness.controller.demolishIndustrialBuilding(
+				game.industrialBuildings[0]!.id
+			);
+			expect(result).toEqual({ status: 'sandbox-committed', changed: true });
+			expect(harness.controller.game?.industrialBuildings).toHaveLength(0);
+			expect(harness.controller.game?.cash).toBe(game.cash);
+			await flushMicrotasks();
+			expect(harness.onAutoSave).toHaveBeenCalledTimes(1);
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const scenarioGame = harness.controller.game;
+			expect(await harness.controller.demolishIndustrialBuilding('missing')).toEqual({
+				status: 'unavailable'
+			});
+			expect(harness.controller.game).toBe(scenarioGame);
 		});
 
 		it('does not expose the sandbox-only brand mutation to scenario mode', async () => {

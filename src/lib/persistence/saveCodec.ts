@@ -373,6 +373,23 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	requireNumber(game.rngState, 'Saved game rngState');
 	const gameDay = requireNonNegativeInteger(game.day, 'Saved game day');
 	requireNumber(game.cash, 'Saved game cash');
+	if (game.nextIndustrialBuildingSequence !== undefined) {
+		const sequence = game.nextIndustrialBuildingSequence;
+		if (typeof sequence !== 'number' || !Number.isSafeInteger(sequence) || sequence < 1) {
+			throw new SaveDataError(
+				'Saved game nextIndustrialBuildingSequence must be a positive safe integer'
+			);
+		}
+		for (const value of industrialBuildings) {
+			const building = requireRecord(value, 'Saved industrial building');
+			const match =
+				typeof building.id === 'string' ? /^industry-building-(\d+)$/.exec(building.id) : null;
+			if (match && Number(match[1]) >= sequence)
+				throw new SaveDataError(
+					'Saved game nextIndustrialBuildingSequence must exceed existing building IDs'
+				);
+		}
+	}
 	validateSavedFinance(game.finance, gameDay, 'Saved game finance');
 	const world = validateSavedWorld(game.world, 'Saved game world');
 	for (const field of POLICY_FIELDS) {

@@ -14,6 +14,7 @@ import { createIndustryTileLookup } from './industryFootprint';
 import { getCityInventoryStats } from './cityInventory';
 import {
 	buildIndustrialBuilding,
+	demolishIndustrialBuilding,
 	financeIndustrialBuilding,
 	createIndustrialPlacementContext,
 	getAllowedIndustrialBuildingTypes,
@@ -50,6 +51,58 @@ function findWarehouseAnchor(city: IndustryCity): IndustryTile {
 }
 
 describe('industrial placement', () => {
+	test('demolition removes only a producer and its buffer, preserving shared state and unique IDs', () => {
+		const base = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(base.industryCities[0]!, 'grain-field')[0]!;
+		const farmGame = buildIndustrialBuilding(base, {
+			tileId: tile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		const warehouseTile = findWarehouseAnchor(base.industryCities[0]!);
+		const game = buildIndustrialBuilding(farmGame, {
+			tileId: warehouseTile.id,
+			buildingTypeId: 'warehouse'
+		});
+		const farm = game.industrialBuildings.find((building) => building.typeId === 'grain-farm')!;
+		const warehouse = game.industrialBuildings.find((building) => building.typeId === 'warehouse')!;
+		farm.inventory = { grain: 3 };
+		const removed = demolishIndustrialBuilding(game, farm.id);
+		expect(removed.industrialBuildings).toEqual([warehouse]);
+		expect(removed.cash).toBe(game.cash);
+		expect(removed.cityInventories).toBe(game.cityInventories);
+		expect(removed.industryCities).toBe(game.industryCities);
+		expect(removed.logistics).toBe(game.logistics);
+		expect(game.industrialBuildings).toHaveLength(2);
+		expect(demolishIndustrialBuilding(removed, warehouse.id)).toBe(removed);
+		expect(demolishIndustrialBuilding(removed, 'missing')).toBe(removed);
+		const rebuilt = buildIndustrialBuilding(removed, {
+			tileId: tile.id,
+			buildingTypeId: 'grain-farm'
+		});
+		expect(rebuilt.industrialBuildings.at(-1)?.id).toBe('industry-building-3');
+		expect(rebuilt.industrialBuildings.at(-1)?.inventory).toEqual({});
+	});
+
+	test('exhausted building IDs cannot create a duplicate or commit financed debt', () => {
+		const base = createNewGame('convenience', 20260512);
+		const tile = getIndustryTilesByResource(base.industryCities[0]!, 'grain-field')[0]!;
+		const input = { tileId: tile.id, buildingTypeId: 'grain-farm' as const };
+		const built = buildIndustrialBuilding(
+			{ ...base, nextIndustrialBuildingSequence: Number.MAX_SAFE_INTEGER - 1 },
+			input
+		);
+		expect(built.industrialBuildings[0]?.id).toBe(
+			`industry-building-${Number.MAX_SAFE_INTEGER - 1}`
+		);
+		expect(built.nextIndustrialBuildingSequence).toBe(Number.MAX_SAFE_INTEGER);
+		const removed = demolishIndustrialBuilding(built, built.industrialBuildings[0]!.id);
+		expect(buildIndustrialBuilding(removed, input)).toBe(removed);
+		const shortfall = { ...removed, cash: 375 };
+		const financed = financeIndustrialBuilding(shortfall, { ...input, expectedCost: 600 });
+		expect(financed.ok).toBe(false);
+		if (!financed.ok) expect(financed.game).toBe(shortfall);
+	});
+
 	test('finances a valid building by borrowing only the exact shortfall', () => {
 		const base = createNewGame('convenience', 20260512);
 		const tile = getIndustryTilesByResource(base.industryCities[0]!, 'grain-field')[0]!;

@@ -279,4 +279,65 @@
 		outline: 3px solid var(--brass-300);
 		outline-offset: 4px;
 	}
+	.chain-node.is-compact {
+		width: 108px;
+		gap: 5px;
+		padding: 0 2px 10px;
+		border: 1px solid transparent;
+		border-radius: 2px;
+	}
+	.is-compact .frame,
+	.is-compact.chain-node-recipe .frame,
+	.is-compact.chain-node-warehouse .frame {
+		width: 100px;
+		height: 100px;
+		background: transparent;
+		border: 0;
+		box-shadow: none;
+		clip-path: none;
+		border-radius: 0;
+	}
+	.is-compact .frame::after {
+		display: none;
+	}
+	.is-compact .icon,
+	.is-compact.chain-node-recipe .icon,
+	.is-compact.chain-node-warehouse .icon {
+		width: 88px;
+		height: 88px;
+		object-fit: contain;
+	}
+	.is-compact .pin {
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	.is-compact .cartouche {
+		border: 0;
+		background: transparent;
+		font-size: 15px;
+		padding: 0;
+	}
+	.is-compact .sub-cartouche {
+		display: none;
+	}
+	.is-compact .stat {
+		font-size: 11px;
+	}
+	.chain-node.is-compact.is-selected {
+		border-color: var(--brass-700);
+		background: var(--paper-100);
+	}
+	.chain-node.is-compact.is-selected.chain-node-shortage,
+	.chain-node.is-compact.is-selected.chain-node-no-local-capacity {
+		border-color: var(--wax-red);
+	}
+	.chain-node.is-compact.is-selected .frame {
+		outline: none;
+	}
+	.is-compact .cartouche {
+		color: var(--ink-700);
+	}
 </style>

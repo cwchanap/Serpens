@@ -5,6 +5,7 @@ import { generateIndustryCity } from './industry';
 import { createEmptyFinanceState } from './finance';
 import { createInitialEventRuntime } from './eventSelection';
 import { createNewGame } from './state';
+import { simulateDay } from './simulateDay';
 import { emptyLogisticsReport } from './logisticsReport.testUtils';
 import {
 	STARTER_STORE_CAP,
@@ -95,6 +96,45 @@ function findWarehouseAnchor(city: GameState['industryCities'][number]) {
 }
 
 describe('world city catalog', () => {
+	test('city operating metrics use only the latest city revenue and its own warehouse stock', () => {
+		const base = simulateDay(createNewGame('convenience', 42));
+		const latest = base.reports.at(-1)!;
+		const store = base.stores[0]!;
+		const otherStore = { ...store, id: 'other-city-store', cityId: 'campus-junction' };
+		const report = latest.storeReports[0]!;
+		const game: GameState = {
+			...base,
+			stores: [store, otherStore],
+			cityInventories: [
+				{ cityId: 'industry-city', materials: { water: 12, flour: 8 } },
+				{ cityId: 'breadbasket-basin', materials: { water: 99 } }
+			],
+			reports: [
+				{ ...latest, storeReports: [{ ...report, revenue: 9999 }] },
+				{
+					...latest,
+					storeReports: [
+						{ ...report, revenue: 125 },
+						{ ...report, storeId: otherStore.id, revenue: 750 }
+					]
+				}
+			]
+		};
+		expect(getWorldCityStatus(game, 'harbor-city')).toMatchObject({
+			storeCount: 1,
+			latestRevenue: 125,
+			warehouseStock: 0
+		});
+		expect(getWorldCityStatus(game, 'campus-junction')).toMatchObject({
+			storeCount: 1,
+			latestRevenue: 750
+		});
+		expect(getWorldCityStatus(game, 'industry-city')).toMatchObject({
+			latestRevenue: 0,
+			warehouseStock: 20
+		});
+	});
+
 	test('defines three retail and three industry city nodes with unique ids', () => {
 		expect.assertions(5);
 		const ids = WORLD_CITY_CATALOG.map((city) => city.id);

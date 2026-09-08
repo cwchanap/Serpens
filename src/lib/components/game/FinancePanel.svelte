@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import HudIcon from './HudIcon.svelte';
 	import {
 		assessCredit,
 		estimateNextLoanPayment,
@@ -50,6 +51,13 @@
 	let returnFocusField = $state<string | null>(null);
 	let reviewHeading = $state<HTMLHeadingElement | null>(null);
 	let submitting = $state(false);
+	let expandedLoanId = $state<string | null>(null);
+	const expandedLoan = $derived(
+		expandedLoanId ??
+			focusedLoanId ??
+			game.finance.loans.find((loan) => loan.status === 'active' || loan.status === 'delinquent')
+				?.id
+	);
 
 	let selectedAssessment = $derived(metrics.creditAssessments[selectedTerm]);
 	let enteredBorrowAmount = $derived(parseWholeDollars(borrowAmount));
@@ -293,56 +301,106 @@
 				return i18n.t('financePanel.ui.actionRefinancing');
 		}
 	}
+	const cashPoints = $derived.by(() => {
+		const values = game.reports.slice(-14).map((report) => report.cashAfter);
+		const low = Math.min(...values),
+			high = Math.max(...values);
+		return values
+			.map(
+				(value, index) =>
+					`${(index * 180) / Math.max(1, values.length - 1)},${30 - ((value - low) * 24) / Math.max(1, high - low)}`
+			)
+			.join(' ');
+	});
 </script>
 
 <section class="panel" aria-labelledby="finance-heading">
-	<h2 id="finance-heading">{i18n.t('financePanel.title')}</h2>
+	<h2 id="finance-heading" class="sr-only">{i18n.t('financePanel.title')}</h2>
 	<p class="live-status" aria-live="polite" role="status">{statusMessage}</p>
 
 	<div class="metrics" aria-label={i18n.t('financePanel.title')}>
 		<div>
-			<span>{i18n.t('financePanel.ui.cash')}</span><strong>{i18n.format.currency(game.cash)}</strong
+			<span class="metric-label"><HudIcon name="finance" />{i18n.t('financePanel.ui.cash')}</span>
+			<strong>{i18n.format.currency(game.cash)}</strong>
+			<svg class="cash-chart" viewBox="0 0 180 36" preserveAspectRatio="none" aria-hidden="true"
+				><polyline points={cashPoints} fill="none" stroke="var(--moss)" stroke-width="2" /></svg
 			>
 		</div>
 		<div>
-			<span>{i18n.t('financePanel.metrics.outstandingPrincipal')}</span><strong
-				>{i18n.format.currency(metrics.outstandingPrincipal)}</strong
+			<span class="metric-label"
+				><svg viewBox="0 0 24 24" aria-hidden="true"
+					><path d="M4 7h16v13H4z M8 7V4h8v3 M9 13h6" /></svg
+				>{i18n.t('financePanel.ui.outstanding')}</span
+			>
+			<strong>{i18n.format.currency(metrics.outstandingPrincipal)}</strong>
+			<meter
+				class="debt-meter"
+				min="0"
+				max={Math.max(1, metrics.outstandingPrincipal, selectedAssessment.grossPrincipalLimit)}
+				value={metrics.outstandingPrincipal}
+				aria-label={i18n.t('financePanel.metrics.outstandingPrincipal')}
+			></meter>
+			<small
+				><span class="metric-note">{i18n.t('financePanel.metrics.amountDue')}</span>
+				{i18n.format.currency(metrics.amountDue)}</small
 			>
 		</div>
-		<div>
-			<span>{i18n.t('financePanel.metrics.amountDue')}</span><strong
-				>{i18n.format.currency(metrics.amountDue)}</strong
+		<div class:payment-due={metrics.nextLoanPayment !== null}>
+			<span class="metric-label"
+				><HudIcon name="clock" />{i18n.t('financePanel.metrics.nextPayment')}</span
 			>
+			{#if metrics.nextLoanPayment}
+				<strong>{i18n.format.currency(metrics.nextLoanPayment.amount)}</strong>
+				<div class="payment-timing">
+					<small class="payment-day"
+						>{i18n.t('financePanel.ui.day', {
+							day: i18n.format.integer(metrics.nextLoanPayment.day)
+						})}</small
+					>
+					<small
+						>{new Intl.RelativeTimeFormat(i18n.locale, { numeric: 'always' }).format(
+							metrics.nextLoanPayment.day - game.day,
+							'day'
+						)}</small
+					>
+				</div>
+			{:else}<small>{i18n.t('financePanel.metrics.noDebtServiceDue')}</small>{/if}
 		</div>
 		<div>
-			<span>{i18n.t('financePanel.metrics.nextPayment')}</span><strong
-				>{metrics.nextLoanPayment
-					? `${i18n.format.currency(metrics.nextLoanPayment.amount)} · ${i18n.t('financePanel.ui.day', { day: i18n.format.integer(metrics.nextLoanPayment.day) })}`
-					: i18n.t('financePanel.metrics.noDebtServiceDue')}</strong
+			<span class="metric-label"
+				><svg viewBox="0 0 24 24" aria-hidden="true"
+					><path d="M3 18h18 M6 18V9 M12 18V5 M18 18v-6" /></svg
+				>{i18n.t('financePanel.ui.runwayCoverage')}</span
 			>
-		</div>
-		<div>
-			<span>{i18n.t('financePanel.metrics.debtServiceCoverage')}</span><strong
-				>{metrics.debtServiceCoverage === null
-					? i18n.t('financePanel.metrics.noDebtServiceDue')
-					: metrics.debtServiceCoverage.toFixed(2)}</strong
-			>
-		</div>
-		<div>
-			<span>{i18n.t('financePanel.metrics.cashRunway')}</span><strong>{formatRunway()}</strong>
-		</div>
-		<div>
-			<span>{i18n.t('financePanel.metrics.availableCredit')}</span><strong
-				>{i18n.format.currency(metrics.creditAssessments[84].availableCredit)}</strong
-			>
+			<div class="runway-value">
+				<strong aria-label={formatRunway()}
+					>{i18n.t('financePanel.ui.daysShort', {
+						days:
+							metrics.cashRunway.kind === 'ninetyPlus'
+								? '90+'
+								: i18n.format.integer(metrics.cashRunway.days)
+					})}</strong
+				>
+				<small
+					aria-label={i18n.t('financePanel.metrics.debtServiceCoverage')}
+					title={i18n.t('financePanel.metrics.debtServiceCoverage')}
+					>{metrics.debtServiceCoverage === null
+						? '—'
+						: `${metrics.debtServiceCoverage.toFixed(2)}×`}</small
+				>
+			</div>
+			<meter
+				min="0"
+				max="90"
+				value={metrics.cashRunway.kind === 'ninetyPlus' ? 90 : metrics.cashRunway.days}
+				aria-label={i18n.t('financePanel.metrics.cashRunway')}
+				aria-valuetext={formatRunway()}
+			></meter>
 		</div>
 	</div>
 
 	<section class="credit" aria-labelledby="credit-heading">
 		<h3 id="credit-heading">{i18n.t('financePanel.ui.creditOffer')}</h3>
-		<p>
-			{i18n.t('financePanel.ui.creditExplanation')}
-		</p>
 		<div class="term-buttons" role="group" aria-label={i18n.t('financePanel.ui.loanTerm')}>
 			{#each [28, 56, 84] as term (term)}
 				<button
@@ -350,52 +408,41 @@
 					class:active={selectedTerm === term}
 					aria-pressed={selectedTerm === term}
 					disabled={mutationPending}
-					onclick={() => (selectedTerm = term as LoanTermDays)}>{i18n.labels.loanTerm(term)}</button
+					aria-label={i18n.labels.loanTerm(term)}
+					onclick={() => (selectedTerm = term as LoanTermDays)}
+					><span>{i18n.labels.loanTerm(term)}</span><strong
+						>{i18n.format.apr(
+							metrics.creditAssessments[term as LoanTermDays].annualInterestRateBps
+						)}</strong
+					><small
+						>{i18n.format.currency(
+							metrics.creditAssessments[term as LoanTermDays].availableCredit
+						)}</small
+					></button
 				>
 			{/each}
 		</div>
-		<div class="credit-grid">
-			<div>
-				<span>{i18n.t('financePanel.credit.baseApr')}</span><strong
-					>{i18n.format.apr(selectedAssessment.baseRateBps)}</strong
-				>
-			</div>
-			<div>
-				<span>{i18n.t('financePanel.credit.adjustments')}</span><strong
-					>{i18n.t('financePanel.ui.healthAdjustment', {
-						amount: i18n.format.apr(selectedAssessment.healthPenaltyBps)
-					})} · {i18n.t('financePanel.ui.historyAdjustment', {
-						amount: i18n.format.apr(selectedAssessment.historyPenaltyBps)
-					})}</strong
-				>
-			</div>
-			<div>
-				<span>{i18n.t('financePanel.ui.finalApr')}</span><strong
-					>{i18n.format.apr(selectedAssessment.annualInterestRateBps)}</strong
-				>
-			</div>
-			<div>
-				<span>{i18n.t('financePanel.ui.availableCredit')}</span><strong
-					>{i18n.format.currency(selectedAssessment.availableCredit)}</strong
-				>
-			</div>
-			<div>
-				<span>{i18n.t('financePanel.ui.operatingCashFlow')}</span><strong
-					>{i18n.format.currency(selectedAssessment.weeklyOperatingCashFlow)}
-					{i18n.t('financePanel.ui.perWeek')}</strong
-				>
-			</div>
-			<div>
-				<span>{i18n.t('financePanel.ui.principalHeadroom')}</span><strong
-					>{i18n.format.currency(selectedAssessment.principalHeadroom)}</strong
-				>
-			</div>
-			<div>
-				<span>{i18n.t('financePanel.ui.serviceHeadroom')}</span><strong
-					>{i18n.format.currency(selectedAssessment.weeklyServiceHeadroom)}
-					{i18n.t('financePanel.ui.perWeek')}</strong
-				>
-			</div>
+		<div class="borrow-row">
+			<label class="field" for="borrow-amount">
+				<span>{i18n.t('financePanel.ui.borrow')}</span>
+				<input
+					id="borrow-amount"
+					aria-label={i18n.t('financePanel.ui.borrowAmount')}
+					inputmode="numeric"
+					autocomplete="off"
+					aria-describedby={fieldError?.field === 'borrow' ? 'borrow-error' : undefined}
+					aria-invalid={fieldError?.field === 'borrow'}
+					disabled={mutationPending}
+					bind:value={borrowAmount}
+					oninput={() => clearError('borrow')}
+				/>
+			</label><button
+				type="button"
+				disabled={mutationPending}
+				onclick={openBorrowReview}
+				aria-label={i18n.t('financePanel.ui.reviewBorrowing')}
+				>{i18n.t('financePanel.ui.compactReview')}</button
+			>
 		</div>
 		{#if selectedAssessment.reasons.length}
 			<p class="reason">
@@ -404,19 +451,6 @@
 					.join(' · ')}
 			</p>
 		{/if}
-		<label class="field" for="borrow-amount">
-			<span>{i18n.t('financePanel.ui.borrowAmount')}</span>
-			<input
-				id="borrow-amount"
-				inputmode="numeric"
-				autocomplete="off"
-				aria-describedby={fieldError?.field === 'borrow' ? 'borrow-error' : undefined}
-				aria-invalid={fieldError?.field === 'borrow'}
-				disabled={mutationPending}
-				bind:value={borrowAmount}
-				oninput={() => clearError('borrow')}
-			/>
-		</label>
 		{#if fieldError?.field === 'borrow'}<p id="borrow-error" class="error">
 				{fieldError.message}
 			</p>{/if}
@@ -432,77 +466,199 @@
 				{i18n.format.currency(enteredBorrowSchedule.peakPayment)}
 			</p>
 		{/if}
-		<button type="button" disabled={mutationPending} onclick={openBorrowReview}
-			>{i18n.t('financePanel.ui.reviewBorrowing')}</button
-		>
+		<details class="credit-details">
+			<summary>{i18n.t('financePanel.ui.creditOffer')} · {i18n.t('financePanel.ui.apr')}</summary>
+			<p>{i18n.t('financePanel.ui.creditExplanation')}</p>
+			<div class="credit-grid">
+				<div>
+					<span>{i18n.t('financePanel.metrics.availableCredit')}</span>
+					<strong>{i18n.format.currency(metrics.creditAssessments[84].availableCredit)}</strong>
+				</div>
+				<div>
+					<span>{i18n.t('financePanel.credit.baseApr')}</span><strong
+						>{i18n.format.apr(selectedAssessment.baseRateBps)}</strong
+					>
+				</div>
+				<div>
+					<span>{i18n.t('financePanel.credit.adjustments')}</span><strong
+						>{i18n.t('financePanel.ui.healthAdjustment', {
+							amount: i18n.format.apr(selectedAssessment.healthPenaltyBps)
+						})} · {i18n.t('financePanel.ui.historyAdjustment', {
+							amount: i18n.format.apr(selectedAssessment.historyPenaltyBps)
+						})}</strong
+					>
+				</div>
+				<div>
+					<span>{i18n.t('financePanel.ui.finalApr')}</span><strong
+						>{i18n.format.apr(selectedAssessment.annualInterestRateBps)}</strong
+					>
+				</div>
+				<div>
+					<span>{i18n.t('financePanel.ui.availableCredit')}</span><strong
+						>{i18n.format.currency(selectedAssessment.availableCredit)}</strong
+					>
+				</div>
+				<div>
+					<span>{i18n.t('financePanel.ui.operatingCashFlow')}</span><strong
+						>{i18n.format.currency(selectedAssessment.weeklyOperatingCashFlow)}
+						{i18n.t('financePanel.ui.perWeek')}</strong
+					>
+				</div>
+				<div>
+					<span>{i18n.t('financePanel.ui.principalHeadroom')}</span><strong
+						>{i18n.format.currency(selectedAssessment.principalHeadroom)}</strong
+					>
+				</div>
+				<div>
+					<span>{i18n.t('financePanel.ui.serviceHeadroom')}</span><strong
+						>{i18n.format.currency(selectedAssessment.weeklyServiceHeadroom)}
+						{i18n.t('financePanel.ui.perWeek')}</strong
+					>
+				</div>
+			</div>
+		</details>
 	</section>
 
-	<section aria-labelledby="loans-heading">
-		<h3 id="loans-heading">{i18n.t('financePanel.ui.loansAndHistory')}</h3>
+	<section class="loans" aria-labelledby="loans-heading">
+		<h3 id="loans-heading" aria-label={i18n.t('financePanel.ui.loansAndHistory')}>
+			{i18n.t('financePanel.ui.loans')}
+		</h3>
 		<div class="loan-list">
 			{#each game.finance.loans as loan (loan.id)}
-				<article id={`finance-loan-${loan.id}`} class="loan" tabindex="-1">
-					<h4>{i18n.labels.loanPurpose(loan.purpose)} · {i18n.labels.loanStatus(loan.status)}</h4>
-					<p>
-						{i18n.t('financePanel.ui.originalPrincipal')}
-						{i18n.format.currency(loan.originalPrincipal)} · {i18n.t(
-							'financePanel.ui.remainingPrincipal'
-						)}
-						{i18n.format.currency(loan.remainingPrincipal)} · {i18n.t('financePanel.ui.apr')}
-						{i18n.format.apr(loan.annualInterestRateBps)} · {i18n.t('financePanel.ui.term')}
-						{i18n.labels.loanTerm(loan.termDays)}
-					</p>
-					<p>
-						{i18n.t('financePanel.ui.arrears')}
-						{i18n.format.currency(getLoanArrearsAmount(loan))} · {i18n.t(
-							'financePanel.metrics.nextPayment'
-						)}
-						{loan.nextPaymentDay === null
-							? i18n.t('financePanel.ui.noPaymentScheduled')
-							: `${i18n.format.currency(estimateNextLoanPayment(loan))} · ${i18n.t('financePanel.ui.day', { day: i18n.format.integer(loan.nextPaymentDay) })}`}
-						· {i18n.t('financePanel.ui.payoffQuote')}
-						{i18n.format.currency(loanPayoffQuote(loan))}
-					</p>
-					{#if loan.status === 'active' || loan.status === 'delinquent'}
-						<div class="loan-actions">
-							<label class="field" for={fieldIdForLoan('repay-amount', loan.id)}
-								><span>{i18n.t('financePanel.ui.repayAmount')}</span><input
-									id={fieldIdForLoan('repay-amount', loan.id)}
-									inputmode="numeric"
-									autocomplete="off"
-									disabled={mutationPending}
-									aria-invalid={fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}
-									aria-describedby={fieldError?.field === fieldIdForLoan('repay-amount', loan.id)
-										? `${fieldIdForLoan('repay-amount', loan.id)}-error`
-										: undefined}
-									value={repaymentAmounts[loan.id] ?? ''}
-									oninput={(event) => {
-										repaymentAmounts = {
-											...repaymentAmounts,
-											[loan.id]: event.currentTarget.value
-										};
-										clearError(fieldIdForLoan('repay-amount', loan.id));
-									}}
-								/></label
-							>
-							{#if fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}<p
-									id={`${fieldIdForLoan('repay-amount', loan.id)}-error`}
-									class="error"
+				<article
+					id={`finance-loan-${loan.id}`}
+					class="loan"
+					class:delinquent={loan.status === 'delinquent'}
+					tabindex="-1"
+				>
+					<div class="loan-heading">
+						<h4 title={i18n.labels.loanStatus(loan.status)}>
+							{#if loan.status === 'active' || loan.status === 'delinquent'}
+								<button
+									type="button"
+									aria-expanded={expandedLoan === loan.id}
+									aria-controls={`loan-controls-${loan.id}`}
+									aria-label={`${i18n.labels.loanPurpose(loan.purpose)} · ${i18n.labels.loanStatus(loan.status)}`}
+									onclick={() => (expandedLoanId = expandedLoan === loan.id ? '' : loan.id)}
 								>
-									{fieldError.message}
-								</p>{/if}
-							<button type="button" disabled={mutationPending} onclick={() => openRepayReview(loan)}
-								>{i18n.t('financePanel.ui.reviewRepayment')}</button
+									{i18n.labels.loanPurpose(loan.purpose)}{#if loan.status === 'delinquent'}
+										· {i18n.labels.loanStatus(loan.status)}{/if}
+								</button>
+							{:else}
+								{i18n.labels.loanPurpose(loan.purpose)} · {i18n.labels.loanStatus(loan.status)}
+							{/if}
+						</h4>
+						<strong>{i18n.format.currency(loan.remainingPrincipal)}</strong>
+					</div>
+					<meter
+						min="0"
+						max={loan.originalPrincipal}
+						value={loan.remainingPrincipal}
+						aria-label={`${i18n.labels.loanPurpose(loan.purpose)} · ${i18n.t('financePanel.metrics.outstandingPrincipal')}`}
+					></meter>
+					<div class="loan-summary">
+						<span
+							>{i18n.format.apr(loan.annualInterestRateBps)} {i18n.t('financePanel.ui.apr')}</span
+						>
+						<span>{i18n.labels.loanTerm(loan.termDays)}</span>
+						<span
+							>{loan.nextPaymentDay === null
+								? i18n.t('financePanel.ui.noPaymentScheduled')
+								: `${i18n.t('financePanel.ui.day', { day: i18n.format.integer(loan.nextPaymentDay) })} · ${i18n.format.currency(estimateNextLoanPayment(loan))}`}</span
+						>
+						<details class="loan-info">
+							<summary
+								aria-label={i18n.t('tileInspector.openDetails')}
+								title={i18n.t('tileInspector.openDetails')}>ⓘ</summary
 							>
+							<div>
+								<p>{i18n.labels.loanStatus(loan.status)}</p>
+
+								<p>
+									{i18n.t('financePanel.ui.originalPrincipal')}
+									{i18n.format.currency(loan.originalPrincipal)} · {i18n.t(
+										'financePanel.ui.remainingPrincipal'
+									)}
+									{i18n.format.currency(loan.remainingPrincipal)} · {i18n.t('financePanel.ui.apr')}
+									{i18n.format.apr(loan.annualInterestRateBps)} · {i18n.t('financePanel.ui.term')}
+									{i18n.labels.loanTerm(loan.termDays)}
+								</p>
+								<p>
+									{i18n.t('financePanel.ui.arrears')}
+									{i18n.format.currency(getLoanArrearsAmount(loan))} · {i18n.t(
+										'financePanel.metrics.nextPayment'
+									)}
+									{loan.nextPaymentDay === null
+										? i18n.t('financePanel.ui.noPaymentScheduled')
+										: `${i18n.format.currency(estimateNextLoanPayment(loan))} · ${i18n.t('financePanel.ui.day', { day: i18n.format.integer(loan.nextPaymentDay) })}`}
+									· {i18n.t('financePanel.ui.payoffQuote')}
+									{i18n.format.currency(loanPayoffQuote(loan))}
+								</p>
+							</div>
+						</details>
+					</div>
+					{#if loan.status === 'active' || loan.status === 'delinquent'}
+						<div
+							class="loan-controls"
+							id={`loan-controls-${loan.id}`}
+							hidden={expandedLoan !== loan.id}
+						>
+							<details>
+								<summary
+									aria-label={i18n.t('financePanel.ui.actionRepayment')}
+									title={i18n.t('financePanel.ui.repayAmount')}
+									><svg aria-hidden="true" viewBox="0 0 24 24"
+										><path d="M12 4v16m-7-7 7 7 7-7" /></svg
+									></summary
+								>
+								<div class="loan-actions">
+									<label class="field" for={fieldIdForLoan('repay-amount', loan.id)}
+										><span>{i18n.t('financePanel.ui.repayAmount')}</span><input
+											id={fieldIdForLoan('repay-amount', loan.id)}
+											inputmode="numeric"
+											autocomplete="off"
+											disabled={mutationPending}
+											aria-invalid={fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}
+											aria-describedby={fieldError?.field ===
+											fieldIdForLoan('repay-amount', loan.id)
+												? `${fieldIdForLoan('repay-amount', loan.id)}-error`
+												: undefined}
+											value={repaymentAmounts[loan.id] ?? ''}
+											oninput={(event) => {
+												repaymentAmounts = {
+													...repaymentAmounts,
+													[loan.id]: event.currentTarget.value
+												};
+												clearError(fieldIdForLoan('repay-amount', loan.id));
+											}}
+										/></label
+									>
+									{#if fieldError?.field === fieldIdForLoan('repay-amount', loan.id)}<p
+											id={`${fieldIdForLoan('repay-amount', loan.id)}-error`}
+											class="error"
+										>
+											{fieldError.message}
+										</p>{/if}
+									<button
+										type="button"
+										disabled={mutationPending}
+										onclick={() => openRepayReview(loan)}
+										>{i18n.t('financePanel.ui.reviewRepayment')}</button
+									>
+								</div>
+							</details>
 							<button
 								id={`payoff-${loan.id}`}
+								aria-label={i18n.t('financePanel.ui.reviewPayoff')}
+								title={i18n.t('financePanel.ui.reviewPayoff')}
 								type="button"
 								disabled={mutationPending}
 								aria-describedby={fieldError?.field === `payoff-${loan.id}`
 									? `payoff-${loan.id}-error`
 									: undefined}
 								onclick={() => openPayoffReview(loan)}
-								>{i18n.t('financePanel.ui.reviewPayoff')}</button
+								><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 5 5L20 6" /></svg
+								></button
 							>
 							{#if fieldError?.field === `payoff-${loan.id}`}<p
 									id={`payoff-${loan.id}-error`}
@@ -510,46 +666,81 @@
 								>
 									{fieldError.message}
 								</p>{/if}
-							{#each [28, 56, 84] as term (term)}<button
-									id={`refinance-${loan.id}-${term}`}
-									type="button"
-									disabled={mutationPending || loan.status === 'delinquent'}
-									aria-describedby={fieldError?.field === `refinance-${loan.id}-${term}`
-										? `refinance-${loan.id}-${term}-error`
-										: undefined}
-									onclick={() => openRefinanceReview(loan, term as LoanTermDays)}
-									>{i18n.t('financePanel.ui.refinance')} {i18n.labels.loanTerm(term)}</button
-								>{#if fieldError?.field === `refinance-${loan.id}-${term}`}<p
-										id={`refinance-${loan.id}-${term}-error`}
-										class="error"
-									>
-										{fieldError.message}
-									</p>{/if}{/each}
+							<details>
+								<summary
+									aria-label={i18n.t('financePanel.ui.refinance')}
+									title={i18n.t('financePanel.ui.refinance')}
+									><svg aria-hidden="true" viewBox="0 0 24 24"
+										><path d="m9 5-5 5 5 5m-5-5h10a5 5 0 0 1 0 10" /></svg
+									></summary
+								>
+								<div class="loan-actions">
+									{#each [28, 56, 84] as term (term)}<button
+											id={`refinance-${loan.id}-${term}`}
+											type="button"
+											disabled={mutationPending || loan.status === 'delinquent'}
+											aria-describedby={fieldError?.field === `refinance-${loan.id}-${term}`
+												? `refinance-${loan.id}-${term}-error`
+												: undefined}
+											onclick={() => openRefinanceReview(loan, term as LoanTermDays)}
+											>{i18n.t('financePanel.ui.refinance')} {i18n.labels.loanTerm(term)}</button
+										>{#if fieldError?.field === `refinance-${loan.id}-${term}`}<p
+												id={`refinance-${loan.id}-${term}-error`}
+												class="error"
+											>
+												{fieldError.message}
+											</p>{/if}{/each}
+								</div>
+							</details>
 						</div>
 					{/if}
 				</article>
 			{/each}
 		</div>
-	</section>
-
-	<section aria-labelledby="activity-heading">
-		<h3 id="activity-heading">{i18n.t('financePanel.ui.transactionActivity')}</h3>
-		{#if transactions.length}
-			<ol class="transactions">
-				{#each transactions as transaction (transaction.id)}
-					<li>
-						<strong>{transactionLabel(transaction.kind)}</strong> · {i18n.t('financePanel.ui.day', {
-							day: i18n.format.integer(transaction.day)
-						})} · {i18n.t('financePanel.ui.cash')}
-						{i18n.format.currency(transaction.cashDelta)} · {i18n.t('financePanel.ui.principal')}
-						{i18n.format.currency(transaction.principalAmount)} · {i18n.t(
-							'financePanel.ui.interest'
-						)}
-						{i18n.format.currency(transaction.interestAmount)}
-					</li>
-				{/each}
-			</ol>
-		{:else}<p>{i18n.t('financePanel.ui.noActivity')}</p>{/if}
+		<section aria-labelledby="activity-heading">
+			<h3 id="activity-heading" title={i18n.t('financePanel.ui.transactionActivity')}>
+				{i18n.t('financePanel.ui.ledger')}
+			</h3>
+			{#if transactions.length}
+				<div class="ledger-strip">
+					{#each transactions.slice(0, 3) as transaction (transaction.id)}<span
+							title={transactionLabel(transaction.kind)}
+							><b class:cash-out={transaction.cashDelta < 0}
+								>{transaction.cashDelta < 0 ? '▼' : '▲'}</b
+							>
+							{i18n.format.integer(transaction.day)} · {i18n.format.currency(
+								transaction.cashDelta
+							)}</span
+						>{/each}
+					<details class="ledger-history">
+						<summary
+							aria-label={i18n.t('financePanel.ui.transactionActivity')}
+							title={i18n.t('financePanel.ui.transactionActivity')}>⋯</summary
+						>
+						<ol class="transactions">
+							{#each transactions as transaction (transaction.id)}
+								<li>
+									<strong>{transactionLabel(transaction.kind)}</strong><span
+										class="transaction-values"
+									>
+										· {i18n.t('financePanel.ui.day', {
+											day: i18n.format.integer(transaction.day)
+										})} · {i18n.t('financePanel.ui.cash')}
+										{i18n.format.currency(transaction.cashDelta)} · {i18n.t(
+											'financePanel.ui.principal'
+										)}
+										{i18n.format.currency(transaction.principalAmount)} · {i18n.t(
+											'financePanel.ui.interest'
+										)}
+										{i18n.format.currency(transaction.interestAmount)}</span
+									>
+								</li>
+							{/each}
+						</ol>
+					</details>
+				</div>
+			{:else}<p>{i18n.t('financePanel.ui.noActivity')}</p>{/if}
+		</section>
 	</section>
 
 	{#if review}
@@ -593,7 +784,9 @@
 		display: grid;
 		gap: 1rem;
 		min-width: 0;
-		padding: 1.1rem 1.2rem;
+		padding: 0;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		align-items: start;
 		color: var(--ink-700);
 	}
 	h2,
@@ -612,19 +805,23 @@
 		font-size: 1.1rem;
 	}
 	h3 {
-		font-size: 1rem;
+		font-size: 18px;
 	}
 	h4 {
-		font-size: 0.95rem;
+		font-size: 18px;
 	}
 	p {
 		overflow-wrap: anywhere;
 		font-family: var(--font-body);
 	}
+	.metrics {
+		grid-column: 1 / -1;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
 	.metrics,
 	.credit-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+		grid-template-columns: repeat(4, minmax(0, 1fr));
 		gap: 0.7rem;
 	}
 	.metrics > div,
@@ -652,8 +849,8 @@
 		display: grid;
 		min-width: 0;
 		gap: 0.65rem;
-		border-top: 1px solid var(--brass-300);
-		padding-top: 0.9rem;
+		padding-top: 0;
+		align-content: start;
 	}
 	.term-buttons,
 	.loan-actions,
@@ -733,5 +930,417 @@
 		.panel {
 			overflow-x: hidden;
 		}
+	}
+	.metrics > div {
+		padding: 0.85rem;
+		border: 1px solid var(--paper-edge);
+		border-top: 1px solid var(--paper-edge);
+		background: var(--paper-50);
+	}
+	.metrics > div:first-child {
+		border-top-color: var(--paper-edge);
+	}
+	.metrics strong {
+		font-size: 1.35rem;
+	}
+	.loan {
+		border-left: 4px solid var(--moss);
+		background: var(--paper-50);
+	}
+	.term-buttons button {
+		flex: 1;
+		padding: 0.8rem;
+		border-color: var(--brass-500);
+	}
+	.term-buttons button.active {
+		background: var(--paper-300);
+		color: var(--ink-700);
+	}
+	.term-buttons button {
+		display: grid;
+		gap: 0.5rem;
+		text-align: left;
+	}
+	.term-buttons strong {
+		font-size: 22px;
+	}
+	.loans {
+		display: grid;
+		gap: 0.65rem;
+	}
+	.credit-details {
+		display: grid;
+		margin-top: 0.5rem;
+	}
+	.credit-details summary {
+		cursor: pointer;
+		color: var(--brass-700);
+	}
+	.credit-details p {
+		margin: 0.6rem 0;
+	}
+	.credit-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.panel > .review,
+	.live-status,
+	section[aria-labelledby='activity-heading'] {
+		grid-column: 1 / -1;
+	}
+	.borrow-row > button {
+		background: var(--moss);
+		color: var(--paper-50);
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	@media (max-width: 700px) {
+		.panel {
+			grid-template-columns: 1fr;
+		}
+		.metrics {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	.metrics > div {
+		padding: 12px;
+		gap: 0.2rem;
+		align-content: start;
+		min-height: 7rem;
+	}
+	.metrics strong {
+		font-size: 28px;
+		line-height: 1.15;
+	}
+	.borrow-row {
+		display: flex;
+		gap: 8px;
+		align-items: end;
+		padding: 10px 12px;
+		border: 1px solid var(--paper-edge);
+		background: var(--paper-50);
+	}
+	.borrow-row .field {
+		flex: 1;
+		max-width: none;
+	}
+	.borrow-row input {
+		font: 18px var(--font-mono);
+	}
+	.borrow-row button {
+		background: var(--moss);
+		color: var(--paper-50);
+		font: 700 14px var(--font-ui);
+		box-shadow: inset 0 0 0 1px var(--moss-2);
+		min-height: 2.5rem;
+	}
+	.reason,
+	.schedule,
+	.credit-details {
+		font-size: 0.75rem;
+	}
+	.loan {
+		gap: 0.4rem;
+		padding: 12px;
+		border-left-width: 4px;
+	}
+	.loan p {
+		font-size: 0.75rem;
+		line-height: 1.35;
+	}
+	.loan-actions {
+		gap: 0.25rem;
+		align-items: end;
+		font-size: 0.7rem;
+	}
+	.loan-actions .field {
+		width: 6rem;
+	}
+	.loan-actions button {
+		padding: 0.35rem;
+	}
+	section[aria-labelledby='activity-heading'] {
+		grid-column: 1 / -1;
+		margin-top: 0;
+		gap: 8px;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: center;
+		border: 1px solid var(--paper-edge);
+		font-size: 0.7rem;
+		padding: 0.5rem;
+		background: var(--paper-50);
+	}
+	section[aria-labelledby='activity-heading'] h3 {
+		font: 600 0.65rem var(--font-ui);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+	}
+	.transactions {
+		display: flex;
+		overflow-x: auto;
+		padding: 0;
+		list-style: none;
+		gap: 1rem;
+	}
+	.transactions li {
+		flex: 0 0 auto;
+		white-space: nowrap;
+	}
+	@media (max-width: 700px) {
+		section[aria-labelledby='activity-heading'] {
+			grid-column: 1;
+		}
+	}
+	.transaction-values {
+		font: inherit;
+		letter-spacing: normal;
+		text-transform: none;
+	}
+	.cash-chart {
+		width: 100%;
+		height: 32px;
+		margin-top: 2px;
+	}
+	.panel {
+		gap: 16px 14px;
+		align-items: start;
+	}
+	.metrics > div {
+		min-height: 114px;
+		box-sizing: border-box;
+	}
+	.term-buttons button {
+		padding: 10px;
+		gap: 6px;
+		min-height: 88px;
+		line-height: 1.15;
+	}
+	.term-buttons small {
+		font-size: 12px;
+	}
+	.loan-heading h4,
+	.loan-heading strong,
+	.loan-summary {
+		line-height: 1.2;
+	}
+	.loan-summary {
+		font-size: 12px;
+	}
+	.loan-heading,
+	.loan-summary,
+	.ledger-strip {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
+	}
+	.loan-heading {
+		justify-content: space-between;
+	}
+	.loan-summary > span,
+	.ledger-strip > span {
+		font: 0.7rem var(--font-mono);
+		letter-spacing: normal;
+		text-transform: none;
+	}
+	.loan-info {
+		margin-left: auto;
+	}
+	.loan-info,
+	.ledger-history {
+		position: relative;
+	}
+	.loan-info summary,
+	.ledger-history summary {
+		cursor: pointer;
+		list-style: none;
+	}
+	.loan-info[open] > div,
+	.ledger-history[open] > ol {
+		position: absolute;
+		right: 0;
+		top: 100%;
+		z-index: 3;
+		width: min(420px, 70vw);
+		max-height: 200px;
+		overflow: auto;
+		padding: 12px;
+		background: var(--paper-50);
+		border: 1px solid var(--paper-edge);
+		box-shadow: var(--shadow-paper);
+	}
+	.ledger-history {
+		margin-left: auto;
+	}
+	.ledger-history .transactions {
+		display: grid;
+	}
+	.ledger-history .transactions li {
+		white-space: normal;
+	}
+	.ledger-strip b {
+		color: var(--moss);
+	}
+	.ledger-strip .cash-out {
+		color: var(--wax-red);
+	}
+	.loan-controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: start;
+		gap: 6px;
+	}
+	.loan-controls[hidden] {
+		display: none;
+	}
+	.loan-heading button {
+		padding: 0;
+		border: none;
+		border-radius: 0;
+		background: none;
+		color: inherit;
+		text-align: left;
+		font: inherit;
+	}
+	.loan-heading button:hover {
+		text-decoration: underline;
+	}
+	.loan-controls > button,
+	.loan-controls summary {
+		border: 1px solid var(--paper-edge);
+		border-radius: 2px;
+		background: var(--paper-50);
+		display: grid;
+		place-items: center;
+		box-sizing: border-box;
+		width: 40px;
+		height: 36px;
+		padding: 8px;
+		color: var(--ink-700);
+		background: var(--paper-100);
+	}
+	.loan-controls summary {
+		cursor: pointer;
+		list-style: none;
+	}
+	.loan-controls details[open] .loan-actions {
+		margin-top: 0.5rem;
+	}
+	@media (max-width: 700px) {
+		section[aria-labelledby='activity-heading'] {
+			grid-row: auto;
+		}
+		.loans {
+			padding-bottom: 0;
+		}
+	}
+	.metric-label {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 10px;
+	}
+	.metric-label :global(svg) {
+		width: 17px;
+		height: 17px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2;
+		stroke-linecap: round;
+	}
+	.metrics .payment-due {
+		border-color: var(--wax-red);
+	}
+	.payment-due .metric-label {
+		color: var(--wax-red);
+	}
+	.payment-timing {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.payment-day {
+		justify-self: start;
+		padding: 3px 8px;
+		border-radius: 12px;
+		color: var(--paper-50);
+		background: var(--wax-red);
+		font: 700 11px var(--font-ui);
+	}
+	.metric-note {
+		font: inherit;
+		letter-spacing: normal;
+		text-transform: none;
+		color: inherit;
+	}
+	.metrics small {
+		font-size: 12px;
+	}
+	.runway-value {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.runway-value small {
+		font: 700 18px var(--font-mono);
+		color: var(--moss);
+	}
+	meter {
+		appearance: none;
+		display: block;
+		width: 100%;
+		height: 8px;
+		border: none;
+		background: none;
+		margin: 2px 0;
+	}
+	meter::-webkit-meter-bar {
+		height: 8px;
+		border: none;
+		border-radius: 6px;
+		background: var(--paper-300);
+		box-shadow: none;
+	}
+	meter::-webkit-meter-optimum-value {
+		background: var(--moss);
+		border-radius: 6px;
+	}
+	meter::-moz-meter-bar {
+		background: var(--moss);
+		border-radius: 6px;
+	}
+	.debt-meter::-webkit-meter-optimum-value {
+		background: var(--brass-700);
+	}
+	.debt-meter::-moz-meter-bar {
+		background: var(--brass-700);
+	}
+	.loan.delinquent {
+		border-left-color: var(--wax-red);
+	}
+	.loan-controls svg {
+		width: 18px;
+		height: 18px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.7;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+	.loan-controls summary::-webkit-details-marker {
+		display: none;
+	}
+	.loan-controls details[open] {
+		flex-basis: 100%;
+	}
+	.ledger-strip {
+		min-width: 0;
+		flex-wrap: wrap;
+		gap: 6px;
 	}
 </style>
