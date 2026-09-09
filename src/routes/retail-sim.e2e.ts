@@ -1531,13 +1531,20 @@ async function clickCanvasTile(page: Page, canvas: Locator, x: number, y: number
 async function expectMockPageReady(page: Page): Promise<void> {
 	await expect
 		.poll(async () => {
-			const rect = await page.evaluate(() => {
-				const el = document.body.firstElementChild;
-				if (!el) return null;
-				const box = el.getBoundingClientRect();
-				return { width: box.width, height: box.height };
+			const ready = await page.evaluate(() => {
+				// app.html wraps SvelteKit content in a `display: contents`
+				// div whose first child is the bootstrap <script> (zero box).
+				// Wait for SvelteKit to mount and render a visible element.
+				const wrapper = document.body.firstElementChild;
+				if (!wrapper) return false;
+				for (const child of wrapper.children) {
+					if (child.tagName === 'SCRIPT') continue;
+					const box = child.getBoundingClientRect();
+					if (box.width > 0 && box.height > 0) return true;
+				}
+				return false;
 			});
-			return rect !== null && rect.width > 0 && rect.height > 0;
+			return ready;
 		})
 		.toBe(true);
 }
