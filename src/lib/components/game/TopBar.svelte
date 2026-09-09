@@ -257,7 +257,7 @@
 		justify-content: space-between;
 		padding: 8px 16px;
 		gap: 1rem;
-		pointer-events: auto;
+		pointer-events: none;
 	}
 
 	.location,
@@ -380,6 +380,7 @@
 	.map-tabs {
 		display: flex;
 		margin-right: auto;
+		pointer-events: auto;
 	}
 	.map-tabs button {
 		display: grid;

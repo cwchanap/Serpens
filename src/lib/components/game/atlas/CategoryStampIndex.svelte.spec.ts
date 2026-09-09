@@ -109,7 +109,7 @@ describe('CategoryStampIndex', () => {
 		expect(stamp?.textContent).toContain('Tier 1');
 	});
 
-	it('resolves soft-drinks stamp art through its drinks material', async () => {
+	it('resolves soft-drinks stamp art through its product art', async () => {
 		expect.assertions(1);
 		const onSelectProduct = vi.fn();
 
@@ -123,7 +123,7 @@ describe('CategoryStampIndex', () => {
 
 		const stamp = document.querySelector('[data-testid="category-stamp-soft-drinks"]');
 		expect(stamp?.querySelector('img')?.getAttribute('src')).toBe(
-			'/assets/game/industry/materials/drinks.png'
+			'/assets/game/products/drinks.png'
 		);
 	});
 
@@ -167,7 +167,7 @@ describe('CategoryStampIndex', () => {
 		expect(stamp?.textContent).not.toContain('Tier');
 	});
 
-	it('omits the icon image for categories without industry material art', async () => {
+	it('renders the icon image for categories with product art', async () => {
 		expect.assertions(2);
 		const onSelectProduct = vi.fn();
 
@@ -180,7 +180,9 @@ describe('CategoryStampIndex', () => {
 		});
 
 		const stamp = document.querySelector('[data-testid="category-stamp-apparel"]');
-		expect(stamp?.querySelector('img')).toBeNull();
+		expect(stamp?.querySelector('img')?.getAttribute('src')).toBe(
+			'/assets/game/products/apparel.png'
+		);
 		await expect.element(page.getByRole('button', { name: /Apparel/i })).toBeVisible();
 	});
 });
