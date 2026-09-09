@@ -204,12 +204,12 @@ describe('ManagementPanelHost', () => {
 		await expect.element(page.getByText('Days 18–31', { exact: true })).toBeVisible();
 		const trend = page.getByTestId('revenue-trend');
 		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(14);
-		const week = page.getByRole('button', { name: '7 days', exact: true });
+		const week = page.getByRole('button', { name: '7d', exact: true });
 		expect(week.element().closest('.tower-header')).not.toBeNull();
 		await week.click();
 		await expect.element(page.getByText('Days 25–31', { exact: true })).toBeVisible();
 		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(7);
-		await page.getByRole('button', { name: '30 days', exact: true }).click();
+		await page.getByRole('button', { name: '30d', exact: true }).click();
 		await expect.element(page.getByText('Days 12–31', { exact: true })).toBeVisible();
 		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(20);
 	});

@@ -109,7 +109,7 @@
 		{/if}
 
 		<details>
-			<summary aria-label={i18n.t('atlas.nodeBroadside.moreMetrics')}
+			<summary
 				><span>{i18n.t('atlas.nodeBroadside.moreMetrics')}</span>
 				<span class={['status', `status-${node.health}`]}>{node.healthLabel}</span></summary
 			>

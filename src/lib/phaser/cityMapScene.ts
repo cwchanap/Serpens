@@ -446,12 +446,14 @@ export class CityMapScene extends Phaser.Scene {
 		const halfWidth = viewportWidth / (2 * zoom);
 		const halfHeight = viewportHeight / (2 * zoom);
 		const centerX = Phaser.Math.Clamp(
-			firstOwned ? (firstOwned.x + 1) * TILE_SIZE : halfWidth,
+			firstOwned ? (firstOwned.x + getStoreFootprintWidth(firstOwned) / 2) * TILE_SIZE : halfWidth,
 			halfWidth,
 			Math.max(halfWidth, worldWidth - halfWidth)
 		);
 		const centerY = Phaser.Math.Clamp(
-			firstOwned ? (firstOwned.y + 1) * TILE_SIZE : halfHeight,
+			firstOwned
+				? (firstOwned.y + getStoreFootprintHeight(firstOwned) / 2) * TILE_SIZE
+				: halfHeight,
 			halfHeight,
 			Math.max(halfHeight, worldHeight - halfHeight)
 		);

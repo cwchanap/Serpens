@@ -98,6 +98,9 @@
 				})
 			: i18n.t('buildMenu.industry.filter.allProducts' as never)
 	);
+	const filterButtonAriaLabel = $derived(
+		`${i18n.t('buildMenu.industry.filter.chain')} ${filterButtonLabel}`
+	);
 	const filteredProductFilters = $derived.by(() => {
 		const query = productFilterSearch.trim().toLowerCase();
 
@@ -382,7 +385,7 @@
 					type="button"
 					class="filter-trigger"
 					aria-expanded={productFilterOpen}
-					aria-label={filterButtonLabel}
+					aria-label={filterButtonAriaLabel}
 					title={filterButtonLabel}
 					onclick={toggleProductFilter}
 				>

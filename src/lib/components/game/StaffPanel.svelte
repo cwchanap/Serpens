@@ -596,37 +596,37 @@
 		height: 0.7rem;
 	}
 
-	.panel {
+	.compact.panel {
 		grid-template-columns: 1fr 1fr;
 		padding: 0;
 		align-items: start;
 	}
-	.panel-heading,
-	.disabled-copy {
+	.compact .panel-heading,
+	.compact .disabled-copy {
 		grid-column: 1 / -1;
 	}
-	.panel-heading h2 {
+	.compact .panel-heading h2 {
 		position: absolute;
 		width: 1px;
 		height: 1px;
 		overflow: hidden;
 		clip-path: inset(50%);
 	}
-	.candidates {
+	.compact .candidates {
 		grid-column: 1;
 		grid-row: 2;
 	}
-	.coverage {
+	.compact .coverage {
 		grid-column: 2;
 		grid-row: 2 / span 2;
 	}
-	.unassigned {
+	.compact .unassigned {
 		grid-column: 1;
 	}
-	.candidates .people-grid {
+	.compact .candidates .people-grid {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
-	.person-heading {
+	.compact .person-heading {
 		flex-direction: column;
 		align-items: start;
 	}

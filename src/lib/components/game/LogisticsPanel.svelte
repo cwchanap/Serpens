@@ -79,6 +79,10 @@
 	let manualOriginCityId = $state(untrack(() => view.cityOptions[0]?.cityId ?? ''));
 	let manualDestinationCityId = $state(untrack(() => view.cityOptions[1]?.cityId ?? firstCityId));
 	let manualMaterialId = $state(untrack(() => view.materialOptions[0]?.materialId ?? ''));
+	const selectedManualMaterialLabel = $derived(
+		view.materialOptions.find((material) => material.materialId === manualMaterialId)?.label ??
+			manualMaterialId
+	);
 	let manualQuantity = $state('1');
 
 	let routeOriginCityId = $state(untrack(() => view.cityOptions[0]?.cityId ?? ''));
@@ -477,6 +481,7 @@
 							>
 						{/each}
 					</select>
+					<span class="material-select-name" aria-hidden="true">{selectedManualMaterialLabel}</span>
 				</div>
 			</div>
 			<div class="dispatch-field">
@@ -1094,7 +1099,12 @@
 		padding: 8px 10px;
 	}
 	.material-select {
-		width: 2rem;
+		width: auto;
+		min-width: 2rem;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
 	}
 	.material-select label {
 		position: absolute;
@@ -1102,6 +1112,17 @@
 		height: 1px;
 		overflow: hidden;
 		clip-path: inset(50%);
+	}
+	.material-select-name {
+		display: block;
+		max-width: 80px;
+		text-align: center;
+		font: 700 10px var(--font-ui);
+		color: var(--ink-700);
+		pointer-events: none;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.material-select select {
 		width: 2rem;

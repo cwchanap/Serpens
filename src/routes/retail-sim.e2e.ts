@@ -195,6 +195,7 @@ test('staff visual comparison keeps hiring and scoped policies reachable', async
 		.poll(async () => (await readAutoSaveGame(page)).staff.length)
 		.toBe(game.staff.length + 1);
 	await page.goto('/ui-comparison/staff-and-policies.html');
+	await expectMockPageReady(page);
 	await page.evaluate(() => document.fonts.ready);
 	await page.screenshot({ path: testInfo.outputPath('staff-mock.png'), animations: 'disabled' });
 });
@@ -240,6 +241,7 @@ test('populated logistics visual comparison keeps route actions reachable', asyn
 	});
 	await page.setViewportSize({ width: 1280, height: 606 });
 	await page.goto('/ui-comparison/logistics.html');
+	await expectMockPageReady(page);
 	await page.evaluate(() => document.fonts.ready);
 	await page.screenshot({
 		path: testInfo.outputPath('logistics-mock.png'),
@@ -338,6 +340,7 @@ test('snack factory visual comparison opens a prefilled logistics route', async 
 			.industrialBuildings
 	).toHaveLength(beforeDemolition.industrialBuildings.length - 1);
 	await page.goto('/ui-comparison/industry-city.html');
+	await expectMockPageReady(page);
 	await page.evaluate(() => document.fonts.ready);
 	await page.screenshot({
 		path: testInfo.outputPath('snack-factory-mock.png'),
@@ -1488,9 +1491,24 @@ async function clickCanvasTile(page: Page, canvas: Locator, x: number, y: number
 	if (!tileVisible) {
 		const zoomBox = await canvas.boundingBox();
 		if (!zoomBox) throw new Error('Map canvas has no bounding box');
-		await page.mouse.move(zoomBox.x + zoomBox.width / 2, zoomBox.y + zoomBox.height / 2);
-		await page.mouse.wheel(0, 5000);
-		await page.waitForTimeout(300);
+		await expect
+			.poll(async () => {
+				const viewX = Number((await canvas.getAttribute('data-map-view-x')) ?? 0);
+				const viewY = Number((await canvas.getAttribute('data-map-view-y')) ?? 0);
+				const viewWidth = Number((await canvas.getAttribute('data-map-view-width')) ?? 0);
+				const viewHeight = Number((await canvas.getAttribute('data-map-view-height')) ?? 0);
+				const visible =
+					tileWorldX >= viewX &&
+					tileWorldX <= viewX + viewWidth &&
+					tileWorldY >= viewY &&
+					tileWorldY <= viewY + viewHeight;
+				if (!visible) {
+					await page.mouse.move(zoomBox.x + zoomBox.width / 2, zoomBox.y + zoomBox.height / 2);
+					await page.mouse.wheel(0, 5000);
+				}
+				return visible;
+			})
+			.toBe(true);
 	}
 
 	const box = await canvas.boundingBox();
@@ -1508,6 +1526,20 @@ async function clickCanvasTile(page: Page, canvas: Locator, x: number, y: number
 		box.y + ((y * worldTileSize + worldTileSize / 2 - viewY) / viewHeight) * box.height;
 
 	await page.mouse.click(clientX, clientY);
+}
+
+async function expectMockPageReady(page: Page): Promise<void> {
+	await expect
+		.poll(async () => {
+			const rect = await page.evaluate(() => {
+				const el = document.body.firstElementChild;
+				if (!el) return null;
+				const box = el.getBoundingClientRect();
+				return { width: box.width, height: box.height };
+			});
+			return rect !== null && rect.width > 0 && rect.height > 0;
+		})
+		.toBe(true);
 }
 
 async function expectTerrainAssets(page: Page) {
@@ -4108,6 +4140,7 @@ test('player upgrades an industrial building from the tile inspector', async ({
 		animations: 'disabled'
 	});
 	await page.goto('/ui-comparison/industry-city.html');
+	await expectMockPageReady(page);
 	await page.evaluate(() => document.fonts.ready);
 	await page.screenshot({ path: testInfo.outputPath('industry-mock.png'), animations: 'disabled' });
 });

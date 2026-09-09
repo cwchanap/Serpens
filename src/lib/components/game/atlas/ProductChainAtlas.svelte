@@ -208,9 +208,6 @@
 		stroke-dasharray: none;
 		animation: none;
 	}
-	.routes :global(.chain-route path) {
-		pointer-events: stroke;
-	}
 
 	.warnings {
 		margin: 0;

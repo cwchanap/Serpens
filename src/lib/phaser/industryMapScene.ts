@@ -97,7 +97,7 @@ const STATUS_COLORS: Record<IndustryMapBuildingRender['status'], number> = {
 	idle: 0xb8a271,
 	produced: 0x4b5a2b,
 	'imported-inputs': 0xb8862f,
-	stalled: 0x8e2a1f,
+	stalled: 0xa855f7,
 	blocked: 0x8e2a1f
 };
 
@@ -928,12 +928,16 @@ export class IndustryMapScene extends Phaser.Scene {
 		const halfWidth = viewportWidth / (2 * zoom);
 		const halfHeight = viewportHeight / (2 * zoom);
 		const centerX = Phaser.Math.Clamp(
-			firstOwned ? (firstOwned.x + 1) * TILE_SIZE : halfWidth,
+			firstOwned
+				? (firstOwned.x + getBuildingFootprintWidth(firstOwned) / 2) * TILE_SIZE
+				: halfWidth,
 			halfWidth,
 			Math.max(halfWidth, worldWidth - halfWidth)
 		);
 		const centerY = Phaser.Math.Clamp(
-			firstOwned ? (firstOwned.y + 1) * TILE_SIZE : halfHeight,
+			firstOwned
+				? (firstOwned.y + getBuildingFootprintHeight(firstOwned) / 2) * TILE_SIZE
+				: halfHeight,
 			halfHeight,
 			Math.max(halfHeight, worldHeight - halfHeight)
 		);
