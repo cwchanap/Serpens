@@ -37,7 +37,7 @@
 				<span class="tier">{i18n.t('atlas.categoryIndex.tier', { tier: summary.tier })}</span>
 			{/if}
 			{#if icon}
-				<span class="icons"><img src={icon} alt={categoryName} /></span>
+				<span class="icons"><img src={icon} alt="" /></span>
 			{/if}
 			<span class="nums">
 				{i18n.t('atlas.categoryIndex.metrics', {

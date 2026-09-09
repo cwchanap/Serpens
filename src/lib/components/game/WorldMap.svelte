@@ -850,4 +850,11 @@
 	.specialties > span {
 		font-size: 9px;
 	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
 </style>

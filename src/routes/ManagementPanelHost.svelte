@@ -216,7 +216,7 @@
 								<button
 									type="button"
 									aria-pressed={reportDays === days}
-									aria-label={i18n.t('financePanel.ui.days', { days })}
+									aria-label={i18n.t('reportsPanel.shortDays', { days })}
 									onclick={() => (reportDays = days)}
 									>{i18n.t('reportsPanel.shortDays', { days })}</button
 								>
