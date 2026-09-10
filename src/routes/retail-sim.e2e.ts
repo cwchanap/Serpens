@@ -71,102 +71,6 @@ test.beforeEach(async ({ page }) => {
 	);
 });
 
-test.skip('visual audit captures the remaining comparison views without changing the save', async ({
-	page
-}, testInfo) => {
-	test.setTimeout(90_000);
-	let game = cityLocalInventoryLifecycleGame();
-	for (let day = 0; day < 14; day += 1) game = simulateDay(game);
-	game = {
-		...game,
-		world: {
-			...game.world,
-			revealedCityIds: [...new Set([...game.world.revealedCityIds, 'garden-borough' as const])]
-		}
-	};
-	game = {
-		...game,
-		retailSupplyAssignments: game.retailSupplyAssignments.map((assignment) =>
-			assignment.retailCityId === game.activeCityId
-				? { ...assignment, supplyCityId: 'industry-city' }
-				: assignment
-		)
-	};
-	await installSandboxAutoSave(page, game);
-	const saved = await readAutoSaveGame(page);
-	for (const view of [
-		{ name: 'hud', width: 1920, key: null },
-		{ name: 'finance', width: 1280, key: 'f' },
-		{ name: 'product-chains', width: 1280, key: 'g' },
-		{ name: 'build-menu', width: 1280, key: 'b' },
-		{ name: 'world-map', width: 1920, key: '3' },
-		{ name: 'reports', width: 1280, key: 'r' }
-	]) {
-		await page.setViewportSize({ width: view.width, height: 1080 });
-		await page.goto(`/ui-comparison/${view.name}.html`);
-		await page.evaluate(() => document.fonts.ready);
-		const height = await page.evaluate(() =>
-			Math.ceil(document.body.firstElementChild!.getBoundingClientRect().height)
-		);
-		await page.setViewportSize({ width: view.width, height });
-		await page.screenshot({
-			path: testInfo.outputPath(`${view.name}-mock.png`),
-			animations: 'disabled'
-		});
-		await page.goto('/?ui-comparison=1');
-		await expectRetailMapReady(page);
-		if (view.name === 'build-menu') {
-			await openMapMenuItem(page, /industry city map/i);
-			await expectIndustryMapReady(page);
-		}
-		if (view.key) await page.keyboard.press(view.key);
-		if (view.name === 'product-chains') {
-			await page.getByTestId('category-stamp-snacks').click();
-			await page.getByRole('button', { name: /^Snack Factory,/ }).click();
-		}
-		if (view.name === 'world-map') {
-			await page.getByRole('button', { name: 'Garden Borough', exact: true }).click();
-			await expect(page.locator('.world-inspector')).toBeVisible();
-		}
-		if (view.key && view.key !== '3') {
-			await expect(
-				page.getByRole('dialog', { name: new RegExp(view.name.replaceAll('-', ' '), 'i') })
-			).toBeVisible();
-		}
-		await page.evaluate(() => document.fonts.ready);
-		await page
-			.locator('img:visible')
-			.evaluateAll((images) =>
-				Promise.all(images.map((img) => (img as HTMLImageElement).decode()))
-			);
-		if (view.name === 'build-menu') {
-			const cards = page.locator('.build-menu .build-option');
-			expect(
-				await cards.evaluateAll((elements) =>
-					elements.slice(0, 6).every((element) => element.scrollHeight <= element.clientHeight + 1)
-				)
-			).toBe(true);
-			const catalog = await page.locator('.build-menu .option-list').boundingBox();
-			const sixth = await cards.nth(5).boundingBox();
-			expect(sixth!.y + sixth!.height).toBeLessThanOrEqual(catalog!.y + catalog!.height + 1);
-		}
-		if (view.name === 'hud') {
-			await expect
-				.poll(async () => {
-					const box = await page.locator('.control-desk .time').boundingBox();
-					if (!box) throw new Error('Missing time controls');
-					return Math.abs(box.x + box.width / 2 - view.width / 2);
-				})
-				.toBeLessThan(1);
-		}
-		await page.screenshot({
-			path: testInfo.outputPath(`${view.name}-gameplay.png`),
-			animations: 'disabled'
-		});
-		await expect.poll(() => readAutoSaveGame(page)).toEqual(saved);
-	}
-});
-
 test('staff visual comparison keeps hiring and scoped policies reachable', async ({
 	page
 }, testInfo) => {
@@ -194,10 +98,6 @@ test('staff visual comparison keeps hiring and scoped policies reachable', async
 	await expect
 		.poll(async () => (await readAutoSaveGame(page)).staff.length)
 		.toBe(game.staff.length + 1);
-	await page.goto('/ui-comparison/staff-and-policies.html');
-	await expectMockPageReady(page);
-	await page.evaluate(() => document.fonts.ready);
-	await page.screenshot({ path: testInfo.outputPath('staff-mock.png'), animations: 'disabled' });
 });
 
 test('populated logistics visual comparison keeps route actions reachable', async ({
@@ -237,14 +137,6 @@ test('populated logistics visual comparison keeps route actions reachable', asyn
 	expect(routeHeading!.y).toBeGreaterThanOrEqual(routeActions!.y + routeActions!.height);
 	await page.screenshot({
 		path: testInfo.outputPath('logistics-mobile.png'),
-		animations: 'disabled'
-	});
-	await page.setViewportSize({ width: 1280, height: 606 });
-	await page.goto('/ui-comparison/logistics.html');
-	await expectMockPageReady(page);
-	await page.evaluate(() => document.fonts.ready);
-	await page.screenshot({
-		path: testInfo.outputPath('logistics-mock.png'),
 		animations: 'disabled'
 	});
 });
@@ -339,13 +231,6 @@ test('snack factory visual comparison opens a prefilled logistics route', async 
 		validateSaveStoreSnapshot(await readBrowserSaveSnapshot(page)).autoSave?.game
 			.industrialBuildings
 	).toHaveLength(beforeDemolition.industrialBuildings.length - 1);
-	await page.goto('/ui-comparison/industry-city.html');
-	await expectMockPageReady(page);
-	await page.evaluate(() => document.fonts.ready);
-	await page.screenshot({
-		path: testInfo.outputPath('snack-factory-mock.png'),
-		animations: 'disabled'
-	});
 });
 
 test('UI comparison restores the existing autosave paused', async ({ page }) => {
@@ -1526,27 +1411,6 @@ async function clickCanvasTile(page: Page, canvas: Locator, x: number, y: number
 		box.y + ((y * worldTileSize + worldTileSize / 2 - viewY) / viewHeight) * box.height;
 
 	await page.mouse.click(clientX, clientY);
-}
-
-async function expectMockPageReady(page: Page): Promise<void> {
-	await expect
-		.poll(async () => {
-			const ready = await page.evaluate(() => {
-				// app.html wraps SvelteKit content in a `display: contents`
-				// div whose first child is the bootstrap <script> (zero box).
-				// Wait for SvelteKit to mount and render a visible element.
-				const wrapper = document.body.firstElementChild;
-				if (!wrapper) return false;
-				for (const child of wrapper.children) {
-					if (child.tagName === 'SCRIPT') continue;
-					const box = child.getBoundingClientRect();
-					if (box.width > 0 && box.height > 0) return true;
-				}
-				return false;
-			});
-			return ready;
-		})
-		.toBe(true);
 }
 
 async function expectTerrainAssets(page: Page) {
@@ -4146,10 +4010,6 @@ test('player upgrades an industrial building from the tile inspector', async ({
 		path: testInfo.outputPath('industry-inspector.png'),
 		animations: 'disabled'
 	});
-	await page.goto('/ui-comparison/industry-city.html');
-	await expectMockPageReady(page);
-	await page.evaluate(() => document.fonts.ready);
-	await page.screenshot({ path: testInfo.outputPath('industry-mock.png'), animations: 'disabled' });
 });
 
 test('camera zoom and scroll persist across map view switches', async ({ page }) => {

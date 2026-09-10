@@ -57,6 +57,11 @@
 		grossMargin: number;
 	}
 
+	interface ByProductRow {
+		productId: DailyProductReport['productId'];
+		revenue: number;
+	}
+
 	interface BrandReputationRow {
 		id: string;
 		storeName: string;
@@ -72,14 +77,19 @@
 
 	let { i18n, summary, stores, game, chartDays = 14 }: Props = $props();
 	const chartReports = $derived((game?.reports ?? []).slice(-chartDays));
-	const productRevenuePeak = $derived(
-		Math.max(
-			1,
-			...(summary.latest?.storeReports ?? []).flatMap((report) =>
-				report.productReports.map((product) => product.revenue)
-			)
+	const byProductRows = $derived(
+		Object.values(
+			(summary.latest?.storeReports ?? [])
+				.flatMap((report) => report.productReports)
+				.reduce<Record<string, ByProductRow>>((acc, product) => {
+					const existing = acc[product.productId];
+					if (existing) existing.revenue += product.revenue;
+					else acc[product.productId] = { productId: product.productId, revenue: product.revenue };
+					return acc;
+				}, {})
 		)
 	);
+	const productRevenuePeak = $derived(Math.max(1, ...byProductRows.map((row) => row.revenue)));
 	const chartCeiling = $derived(
 		Math.max(
 			1,
@@ -551,20 +561,18 @@
 	{#if summary.latest}
 		<h3 class="section-title">{i18n.t('reportsPanel.byProduct')}</h3>
 		<div class="product-results">
-			{#each summary.latest.storeReports as report (report.storeId)}
-				{#each report.productReports as product (product.productId)}
-					<div>
-						<img
-							src={asset(getProductArt(product.productId).path)}
-							alt={i18n.labels.productCategory(product.productId)}
-							width="44"
-							height="44"
-						/><strong>{i18n.format.currency(product.revenue)}</strong>
-						<div class="product-revenue-track" aria-hidden="true">
-							<div style:width={`${(product.revenue / productRevenuePeak) * 100}%`}></div>
-						</div>
+			{#each byProductRows as product (product.productId)}
+				<div>
+					<img
+						src={asset(getProductArt(product.productId).path)}
+						alt={i18n.labels.productCategory(product.productId)}
+						width="44"
+						height="44"
+					/><strong>{i18n.format.currency(product.revenue)}</strong>
+					<div class="product-revenue-track" aria-hidden="true">
+						<div style:width={`${(product.revenue / productRevenuePeak) * 100}%`}></div>
 					</div>
-				{/each}
+				</div>
 			{/each}
 		</div>
 		<details class="report-details">

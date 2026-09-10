@@ -477,6 +477,40 @@ describe('ReportsPanel', () => {
 		await expect.element(brands.getByText('Gross margin: $16')).toBeVisible();
 	});
 
+	it('aggregates the By-product section by product across stores', async () => {
+		expect.assertions(2);
+		const game = createNewGame('convenience', 20260821);
+		const snacksReport = replenishedStoreReport().productReports[0]!;
+		const storeReportA: DailyStoreReport = {
+			...replenishedStoreReport(),
+			storeId: 'store-1',
+			productReports: [{ ...snacksReport, productId: 'snacks', revenue: 40 }]
+		};
+		const storeReportB: DailyStoreReport = {
+			...replenishedStoreReport(),
+			storeId: 'store-2',
+			productReports: [{ ...snacksReport, productId: 'snacks', revenue: 60 }]
+		};
+
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: [store],
+			summary: {
+				...summary,
+				latest: {
+					...summary.latest!,
+					storeReports: [storeReportA, storeReportB]
+				}
+			}
+		});
+
+		const productResults = document.querySelector('.product-results')!;
+		const cards = productResults.querySelectorAll(':scope > div');
+		expect(cards).toHaveLength(1);
+		expect(productResults.textContent).toContain('$100');
+	});
+
 	it('shows the empty brand performance message when only reputation rows exist', async () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260821);
