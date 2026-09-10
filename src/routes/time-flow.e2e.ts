@@ -216,18 +216,24 @@ test('world view blocks the auto-tick and resumes on return to a playable map', 
 	await expect(day).toHaveText('1');
 	await page.keyboard.press('Escape');
 
-	// Resume the auto-tick (loading a save starts paused).
+	// Freeze virtual time BEFORE resuming the auto-tick so the day timer is
+	// armed under the fake setTimeout. A timer scheduled with the real
+	// setTimeout before clock installation survives the fake clearTimeout
+	// the effect cleanup issues when we switch to the world view, so it would
+	// fire in real time and advance the day uncontrollably. Arming under fake
+	// timers lets that cleanup actually cancel it.
+	await page.clock.pauseAt(Date.now());
 	await page.getByRole('button', { name: 'Resume', exact: true }).click();
 	await page.getByRole('button', { name: '5×', exact: true }).click();
+	await page.clock.runFor(0);
 
-	// Freeze virtual time at a deterministic instant, then switch to the world
-	// map. The ControlDesk is hidden there, so the time cluster (pause/speed)
-	// is unavailable; the auto-tick must block so the running simulation can't
-	// advance uncontrollably from this view.
-	await page.clock.pauseAt(Date.now());
+	// Switch to the world map. The ControlDesk is hidden there, so the time
+	// cluster (pause/speed) is unavailable; the auto-tick must block so the
+	// running simulation can't advance uncontrollably from this view.
 	await page.keyboard.press('3');
 	await expect(page.locator('main.app')).toHaveAttribute('data-active-map-view', 'world');
 	await expect(page.locator('main.app')).toHaveAttribute('data-simulation-blocked', 'true');
+	await page.clock.runFor(0);
 
 	// At 5x the day interval is 1000ms. Advance well past it; the day must NOT
 	// tick over while the world view owns the screen.
@@ -239,6 +245,7 @@ test('world view blocks the auto-tick and resumes on return to a playable map', 
 	await page.keyboard.press('1');
 	await expect(page.locator('main.app')).toHaveAttribute('data-active-map-view', 'retail');
 	await expect(page.locator('main.app')).toHaveAttribute('data-simulation-blocked', 'false');
+	await page.clock.runFor(0);
 	await page.clock.runFor(1_100);
 	await expect
 		.poll(async () => Number(((await day.textContent()) ?? '').match(/\d+/)?.[0] ?? 0))
