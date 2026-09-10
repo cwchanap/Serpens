@@ -973,6 +973,13 @@
 			isGameMenuOpen ||
 			isPlacementModeActive
 	);
+	// The world map is a navigation/overview surface with no time controls —
+	// the ControlDesk (pause/resume + speed) is hidden there. Block the
+	// auto-tick while it owns the screen so a running simulation can't advance
+	// uncontrollably. Not folded into hasBlockingOverlay because that flag also
+	// swallows every keyboard shortcut (panel mnemonics, 1/2/3 view navigation),
+	// which must stay available on the world view.
+	let simulationBlocked = $derived(hasBlockingOverlay || activeMapView === 'world');
 	// Keep the planner calculation behind the advisor's open gate. This avoids
 	// doing a full supply projection for a modal that is not mounted while the
 	// route-local category/horizon context remains available for reopen.
@@ -1095,7 +1102,7 @@
 		const paused = simulationPaused;
 		const speed = simulationSpeed;
 		const tickPending = simulationTickPending;
-		const blockedByOverlay = hasBlockingOverlay;
+		const blockedByOverlay = simulationBlocked;
 		// Re-arm signal: bumped by runSimulationTick() when a tick is skipped
 		// because a scenario command is in flight. Reading it here keeps the
 		// effect's timer lifecycle independent of transient command-busy state.
@@ -2877,6 +2884,8 @@
 	data-play-mode={playMode}
 	data-scenario-command-pending={scenarioCommandPending}
 	data-simulation-paused={simulationPaused}
+	data-simulation-blocked={simulationBlocked}
+	data-active-map-view={activeMapView}
 	data-scenario-result={lastScenarioResult?.outcome ?? ''}
 	data-scenario-best-updated={lastScenarioBestUpdated}
 	data-scenario-error={scenarioOperationError?.code ?? ''}

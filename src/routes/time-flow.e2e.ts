@@ -199,3 +199,50 @@ test('automatic day clock keeps advancing across a non-day mutation in scenario 
 
 	await page.clock.resume();
 });
+
+test('world view blocks the auto-tick and resumes on return to a playable map', async ({
+	page
+}) => {
+	await page.addInitScript(({ key, value }) => window.localStorage.setItem(key, value), {
+		key: BROWSER_SAVE_STORAGE_KEY,
+		value: sandboxSave()
+	});
+	await page.goto('/');
+	await page.getByRole('button', { name: /^menu$/i }).click();
+	await page.getByRole('button', { name: /^saves$/i }).click();
+	await page.getByRole('button', { name: /^resume$/i }).click();
+
+	const day = page.locator('.control-desk .day');
+	await expect(day).toHaveText('1');
+	await page.keyboard.press('Escape');
+
+	// Resume the auto-tick (loading a save starts paused).
+	await page.getByRole('button', { name: 'Resume', exact: true }).click();
+	await page.getByRole('button', { name: '5×', exact: true }).click();
+
+	// Freeze virtual time at a deterministic instant, then switch to the world
+	// map. The ControlDesk is hidden there, so the time cluster (pause/speed)
+	// is unavailable; the auto-tick must block so the running simulation can't
+	// advance uncontrollably from this view.
+	await page.clock.pauseAt(Date.now());
+	await page.keyboard.press('3');
+	await expect(page.locator('main.app')).toHaveAttribute('data-active-map-view', 'world');
+	await expect(page.locator('main.app')).toHaveAttribute('data-simulation-blocked', 'true');
+
+	// At 5x the day interval is 1000ms. Advance well past it; the day must NOT
+	// tick over while the world view owns the screen.
+	await page.clock.runFor(1_400);
+	await expect(day).toHaveText('1');
+
+	// Returning to a playable map re-enables the auto-tick. The day advances
+	// again without an explicit resume (simulationPaused never flipped).
+	await page.keyboard.press('1');
+	await expect(page.locator('main.app')).toHaveAttribute('data-active-map-view', 'retail');
+	await expect(page.locator('main.app')).toHaveAttribute('data-simulation-blocked', 'false');
+	await page.clock.runFor(1_100);
+	await expect
+		.poll(async () => Number(((await day.textContent()) ?? '').match(/\d+/)?.[0] ?? 0))
+		.toBeGreaterThan(1);
+
+	await page.clock.resume();
+});
