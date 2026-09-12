@@ -260,11 +260,7 @@ function createStarterStaffForRole(
 	});
 }
 
-function generateStaffProfile(
-	rng: Rng,
-	role: StaffRole,
-	id: string
-): DemographicHiringCandidate {
+function generateStaffProfile(rng: Rng, role: StaffRole, id: string): DemographicHiringCandidate {
 	const { gender, age } = getStaffDemographics(id);
 	const firstName = FIRST_NAMES[randomInt(rng, 0, FIRST_NAMES.length - 1)]!;
 	const lastName = LAST_NAMES[randomInt(rng, 0, LAST_NAMES.length - 1)]!;
