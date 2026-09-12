@@ -650,7 +650,8 @@
 		display: grid;
 		place-items: center;
 		padding: 1rem;
-		background: #14100a;
+		background: rgba(20, 16, 10, 0.7);
+		backdrop-filter: blur(4px);
 	}
 
 	.backdrop-button {
