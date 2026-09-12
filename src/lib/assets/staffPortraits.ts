@@ -11,6 +11,7 @@ export const STAFF_PORTRAIT_COLUMNS = 4;
 export const STAFF_PORTRAIT_ROWS = 6;
 export const STAFF_PORTRAIT_COUNT = STAFF_PORTRAIT_COLUMNS * STAFF_PORTRAIT_ROWS;
 
+export { getStaffDemographics };
 export type { StaffAgeGroup, StaffDemographics, StaffGender };
 
 export interface StaffPortraitProfile extends StaffDemographics {
