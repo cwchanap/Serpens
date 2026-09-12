@@ -121,22 +121,20 @@ export function hireCandidate(game: GameState, candidateId: string): GameState {
 	}
 
 	const { gender, age } = getStaffDemographics(candidate.id);
+	const hiredMember: DemographicStaffMember = {
+		...candidate,
+		gender,
+		age,
+		id: `staff-${candidate.id}`,
+		assignedStoreId: null,
+		hiredOnDay: game.day,
+		level: 1,
+		xp: 0
+	};
 
 	return {
 		...game,
-		staff: [
-			...game.staff,
-			{
-				...candidate,
-				gender,
-				age,
-				id: `staff-${candidate.id}`,
-				assignedStoreId: null,
-				hiredOnDay: game.day,
-				level: 1,
-				xp: 0
-			}
-		],
+		staff: [...game.staff, hiredMember],
 		hiringCandidates: game.hiringCandidates.filter((item) => item.id !== candidateId)
 	};
 }
