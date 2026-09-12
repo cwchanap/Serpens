@@ -1,4 +1,5 @@
 <script lang="ts">
+	import StaffPortrait from './StaffPortrait.svelte';
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
@@ -117,14 +118,17 @@
 		<div class="people-list">
 			{#each assignedStaff as member (member.id)}
 				<article class="person-row">
-					<div>
-						<h5>{member.name}</h5>
-						<p>{staffMetrics(member)}</p>
-						<small>
-							{i18n.t('staffPanel.salaryPerMonth', {
-								salary: i18n.format.currency(member.monthlySalary)
-							})}
-						</small>
+					<div class="person-info">
+						<span class="staff-thumb"><StaffPortrait personId={member.id} /></span>
+						<div>
+							<h5>{member.name}</h5>
+							<p>{staffMetrics(member)}</p>
+							<small>
+								{i18n.t('staffPanel.salaryPerMonth', {
+									salary: i18n.format.currency(member.monthlySalary)
+								})}
+							</small>
+						</div>
 					</div>
 					<button
 						type="button"
@@ -148,14 +152,17 @@
 		<div class="people-list">
 			{#each unassignedStaff as member (member.id)}
 				<article class="person-row">
-					<div>
-						<h5>{member.name}</h5>
-						<p>{staffMetrics(member)}</p>
-						<small>
-							{i18n.t('staffPanel.salaryPerMonth', {
-								salary: i18n.format.currency(member.monthlySalary)
-							})}
-						</small>
+					<div class="person-info">
+						<span class="staff-thumb"><StaffPortrait personId={member.id} /></span>
+						<div>
+							<h5>{member.name}</h5>
+							<p>{staffMetrics(member)}</p>
+							<small>
+								{i18n.t('staffPanel.salaryPerMonth', {
+									salary: i18n.format.currency(member.monthlySalary)
+								})}
+							</small>
+						</div>
 					</div>
 					<button
 						type="button"
@@ -179,14 +186,17 @@
 		<div class="people-list">
 			{#each hiringCandidates as candidate (candidate.id)}
 				<article class="person-row">
-					<div>
-						<h5>{candidate.name}</h5>
-						<p>{staffMetrics(candidate)}</p>
-						<small>
-							{i18n.t('staffPanel.salaryPerMonth', {
-								salary: i18n.format.currency(candidate.monthlySalary)
-							})}
-						</small>
+					<div class="person-info">
+						<span class="staff-thumb"><StaffPortrait personId={candidate.id} /></span>
+						<div>
+							<h5>{candidate.name}</h5>
+							<p>{staffMetrics(candidate)}</p>
+							<small>
+								{i18n.t('staffPanel.salaryPerMonth', {
+									salary: i18n.format.currency(candidate.monthlySalary)
+								})}
+							</small>
+						</div>
 					</div>
 					<button
 						type="button"
@@ -225,6 +235,28 @@
 	.staff-heading > *,
 	.person-row > * {
 		min-width: 0;
+	}
+
+	.person-info {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		min-width: 0;
+	}
+
+	.person-info > div {
+		min-width: 0;
+	}
+
+	.staff-thumb {
+		display: block;
+		width: 42px;
+		height: 42px;
+		flex: 0 0 auto;
+		border: 1px solid var(--brass-500);
+		border-radius: 50%;
+		background: var(--paper-100);
+		overflow: hidden;
 	}
 
 	h3,
