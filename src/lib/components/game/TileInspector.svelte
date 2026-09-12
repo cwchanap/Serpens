@@ -78,6 +78,9 @@
 			? summarizeStoreStaffing(game, store)
 			: null
 	);
+	const onShiftStaff = $derived(
+		store ? game.staff.filter((person) => person.assignedStoreId === store.id).slice(0, 5) : []
+	);
 	const revenueHistory = $derived(
 		game.reports
 			.slice(-14)
@@ -211,9 +214,7 @@
 			{#if staffing}<div class="staff-coverage">
 					<span>{i18n.t('tileInspector.onShift')}</span>
 					<div class="portraits" aria-hidden="true">
-						{#each game.staff
-							.filter((person) => person.assignedStoreId === store.id)
-							.slice(0, 5) as person (person.id)}<span
+						{#each onShiftStaff as person (person.id)}<span
 								><StaffPortrait personId={person.id} /></span
 							>{/each}
 					</div>
