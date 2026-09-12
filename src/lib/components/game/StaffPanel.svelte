@@ -1,5 +1,4 @@
 <script lang="ts">
-	import HudIcon from './HudIcon.svelte';
 	import StaffPortrait from './StaffPortrait.svelte';
 	import { getStoreOrdinal } from '$lib/game/state';
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
