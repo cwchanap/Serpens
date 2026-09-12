@@ -28,12 +28,13 @@ describe('staff portraits', () => {
 
 	it('selects portraits from the matching gender and age pool', () => {
 		const ids = Array.from({ length: 64 }, (_, index) => `staff-${index + 1}`);
+		const ageRows = { young: 0, adult: 1, senior: 2 } as const;
 
 		expect(
 			ids.every((id) => {
 				const demographics = getStaffDemographics(id);
 				const portraitRow = Math.floor(getStaffPortraitIndex(id) / 4);
-				const ageRow = demographics.ageGroup === 'young' ? 0 : demographics.ageGroup === 'adult' ? 1 : 2;
+				const ageRow = ageRows[demographics.ageGroup];
 				const expectedRow = (demographics.gender === 'female' ? 0 : 3) + ageRow;
 
 				return portraitRow === expectedRow;
@@ -42,12 +43,14 @@ describe('staff portraits', () => {
 	});
 
 	it('maps stable staff ids into the 24 portrait sprite', () => {
-		const index = getStaffPortraitIndex('staff-store-1-general-1');
+		const id = 'staff-store-1-general-1';
+		const index = getStaffPortraitIndex(id);
+		const position = getStaffPortraitPosition(id);
 
 		expect(STAFF_PORTRAIT_COUNT).toBe(24);
 		expect(index).toBeGreaterThanOrEqual(0);
 		expect(index).toBeLessThan(STAFF_PORTRAIT_COUNT);
-		expect(getStaffPortraitIndex('staff-store-1-general-1')).toBe(index);
-		expect(getStaffPortraitPosition('staff-store-1-general-1')).toMatch(/^\d+(?:\.\d+)?% \d+%$/);
+		expect(getStaffPortraitIndex(id)).toBe(index);
+		expect(position).toMatch(/^\d+(?:\.\d+)?% \d+%$/);
 	});
 });
