@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getStaffPortraitProfile } from '$lib/assets/staffPortraits';
 import { createRng } from './rng';
 import { getStaffDemographics } from './staffDemographics';
 import { generateHiringCandidates, generateStarterStaffForStore } from './staffing';
@@ -10,8 +11,11 @@ describe('staff demographics', () => {
 		expect(candidates).toHaveLength(5);
 		for (const candidate of candidates) {
 			const expected = getStaffDemographics(candidate.id);
+			const portrait = getStaffPortraitProfile(candidate.id);
 			expect(candidate.gender).toBe(expected.gender);
 			expect(candidate.age).toBe(expected.age);
+			expect(portrait.gender).toBe(candidate.gender);
+			expect(portrait.age).toBe(candidate.age);
 			expect(candidate.age).toBeGreaterThanOrEqual(18);
 			expect(candidate.age).toBeLessThanOrEqual(69);
 		}
@@ -27,8 +31,11 @@ describe('staff demographics', () => {
 
 		for (const member of staff) {
 			const expected = getStaffDemographics(member.id);
+			const portrait = getStaffPortraitProfile(member.id);
 			expect(member.gender).toBe(expected.gender);
 			expect(member.age).toBe(expected.age);
+			expect(portrait.gender).toBe(member.gender);
+			expect(portrait.age).toBe(member.age);
 		}
 	});
 
