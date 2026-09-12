@@ -2,6 +2,7 @@
 	import { asset } from '$app/paths';
 	import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
 	import HudIcon from './HudIcon.svelte';
+	import StaffPortrait from './StaffPortrait.svelte';
 	import { getStoreProductStock } from '$lib/game/stock';
 	import { ARCHETYPES } from '$lib/game/archetypes';
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
@@ -212,7 +213,9 @@
 					<div class="portraits" aria-hidden="true">
 						{#each game.staff
 							.filter((person) => person.assignedStoreId === store.id)
-							.slice(0, 5) as person (person.id)}<span><HudIcon name="person" /></span>{/each}
+							.slice(0, 5) as person (person.id)}<span
+								><StaffPortrait personId={person.id} /></span
+							>{/each}
 					</div>
 					<strong
 						>{staffing.assigned.manager + staffing.assigned.general} / {staffing.requirement
@@ -432,7 +435,7 @@
 		min-width: 0;
 		overflow-x: auto;
 	}
-	.portraits span {
+	.portraits > span {
 		display: grid;
 		place-items: center;
 		width: 34px;
@@ -442,6 +445,7 @@
 		background: var(--paper-100);
 		border: 1px solid var(--brass-500);
 		border-radius: 50%;
+		overflow: hidden;
 	}
 	.actions {
 		display: grid;
