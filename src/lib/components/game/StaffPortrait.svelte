@@ -1,19 +1,25 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
-	import { STAFF_PORTRAIT_SPRITE_PATH, getStaffPortraitPosition } from '$lib/assets/staffPortraits';
+	import {
+		STAFF_PORTRAIT_SPRITE_PATH,
+		getStaffPortraitProfile
+	} from '$lib/assets/staffPortraits';
 
 	let { personId }: { personId: string } = $props();
 
 	const sprite = asset(STAFF_PORTRAIT_SPRITE_PATH);
-	const position = $derived(getStaffPortraitPosition(personId));
+	const profile = $derived(getStaffPortraitProfile(personId));
 </script>
 
 <span
 	class="portrait"
 	aria-hidden="true"
 	data-staff-id={personId}
+	data-staff-gender={profile.gender}
+	data-staff-age={profile.age}
+	data-staff-age-group={profile.ageGroup}
 	style:background-image={`url("${sprite}")`}
-	style:background-position={position}
+	style:background-position={profile.position}
 ></span>
 
 <style>
@@ -24,7 +30,7 @@
 		min-width: 1.5rem;
 		min-height: 1.5rem;
 		border-radius: inherit;
-		background-size: 400% 200%;
+		background-size: 400% 600%;
 		background-repeat: no-repeat;
 		background-color: var(--paper-200);
 	}
