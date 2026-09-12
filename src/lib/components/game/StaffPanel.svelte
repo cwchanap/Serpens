@@ -1,5 +1,6 @@
 <script lang="ts">
 	import HudIcon from './HudIcon.svelte';
+	import StaffPortrait from './StaffPortrait.svelte';
 	import { getStoreOrdinal } from '$lib/game/state';
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import {
@@ -170,7 +171,7 @@
 			{#each hiringCandidates as candidate (candidate.id)}
 				<article class="person-card">
 					<div class="person-heading">
-						<div class="staff-stamp"><HudIcon name="person" /></div>
+						<div class="staff-stamp"><StaffPortrait personId={candidate.id} /></div>
 						<div>
 							<h4>{candidate.name}</h4>
 							<p>{roleLabel(candidate.role)}</p>
@@ -232,7 +233,7 @@
 				{#each unassignedStaff as member (member.id)}
 					<article class="person-card">
 						<div class="person-heading">
-							<div class="staff-stamp"><HudIcon name="person" /></div>
+							<div class="staff-stamp"><StaffPortrait personId={member.id} /></div>
 							<div>
 								<h4>{member.name}</h4>
 								<p>{roleLabel(member.role)}</p>
@@ -331,7 +332,7 @@
 						{#if compact}<div class="shift-icons" aria-label={i18n.t('staffPanel.storeStaffing')}>
 								{#each item.assignedStaff as member (member.id)}<span
 										title={`${member.name} · ${roleLabel(member.role)}`}
-										><HudIcon name="person" /></span
+										><StaffPortrait personId={member.id} /></span
 									>{/each}
 								<span class="assignment-toggle" aria-hidden="true">+</span>
 							</div>{/if}
@@ -852,6 +853,7 @@
 		border-radius: 50%;
 		display: grid;
 		place-items: center;
+		overflow: hidden;
 	}
 	.shift-icons :global(svg) {
 		width: 1rem;
