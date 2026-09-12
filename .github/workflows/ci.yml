@@ -154,6 +154,15 @@ jobs:
       - name: Run e2e tests
         run: bun run test:e2e
 
+      - name: Upload gameplay screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gameplay-screenshots
+          path: test-results/**/staff-gameplay.png
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
