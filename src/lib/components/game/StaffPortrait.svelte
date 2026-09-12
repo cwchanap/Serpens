@@ -1,9 +1,6 @@
 <script lang="ts">
 	import { asset } from '$app/paths';
-	import {
-		STAFF_PORTRAIT_SPRITE_PATH,
-		getStaffPortraitPosition
-	} from '$lib/assets/staffPortraits';
+	import { STAFF_PORTRAIT_SPRITE_PATH, getStaffPortraitPosition } from '$lib/assets/staffPortraits';
 
 	let { personId }: { personId: string } = $props();
 
