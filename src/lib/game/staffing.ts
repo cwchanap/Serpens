@@ -7,7 +7,6 @@ import {
 	getStaffTrainingFee,
 	getStaffXpForLevel
 } from './staffLeveling';
-import { getStaffDemographics, type StaffDemographics } from './staffDemographics';
 import { randomInt, type Rng } from './rng';
 import type {
 	ArchetypeId,
@@ -29,10 +28,6 @@ const STAFFING_REQUIREMENTS: Record<ArchetypeId, StaffingRequirement> = {
 
 export const HIRING_CANDIDATE_COUNT = 5;
 export const HIRING_MARKET_REFRESH_INTERVAL_DAYS = 7;
-
-type StaffDemographicFields = Pick<StaffDemographics, 'gender' | 'age'>;
-export type DemographicHiringCandidate = HiringCandidate & StaffDemographicFields;
-export type DemographicStaffMember = StaffMember & StaffDemographicFields;
 
 const FIRST_NAMES = [
 	'Avery',
@@ -72,7 +67,7 @@ export function generateStarterStaffForStore(input: {
 	archetypeId: ArchetypeId;
 	day: number;
 	rng: Rng;
-}): DemographicStaffMember[] {
+}): StaffMember[] {
 	const requirement = getStaffingRequirement(input.archetypeId);
 
 	return [
@@ -85,11 +80,10 @@ export function generateHiringCandidates(input: {
 	count: number;
 	day: number;
 	rng: Rng;
-}): DemographicHiringCandidate[] {
+}): HiringCandidate[] {
 	return Array.from({ length: input.count }, (_, index) => {
 		const role: StaffRole = index % 3 === 0 ? 'manager' : 'general';
 		const id = `candidate-${input.day}-${index + 1}`;
-		const { gender, age } = getStaffDemographics(id);
 		const firstName = FIRST_NAMES[randomInt(input.rng, 0, FIRST_NAMES.length - 1)]!;
 		const lastName = LAST_NAMES[randomInt(input.rng, 0, LAST_NAMES.length - 1)]!;
 		const baseSalary = role === 'manager' ? 4_300 : 2_700;
@@ -100,8 +94,6 @@ export function generateHiringCandidates(input: {
 			id,
 			name: `${firstName} ${lastName}`,
 			role,
-			gender,
-			age,
 			monthlySalary: baseSalary + salaryVariance,
 			skill: clampScore(45 + randomInt(input.rng, 0, 35)),
 			morale: clampScore(50 + randomInt(input.rng, 0, 35))
@@ -120,11 +112,8 @@ export function hireCandidate(game: GameState, candidateId: string): GameState {
 		return game;
 	}
 
-	const { gender, age } = getStaffDemographics(candidate.id);
-	const hiredMember: DemographicStaffMember = {
+	const hiredMember: StaffMember = {
 		...candidate,
-		gender,
-		age,
 		id: `staff-${candidate.id}`,
 		assignedStoreId: null,
 		hiredOnDay: game.day,
@@ -243,7 +232,7 @@ function createStarterStaffForRole(
 	},
 	role: StaffRole,
 	count: number
-): DemographicStaffMember[] {
+): StaffMember[] {
 	return Array.from({ length: count }, (_, index) => {
 		const id = `staff-${input.storeId}-${role}-${index + 1}`;
 		const candidate = generateStaffProfile(input.rng, role, id);
@@ -258,8 +247,7 @@ function createStarterStaffForRole(
 	});
 }
 
-function generateStaffProfile(rng: Rng, role: StaffRole, id: string): DemographicHiringCandidate {
-	const { gender, age } = getStaffDemographics(id);
+function generateStaffProfile(rng: Rng, role: StaffRole, id: string): HiringCandidate {
 	const firstName = FIRST_NAMES[randomInt(rng, 0, FIRST_NAMES.length - 1)]!;
 	const lastName = LAST_NAMES[randomInt(rng, 0, LAST_NAMES.length - 1)]!;
 	const baseSalary = role === 'manager' ? 4_600 : 2_800;
@@ -269,8 +257,6 @@ function generateStaffProfile(rng: Rng, role: StaffRole, id: string): Demographi
 		id,
 		name: `${firstName} ${lastName}`,
 		role,
-		gender,
-		age,
 		monthlySalary: baseSalary + salaryVariance,
 		skill: clampScore(55 + randomInt(rng, 0, 25)),
 		morale: clampScore(58 + randomInt(rng, 0, 24))
