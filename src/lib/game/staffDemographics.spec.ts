@@ -5,23 +5,22 @@ import { getStaffDemographics } from './staffDemographics';
 import { generateHiringCandidates, generateStarterStaffForStore } from './staffing';
 
 describe('staff demographics', () => {
-	it('stores gender and age on generated hiring candidates', () => {
+	it('derives a matching portrait profile for generated hiring candidates', () => {
 		const candidates = generateHiringCandidates({ count: 5, day: 3, rng: createRng(2026) });
 
 		expect(candidates).toHaveLength(5);
 		for (const candidate of candidates) {
-			const expected = getStaffDemographics(candidate.id);
+			const demographics = getStaffDemographics(candidate.id);
 			const portrait = getStaffPortraitProfile(candidate.id);
-			expect(candidate.gender).toBe(expected.gender);
-			expect(candidate.age).toBe(expected.age);
-			expect(portrait.gender).toBe(candidate.gender);
-			expect(portrait.age).toBe(candidate.age);
-			expect(candidate.age).toBeGreaterThanOrEqual(18);
-			expect(candidate.age).toBeLessThanOrEqual(69);
+			expect(portrait.gender).toBe(demographics.gender);
+			expect(portrait.age).toBe(demographics.age);
+			expect(portrait.ageGroup).toBe(demographics.ageGroup);
+			expect(demographics.age).toBeGreaterThanOrEqual(18);
+			expect(demographics.age).toBeLessThanOrEqual(69);
 		}
 	});
 
-	it('stores gender and age on starter staff', () => {
+	it('derives a matching portrait profile for starter staff', () => {
 		const staff = generateStarterStaffForStore({
 			storeId: 'store-1',
 			archetypeId: 'grocery',
@@ -30,12 +29,11 @@ describe('staff demographics', () => {
 		});
 
 		for (const member of staff) {
-			const expected = getStaffDemographics(member.id);
+			const demographics = getStaffDemographics(member.id);
 			const portrait = getStaffPortraitProfile(member.id);
-			expect(member.gender).toBe(expected.gender);
-			expect(member.age).toBe(expected.age);
-			expect(portrait.gender).toBe(member.gender);
-			expect(portrait.age).toBe(member.age);
+			expect(portrait.gender).toBe(demographics.gender);
+			expect(portrait.age).toBe(demographics.age);
+			expect(portrait.ageGroup).toBe(demographics.ageGroup);
 		}
 	});
 
