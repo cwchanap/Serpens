@@ -86,6 +86,14 @@ jobs:
       - name: Run unit tests with coverage
         run: bun run test:coverage
 
+      # Authenticate via GitHub OIDC (Codecov GitHub App) instead of a long-lived
+      # CODECOV_TOKEN. Requires job permissions.id-token: write above. Tokenless
+      # public uploads still land data on codecov.io, but PR checks/comments need
+      # a verified identity — OIDC is that path for same-repo GitHub Actions.
+      # Fork PRs cannot mint a write-scoped OIDC credential (and have no access
+      # to repo secrets), so disable OIDC there and keep the upload non-fatal to
+      # avoid breaking the Unit Tests check after tests pass. See
+      # codecov/codecov-action#1821, #1435.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5
@@ -143,17 +151,8 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: bunx playwright install-deps
 
-      - name: Run staff gameplay capture
-        run: bunx playwright test src/routes/retail-sim.e2e.ts --grep staff
-
-      - name: Upload gameplay screenshots
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: gameplay-screenshots
-          path: test-results/**/staff-gameplay.png
-          if-no-files-found: error
-          retention-days: 1
+      - name: Run e2e tests
+        run: bun run test:e2e
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
@@ -175,6 +174,10 @@ jobs:
           persist-credentials: false
 
       - name: Install Tauri Linux system dependencies
+        # Tauri 2 on Linux links against webkit2gtk-4.1, GTK3, soup3,
+        # librsvg, and the ayatana appindicator. Without these the
+        # `cargo test` build of `src-tauri` fails at link time. See
+        # https://tauri.app/start/prerequisites/ for the canonical list.
         run: |
           sudo apt-get update
           sudo apt-get install -y \
