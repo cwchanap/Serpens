@@ -5,8 +5,10 @@
 	import { getArchetype } from '$lib/game/archetypes';
 	import { getSupportedBrands } from '$lib/game/brands';
 	import { getProductDefinition, getProductFreshnessPercent } from '$lib/game/products';
+	import type { GameRouteCommitResult } from '$lib/game/commandResult';
+	import type { StockRecoveryView } from '$lib/game/stockRecovery';
 	import { getStoreProductStatus, getStoreProductStock } from '$lib/game/stock';
-	import { localizeStockStatus } from '$lib/i18n/gameCopy';
+	import { localizeStockStatus, tScoped } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import type {
@@ -24,7 +26,11 @@
 		store: Store;
 		ordinal: number;
 		latestReport: DailyStoreReport | null;
-		onUpdate: (storeId: string, productId: ProductId, patch: StoreProductPatch) => void;
+		onUpdate: (
+			storeId: string,
+			productId: ProductId,
+			patch: StoreProductPatch
+		) => Promise<GameRouteCommitResult | null> | void;
 		onUpdateBrand?: (storeId: string, productId: ProductId, brandId: BrandId) => void;
 		canUpdateSellingPrice?: boolean;
 		canUpdateInventoryTargets?: boolean;
@@ -33,6 +39,12 @@
 		disabledReason?: string | null;
 		/** Deep-link focus target from a stock alert; transient, never persisted. */
 		focusedProductId?: ProductId | null;
+		/** Per-product recovery read model derived by the owner (StoreDetailModal). */
+		recoveryViews?: ReadonlyMap<ProductId, StockRecoveryView>;
+		/** Product ids the supply planner currently supports; gates the Plan supply action. */
+		plannerProductIds?: readonly ProductId[];
+		onManageSupplySource?: (retailCityId: string) => void;
+		onPlanSupply?: (productId: ProductId) => void;
 	}
 
 	let {
@@ -47,7 +59,11 @@
 		canUpdateBrand = true,
 		allowedProductIds = store.products.map((product) => product.productId),
 		disabledReason = null,
-		focusedProductId = null
+		focusedProductId = null,
+		recoveryViews = new Map<ProductId, StockRecoveryView>(),
+		plannerProductIds = [],
+		onManageSupplySource = () => {},
+		onPlanSupply = () => {}
 	}: Props = $props();
 	const allowedProductSet = $derived(new Set(allowedProductIds));
 	const hasDisallowedProduct = $derived(
@@ -163,7 +179,85 @@
 			return;
 		}
 
-		onUpdate(store.id, productId, { [field]: value });
+		if (field === 'sellingPrice') {
+			void onUpdate(store.id, productId, { sellingPrice: value });
+			return;
+		}
+		if (field !== 'reorderThreshold' && field !== 'targetStock') return;
+		void commitInventoryTargets(productId, field, value);
+	}
+
+	type InventoryStatusKind = 'saved' | 'unchanged' | 'not-saved';
+	let inventoryStatus = $state<{
+		productId: ProductId;
+		kind: InventoryStatusKind;
+		text: string;
+	} | null>(null);
+
+	/**
+	 * Inventory-target edits await the route commit result and acknowledge it
+	 * truthfully: success quotes the stored (normalized) values and the next
+	 * check day; a no-change result stays neutral; everything else — including
+	 * a missing result — reports that settings were not saved. Shelf stock is
+	 * never claimed to have moved.
+	 */
+	async function commitInventoryTargets(
+		productId: ProductId,
+		field: 'reorderThreshold' | 'targetStock',
+		value: number
+	): Promise<void> {
+		const patch: StoreProductPatch =
+			field === 'reorderThreshold' ? { reorderThreshold: value } : { targetStock: value };
+		const result = await onUpdate(store.id, productId, patch);
+		// Let the parent's committed state settle into props before reading it.
+		await tick();
+
+		const product = store.products.find((candidate) => candidate.productId === productId);
+		const view = recoveryViews.get(productId);
+		const reorder = i18n.format.integer(view?.reorderThreshold ?? product?.reorderThreshold ?? 0);
+		const target = i18n.format.integer(view?.targetStock ?? product?.targetStock ?? 0);
+
+		const committed =
+			result?.status === 'committed' || (result?.status === 'sandbox-committed' && result.changed);
+		const unchanged =
+			result?.status === 'unchanged' || (result?.status === 'sandbox-committed' && !result.changed);
+
+		if (committed) {
+			inventoryStatus = {
+				productId,
+				kind: 'saved',
+				text:
+					i18n.t('storeStockTable.settingsStatus.saved', { reorder, target }) +
+					(view
+						? ' ' +
+							i18n.t('storeStockTable.settingsStatus.savedNextCheck', {
+								day: i18n.format.integer(view.nextCheckDay)
+							})
+						: '')
+			};
+		} else if (unchanged) {
+			inventoryStatus = {
+				productId,
+				kind: 'unchanged',
+				text: i18n.t('storeStockTable.settingsStatus.unchanged', { reorder, target })
+			};
+		} else {
+			inventoryStatus = {
+				productId,
+				kind: 'not-saved',
+				text: i18n.t('storeStockTable.settingsStatus.notSaved')
+			};
+		}
+	}
+
+	function supplyModeText(view: StockRecoveryView): string {
+		if (view.supplyMode === 'unassigned-import-fallback') {
+			return i18n.t('storeStockTable.recovery.supplyUnassigned');
+		}
+		const cityName = i18n.labels.worldCity(view.configuredSupplyCityId ?? '').name;
+		return view.supplyMode === 'assigned-city-with-import-fallback'
+			? i18n.t('storeStockTable.recovery.supplyAssigned', { cityName })
+			: i18n.t('storeStockTable.recovery.supplyUnavailable', { cityName });
 	}
 
 	function updateBrand(productId: ProductId, event: Event): void {
@@ -234,6 +328,7 @@
 					{@const report = getProductReport(product.productId)}
 					{@const freshnessPercent = getFreshnessPercent(product.productId, report)}
 					{@const pressureKind = getPressureKind(product.productId, product, report)}
+					{@const recoveryView = recoveryViews.get(product.productId)}
 					<tr
 						id={stockRowId(product.productId)}
 						tabindex="-1"
@@ -324,6 +419,16 @@
 							<div class="stock-status">
 								{localizeStockStatus(getStoreProductStatus(product), i18n)}
 							</div>
+							{#if inventoryStatus?.productId === product.productId}
+								<p
+									class="inventory-status"
+									class:unsaved={inventoryStatus.kind === 'not-saved'}
+									role="status"
+									data-testid={`inventory-status-${product.productId}`}
+								>
+									{inventoryStatus.text}
+								</p>
+							{/if}
 						</td>
 						<td>
 							{#if report}
@@ -395,6 +500,58 @@
 							{/if}
 						</td>
 					</tr>
+					{#if recoveryView && (recoveryView.status !== 'Healthy' || product.productId === focusedProductId)}
+						<tr class="recovery-row" data-testid={`store-recovery-${product.productId}`}>
+							<td colspan={9}>
+								<div class="recovery-detail">
+									<p>{supplyModeText(recoveryView)}</p>
+									<p>
+										{i18n.t('storeStockTable.recovery.nextCheck', {
+											day: i18n.format.integer(recoveryView.nextCheckDay)
+										})}
+									</p>
+									<p data-testid={`recovery-eligibility-${product.productId}`}>
+										{tScoped(
+											i18n,
+											'storeStockTable.recovery.eligibility',
+											recoveryView.eligibility
+										)}
+									</p>
+									{#if recoveryView.lastReceipt}
+										<p data-testid={`receipt-evidence-${product.productId}`}>
+											{i18n.t('storeStockTable.recovery.receipt', {
+												day: i18n.format.integer(recoveryView.lastReceipt.day),
+												warehouse: i18n.format.integer(recoveryView.lastReceipt.warehouseUnits),
+												imported: i18n.format.integer(recoveryView.lastReceipt.importedUnits),
+												outcome: tScoped(
+													i18n,
+													'storeStockTable.recovery.receiptOutcomes',
+													recoveryView.lastReceipt.outcome
+												)
+											})}
+										</p>
+									{/if}
+									{#if recoveryView.eligibility !== 'not-replenishable-product'}
+										<div
+											class="recovery-actions"
+											data-testid={`store-recovery-actions-${product.productId}`}
+										>
+											<button type="button" onclick={() => onManageSupplySource(store.cityId)}>
+												{i18n.t('storeStockTable.actions.manageSupplySource')}
+											</button>
+											<button
+												type="button"
+												disabled={!plannerProductIds.includes(product.productId)}
+												onclick={() => onPlanSupply(product.productId)}
+											>
+												{i18n.t('storeStockTable.actions.planSupply')}
+											</button>
+										</div>
+									{/if}
+								</div>
+							</td>
+						</tr>
+					{/if}
 				{/each}
 			</tbody>
 		</table>
@@ -523,6 +680,58 @@
 		font-family: var(--font-body);
 		font-size: 0.72rem;
 		white-space: normal;
+	}
+
+	.inventory-status {
+		margin: 0.3rem 0 0;
+		color: var(--ink-700);
+		font-family: var(--font-body);
+		font-size: 0.72rem;
+		white-space: normal;
+	}
+
+	.inventory-status.unsaved {
+		color: var(--wax-red);
+	}
+
+	.recovery-row td {
+		white-space: normal;
+	}
+
+	.recovery-detail {
+		display: grid;
+		gap: 0.2rem;
+		color: var(--ink-500);
+		font-family: var(--font-body);
+		font-size: 0.72rem;
+	}
+
+	.recovery-detail p {
+		margin: 0;
+	}
+
+	.recovery-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin-top: 0.25rem;
+	}
+
+	.recovery-actions button {
+		padding: 0.25rem 0.55rem;
+		border: 1px solid var(--brass-500);
+		border-radius: 2px;
+		background: var(--paper-50);
+		color: var(--ink-700);
+		font-family: var(--font-ui);
+		font-size: 0.68rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.recovery-actions button:disabled {
+		cursor: default;
+		opacity: 0.55;
 	}
 
 	.report-evidence {

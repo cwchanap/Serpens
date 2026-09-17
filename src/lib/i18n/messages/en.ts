@@ -675,6 +675,43 @@ export const en = {
 			markdown: 'Markdown: {amount}',
 			obsolescence: 'Obsolescence: {percent} demand',
 			stockout: 'Stockout lost demand: {units} units'
+		},
+		recovery: {
+			supplyAssigned:
+				'Supply city: {cityName}. Imports cover shortages when its warehouse runs low.',
+			supplyUnassigned: 'No supply city is assigned for this store; imports cover shortages.',
+			supplyUnavailable: 'Assigned supply city {cityName} is unavailable; imports cover shortages.',
+			nextCheck:
+				'Next check: closing day {day}, after sales — a scheduled check, not a guaranteed delivery.',
+			eligibility: {
+				'eligible-at-current-stock':
+					'Stock is below the reorder threshold, so the next closing-day check can replenish it.',
+				'not-below-threshold':
+					'Stock is at or above the reorder threshold, so the next check will not replenish it.',
+				'blocked-by-zero-threshold':
+					'Replenishment stays blocked while the reorder threshold is 0 — raise it with the reorder input in this row.',
+				'not-replenishable-product':
+					"This product is not part of the store's replenishable catalog, so supply handoffs cannot replenish it."
+			},
+			receipt:
+				'Last receipt — day {day}: {warehouse} units from the city warehouse, {imported} units imported ({outcome}). A past record; current shelf stock may differ.',
+			receiptOutcomes: {
+				'city-inventory': 'restocked from city inventory',
+				mixed: 'restocked from city inventory and imports',
+				'import-only': 'restocked by imports',
+				'unassigned-import': 'restocked by import fallback',
+				'source-unavailable-import': 'restocked by import fallback (supply city unavailable)'
+			}
+		},
+		settingsStatus: {
+			saved: 'Saved: reorder {reorder}, target {target}.',
+			savedNextCheck: 'Next check: closing day {day} after sales.',
+			unchanged: 'No settings changed: reorder {reorder}, target {target}.',
+			notSaved: 'Inventory settings were not saved.'
+		},
+		actions: {
+			manageSupplySource: 'Manage supply source',
+			planSupply: 'Plan supply'
 		}
 	},
 	storeDetail: {
@@ -1639,14 +1676,8 @@ export const en = {
 			outOfStock: 'Out of stock'
 		},
 		stockTrouble: {
-			outOfStock: {
-				one: '{count} product out of stock',
-				other: '{count} products out of stock'
-			},
-			needsImport: {
-				one: '{count} product needs import',
-				other: '{count} products need import'
-			}
+			outOfStock: 'Out of stock: {products}',
+			needsImport: 'Needs import: {products}'
 		},
 		alerts: {
 			storeStock: '{storeName}: {summary}',

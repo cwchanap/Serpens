@@ -44,6 +44,7 @@
 		type IndustryMapRailPreviewRender
 	} from '$lib/game/industryMapRender';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
+	import { resolveWorldCityId } from '$lib/game/cityInventory';
 	import {
 		buildRailNetwork,
 		deriveRailSegments,
@@ -2369,28 +2370,30 @@
 		}
 	}
 
-	function changeStoreProduct(
+	async function changeStoreProduct(
 		storeId: string,
 		productId: ProductId,
 		patch: StoreProductPatch
-	): void {
+	): Promise<GameRouteCommitResult | null> {
+		// null = pre-command: no game, unknown product, or the mutation command
+		// is unavailable in this run. Otherwise the controller result is passed
+		// through unchanged so callers can acknowledge truthfully.
 		if (!game) {
-			return;
+			return null;
 		}
 		const product = game.stores
 			.find((store) => store.id === storeId)
 			?.products.find((candidate) => candidate.productId === productId);
 		if (!product) {
-			return;
+			return null;
 		}
 
 		if (patch.sellingPrice !== undefined) {
-			if (!mutationAvailability.updateStoreSellingPrice) return;
-			void gameRouteController.updateStoreSellingPrice(storeId, productId, patch.sellingPrice);
-			return;
+			if (!mutationAvailability.updateStoreSellingPrice) return null;
+			return gameRouteController.updateStoreSellingPrice(storeId, productId, patch.sellingPrice);
 		}
-		if (!mutationAvailability.updateStoreInventoryTargets) return;
-		void gameRouteController.updateStoreInventoryTargets(
+		if (!mutationAvailability.updateStoreInventoryTargets) return null;
+		return gameRouteController.updateStoreInventoryTargets(
 			storeId,
 			productId,
 			patch.reorderThreshold ?? product.reorderThreshold,
@@ -2663,6 +2666,20 @@
 	function closeStoreDetail(): void {
 		isStoreDetailOpen = false;
 		focusedStockProductId = null;
+	}
+
+	/** Stock-table handoff: manage this store's retail supply source. */
+	function manageStoreSupplySource(retailCityId: string): void {
+		const cityId = resolveWorldCityId(retailCityId);
+		if (!cityId) return;
+		closeStoreDetail();
+		openStoresManagement(cityId);
+	}
+
+	/** Stock-table handoff: open the supply planner for one product. */
+	function planStoreSupplyProduct(productId: ProductId): void {
+		closeStoreDetail();
+		planSupplyProduct(productId);
 	}
 
 	function closeIndustryInspector() {
@@ -3143,6 +3160,9 @@
 			hiringCandidates={game?.hiringCandidates ?? []}
 			latestStoreReport={latestSelectedStoreReport}
 			focusedProductId={focusedStockProductId}
+			{plannerProductIds}
+			onManageSupplySource={manageStoreSupplySource}
+			onPlanSupply={planStoreSupplyProduct}
 			onUpdateStoreProduct={changeStoreProduct}
 			onUpdateStoreProductBrand={changeStoreProductBrand}
 			onHireStaff={hireStaff}

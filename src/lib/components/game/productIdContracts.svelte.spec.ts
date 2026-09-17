@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'svelte';
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import type {
 	DailyProductReport,
 	DailyReport,
@@ -17,7 +18,11 @@ describe('current product/report boundary contracts', () => {
 		type PlannerProps = ComponentProps<typeof SupplyAdvisor>;
 
 		expectTypeOf<StockProps['onUpdate']>().toEqualTypeOf<
-			(storeId: string, productId: ProductId, patch: StoreProductPatch) => void
+			(
+				storeId: string,
+				productId: ProductId,
+				patch: StoreProductPatch
+			) => Promise<GameRouteCommitResult | null> | void
 		>();
 		expectTypeOf<StockProps['allowedProductIds']>().toEqualTypeOf<
 			readonly ProductId[] | undefined

@@ -674,6 +674,42 @@ export const ja = {
 			markdown: '値下げ: {amount}',
 			obsolescence: '陳腐化: 需要 {percent}',
 			stockout: '在庫切れによる需要損失: {units} 単位'
+		},
+		recovery: {
+			supplyAssigned: '仕入都市:{cityName}。都市倉庫が少なくなった場合は輸入で不足を補います。',
+			supplyUnassigned: 'この店舗に仕入都市が未設定のため、輸入で不足を補います。',
+			supplyUnavailable:
+				'設定済みの仕入都市 {cityName} が現在利用できないため、輸入で不足を補います。',
+			nextCheck:
+				'次の確認は {day} 日の締め後、販売処理後に実施です。予定された確認であり、届く保証はありません。',
+			eligibility: {
+				'eligible-at-current-stock':
+					'在庫が再発注しきい値を下回っているため、次の締め日確認で補充されます。',
+				'not-below-threshold': '在庫が再発注しきい値以上のため、次の確認では補充されません。',
+				'blocked-by-zero-threshold':
+					'再発注しきい値が 0 のため補充されません。この行の再発注しきい値入力を上げてください。',
+				'not-replenishable-product':
+					'この商品はこの店舗の自動補充対象外のため、仕入操作では補充できません。'
+			},
+			receipt:
+				'前回の入荷 — {day} 日:都市倉庫から {warehouse} 単位、輸入 {imported} 単位({outcome})。過去の記録であり、現在の店頭在庫とは異なる場合があります。',
+			receiptOutcomes: {
+				'city-inventory': '都市在庫から補充',
+				mixed: '都市在庫と輸入の両方で補充',
+				'import-only': '輸入で補充',
+				'unassigned-import': '輸入フォールバックで補充',
+				'source-unavailable-import': '輸入フォールバックで補充(仕入都市利用不可)'
+			}
+		},
+		settingsStatus: {
+			saved: '保存しました:再発注しきい値 {reorder}、目標在庫 {target}。',
+			savedNextCheck: '次の確認は {day} 日の締め後、販売後に実施されます。',
+			unchanged: '変更はありません:再発注しきい値 {reorder}、目標在庫 {target}。',
+			notSaved: '在庫設定は保存されませんでした。'
+		},
+		actions: {
+			manageSupplySource: '仕入元を管理',
+			planSupply: '補給を計画'
 		}
 	},
 	storeDetail: {
@@ -1613,14 +1649,8 @@ export const ja = {
 			outOfStock: '在庫切れ'
 		},
 		stockTrouble: {
-			outOfStock: {
-				one: '{count} 商品が在庫切れ',
-				other: '{count} 商品が在庫切れ'
-			},
-			needsImport: {
-				one: '{count} 商品が輸入待ち',
-				other: '{count} 商品が輸入待ち'
-			}
+			outOfStock: '在庫切れ: {products}',
+			needsImport: '輸入待ち: {products}'
 		},
 		alerts: {
 			storeStock: '{storeName}: {summary}',

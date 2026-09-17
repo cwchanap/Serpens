@@ -673,6 +673,37 @@ export const zhHant = {
 			markdown: '降價：{amount}',
 			obsolescence: '過時：需求 {percent}',
 			stockout: '缺貨損失需求：{units} 單位'
+		},
+		recovery: {
+			supplyAssigned: '供貨城市：{cityName}。其城市倉庫不足時，會以進口補足短缺。',
+			supplyUnassigned: '此門市尚未指派供貨城市，短缺將以進口補足。',
+			supplyUnavailable: '已指派的供貨城市 {cityName} 目前無法使用，短缺將以進口補足。',
+			nextCheck: '下次檢查：第 {day} 天結束後、銷售結算後執行——這是排定檢查，不保證到貨。',
+			eligibility: {
+				'eligible-at-current-stock': '庫存低於補貨門檻，下次營業日結算檢查可進行補充。',
+				'not-below-threshold': '庫存高於或等於補貨門檻，下次檢查不會補充。',
+				'blocked-by-zero-threshold': '補貨門檻為 0，因此不會補充——請在此列提高補貨門檻輸入值。',
+				'not-replenishable-product': '此商品不屬於本門市的可補貨目錄，供貨作業無法補充它。'
+			},
+			receipt:
+				'最近一次收貨——第 {day} 天：由城市倉庫入庫 {warehouse} 單位、進口 {imported} 單位（{outcome}）。這是過往紀錄，目前貨架庫存可能不同。',
+			receiptOutcomes: {
+				'city-inventory': '由城市庫存補充',
+				mixed: '由城市庫存與進口共同補充',
+				'import-only': '由進口補充',
+				'unassigned-import': '由進口後備機制補充',
+				'source-unavailable-import': '由進口後備機制補充（供貨城市無法使用）'
+			}
+		},
+		settingsStatus: {
+			saved: '已儲存：補貨門檻 {reorder}、目標庫存 {target}。',
+			savedNextCheck: '下次檢查：第 {day} 天結束後、銷售後執行。',
+			unchanged: '設定未變更：補貨門檻 {reorder}、目標庫存 {target}。',
+			notSaved: '庫存設定尚未儲存。'
+		},
+		actions: {
+			manageSupplySource: '管理供貨來源',
+			planSupply: '規劃供貨'
 		}
 	},
 	storeDetail: {
@@ -1597,14 +1628,8 @@ export const zhHant = {
 			outOfStock: '缺貨'
 		},
 		stockTrouble: {
-			outOfStock: {
-				one: '{count} 項商品缺貨',
-				other: '{count} 項商品缺貨'
-			},
-			needsImport: {
-				one: '{count} 項商品需要進口',
-				other: '{count} 項商品需要進口'
-			}
+			outOfStock: '缺貨：{products}',
+			needsImport: '需要進口：{products}'
 		},
 		alerts: {
 			storeStock: '{storeName}: {summary}',

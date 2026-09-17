@@ -33,7 +33,12 @@ import type {
 import type { DecisionOptionAvailability } from '$lib/game/eventEffects';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import type { WorldCityStatus } from '$lib/game/world';
-import { getStoreProductStatus, type StoreProductStatus } from '$lib/game/stock';
+import {
+	getAffectedStockProductIds,
+	getStoreProductStatus,
+	type StoreProductStatus
+} from '$lib/game/stock';
+import type { StoreProduct } from '$lib/game/types';
 import type { I18nBundle } from './index';
 import type {
 	LocalizedDecision,
@@ -174,17 +179,13 @@ function resolveEventCopyParams(
  * (e.g. a union-valued enum). Centralises the `as never` cast so it lives in
  * one place rather than at every call site.
  */
-function tScoped(
+export function tScoped(
 	i18n: I18nBundle,
 	prefix: string,
 	suffix: string,
 	params?: Record<string, string | number>
 ): string {
 	return i18n.t(`${prefix}.${suffix}` as never, params);
-}
-
-function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): string {
-	return tScoped(i18n, baseKey, count === 1 ? 'one' : 'other', { count });
 }
 
 /**
@@ -578,29 +579,35 @@ export function localizeStockStatus(status: StoreProductStatus, i18n: I18nBundle
 }
 
 export function localizeStockTrouble(
-	products: Array<
-		Pick<GameState['stores'][number]['products'][number], 'lots' | 'reorderThreshold'>
-	>,
+	products: readonly StoreProduct[],
 	i18n: I18nBundle
 ): string | null {
-	let outOfStock = 0;
-	let needsImport = 0;
+	const affectedIds = new Set(getAffectedStockProductIds(products));
+	if (affectedIds.size === 0) {
+		return null;
+	}
 
+	// Store order is preserved inside each group because products are scanned
+	// in order; getAffectedStockProductIds owns the OOS-before-needs-import rule.
+	const outOfStock: string[] = [];
+	const needsImport: string[] = [];
 	for (const product of products) {
-		const status = getStoreProductStatus(product);
-		if (status === 'Out of stock') {
-			outOfStock += 1;
-		} else if (status === 'Needs import') {
-			needsImport += 1;
+		if (!affectedIds.has(product.productId)) continue;
+		if (getStoreProductStatus(product) === 'Out of stock') {
+			outOfStock.push(i18n.labels.productCategory(product.productId));
+		} else {
+			needsImport.push(i18n.labels.productCategory(product.productId));
 		}
 	}
 
 	const parts: string[] = [];
-	if (outOfStock > 0) {
-		parts.push(formatCountMessage(i18n, 'copy.stockTrouble.outOfStock', outOfStock));
+	if (outOfStock.length > 0) {
+		parts.push(i18n.t('copy.stockTrouble.outOfStock', { products: i18n.format.list(outOfStock) }));
 	}
-	if (needsImport > 0) {
-		parts.push(formatCountMessage(i18n, 'copy.stockTrouble.needsImport', needsImport));
+	if (needsImport.length > 0) {
+		parts.push(
+			i18n.t('copy.stockTrouble.needsImport', { products: i18n.format.list(needsImport) })
+		);
 	}
 
 	return parts.length > 0 ? i18n.format.list(parts) : null;
