@@ -3,7 +3,9 @@
 	import StoreStaffPanel from '$lib/components/game/StoreStaffPanel.svelte';
 	import StoreStockTable from '$lib/components/game/StoreStockTable.svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
+	import type { GameRouteCommitResult } from '$lib/game/commandResult';
 	import { getProductFreshnessPercent } from '$lib/game/products';
+	import { buildStoreStockRecoveryViews } from '$lib/game/stockRecovery';
 	import type { I18nBundle } from '$lib/i18n';
 	import { storeDisplayName } from '$lib/i18n/gameCopy';
 	import { getStoreOrdinal } from '$lib/game/state';
@@ -26,7 +28,11 @@
 		staff: StaffMember[];
 		hiringCandidates: HiringCandidate[];
 		latestStoreReport: DailyStoreReport | null;
-		onUpdateStoreProduct: (storeId: string, productId: ProductId, patch: StoreProductPatch) => void;
+		onUpdateStoreProduct: (
+			storeId: string,
+			productId: ProductId,
+			patch: StoreProductPatch
+		) => Promise<GameRouteCommitResult | null> | void;
 		onUpdateStoreProductBrand?: (storeId: string, productId: ProductId, brandId: BrandId) => void;
 		onHireStaff: (candidateId: string) => void;
 		onAssignStaff: (staffId: string, storeId: string) => void;
@@ -43,6 +49,10 @@
 		disabledReason?: string | null;
 		/** Deep-link focus target forwarded to the stock table; transient. */
 		focusedProductId?: ProductId | null;
+		/** Product ids the supply planner currently supports; forwarded to the stock table. */
+		plannerProductIds?: readonly ProductId[];
+		onManageSupplySource?: (retailCityId: string) => void;
+		onPlanSupply?: (productId: ProductId) => void;
 	}
 
 	let {
@@ -67,11 +77,17 @@
 		canAssignStaff = true,
 		canUnassignStaff = true,
 		disabledReason = null,
-		focusedProductId = null
+		focusedProductId = null,
+		plannerProductIds = [],
+		onManageSupplySource = () => {},
+		onPlanSupply = () => {}
 	}: Props = $props();
 
 	let storeOrdinal = $derived(getStoreOrdinal(game.stores, store.id));
 	let displayName = $derived(storeDisplayName(store, storeOrdinal, i18n));
+	// Pure per-product recovery read model, recomputed whenever the game or the
+	// focused store changes. The stock table renders it; it never simulates.
+	let recoveryViews = $derived(buildStoreStockRecoveryViews(game, store.id));
 
 	interface PressureMessage {
 		id: string;
@@ -286,6 +302,10 @@
 					{allowedProductIds}
 					{disabledReason}
 					{focusedProductId}
+					{recoveryViews}
+					{plannerProductIds}
+					{onManageSupplySource}
+					{onPlanSupply}
 				/>
 			</div>
 			<div

@@ -5,11 +5,16 @@ import StoreStockTable from './StoreStockTable.svelte';
 import { getProductArt } from '$lib/assets/gameArt';
 import { getSupportedBrands } from '$lib/game/brands';
 import { getProductDefinition } from '$lib/game/products';
+import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
+import { buildStoreStockRecoveryViews } from '$lib/game/stockRecovery';
 import { createI18n } from '$lib/i18n';
+import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import type {
 	DailyProductReport,
+	DailyReport,
 	DailyStoreReport,
+	GameState,
 	ProductId,
 	Store,
 	StoreProduct
@@ -749,5 +754,305 @@ describe('StoreStockTable', () => {
 		await expect
 			.poll(() => document.activeElement?.id.startsWith(`${store.id}-stock-row-`) ?? false)
 			.toBe(false);
+	});
+});
+
+describe('StoreStockTable recovery context', () => {
+	const unhealthyStore: Store = {
+		...store,
+		products: [productWithStock('bottled-water', 0)]
+	};
+
+	function stockTableGame(storeFixture: Store, overrides: Partial<GameState> = {}): GameState {
+		const base = createNewGame('convenience', 292_601);
+		return { ...base, stores: [{ ...base.stores[0]!, ...storeFixture }], ...overrides };
+	}
+
+	function receiptReport(
+		day: number,
+		storeId: string,
+		productId: ProductId,
+		warehouseUnits: number,
+		importedUnits: number
+	): DailyReport {
+		return {
+			day,
+			storeReports: [
+				{
+					storeId,
+					productReports: [{ productId, warehouseUnits, importedUnits }],
+					replenishment: {
+						retailCityId: 'harbor-city',
+						configuredSupplyCityId: 'industry-city',
+						resolvedSupplyCityId: 'industry-city'
+					}
+				}
+			]
+		} as unknown as DailyReport;
+	}
+
+	function renderWithRecovery(storeFixture: Store, extra: Record<string, unknown> = {}) {
+		return render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: storeFixture,
+			ordinal: 1,
+			latestReport: { ...latestReport, productReports: [] },
+			onUpdate: vi.fn(),
+			recoveryViews: buildStoreStockRecoveryViews(stockTableGame(storeFixture), 'store-1'),
+			plannerProductIds: ['bottled-water', 'snacks', 'soft-drinks', 'essentials'],
+			onManageSupplySource: vi.fn(),
+			onPlanSupply: vi.fn(),
+			...extra
+		});
+	}
+
+	it('shows supply, timing, and eligibility context for a focused unhealthy row without duplicating table columns', async () => {
+		expect.assertions(9);
+		const mixedStore: Store = {
+			...store,
+			products: [productWithStock('bottled-water', 0), productWithStock('snacks', 20)]
+		};
+		renderWithRecovery(mixedStore, { focusedProductId: 'bottled-water' });
+
+		const detail = page.getByTestId('store-recovery-bottled-water');
+		await expect.element(detail).toBeVisible();
+		await expect.element(detail).toHaveTextContent('Supply city: Industry City');
+		await expect.element(detail).toHaveTextContent('Imports cover shortages');
+		await expect.element(detail).toHaveTextContent('Next check: closing day 7');
+		await expect.element(detail).toHaveTextContent('not a guaranteed delivery');
+		await expect.element(detail).toHaveTextContent('below the reorder threshold');
+
+		// The context lives in a detail row: no duplicated headings or inputs.
+		expect(document.querySelectorAll('thead th')).toHaveLength(9);
+		expect(
+			page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' }).elements()
+		).toHaveLength(1);
+
+		// A healthy, unfocused product gets no recovery detail row.
+		expect(document.querySelector('[data-testid="store-recovery-snacks"]')).toBeNull();
+	});
+
+	it('points the zero-threshold explanation at the existing reorder input in the row', async () => {
+		expect.assertions(3);
+		const zeroThresholdStore: Store = {
+			...store,
+			products: [productWithStock('bottled-water', 0, 1, { reorderThreshold: 0 })]
+		};
+		renderWithRecovery(zeroThresholdStore, { focusedProductId: 'bottled-water' });
+
+		const detail = page.getByTestId('store-recovery-bottled-water');
+		await expect.element(detail).toHaveTextContent('reorder threshold is 0');
+		await expect.element(detail).toHaveTextContent('reorder input in this row');
+		await expect
+			.element(page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' }))
+			.toBeEnabled();
+	});
+
+	it('says import fallback covers shortages when no supply city is assigned', async () => {
+		expect.assertions(1);
+		renderWithRecovery(unhealthyStore, {
+			focusedProductId: 'bottled-water',
+			recoveryViews: buildStoreStockRecoveryViews(
+				stockTableGame(unhealthyStore, { retailSupplyAssignments: [] }),
+				'store-1'
+			)
+		});
+
+		await expect
+			.element(page.getByTestId('store-recovery-bottled-water'))
+			.toHaveTextContent('No supply city is assigned');
+	});
+
+	it.each([
+		{
+			outcome: 'city-inventory',
+			warehouseUnits: 3,
+			importedUnits: 0,
+			expected: 'restocked from city inventory'
+		},
+		{
+			outcome: 'mixed',
+			warehouseUnits: 4,
+			importedUnits: 2,
+			expected: 'restocked from city inventory and imports'
+		},
+		{
+			outcome: 'import-only',
+			warehouseUnits: 0,
+			importedUnits: 5,
+			expected: 'restocked by imports'
+		}
+	])(
+		'labels a historical $outcome receipt with day and quantities',
+		async ({ warehouseUnits, importedUnits, expected }) => {
+			expect.assertions(5);
+			const game = stockTableGame(unhealthyStore);
+			game.reports = [
+				...game.reports,
+				receiptReport(3, 'store-1', 'bottled-water', warehouseUnits, importedUnits)
+			];
+			render(StoreStockTable, {
+				i18n: createI18n('en'),
+				store: unhealthyStore,
+				ordinal: 1,
+				latestReport: { ...latestReport, productReports: [] },
+				onUpdate: vi.fn(),
+				recoveryViews: buildStoreStockRecoveryViews(game, 'store-1'),
+				plannerProductIds: ['bottled-water'],
+				focusedProductId: 'bottled-water'
+			});
+
+			const evidence = page.getByTestId('receipt-evidence-bottled-water');
+			await expect.element(evidence).toHaveTextContent('day 3');
+			await expect.element(evidence).toHaveTextContent(`${warehouseUnits} units`);
+			await expect.element(evidence).toHaveTextContent(`${importedUnits} units imported`);
+			await expect.element(evidence).toHaveTextContent(expected);
+			// The receipt is explicitly historical; it never vouches for today.
+			await expect.element(evidence).toHaveTextContent('past record');
+		}
+	);
+
+	it('acknowledges a committed inventory change with stored values and leaves shelf stock untouched', async () => {
+		expect.assertions(5);
+		let resolveUpdate: (result: GameRouteCommitResult) => void = () => {};
+		const onUpdate = vi.fn(
+			() =>
+				new Promise<GameRouteCommitResult>((resolve) => {
+					resolveUpdate = resolve;
+				})
+		);
+		const props = {
+			i18n: createI18n('en'),
+			store: unhealthyStore,
+			ordinal: 1,
+			latestReport: { ...latestReport, productReports: [] },
+			onUpdate,
+			recoveryViews: buildStoreStockRecoveryViews(stockTableGame(unhealthyStore), 'store-1'),
+			plannerProductIds: ['bottled-water'] as readonly ProductId[],
+			focusedProductId: 'bottled-water' as ProductId | null
+		};
+		const instance = render(StoreStockTable, props);
+
+		const reorder = page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' });
+		await reorder.fill('8');
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
+		expect(onUpdate).toHaveBeenCalledTimes(1);
+
+		// The route committed and normalized the stored state before resolving.
+		const updatedStore: Store = {
+			...unhealthyStore,
+			products: [{ ...unhealthyStore.products[0]!, reorderThreshold: 8 }]
+		};
+		instance.rerender({
+			...props,
+			store: updatedStore,
+			recoveryViews: buildStoreStockRecoveryViews(stockTableGame(updatedStore), 'store-1')
+		});
+		resolveUpdate({ status: 'committed' });
+
+		const status = page.getByTestId('inventory-status-bottled-water');
+		await expect.element(status).toHaveTextContent('Saved: reorder 8, target 16');
+		await expect.element(status).toHaveTextContent('Next check: closing day 7 after sales');
+		// The edit itself never moves shelf stock.
+		await expect.element(page.getByTestId('derived-stock-bottled-water')).toHaveTextContent('0');
+		await expect.element(status).not.toHaveTextContent('restocked');
+	});
+
+	it.each([
+		{ label: 'unchanged result', result: { status: 'unchanged' } as GameRouteCommitResult },
+		{
+			label: 'sandbox-committed result without change',
+			result: { status: 'sandbox-committed', changed: false } as GameRouteCommitResult
+		}
+	])('gives neutral no-change text for a $label', async ({ result }) => {
+		expect.assertions(2);
+		const onUpdate = vi.fn(async () => result);
+		renderWithRecovery(unhealthyStore, { onUpdate, focusedProductId: 'bottled-water' });
+
+		const reorder = page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' });
+		await reorder.fill('8');
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
+
+		const status = page.getByTestId('inventory-status-bottled-water');
+		await expect.element(status).toHaveTextContent('No settings changed: reorder 4, target 16');
+		await expect.element(status).not.toHaveTextContent('Saved:');
+	});
+
+	it.each([
+		['failed', { status: 'failed' }],
+		['busy', { status: 'busy' }],
+		['rejected', { status: 'rejected' }],
+		['unavailable', { status: 'unavailable' }],
+		['null', null],
+		['undefined', undefined]
+	] as const)('never claims success for a %s inventory-update result', async (_label, result) => {
+		expect.assertions(2);
+		const onUpdate = vi.fn(async () => result as GameRouteCommitResult | null);
+		renderWithRecovery(unhealthyStore, { onUpdate, focusedProductId: 'bottled-water' });
+
+		const reorder = page
+			.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' })
+			.element() as HTMLInputElement;
+		reorder.value = '8';
+		reorder.dispatchEvent(new Event('change', { bubbles: true }));
+
+		const status = page.getByTestId('inventory-status-bottled-water');
+		await expect.element(status).toHaveTextContent('Inventory settings were not saved.');
+		await expect.element(status).not.toHaveTextContent('Saved:');
+	});
+
+	it('hands off to manage-supply-source with the current retail city and to the planner with the product', async () => {
+		expect.assertions(2);
+		const onManageSupplySource = vi.fn();
+		const onPlanSupply = vi.fn();
+		renderWithRecovery(unhealthyStore, {
+			onManageSupplySource,
+			onPlanSupply
+		});
+
+		await page.getByRole('button', { name: 'Manage supply source' }).click();
+		await page.getByRole('button', { name: 'Plan supply' }).click();
+
+		expect(onManageSupplySource).toHaveBeenCalledWith('harbor-city');
+		expect(onPlanSupply).toHaveBeenCalledWith('bottled-water');
+	});
+
+	it('disables the planner handoff for products outside the planner list', async () => {
+		expect.assertions(2);
+		renderWithRecovery(unhealthyStore, {
+			focusedProductId: 'bottled-water',
+			plannerProductIds: ['snacks']
+		});
+
+		await expect.element(page.getByRole('button', { name: 'Plan supply' })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: 'Manage supply source' })).toBeEnabled();
+	});
+
+	it('omits misleading supply handoffs for the defensive not-replenishable state', async () => {
+		expect.assertions(3);
+		const apparelStore: Store = {
+			...store,
+			products: [productWithStock('apparel', 2)]
+		};
+		renderWithRecovery(apparelStore, { focusedProductId: 'apparel' });
+
+		const detail = page.getByTestId('store-recovery-apparel');
+		await expect.element(detail).toHaveTextContent('replenishable catalog');
+		expect(page.getByRole('button', { name: 'Manage supply source' }).elements()).toHaveLength(0);
+		expect(page.getByRole('button', { name: 'Plan supply' }).elements()).toHaveLength(0);
+	});
+
+	it('keeps recovery actions and context inside the existing table scroll surface', async () => {
+		expect.assertions(3);
+		renderWithRecovery(unhealthyStore, { focusedProductId: 'bottled-water' });
+
+		expect(
+			document.querySelector('.table-scroll [data-testid="store-recovery-bottled-water"]')
+		).not.toBeNull();
+		expect(
+			document.querySelector('.table-scroll [data-testid="store-recovery-actions-bottled-water"]')
+		).not.toBeNull();
+		// No secondary modal is introduced for the recovery context.
+		expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(0);
 	});
 });

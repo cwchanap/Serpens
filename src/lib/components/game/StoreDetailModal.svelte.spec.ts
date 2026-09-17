@@ -67,7 +67,9 @@ function props() {
 		onAssignStaff: vi.fn(),
 		onUnassignStaff: vi.fn(),
 		onClose: vi.fn(),
-		onClickFeedback: vi.fn()
+		onClickFeedback: vi.fn(),
+		onManageSupplySource: vi.fn(),
+		onPlanSupply: vi.fn()
 	};
 }
 
@@ -406,7 +408,7 @@ describe('StoreDetailModal', () => {
 		expect(document.activeElement).toBe(row.element());
 	});
 
-	it('wraps Tab from the last stock control back to the first modal control, skipping rows', async () => {
+	it('wraps Tab from the last modal control back to the first modal control, skipping rows', async () => {
 		expect.assertions(2);
 		const p = props();
 		render(StoreDetailModal, { ...p, focusedProductId: 'snacks' });
@@ -414,10 +416,12 @@ describe('StoreDetailModal', () => {
 		const row = page.getByTestId('store-product-row-snacks');
 		await expect.poll(() => document.activeElement).toBe(row.element());
 
-		const targetStock = page.getByRole('spinbutton', { name: /target stock/i });
-		await targetStock.click();
+		// The recovery action row sits after the stock controls and owns the
+		// last tab stop; Tab wraps from there to the first modal control.
+		const manageSupply = page.getByRole('button', { name: 'Manage supply source' });
+		await manageSupply.click();
 		const cycleTab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
-		targetStock.element().dispatchEvent(cycleTab);
+		manageSupply.element().dispatchEvent(cycleTab);
 
 		const closeButton = page.getByRole('button', { name: /close store details/i });
 		expect(document.activeElement).toBe(closeButton.element());
@@ -431,6 +435,40 @@ describe('StoreDetailModal', () => {
 		await expect
 			.poll(() => document.activeElement)
 			.toBe(page.getByRole('button', { name: /close store details/i }).element());
+	});
+
+	it('derives recovery context from game state and threads the supply handoffs', async () => {
+		expect.assertions(4);
+		const unhealthyStore: Store = {
+			...store(),
+			products: [
+				{
+					productId: 'snacks',
+					brandId: 'common-ground',
+					lots: [],
+					reorderThreshold: 10,
+					targetStock: 50,
+					sellingPrice: 5
+				}
+			]
+		};
+		const p = props();
+		render(StoreDetailModal, {
+			...p,
+			store: unhealthyStore,
+			game: { ...p.game, stores: [unhealthyStore] },
+			focusedProductId: 'snacks',
+			plannerProductIds: ['snacks']
+		});
+
+		const detail = page.getByTestId('store-recovery-snacks');
+		await expect.element(detail).toBeVisible();
+		await expect.element(detail).toHaveTextContent('Next check: closing day 7');
+
+		await page.getByRole('button', { name: 'Manage supply source' }).click();
+		expect(p.onManageSupplySource).toHaveBeenCalledWith('harbor-city');
+		await page.getByRole('button', { name: 'Plan supply' }).click();
+		expect(p.onPlanSupply).toHaveBeenCalledWith('snacks');
 	});
 
 	it('renders the neutral pressure summary when the latest report has no pressure', async () => {

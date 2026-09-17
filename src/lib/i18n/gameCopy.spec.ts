@@ -18,12 +18,15 @@ import type { DecisionOptionAvailability } from '$lib/game/eventEffects';
 import type { LogisticsFailureCode } from '$lib/game/commandResult';
 import { getWorldCityDefinition, getWorldCityStatus, openWorldCity } from '$lib/game/world';
 import type { GameAlert } from '$lib/game/alerts';
+import { getProductDefinition } from '$lib/game/products';
 import type {
 	DailyRouteModifierRecovery,
 	DecisionItem,
 	EventDecisionItem,
 	MaterialId,
-	Store
+	ProductId,
+	Store,
+	StoreProduct
 } from '$lib/game/types';
 import type {
 	ProductChainCategorySummary,
@@ -385,14 +388,8 @@ describe('game copy builders', () => {
 		const i18n = createI18n('en');
 		expect(localizeStockStatus('Healthy', i18n)).toBe('Healthy');
 		expect(
-			localizeStockTrouble(
-				[
-					{ lots: [], reorderThreshold: 4 },
-					{ lots: [{ receivedDay: 1, quantity: 2 }], reorderThreshold: 4 }
-				],
-				i18n
-			)
-		).toBe('1 product out of stock and 1 product needs import');
+			localizeStockTrouble([stockProduct('bottled-water', 0), stockProduct('snacks', 2)], i18n)
+		).toBe('Out of stock: Bottled Water and Needs import: Snacks');
 		expect(localizeStockStatus('Healthy', createI18n('ja'))).not.toBe('Healthy');
 	});
 
@@ -458,8 +455,16 @@ describe('game copy builders', () => {
 			storeId: 'store-1'
 		};
 
-		expect(localizeAlert(alert, troubledGame, createI18n('en'))).toBe(
-			'Store #1: 1 product out of stock'
+		// The hand-written alert carries no productId/affectedProductIds, so the
+		// copy is derived from the store's current products.
+		const en = createI18n('en');
+		const summary = en.format.list(
+			troubledGame.stores[0]!.products.map((product) =>
+				en.labels.productCategory(product.productId)
+			)
+		);
+		expect(localizeAlert(alert, troubledGame, en)).toBe(
+			`Store #1: ${en.t('copy.stockTrouble.outOfStock', { products: summary })}`
 		);
 		expect(
 			localizeAlert(
@@ -2169,53 +2174,96 @@ describe('game copy builders', () => {
 		);
 	});
 
-	it('localizeStockTrouble returns null for all-healthy products and pluralizes multiple out-of-stock', () => {
-		expect.assertions(2);
+	it('localizeStockTrouble returns null when every product is healthy', () => {
+		expect.assertions(1);
 		const en = createI18n('en');
 
 		expect(
-			localizeStockTrouble(
-				[
-					{ lots: [{ receivedDay: 1, quantity: 10 }], reorderThreshold: 4 },
-					{ lots: [{ receivedDay: 1, quantity: 20 }], reorderThreshold: 5 }
-				],
-				en
-			)
+			localizeStockTrouble([stockProduct('bottled-water', 10), stockProduct('snacks', 20)], en)
 		).toBeNull();
-
-		expect(
-			localizeStockTrouble(
-				[
-					{ lots: [], reorderThreshold: 4 },
-					{ lots: [], reorderThreshold: 4 }
-				],
-				en
-			)
-		).toBe('2 products out of stock');
 	});
 
-	it('localizeStockTrouble joins out-of-stock and needs-import with a locale-aware list separator', () => {
-		expect.assertions(3);
+	it('localizeStockTrouble names affected products with out-of-stock names before needs-import names', () => {
+		expect.assertions(5);
+		const en = createI18n('en');
+		const products = [
+			stockProduct('bottled-water', 20), // healthy → must stay absent
+			stockProduct('snacks', 2), // needs import (first in its group)
+			stockProduct('produce', 0), // out of stock (first in its group)
+			stockProduct('pantry', 1) // needs import (second in its group)
+		];
+
+		const summary = localizeStockTrouble(products, en);
+		expect(summary).not.toBeNull();
+		expect(summary!.startsWith('Out of stock: Produce')).toBe(true);
+		expect(summary!.indexOf('Out of stock')).toBeLessThan(summary!.indexOf('Needs import'));
+		// Store product order is retained within each group.
+		expect(summary!.indexOf('Snacks')).toBeLessThan(summary!.indexOf('Pantry'));
+		expect(summary).not.toContain('Bottled Water');
+	});
+
+	it('localizeStockTrouble joins named groups with a locale-aware list separator', () => {
+		expect.assertions(4);
 		const en = createI18n('en');
 		const ja = createI18n('ja');
 		const zh = createI18n('zh-Hant');
 
-		const products = [
-			{ lots: [], reorderThreshold: 4 },
-			{ lots: [{ receivedDay: 1, quantity: 2 }], reorderThreshold: 4 }
-		];
+		const products = [stockProduct('produce', 0), stockProduct('snacks', 2)];
 
 		// English Intl.ListFormat conjunction joins two items with " and ".
 		expect(localizeStockTrouble(products, en)).toBe(
-			'1 product out of stock and 1 product needs import'
+			'Out of stock: Produce and Needs import: Snacks'
 		);
 
+		expect(localizeStockTrouble(products, ja)).toContain('在庫切れ');
 		// Japanese must not retain the English ", " separator.
 		expect(localizeStockTrouble(products, ja)).not.toContain(', ');
 
 		// Traditional Chinese must not retain the English ", " separator.
 		expect(localizeStockTrouble(products, zh)).not.toContain(', ');
 	});
+
+	it('keeps the stock trouble and stock recovery copy key sets identical across locales', () => {
+		const englishTroubleKeys = flattenStrings(messagesByLocale.en.copy.stockTrouble).map(
+			({ key }) => key
+		);
+		expect(englishTroubleKeys).toEqual(['outOfStock', 'needsImport']);
+
+		const englishRecoveryKeys = flattenStrings(messagesByLocale.en.storeStockTable)
+			.map(({ key }) => key)
+			.filter(
+				(key) =>
+					key.startsWith('recovery.') ||
+					key.startsWith('settingsStatus.') ||
+					key.startsWith('actions.')
+			);
+		expect(englishRecoveryKeys.length).toBeGreaterThan(0);
+
+		for (const locale of ['ja', 'zh-Hant'] as const) {
+			expect(
+				flattenStrings(messagesByLocale[locale].copy.stockTrouble).map(({ key }) => key)
+			).toEqual(englishTroubleKeys);
+
+			const localizedTableKeys = flattenStrings(messagesByLocale[locale].storeStockTable).map(
+				({ key }) => key
+			);
+			for (const key of englishRecoveryKeys) {
+				expect(localizedTableKeys).toContain(key);
+			}
+		}
+	});
+
+	function stockProduct(productId: ProductId, quantity: number): StoreProduct {
+		const definition = getProductDefinition(productId);
+		return {
+			productId,
+			brandId: 'common-ground',
+			lots: quantity > 0 ? [{ receivedDay: 1, quantity }] : [],
+			reorderThreshold: 4,
+			targetStock: 16,
+			sellingPrice: definition.defaultSellingPrice
+		};
+	}
 
 	it('localizeWorldCityStatus handles not-available-yet and null blocked reasons', () => {
 		expect.assertions(4);
