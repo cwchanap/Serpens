@@ -683,4 +683,71 @@ describe('StoreStockTable', () => {
 			.toHaveTextContent('Markdown: $5');
 		await expect.element(page.getByText('Markdown: $5').nth(1)).toBeVisible();
 	});
+
+	it('moves focus once to the new matching row when the focus request changes', async () => {
+		expect.assertions(3);
+		const waterAndSnacks: Store = {
+			...store,
+			products: [productWithStock('bottled-water'), productWithStock('snacks')]
+		};
+		const focusedRows: string[] = [];
+		const onFocusin = (event: Event): void => {
+			const row = (event.target as HTMLElement).closest('tr');
+			if (row?.id.startsWith(`${store.id}-stock-row-`)) {
+				focusedRows.push(row.id);
+			}
+		};
+		document.addEventListener('focusin', onFocusin);
+
+		const { rerender } = render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: waterAndSnacks,
+			ordinal: 1,
+			latestReport,
+			onUpdate: vi.fn(),
+			focusedProductId: 'bottled-water'
+		});
+
+		const waterRow = page.getByTestId('store-product-row-bottled-water');
+		await expect.poll(() => document.activeElement).toBe(waterRow.element());
+
+		rerender({
+			i18n: createI18n('en'),
+			store: waterAndSnacks,
+			ordinal: 1,
+			latestReport,
+			onUpdate: vi.fn(),
+			focusedProductId: 'snacks'
+		});
+
+		const snacksRow = page.getByTestId('store-product-row-snacks');
+		await expect.poll(() => document.activeElement).toBe(snacksRow.element());
+		expect(focusedRows).toEqual([
+			`${store.id}-stock-row-bottled-water`,
+			`${store.id}-stock-row-snacks`
+		]);
+		document.removeEventListener('focusin', onFocusin);
+	});
+
+	it('does not focus any row for an unmatched product focus request', async () => {
+		expect.assertions(2);
+		const waterAndSnacks: Store = {
+			...store,
+			products: [productWithStock('bottled-water'), productWithStock('snacks')]
+		};
+
+		render(StoreStockTable, {
+			i18n: createI18n('en'),
+			store: waterAndSnacks,
+			ordinal: 1,
+			latestReport,
+			onUpdate: vi.fn(),
+			focusedProductId: 'apparel'
+		});
+
+		expect(document.querySelectorAll('tbody tr')).toHaveLength(2);
+		await expect
+			.poll(() => document.activeElement?.id.startsWith(`${store.id}-stock-row-`) ?? false)
+			.toBe(false);
+	});
 });

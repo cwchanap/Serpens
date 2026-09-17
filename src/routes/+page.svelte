@@ -19,7 +19,7 @@
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
 	import { localizeGameAlert } from '$lib/i18n/gameCopy';
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
-	import { resolveAlertNavigation } from './alertNavigation';
+	import { resolveAlertNavigation, resolveStockAlertFocus } from './alertNavigation';
 	import { createInitialEventRuntime } from '$lib/game/eventSelection';
 	import {
 		MANAGEMENT_PANEL_SHORTCUT_KEY,
@@ -408,6 +408,8 @@
 	let focusedRetailSupplyCityId = $state<WorldCityId | null>(null);
 	let isCheatSheetOpen = $state(false);
 	let isStoreDetailOpen = $state(false);
+	// Transient deep-link target from a stock alert; never persisted.
+	let focusedStockProductId = $state<ProductId | null>(null);
 	let isGameMenuOpen = $state(false);
 	let isAlertsMenuOpen = $state(false);
 	let isBuildMenuOpen = $state(false);
@@ -1852,6 +1854,7 @@
 		logisticsRoutePreset = null;
 		focusedRetailSupplyCityId = null;
 		isStoreDetailOpen = false;
+		focusedStockProductId = null;
 		isBuildMenuOpen = false;
 		isSupplyAdvisorOpen = false;
 		// Pause the auto-tick whenever the active play mode or scenario run
@@ -2652,12 +2655,14 @@
 
 	function openStoreDetail(): void {
 		if (selectedStore) {
+			focusedStockProductId = null;
 			isStoreDetailOpen = true;
 		}
 	}
 
 	function closeStoreDetail(): void {
 		isStoreDetailOpen = false;
+		focusedStockProductId = null;
 	}
 
 	function closeIndustryInspector() {
@@ -2716,6 +2721,13 @@
 			}
 			showRetailMap();
 			selectedTileId = alert.tileId;
+			await tick();
+			// Only open the detail when the alert names the now-selected store;
+			// otherwise stop without opening the wrong detail.
+			const focus = resolveStockAlertFocus(alert, selectedStore);
+			if (!focus) return;
+			focusedStockProductId = focus.productId;
+			isStoreDetailOpen = true;
 			return;
 		}
 		if (alert.kind === 'factory-blocked' && alert.tileId) {
@@ -3130,6 +3142,7 @@
 			staff={game?.staff ?? []}
 			hiringCandidates={game?.hiringCandidates ?? []}
 			latestStoreReport={latestSelectedStoreReport}
+			focusedProductId={focusedStockProductId}
 			onUpdateStoreProduct={changeStoreProduct}
 			onUpdateStoreProductBrand={changeStoreProductBrand}
 			onHireStaff={hireStaff}
