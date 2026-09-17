@@ -3659,19 +3659,53 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 		.click();
 
 	// Active city is harbor-city; the alerts popover should list the
-	// campus-junction stock alert. Clicking it deep-links back to campus-junction.
+	// campus-junction stock alert. Its copy keeps every affected product
+	// discoverable, and clicking it deep-links back to campus-junction.
 	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
 	await page.getByRole('button', { name: /alerts?$/i }).click();
 	const alertsList = page.getByRole('group', { name: /alerts list/i });
 	await expect(alertsList).toBeVisible();
-	await alertsList
-		.getByRole('button', { name: /out of stock/i })
-		.first()
-		.click();
+	const stockAlert = alertsList.getByRole('button', {
+		name: /store #2: out of stock: games/i
+	});
+	await expect(stockAlert).toHaveCount(1);
+	await stockAlert.click();
 
-	// The map should switch to campus-junction and select the store's tile.
+	// The deep link switches the active retail city to campus-junction and
+	// opens the correct store detail directly on the Stock tab.
 	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
-	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+	const storeModal = page.locator('[role="dialog"][aria-modal="true"]');
+	await expect(storeModal).toBeVisible();
+	await expect(storeModal.getByRole('table', { name: /store #2 stock/i })).toBeVisible();
+	await expect(storeModal.getByRole('tab', { name: /stock/i })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+
+	// The alert's primary affected product owns focus once the modal's
+	// focus trap settles, and every affected product stays discoverable in
+	// the stock table.
+	const primaryRow = storeModal.getByTestId('store-product-row-games');
+	await expect(primaryRow).toBeFocused();
+	await expect(primaryRow).toBeVisible();
+
+	// A valid reorder edit commits and acknowledges truthfully — quoting the
+	// stored values and the next check day, without claiming shelf movement.
+	const gamesShelfStock = storeModal.getByTestId('derived-stock-games');
+	await expect(gamesShelfStock).toHaveText('0');
+	const reorderInput = storeModal.getByRole('spinbutton', {
+		name: /reorder threshold for games/i
+	});
+	await reorderInput.fill('12');
+	await reorderInput.blur();
+	await expect(storeModal.getByTestId('inventory-status-games')).toHaveText(
+		/^Saved: reorder 12, target \d+\. Next check: closing day 7 after sales\.$/
+	);
+
+	// The save alone changes settings only: the shelf quantity is untouched
+	// and no receipt evidence appears before any replenishment has run.
+	await expect(gamesShelfStock).toHaveText('0');
+	await expect(storeModal.getByTestId('receipt-evidence-games')).toHaveCount(0);
 });
 
 test('manage selected store stock and see weekly imports', async ({ page }) => {
@@ -3772,6 +3806,53 @@ test('manage selected store stock and see weekly imports', async ({ page }) => {
 		.locator('.metrics > div')
 		.filter({ hasText: /^External imports\s+\$[1-9][\d,]*$/ });
 	await expect(importsMetric).toBeVisible();
+
+	// Reopen the store after the week: the historical receipt evidence must
+	// name the completed report day and quote exactly the warehouse/import
+	// quantities that report recorded, while the current shelf status stays
+	// visibly separate from that historical receipt.
+	const completed = await waitForSavedReportDay(page, 7);
+	const completedReport = completed.reports.at(-1);
+	if (!completedReport) throw new Error('Missing completed weekly report');
+	const completedStoreReport = completedReport.storeReports.find(
+		(report) => report.storeId === 'store-1'
+	);
+	if (!completedStoreReport) {
+		throw new Error('Missing store report in the completed weekly report');
+	}
+	const completedProductReport = completedStoreReport.productReports.find(
+		(report) => report.productId === 'bottled-water'
+	);
+	if (!completedProductReport) {
+		throw new Error('Missing bottled-water report in the completed weekly report');
+	}
+
+	await page.keyboard.press('Escape');
+	await clickMapTile(page, 1, 6);
+	const reopenedModal = await openStoreDetail(page);
+	await expect(reopenedModal.getByRole('tab', { name: /stock/i })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	// The day-7 check refilled the shelf to the 140 target, so the row reads
+	// Healthy and hides its recovery context. Raising the reorder threshold
+	// above current stock makes the row 'Needs import' again, which surfaces
+	// the historical receipt next to the now-separate live shelf status.
+	await expect(reopenedModal.getByTestId('derived-stock-bottled-water')).toHaveText('140');
+	const reopenedReorder = reopenedModal.getByRole('spinbutton', {
+		name: /reorder threshold for bottled water/i
+	});
+	await reopenedReorder.fill('150');
+	await reopenedReorder.blur();
+	const receipt = reopenedModal.getByTestId('receipt-evidence-bottled-water');
+	await expect(receipt).toBeVisible();
+	await expect(receipt).toContainText(`day ${completedReport.day}`);
+	await expect(receipt).toContainText(
+		`${completedProductReport.warehouseUnits} units from the city warehouse`
+	);
+	await expect(receipt).toContainText(`${completedProductReport.importedUnits} units imported`);
+	await expect(receipt).toContainText('A past record; current shelf stock may differ.');
+	await expect(reopenedModal.getByTestId('derived-stock-bottled-water')).toBeVisible();
 });
 
 test('grocery product pressure surfaces produce waste and surviving stock', async ({ page }) => {
