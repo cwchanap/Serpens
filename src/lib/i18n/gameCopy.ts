@@ -582,21 +582,21 @@ export function localizeStockTrouble(
 	products: readonly StoreProduct[],
 	i18n: I18nBundle
 ): string | null {
-	const affectedIds = new Set(getAffectedStockProductIds(products));
-	if (affectedIds.size === 0) {
-		return null;
-	}
-
-	// Store order is preserved inside each group because products are scanned
-	// in order; getAffectedStockProductIds owns the OOS-before-needs-import rule.
+	// getAffectedStockProductIds owns both membership and display order
+	// (out-of-stock first, then needs-import, store order within each group);
+	// the status lookup below only picks each product's label bucket, never
+	// the order.
 	const outOfStock: string[] = [];
 	const needsImport: string[] = [];
-	for (const product of products) {
-		if (!affectedIds.has(product.productId)) continue;
+	const productById = new Map(products.map((product) => [product.productId, product]));
+	for (const productId of getAffectedStockProductIds(products)) {
+		const product = productById.get(productId);
+		if (!product) continue;
+		const label = i18n.labels.productCategory(productId);
 		if (getStoreProductStatus(product) === 'Out of stock') {
-			outOfStock.push(i18n.labels.productCategory(product.productId));
+			outOfStock.push(label);
 		} else {
-			needsImport.push(i18n.labels.productCategory(product.productId));
+			needsImport.push(label);
 		}
 	}
 

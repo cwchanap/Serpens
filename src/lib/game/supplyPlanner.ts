@@ -450,19 +450,18 @@ export function buildSupplyPlannerSnapshot(
 		return { status: 'unsupported', reason: 'missing-producer-recipe' };
 	}
 
-	// One shared retail supply resolution: the planner keeps its
-	// supply-city-unavailable outcomes when no supply city is configured or
-	// the configured city cannot resolve an inventory scope.
+	// One shared retail supply resolution: the resolver is authoritative for
+	// source selection, and no resolved supply city (no assignment, or a
+	// configured city without a usable inventory) keeps the planner's
+	// supply-city-unavailable outcome.
 	const supplyContext = resolveRetailSupplyContext(game, retailCity.id as WorldCityId);
-	if (supplyContext.configuredSupplyCityId === null) {
+	if (supplyContext.resolvedSupplyCityId === null) {
 		return { status: 'unavailable', reason: 'supply-city-unavailable' };
 	}
 
-	// Resolve the inventory scope before reading stats. This preserves the
-	// soft-unavailable boundary for a configured but closed/missing city while
-	// allowing getCityInventoryStats to remain the authoritative corruption
-	// boundary for an otherwise valid inventory.
-	const industry = getIndustryInventoryScope(game, supplyContext.configuredSupplyCityId);
+	// Planner-owned industry scope (buildings + production report) for the
+	// resolved source city, resolved before reading stats.
+	const industry = getIndustryInventoryScope(game, supplyContext.resolvedSupplyCityId);
 	if (!industry) {
 		return { status: 'unavailable', reason: 'supply-city-unavailable' };
 	}
