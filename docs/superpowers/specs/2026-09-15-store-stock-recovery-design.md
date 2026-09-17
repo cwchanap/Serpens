@@ -7,73 +7,66 @@
 
 ## Outcome
 
-Turn the existing store-stock warning into a complete recovery loop without adding another notification or repair system:
+Turn the existing store-stock warning into a complete recovery loop without adding another notification, repair, or inventory system:
 
-1. a store has one stock alert whose copy names every currently affected product;
-2. selecting the alert opens the correct retail city, store, Stock tab, and deterministic primary product row;
-3. the existing row keeps showing shelf stock, reorder threshold, target stock, and live status while a compact recovery detail adds supply source, next check, eligibility, and dated receipt evidence;
-4. the player edits the existing reorder/target controls through the existing controller/autosave path;
-5. the UI distinguishes a committed change, a no-op edit, and a non-success result without claiming that stock moved;
-6. after time advances, the UI shows dated report evidence for warehouse/import receipts separately from the current shelf condition.
+1. one store-stock alert identifies the affected store without snapshotting a derived product choice;
+2. selecting it opens the correct retail city, store, Stock tab, and a deterministic live primary product row;
+3. the existing row keeps owning shelf stock, reorder threshold, target stock, and live status while a compact recovery detail adds only supply context, next check, eligibility, and dated receipt evidence;
+4. existing reorder/target controls continue through the current controller/autosave path;
+5. inventory-target edits distinguish committed, unchanged, and non-success command outcomes without claiming that stock moved;
+6. after time advances, completed reports provide dated receipt evidence separately from the current shelf condition.
 
-This is one HPA-293 delivery PR. The planning checkpoint and runtime implementation remain on the same branch/PR.
+This remains one HPA-293 delivery PR. Planning and runtime implementation stay on the same branch/PR.
 
 ## Review resolution
 
-Accepted:
+The revised design removes duplicated derived state rather than adding new abstractions:
 
-- keep only the deterministic primary `productId` on `GameAlert`; derive the full affected-product list from current store state through one shared stock helper;
-- return the existing `GameRouteCommitResult` to the stock table instead of collapsing command outcomes to `boolean`;
-- add one pure stock-focus decision helper to `alertNavigation.ts` while leaving the async route effects in `+page.svelte`;
-- order deep-link row focus after the modal focus trap's initial focus;
-- reuse the existing slow weekly-import E2E for receipt evidence instead of building a second seven-day journey;
-- do not repeat stock/reorder/target/status inside the recovery detail because the existing row already renders them;
-- distinguish an empty shelf with zero reorder threshold as an actionable blocked state;
-- converge the Supply Planner onto the exported retail-supply-context resolver;
-- use the repository's `bun run test:e2e -- ...` script for targeted browser verification.
-
-Partially accepted:
-
-- `not-replenishable-product` remains a defensive read-model state because `applyWeeklyReplenishment` has that guard, but current save validation requires store products to belong to the archetype/unlocked set. Do not add extra repair UI for a state that valid current gameplay should not normally produce.
-- do not force component-local stock-alert effects into `page.svelte.spec.ts` through a new route abstraction solely for testing. The pure store/product decision is unit-tested in `alertNavigation.spec.ts`; the existing `selectAlertCity` controller coverage remains; the fast stock-alert Playwright test owns the route effect sequence.
+- `GameAlert` does **not** gain `productId` or `affectedProductIds`; the live store remains the source for affected-product ordering and primary focus.
+- Add `getAffectedStockProductIds(...)` beside the stock-status rules and reuse it for alert derivation, alert copy, and deep-link focus.
+- Replace `resolveStockAlertFocus(alert, selectedStore)` with `resolveStockAlertDestination(alert, game)`. The helper finds the live store by `alert.storeId`, derives its live primary product, and returns the city/tile/store destination without reading reactive UI state.
+- The route sets `selectedTileId`, `focusedStockProductId`, and `isStoreDetailOpen` directly after any required city commit. It does not call `openStoreDetail()` and does not wait for `selectedStore` before deciding whether to open.
+- `StockRecoveryView` contains only data the existing stock row cannot already show: eligibility, next check, supply context/mode, and historical receipt evidence.
+- Keep `localizeStockTrouble(...)` as the existing count-based inspector helper. Add an alert-only affected-product namer so naming products does not silently change `TileInspector` copy.
+- Only inventory-target edits await and interpret `GameRouteCommitResult`. Selling-price edits continue to use the same callback but do not show reorder/target acknowledgement copy.
+- Supply Planner reuses `resolveRetailSupplyContext(...)` only for its assignment/source preamble; it keeps `getIndustryInventoryScope(...)` for building and inventory snapshots. `productChainTree.ts` and `retailSupplySources.ts` remain untouched.
+- `not-replenishable-product` stays in the pure read model to mirror the authoritative guard, but valid saves already constrain store products to the archetype/unlocked set. Do not add player copy or disabled-handoff chrome for that defensive state.
 
 ## Constraints
 
-- Reuse the existing one-alert-per-store model; no notification inbox or per-product alert spam.
-- Keep `GameState`, `updateStoreProduct`, `GameRouteController`, `simulateDay`, and `DailyReport` authoritative.
+- One alert per store; no inbox or per-product alert spam.
+- No `GameAlert.productId`, `affectedProductIds`, persisted focus, or acknowledgement state.
+- Keep `GameState`, `updateStoreProduct`, `GameRouteController`, `simulateDay`, and completed `DailyReport` data authoritative.
 - Reuse the seven-day cadence and supply resolution in `retailSupply.ts`; Svelte must not duplicate replenishment formulas.
-- Replenishment is evaluated after sales on the closing day. Saving settings does not move stock and does not mean a delivery happened.
-- Inter-city logistics delivers into city inventory. Retail replenishment consumes its assigned supply-city inventory and imports any shortage; it never treats a route arrival as a direct shelf delivery.
-- Read models are pure: no RNG consumption, state mutation, autosave, or speculative simulation.
-- No save-schema changes or migration work.
-- No new buying command, emergency refill, automatic repair, forecast engine, global store, or broad route refactor.
-- Reuse existing store/product art and the current parchment/brass UI. No image-generation task is required.
+- Replenishment is evaluated after sales on the closing day. Saving settings does not move stock and is not receipt evidence.
+- Inter-city logistics delivers into city inventory; retail replenishment consumes assigned supply-city inventory and imports shortages. Routes never deliver directly to a shelf.
+- Read models are pure: no RNG, mutation, autosave, or speculative future simulation.
+- No save-schema changes, migration, buying command, emergency refill, repair workflow, forecast engine, global store, or broad route refactor.
+- Reuse existing art and current UI treatment. No image-generation task is required.
 
 ## Existing seams
 
-The feature can stay narrow because the necessary ownership already exists:
-
 - `src/lib/game/alerts.ts` already emits one `store-stock` alert per unhealthy store.
-- `src/lib/game/stock.ts` owns live shelf quantity, `Out of stock` / `Needs import` / `Healthy`, and normalized inventory-target edits.
-- `src/lib/game/retailSupply.ts` owns the seven-day cadence, supply-city assignment, import fallback, replenishment execution, and local/mixed/import outcome classification.
-- `src/lib/game/supplyPlanner.ts` currently repeats the retail supply assignment/source resolution and should consume the exported authoritative helper.
-- `src/lib/game/simulateDay.ts` runs sales before replenishment and persists `DailyStoreReport` / `DailyProductReport` evidence under the closing day.
-- `src/lib/game/commandResult.ts` already defines the shared `GameRouteCommitResult` consumed by route and UI components.
-- `src/routes/+page.svelte` already owns async alert-city switching, selected store/tile state, planner handoffs, management-panel handoffs, and controller mutations.
-- `src/routes/gameRouteController.ts` already owns inventory-target commands and autosave.
-- `src/routes/alertNavigation.ts` already owns pure alert-destination decisions.
-- `StoreDetailModal.svelte` already defaults to the Stock tab and contains `StoreStockTable.svelte`.
-- `StoreStockTable.svelte` already renders product rows plus stock, reorder, target, status, and the existing controls.
-- `focusTrap.ts` intentionally excludes `[tabindex="-1"]` from the Tab cycle but synchronously moves focus to the first focusable element when the modal attaches.
-- `retail-sim.e2e.ts` already contains both a non-active-city stock-alert journey and a separate slow weekly-import journey.
+- `src/lib/game/stock.ts` owns shelf quantity, live stock status, and normalized inventory-target edits.
+- `src/lib/game/retailSupply.ts` owns the seven-day cadence, supply-city assignment, import fallback, replenishment, and receipt classification.
+- `src/lib/game/supplyPlanner.ts` currently duplicates only the assignment/source preamble before using `getIndustryInventoryScope(...)` for its real planner snapshot.
+- `src/lib/game/simulateDay.ts` runs sales before replenishment and stores completed report evidence.
+- `src/lib/game/commandResult.ts` owns `GameRouteCommitResult`.
+- `src/routes/+page.svelte` owns async city switching, route selection, modal state, planner handoffs, and controller mutations.
+- `src/routes/alertNavigation.ts` owns pure alert-destination decisions.
+- `StoreDetailModal.svelte` already defaults to Stock and contains `StoreStockTable.svelte`.
+- `StoreStockTable.svelte` already renders stock, reorder, target, status, and edit controls.
+- `TileInspector.svelte` also consumes `localizeStockTrouble(...)`, so that helper must retain its compact count copy.
+- `focusTrap.ts` synchronously moves focus when the modal attaches and excludes `[tabindex="-1"]` from its Tab cycle.
+- `retail-sim.e2e.ts` already has the fast cross-city alert journey and the slow weekly-import journey needed by this ticket.
 
-## 1. Alert contract: one store alert, one primary focus field
+## 1. One live affected-product rule; no product snapshot on alerts
 
-Add one shared ordered helper next to the stock-status rules:
+Add one ordered helper beside `getStoreProductStatus` / `summarizeStockTrouble`:
 
 ```ts
 export function getAffectedStockProductIds(
-  products: readonly StoreProduct[]
+  products: readonly Pick<StoreProduct, 'productId' | 'lots' | 'reorderThreshold'>[]
 ): readonly ProductId[];
 ```
 
@@ -84,80 +77,104 @@ Ordering is:
 2. Needs import
 ```
 
-Within each group, preserve the existing `store.products` order. Healthy products are omitted.
+Within each severity group preserve `store.products` order. Healthy products are omitted.
 
-Extend the derived `GameAlert` shape only with the primary focus target:
+`collectGameAlerts` uses the helper only to decide whether the store is affected. The alert stays subject identity only:
 
 ```ts
-export interface GameAlert {
-  // existing fields...
-  productId?: ProductId;
+{
+  id: `store-stock:${store.id}`,
+  kind: 'store-stock',
+  cityId: store.cityId,
+  storeId: store.id,
+  tileId: store.tileId
 }
 ```
 
-`collectGameAlerts` calls `getAffectedStockProductIds(store.products)` and uses the first ID as `productId`. It still emits exactly one alert per store.
+Do not add `productId` or `affectedProductIds` to `GameAlert`.
 
-Do **not** add `affectedProductIds` to `GameAlert`. Alerts are derived from live state, and `localizeAlert` already has the current `GameState`; duplicating the full affected list on the alert would create a second derived representation plus a fallback branch.
+### Alert copy vs inspector copy
 
-`localizeStockTrouble` uses the same ordered helper to name the affected localized products. Hand-written test alerts may omit `productId`; copy still derives from the store state.
+Keep `localizeStockTrouble(...)` count-based because `TileInspector` uses it for its compact attention line.
 
-Do not persist alerts or product-focus state.
-
-## 2. Keep generic alert routing small, extract only the focus decision
-
-`resolveAlertNavigation` remains the pure resolver for generic management-panel and world-route destinations. Do not widen its union just for HPA-293.
-
-Add a narrow helper beside it:
+Add a separate alert-only helper in `gameCopy.ts`, for example:
 
 ```ts
-export function resolveStockAlertFocus(
+function localizeAffectedStockProducts(
+  products: readonly Pick<StoreProduct, 'productId' | 'lots' | 'reorderThreshold'>[],
+  i18n: I18nBundle
+): string | null;
+```
+
+It calls `getAffectedStockProductIds(...)`, maps those IDs through existing localized product labels, and formats the ordered list. `localizeAlert(...)` already re-reads the live store, so it uses this helper and the existing `copy.alerts.storeStock` template.
+
+This gives alerts named products while leaving inspector count copy unchanged.
+
+## 2. Resolve the stock destination from live game state, not reactive selection
+
+Keep `resolveAlertNavigation(...)` unchanged for panel/world-route destinations. Add beside it:
+
+```ts
+export interface StockAlertDestination {
+  cityId: string;
+  tileId: string;
+  storeId: string;
+  productId: ProductId | null;
+}
+
+export function resolveStockAlertDestination(
   alert: GameAlert,
-  selectedStore: Store | null
-): { productId: ProductId | null } | null;
+  game: GameState
+): StockAlertDestination | null;
 ```
 
 Rules:
 
-- return `null` unless `alert.kind === 'store-stock'`, `alert.storeId` exists, and `selectedStore.id === alert.storeId`;
-- when `alert.productId` still exists in that store, return it as the focus target;
-- when the store matches but the alert has no usable `productId`, return `{ productId: null }` so the correct detail can still open without focusing a wrong row.
+- return `null` unless `alert.kind === 'store-stock'` and `alert.storeId` resolves to a live store;
+- use the live store's `cityId`, `tileId`, and `id` rather than trusting duplicated alert routing fields;
+- derive `productId` as `getAffectedStockProductIds(store.products)[0] ?? null`;
+- if the store is still present but no product is currently affected, return the destination with `productId: null` so the store still opens without focusing a stale row.
 
-The route keeps the existing effects that require async state:
+The generic `resolveAlertNavigation(...)` union does not change.
 
-1. switch to the alert's retail city through `gameRouteController.selectAlertCity(...)` when necessary;
-2. show the retail map;
-3. select the alert's tile;
-4. await reactive settlement;
-5. call `resolveStockAlertFocus(alert, selectedStore)`;
-6. if it returns non-null, set transient `focusedStockProductId` and open `StoreDetailModal`.
+### Route effects
 
-The existing panel/world-route branches remain unchanged. This gives the risky store-identity/missing-product decision a unit-test home without creating a second router or moving route effects out of `+page.svelte`.
+`handleSelectAlert(...)` keeps the existing generic branches first. For store stock:
 
-## 3. Product-row focus is transient presentation state and follows the focus trap
+1. resolve `resolveStockAlertDestination(alert, game)` before changing UI state;
+2. when its city is not active, call the existing `gameRouteController.selectAlertCity(...)` and stop on any non-commit result;
+3. call `showRetailMap()`;
+4. set `selectedTileId = destination.tileId`;
+5. set `focusedStockProductId = destination.productId`;
+6. set `isStoreDetailOpen = true` directly.
 
-Add an optional `focusedProductId` handoff through `StoreDetailModal` to `StoreStockTable`.
+Do **not** read `selectedStore`, await route-side reactive settlement, or call `openStoreDetail()`. The existing `{#if isStoreDetailOpen && selectedStore}` render condition naturally waits until the active city/tile derivation catches up.
+
+This removes the cross-city race and makes the full destination decision unit-testable with a `GameState` fixture.
+
+## 3. Product-row focus remains transient presentation state
+
+Add route-local:
+
+```ts
+let focusedStockProductId = $state<ProductId | null>(null);
+```
+
+Manual store-detail opening and closing clear it. It is never persisted.
+
+Pass optional `focusedProductId` through `StoreDetailModal` to `StoreStockTable`.
 
 The matching row:
 
 - has a stable DOM identifier/data attribute;
 - is programmatically focusable with `tabindex="-1"`;
-- scrolls into view and receives focus once when the focus request changes;
-- keeps all existing inputs in the normal tab order.
+- after modal mount, awaits `tick()` so the modal focus trap has completed its synchronous initial focus;
+- then scrolls/focuses the requested row once;
+- leaves its existing inputs in the normal Tab order.
 
-The initial deep-link focus must happen **after** `focusTrap` performs its synchronous initial focus. Use the existing Svelte `tick()` boundary before focusing/scrolling the row; do not add a new focus-manager abstraction or modify `focusTrap` unless implementation proves the tick ordering insufficient.
+No new focus manager and no focus-trap change unless the focused component test proves `tick()` insufficient.
 
-Tests pin both:
-
-- the requested product row owns focus after modal mount settles;
-- because the row is `tabindex="-1"`, subsequent Tab navigation still cycles through the modal's normal focusable controls rather than the row itself.
-
-Manual store-detail opening clears the alert focus. Closing the modal also clears it. Nothing is written to `GameState` or save data.
-
-Because pointer and keyboard alert activation already share the same `onSelectAlert` callback, both interaction methods use the same navigation path.
-
-## 4. Centralize replenishment timing and supply context completely
-
-Promote the existing retail-supply helpers instead of reproducing their rules in UI or planner code.
+## 4. Export the cadence and supply-context seams; preserve planner scope
 
 `retailSupply.ts` exposes:
 
@@ -170,23 +187,36 @@ export function resolveRetailSupplyContext(
 ): RetailReplenishmentContext;
 ```
 
-`getNextReplenishmentCheckDay` follows `isReplenishmentDay` / `REPLENISHMENT_INTERVAL_DAYS`:
+`getNextReplenishmentCheckDay` is defined next to `isReplenishmentDay` from the same interval convention:
 
-- current day 7 -> check on closing day 7;
-- current day 8 -> next check on closing day 14;
-- the helper is the only place added for this calculation.
+```text
+day 6 -> 7
+day 7 -> 7
+day 8 -> 14
+```
 
-`resolveRetailSupplyContext` is the current private resolver made reusable. It is consumed by:
+`resolveRetailSupplyContext` is the current private function exported without changing its semantics. `applyWeeklyReplenishment` keeps using it.
 
-- `applyWeeklyReplenishment`;
-- `stockRecovery.ts`;
-- `supplyPlanner.ts` instead of its current assignment/source-resolution copy.
+### Supply Planner convergence is preamble-only
 
-The planner keeps its existing unavailable result semantics when the returned context has no configured or resolved supply city. Existing planner tests pin behavior parity.
+In `supplyPlanner.ts`, replace only the direct assignment lookup / configured-source availability preamble with `resolveRetailSupplyContext(...)`.
 
-## 5. Add one pure stock-recovery read model
+Unassigned or unresolved supply context remains planner `supply-city-unavailable` exactly as today.
 
-Create `src/lib/game/stockRecovery.ts`. It composes existing stock, retail-supply, archetype, world-city, and report APIs; it does not own new simulation rules.
+After that preamble, keep:
+
+```ts
+const industry = getIndustryInventoryScope(game, context.resolvedSupplyCityId);
+const inventoryStats = getCityInventoryStats(game, industry.cityId);
+```
+
+and the existing downstream building/inventory/demand snapshot logic.
+
+Do not refactor `getIndustryInventoryScope`, `productChainTree.ts`, or `retailSupplySources.ts`; they solve different problems.
+
+## 5. Pure stock-recovery read model emits only missing row context
+
+Create `src/lib/game/stockRecovery.ts`:
 
 ```ts
 export type StockRecoveryEligibility =
@@ -208,15 +238,9 @@ export interface StockReceiptEvidence {
 }
 
 export interface StockRecoveryView {
-  productId: ProductId;
-  currentStock: number;
-  status: StoreProductStatus;
-  reorderThreshold: number;
-  targetStock: number;
   eligibility: StockRecoveryEligibility;
   nextCheckDay: number;
-  configuredSupplyCityId: WorldCityId | null;
-  resolvedSupplyCityId: WorldCityId | null;
+  supplyContext: RetailReplenishmentContext;
   supplyMode: StockRecoverySupplyMode;
   lastReceipt: StockReceiptEvidence | null;
 }
@@ -227,11 +251,11 @@ export function buildStoreStockRecoveryViews(
 ): ReadonlyMap<ProductId, StockRecoveryView>;
 ```
 
-### Current eligibility
+The map key is the product identity. Do not copy `productId`, current stock, live status, reorder threshold, or target stock into the view; the row already owns those values from the live `StoreProduct`.
 
-The read model describes what the current shelf state would do at a replenishment check; it does not promise the same state will still exist when that check runs.
+### Eligibility
 
-Use the live rule and guard order:
+For each live product:
 
 ```text
 if product is not replenishable by the store archetype -> not-replenishable-product
@@ -240,139 +264,146 @@ else if currentStock < reorderThreshold -> eligible-at-current-stock
 else -> not-below-threshold
 ```
 
-`blocked-by-zero-threshold` is actionable: copy points the player at the existing reorder-threshold input because an empty shelf with threshold `0` can never satisfy `stock < reorderThreshold`.
+`blocked-by-zero-threshold` is player-actionable and points at the row's existing reorder input.
 
-`not-replenishable-product` mirrors the authoritative replenishment guard defensively, but valid current saves already restrict store products to the archetype/unlocked set. Do not expose supply/planner actions as if they can repair this state.
+`not-replenishable-product` remains a defensive mirror of the authoritative replenishment guard. Valid current saves already constrain store products to the archetype/unlocked set, so do not add player-facing explanation or disabled-handoff chrome for it. Unit tests pin it only.
 
-`neededUnits === 0` does not need another eligibility member: `updateStoreProduct` normalizes `targetStock >= ceil(reorderThreshold)`, so a UI-reachable below-threshold product has positive target headroom. Pin that invariant once in tests.
+`updateStoreProduct` already normalizes `targetStock >= ceil(reorderThreshold)`, so no extra `neededUnits === 0` eligibility member is required.
 
-UI copy explicitly says the actual check occurs after that closing day's sales, so stock that is currently at/above the threshold can still become eligible later that day.
+### Supply context
 
-### Supply source
-
-Describe the real replenishment path:
-
-- assigned/resolved supply city: consume matching city inventory first, imports cover shortage;
-- no configured supply city: imports are the fallback source;
-- configured but unavailable source: imports cover the replenishment.
-
-Do not describe an inter-city route as delivering directly to the store shelf.
+Use `resolveRetailSupplyContext(...)` directly and derive the three UI supply modes from it. Do not describe a logistics route as direct shelf delivery.
 
 ### Historical receipt evidence
 
-Search completed reports newest-first for the same store/product. A receipt exists only when `warehouseUnits > 0` or `importedUnits > 0` and the store report carries replenishment context.
+Scan `game.reports` newest-first. For the matching store/product, emit `lastReceipt` only when the completed store report has replenishment context and `warehouseUnits > 0 || importedUnits > 0`.
 
-Classify it with the existing `getRetailReplenishmentOutcome(...)`. Preserve the report's `day`, `warehouseUnits`, and `importedUnits`.
+Use the report's day/quantities and existing `getRetailReplenishmentOutcome(...)`. This historical receipt can coexist with a currently empty shelf; the latest report's sold/missed values are not a substitute for finding the latest actual receipt.
 
-This evidence remains explicitly historical. `currentStock` and live `status` come from current state, so the UI can truthfully say “received on day 7” even if the product has sold out again afterward.
+No repair/action log is persisted.
 
-Do not persist a repair/action log.
+## 6. Render only missing recovery context in the existing stock row
 
-## 6. Render only the missing recovery context in the existing stock row
+`StoreDetailModal` derives:
 
-`StoreDetailModal` has full `GameState`, so it derives `buildStoreStockRecoveryViews(game, store.id)` and passes the read models into `StoreStockTable`. `StoreStockTable` does not own a second copy of simulation logic or a global game store.
+```ts
+buildStoreStockRecoveryViews(game, store.id)
+```
 
-The existing row already shows:
+and passes the map into `StoreStockTable`.
+
+The existing row remains authoritative for:
 
 - current shelf quantity;
 - reorder threshold;
 - target stock;
-- live stock/status.
+- live status.
 
-Do not repeat those values in a second detail block.
+For an unhealthy product, and for an explicitly focused product whose status changed, render only:
 
-For an unhealthy product, and always for the explicitly focused product, add a compact detail region that shows only what the row does not already provide:
-
-- configured/resolved supply source or import fallback;
+- configured/resolved supply or import fallback;
 - next scheduled closing-day check;
-- current-eligibility explanation and direct zero-threshold fix when applicable;
-- most recent **historical** dated receipt evidence, if any.
+- current eligibility explanation;
+- latest historical dated receipt, if any.
 
-The row's existing live status remains visibly separate from the historical receipt. The detail fits inside the existing table scroll surface; do not add another modal or new duplicate columns.
+Do not add duplicate stock/threshold/target/status fields or columns.
 
-## 7. Existing edits, truthful command-result acknowledgement
+`blocked-by-zero-threshold` points directly to raising the existing reorder-threshold input. The defensive `not-replenishable-product` state receives no dedicated locale copy or repair/handoff chrome.
 
-Keep the current reorder/target inputs. Do not add a dedicated “repair” command.
+## 7. Inventory acknowledgement uses command results; selling price does not
 
-The route's `changeStoreProduct(...)` awaits the existing controller command and returns:
+Keep the current `StoreStockTable` `onUpdate(...)` surface to avoid callback churn, but change its return type to:
 
 ```ts
-Promise<GameRouteCommitResult | null>
+(
+  storeId: string,
+  productId: ProductId,
+  patch: StoreProductPatch
+) => Promise<GameRouteCommitResult | null>
 ```
 
-`null` is reserved for pre-command cases such as missing game/product or command unavailability. Do not collapse the controller's shared union to `boolean`.
+The route's `changeStoreProduct(...)` returns the controller result unchanged. `null` is only for pre-command cases such as missing game/product or unavailable mutation capability.
 
-For inventory-target edits, `StoreStockTable` awaits the callback and handles the result truthfully:
+### Pin the field split
 
-- `committed` or `sandbox-committed` with `changed: true`: after the reactive prop update, read the updated recovery view and show `Saved: reorder X, target Y. Next check: closing day N after sales.`;
-- `unchanged` or `sandbox-committed` with `changed: false`: show neutral no-change copy using the current stored values and next check;
-- any busy/rejected/unavailable/failed/confirmation result: show one localized non-success status and make no success/recovery claim.
+`StoreStockTable.updateNumber(...)` must branch by field:
 
-The acknowledgement is presentation-only and uses the actual stored values after `updateStoreProduct` normalization. It never says “restocked”, “recovered”, or otherwise treats a successful save as inventory movement.
+- `sellingPrice`: invoke `onUpdate(...)` and ignore the returned result for acknowledgement purposes, preserving today's price-edit UX;
+- `reorderThreshold` / `targetStock`: await `onUpdate(...)`, interpret `GameRouteCommitResult`, then acknowledge only this inventory edit.
 
-Stock quantity must remain unchanged immediately after saving target settings.
+Never let a selling-price edit produce `Saved: reorder X, target Y` or `not saved` inventory copy.
 
-Selling-price behavior remains otherwise unchanged; callers that do not need the result may ignore the returned union.
+For inventory edits:
 
-## 8. Contextual supply and planner handoffs
+- `committed`, or `sandbox-committed` with `changed: true`: after `tick()`, read the committed product from the updated `store.products` prop plus `nextCheckDay` from the recovery view and show saved copy;
+- `unchanged`, or `sandbox-committed` with `changed: false`: show neutral no-change copy from the current stored product values;
+- any other status or `null`: show localized not-saved copy and no recovery claim.
 
-The recovery detail exposes two existing destinations rather than inventing repair actions:
+The acknowledgement never says restocked/recovered and never treats a save as stock movement. Shelf quantity must remain unchanged immediately after the edit.
 
-- **Manage supply source** -> close store detail and call the existing Stores management handoff for `store.cityId` (`openStoresManagement`).
-- **Plan supply** -> close store detail and call the existing Supply Planner handoff for that `productId` (`planSupplyProduct`).
+## 8. Reuse existing contextual handoffs
 
-The alert path has already selected the store's retail city before either action is available, so the planner remains scoped to the correct city. Reuse the route's current `plannerProductIds` to disable/omit a planner handoff when the product is not currently supported.
+The recovery detail may expose only the existing destinations:
 
-For `blocked-by-zero-threshold`, keep the reorder input as the primary fix; the handoffs remain secondary context. For defensive `not-replenishable-product`, do not imply either handoff can make shelf replenishment occur.
+- **Manage supply source** -> close detail and call `openStoresManagement(store.cityId)`;
+- **Plan supply** -> close detail and call `planSupplyProduct(productId)`.
 
-The Stores panel remains city-level because retail supply assignment is city-level in the authoritative model.
+Use the current planner-supported product set for the planner handoff. Do not add buy/repair/logistics-to-shelf actions.
+
+For `blocked-by-zero-threshold`, the reorder input is the primary fix. The defensive `not-replenishable-product` state does not get handoff chrome.
 
 ## 9. Localization and accessibility
 
-Add matching copy to English, Japanese, and Traditional Chinese message catalogs.
+Add English, Japanese, and Traditional Chinese copy only for player-reachable recovery states/actions:
+
+- assigned/unassigned/unavailable import-fallback explanations;
+- eligible / not-below-threshold / blocked-zero-threshold explanations;
+- closing-day/after-sales timing;
+- historical receipt outcomes/evidence;
+- saved / no-change / not-saved inventory-setting statuses;
+- Manage supply source / Plan supply actions.
+
+Do **not** add dedicated `not-replenishable-product` player copy.
+
+Alert product naming uses existing localized product labels and the existing `copy.alerts.storeStock` template; keep `localizeStockTrouble` count keys unchanged for the inspector.
 
 Accessibility requirements:
 
-- alert activation works from pointer and keyboard through the existing control;
-- deep-link focus is applied after the modal focus trap's initial focus;
-- the focused product row is `tabindex="-1"`, receives programmatic focus, and remains outside the normal Tab cycle;
-- all existing row inputs remain normal tab stops;
-- recovery status/acknowledgement uses appropriate status text, not animation-only feedback;
-- product names in alert copy use existing localized product labels;
-- recovery content remains readable in the stock table's narrow horizontal-scroll layout;
+- existing alert activation remains pointer/keyboard accessible;
+- deep-link row focus happens after focus-trap initialization via `tick()`;
+- focused row is `tabindex="-1"` and outside normal Tab order;
+- row inputs stay normal tab stops;
+- status/acknowledgement is textual, not animation-only;
 - no pause/speed ownership changes.
-
-No new animation is required.
 
 ## 10. Determinism, persistence, and ownership invariants
 
-HPA-293 must preserve these invariants:
-
-- `buildStoreStockRecoveryViews` is referentially pure for a given state.
-- Calling it does not change `rngState`, `cash`, reports, stock, assignments, or autosave state.
-- Alert derivation consumes no RNG and does not mutate product order.
-- A settings edit goes through `GameRouteController.updateStoreInventoryTargets` and the existing save path.
+- `buildStoreStockRecoveryViews` is pure for a given `GameState`.
+- Calling it changes neither RNG nor state/reports/assignments/autosave.
+- Alerts and destination resolution consume no RNG and do not mutate product order.
+- Inventory settings still go through `GameRouteController.updateStoreInventoryTargets` and existing autosave.
 - `simulateDay` remains the only mechanism that can produce replenishment receipt evidence.
-- no new persisted fields, schema version, migration, compatibility alias, or save converter.
+- no persisted fields, schema version, migration, compatibility alias, or save converter.
 
 ## Verification shape
 
-Focused tests should pin:
+Focused tests pin:
 
-- one alert per store and deterministic OOS-first primary selection from the shared affected-product helper;
-- localized names for all affected products in alert copy without duplicating the list on `GameAlert`;
-- next-check behavior immediately before/on/after a boundary;
-- Supply Planner behavior parity after it switches to `resolveRetailSupplyContext`;
-- equality (`stock === threshold`), empty-stock/zero-threshold blocked behavior, and target/threshold normalization;
-- current eligibility can differ from the eventual post-sales check without forecasting sales;
-- assigned-city, mixed, import-only, and unassigned-import receipt evidence;
-- historical receipt vs current shelf status;
-- read-model purity;
-- stock-focus decision for matching store, mismatched store, missing product, and missing focus ID;
-- deep-linked row keeps focus after modal mount and stays outside the Tab cycle;
-- command-result acknowledgement distinguishes changed, unchanged, and non-success outcomes and never alters stock by itself;
-- contextual handoffs and existing non-stock alert destinations remain unchanged;
-- the existing fast non-active-city stock-alert E2E proves alert -> exact focus -> edit acknowledgement without advancing time;
-- the existing slow weekly-import E2E gains the dated receipt/current-status assertions instead of creating a second seven-day journey.
+- one alert per store, with no stock-specific product snapshot on `GameAlert`;
+- `getAffectedStockProductIds(...)` OOS-first stable ordering;
+- alert-only localized product names while `localizeStockTrouble(...)` and `TileInspector` retain count copy;
+- `resolveStockAlertDestination(alert, game)` for live store, missing store, live primary product, and no-longer-affected store;
+- no route-side dependency on `selectedStore` settlement before opening a cross-city store detail;
+- focus after modal focus-trap initialization and outside Tab order;
+- next-check behavior around the weekly boundary;
+- Supply Planner parity after only its assignment/source preamble switches to `resolveRetailSupplyContext(...)`;
+- equality, zero-threshold blocked behavior, and normalized target/threshold invariant;
+- minimal recovery-view shape and purity;
+- newest historical receipt vs current shelf status;
+- inventory command acknowledgement for changed/unchanged/non-success outcomes;
+- selling-price edits never emit inventory acknowledgement copy;
+- contextual handoffs and all non-stock alert destinations remain unchanged;
+- existing fast cross-city alert E2E proves alert -> store/product focus -> truthful inventory-edit acknowledgement without time advance;
+- existing slow weekly-import E2E gains dated receipt/current-status assertions rather than creating another seven-day journey.
 
-Final runtime verification is defined in the implementation plan.
+Final runtime verification remains defined in the implementation plan.
