@@ -174,6 +174,29 @@ export function getStoreProductStatus(
 }
 
 /**
+ * Deterministic affected-product ordering for stock trouble: out-of-stock
+ * products first, then needs-import products, each group preserving the
+ * store's product order. Healthy products are omitted.
+ */
+export function getAffectedStockProductIds(
+	products: readonly StoreProduct[]
+): readonly ProductId[] {
+	const outOfStock: ProductId[] = [];
+	const needsImport: ProductId[] = [];
+
+	for (const product of products) {
+		const status = getStoreProductStatus(product);
+		if (status === 'Out of stock') {
+			outOfStock.push(product.productId);
+		} else if (status === 'Needs import') {
+			needsImport.push(product.productId);
+		}
+	}
+
+	return [...outOfStock, ...needsImport];
+}
+
+/**
  * Human-readable summary of a store's stock trouble, e.g.
  * "1 product out of stock, 2 products need import", or null when everything is
  * healthy. Out-of-stock and needs-import products are counted separately so the

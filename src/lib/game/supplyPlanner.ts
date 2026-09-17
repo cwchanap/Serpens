@@ -16,7 +16,7 @@ import {
 	findShippingPath,
 	getBuildingAttachCellKeys
 } from './rail';
-import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
+import { REPLENISHMENT_INTERVAL_DAYS, resolveRetailSupplyContext } from './retailSupply';
 import { getPolicyAdjustedCityProductDemand, type EffectivePolicyByStoreId } from './stock';
 import { getProductDefinition } from './products';
 import { compareRecurringRoutes } from './interCityLogistics';
@@ -450,10 +450,11 @@ export function buildSupplyPlannerSnapshot(
 		return { status: 'unsupported', reason: 'missing-producer-recipe' };
 	}
 
-	const assignment = game.retailSupplyAssignments.find(
-		(candidate) => candidate.retailCityId === retailCity.id
-	);
-	if (!assignment || assignment.supplyCityId === null) {
+	// One shared retail supply resolution: the planner keeps its
+	// supply-city-unavailable outcomes when no supply city is configured or
+	// the configured city cannot resolve an inventory scope.
+	const supplyContext = resolveRetailSupplyContext(game, retailCity.id as WorldCityId);
+	if (supplyContext.configuredSupplyCityId === null) {
 		return { status: 'unavailable', reason: 'supply-city-unavailable' };
 	}
 
@@ -461,7 +462,7 @@ export function buildSupplyPlannerSnapshot(
 	// soft-unavailable boundary for a configured but closed/missing city while
 	// allowing getCityInventoryStats to remain the authoritative corruption
 	// boundary for an otherwise valid inventory.
-	const industry = getIndustryInventoryScope(game, assignment.supplyCityId);
+	const industry = getIndustryInventoryScope(game, supplyContext.configuredSupplyCityId);
 	if (!industry) {
 		return { status: 'unavailable', reason: 'supply-city-unavailable' };
 	}
