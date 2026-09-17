@@ -2,8 +2,10 @@ import { describe, expect, test } from 'vitest';
 import { createNewGame } from './state';
 import {
 	applyWeeklyReplenishment,
+	getNextReplenishmentCheckDay,
 	getRetailReplenishmentOutcome,
 	isReplenishmentDay,
+	resolveRetailSupplyContext,
 	setRetailSupplySource
 } from './retailSupply';
 import { DEFAULT_SIMULATION_RULES } from './simulationRules';
@@ -272,6 +274,56 @@ describe('retail replenishment outcomes', () => {
 		]
 	] as const)('derives %s from replenishment facts', (_name, context, report, expected) => {
 		expect(getRetailReplenishmentOutcome(context, report)).toBe(expected);
+	});
+});
+
+describe('replenishment cadence and supply context', () => {
+	test.each([
+		['the day before a check day', 6, 7],
+		['on a check day', 7, 7],
+		['the day after a check day', 8, 14]
+	] as const)('resolves the next check %s (%i -> %i)', (_label, currentDay, expected) => {
+		expect.assertions(1);
+		expect(getNextReplenishmentCheckDay(currentDay)).toBe(expected);
+	});
+
+	test('resolves the configured and available supply city for an assigned retail city', () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 292_530);
+
+		expect(resolveRetailSupplyContext(game, 'harbor-city')).toEqual({
+			retailCityId: 'harbor-city',
+			configuredSupplyCityId: 'industry-city',
+			resolvedSupplyCityId: 'industry-city'
+		});
+	});
+
+	test('resolves null configured and resolved cities without a supply assignment', () => {
+		expect.assertions(1);
+		const game: GameState = {
+			...createNewGame('convenience', 292_530),
+			retailSupplyAssignments: []
+		};
+
+		expect(resolveRetailSupplyContext(game, 'harbor-city')).toEqual({
+			retailCityId: 'harbor-city',
+			configuredSupplyCityId: null,
+			resolvedSupplyCityId: null
+		});
+	});
+
+	test('keeps the configured id but resolves null for an unavailable source city', () => {
+		expect.assertions(1);
+		const game: GameState = {
+			...createNewGame('convenience', 292_530),
+			retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' }]
+		};
+
+		expect(resolveRetailSupplyContext(game, 'harbor-city')).toEqual({
+			retailCityId: 'harbor-city',
+			configuredSupplyCityId: 'breadbasket-basin',
+			resolvedSupplyCityId: null
+		});
 	});
 });
 

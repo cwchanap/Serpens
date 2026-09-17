@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { brandedSellerScore, getBrandDefaultSellingPrice } from './brands';
 import { resolveEffectivePolicy, setPolicyOverride } from './policyInheritance';
 import { resolveProductMarketDynamics } from './productDynamics';
-import { getProductDefinition } from './products';
+import { getProductDefinition, PRODUCTS } from './products';
 import { createRng, createRngFromState, randomBetween } from './rng';
 import { createNewGame } from './state';
 import {
@@ -11,6 +11,7 @@ import {
 	calculateStockHealth,
 	consumeStoreProductStock,
 	createStoreProduct,
+	getAffectedStockProductIds,
 	getPolicyAdjustedCityProductDemand,
 	getPolicyDemandMultiplier,
 	getStoreProductStock,
@@ -22,7 +23,7 @@ import {
 	updateStoreProduct,
 	type EffectivePolicyByStoreId
 } from './stock';
-import type { CompanyPolicy, GameState, ProductId, StoreProduct } from './types';
+import type { CompanyPolicy, GameState, ProductId, StoreProduct, StoreProductPatch } from './types';
 
 function withOneStoreProducts(products: StoreProduct[]): GameState {
 	const game = createNewGame('convenience', 20260508);
@@ -1689,6 +1690,106 @@ describe('branch coverage edge cases', () => {
 
 		expect(result.productReports.get(store.id)?.length).toBe(1);
 		expect(result.productReports.get(store.id)?.[0]?.productId).toBe('snacks');
+	});
+});
+
+describe('inventory target normalization', () => {
+	test('UI-reachable target edits keep targetStock at or above ceil(reorderThreshold)', () => {
+		expect.assertions(4);
+		let game = withOneStoreProducts([
+			{
+				productId: 'snacks',
+				brandId: 'common-ground',
+				lots: [{ receivedDay: 1, quantity: 2 }],
+				reorderThreshold: 5,
+				targetStock: 20,
+				sellingPrice: 5
+			}
+		]);
+		const uiReachableEdits: StoreProductPatch[] = [
+			{ reorderThreshold: 40, targetStock: 35 },
+			{ reorderThreshold: 12.5, targetStock: 5 },
+			{ targetStock: 0 },
+			{ reorderThreshold: 0, targetStock: 0 }
+		];
+
+		// targetStock >= ceil(reorderThreshold) keeps positive target headroom
+		// for every below-threshold product, so neededUnits === 0 never needs
+		// its own recovery eligibility state.
+		for (const patch of uiReachableEdits) {
+			game = updateStoreProduct(game, 'store-1', 'snacks', patch);
+			const stored = game.stores[0]!.products[0]!;
+			expect(stored.targetStock).toBeGreaterThanOrEqual(Math.ceil(stored.reorderThreshold));
+		}
+	});
+});
+
+describe('getAffectedStockProductIds', () => {
+	const affectedProduct = (
+		productId: ProductId,
+		quantity: number,
+		reorderThreshold = 10
+	): StoreProduct => ({
+		productId,
+		brandId: 'common-ground',
+		lots: quantity > 0 ? [{ receivedDay: 1, quantity }] : [],
+		reorderThreshold,
+		targetStock: 60,
+		sellingPrice: 5
+	});
+
+	test('excludes healthy products from the affected list', () => {
+		expect.assertions(1);
+		const products = [
+			affectedProduct('bottled-water', 50),
+			// Exactly at the threshold is still Healthy, not affected.
+			affectedProduct('snacks', 10)
+		];
+
+		expect(getAffectedStockProductIds(products)).toEqual([]);
+	});
+
+	test('orders out-of-stock products before needs-import products', () => {
+		expect.assertions(1);
+		const products = [
+			affectedProduct('snacks', 5),
+			affectedProduct('bottled-water', 0),
+			affectedProduct('soft-drinks', 2)
+		];
+
+		expect(getAffectedStockProductIds(products)).toEqual([
+			'bottled-water',
+			'snacks',
+			'soft-drinks'
+		]);
+	});
+
+	test('keeps the existing store product order inside each severity group', () => {
+		expect.assertions(1);
+		const products = [
+			affectedProduct('soft-drinks', 0),
+			affectedProduct('snacks', 0),
+			affectedProduct('bottled-water', 3),
+			affectedProduct('essentials', 1)
+		];
+
+		expect(getAffectedStockProductIds(products)).toEqual([
+			'soft-drinks',
+			'snacks',
+			'bottled-water',
+			'essentials'
+		]);
+	});
+
+	test('returns concrete catalog product ids', () => {
+		expect.assertions(2);
+		const ids = getAffectedStockProductIds([
+			affectedProduct('snacks', 0),
+			affectedProduct('bottled-water', 2)
+		]);
+
+		expect(ids).toEqual(['snacks', 'bottled-water']);
+		expect(ids.every((productId) => Object.hasOwn(PRODUCTS, productId))).toBe(true);
 	});
 });
 

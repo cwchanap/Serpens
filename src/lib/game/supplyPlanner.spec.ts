@@ -2537,6 +2537,39 @@ describe('supply planner snapshot', () => {
 	});
 });
 
+describe('supply planner retail supply context parity', () => {
+	it('stays unavailable without a supply assignment', () => {
+		const game: GameState = { ...plannerGame(), retailSupplyAssignments: [] };
+
+		expect(
+			buildSupplyPlannerSnapshot(game, {
+				retailCityId: 'harbor-city',
+				productId: 'bottled-water'
+			})
+		).toEqual({ status: 'unavailable', reason: 'supply-city-unavailable' });
+	});
+
+	it('resolves the assigned supply city into a ready snapshot', () => {
+		const snapshot = readySnapshot(plannerGame());
+
+		expect(snapshot.supplyCityId).toBe('industry-city');
+	});
+
+	it('stays unavailable when the configured supply city cannot resolve an inventory', () => {
+		const game: GameState = {
+			...plannerGame(),
+			retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' }]
+		};
+
+		expect(
+			buildSupplyPlannerSnapshot(game, {
+				retailCityId: 'harbor-city',
+				productId: 'bottled-water'
+			})
+		).toEqual({ status: 'unavailable', reason: 'supply-city-unavailable' });
+	});
+});
+
 describe('supply planner snapshot edge cases', () => {
 	it('rejects an invalid request with empty strings', () => {
 		expect(

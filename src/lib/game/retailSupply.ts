@@ -57,6 +57,16 @@ export function isReplenishmentDay(day: number): boolean {
 	return day > 0 && day % REPLENISHMENT_INTERVAL_DAYS === 0;
 }
 
+/**
+ * Next closing day whose post-sales replenishment check will run, from the
+ * shared seven-day cadence. The current day counts when it is already a
+ * check day (6 -> 7, 7 -> 7, 8 -> 14).
+ */
+export function getNextReplenishmentCheckDay(currentDay: number): number {
+	const interval = REPLENISHMENT_INTERVAL_DAYS;
+	return Math.max(1, Math.ceil(currentDay / interval)) * interval;
+}
+
 export function getRetailReplenishmentOutcome(
 	context: RetailReplenishmentContext,
 	report: Pick<DailyProductReport, 'warehouseUnits' | 'importedUnits'>
@@ -273,7 +283,7 @@ function getRetailCityIdsInReplenishmentOrder(game: GameState): WorldCityId[] {
 	return [...cityIds].sort(compareWorldCityIds);
 }
 
-function resolveRetailSupplyContext(
+export function resolveRetailSupplyContext(
 	game: GameState,
 	retailCityId: WorldCityId
 ): RetailReplenishmentContext {

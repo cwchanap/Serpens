@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { collectGameAlerts } from './alerts';
+import { getAffectedStockProductIds } from './stock';
 import { createEmptyFinanceState } from './finance';
 import * as finance from './finance';
 import * as financeMetrics from './financeMetrics';
@@ -471,6 +472,58 @@ describe('collectGameAlerts', () => {
 		);
 		expect(alerts).toHaveLength(1);
 		expect(alerts[0]).toMatchObject({ kind: 'store-stock', storeId: 'store-1' });
+	});
+
+	it('keeps city, store, and tile identity on the single store-stock alert', () => {
+		expect.assertions(2);
+		const alerts = collectGameAlerts(
+			baseGame({ stores: [store({ products: [product({ initialQuantity: 0 })] })] })
+		);
+
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0]).toMatchObject({
+			id: 'store-stock:store-1',
+			kind: 'store-stock',
+			cityId: 'harbor-city',
+			storeId: 'store-1',
+			tileId: 'tile-1'
+		});
+	});
+
+	it('puts the first shared affected-product id on the alert as the primary focus', () => {
+		expect.assertions(2);
+		const affectedStore = store({
+			products: [
+				product({ productId: 'snacks', initialQuantity: 5 }),
+				product({ productId: 'bottled-water', initialQuantity: 0 })
+			]
+		});
+		const alerts = collectGameAlerts(baseGame({ stores: [affectedStore] }));
+
+		expect(alerts).toHaveLength(1);
+		expect(alerts[0].productId).toBe(getAffectedStockProductIds(affectedStore.products)[0]);
+	});
+
+	it('keeps one alert when several products are affected', () => {
+		expect.assertions(2);
+		const alerts = collectGameAlerts(
+			baseGame({
+				stores: [
+					store({
+						products: [
+							product({ productId: 'snacks', initialQuantity: 0 }),
+							product({ productId: 'bottled-water', initialQuantity: 0 }),
+							product({ productId: 'soft-drinks', initialQuantity: 2 })
+						]
+					})
+				]
+			})
+		);
+
+		expect(alerts).toHaveLength(1);
+		// The primary focus is deterministic: first out-of-stock product in
+		// store order, never an alphabetical or per-product split.
+		expect(alerts[0].productId).toBe('snacks');
 	});
 
 	it('keeps stock alerts reference-only for localization at the presentation boundary', () => {

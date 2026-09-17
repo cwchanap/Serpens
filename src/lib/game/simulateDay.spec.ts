@@ -14,6 +14,7 @@ import { createRngFromState } from './rng';
 import { setPolicyOverride } from './policyInheritance';
 import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
+import { buildStoreStockRecoveryViews } from './stockRecovery';
 import { DEFAULT_SIMULATION_RULES, type SimulationRules } from './simulationRules';
 import { simulateDay } from './simulateDay';
 import { getStoreProductStock } from './stock';
@@ -2115,6 +2116,59 @@ describe('daily simulation', () => {
 		expect(warehouseReport.warehouseUnits).toBe(12);
 		expect(warehouseReport.importedUnits).toBe(8);
 		expect(withWarehouse.reports[0]!.importSpend).toBeLessThan(noWarehouse.reports[0]!.importSpend);
+	});
+
+	test('closes the day-7 replenishment check on the post-sales shelf quantity with receipt evidence', () => {
+		expect.assertions(6);
+		const baseGame = {
+			...createNewGame('convenience', 292_607),
+			day: 7,
+			// Drop generated rivals so the seed keeps sales comfortably positive.
+			competitors: []
+		};
+		// The shelf sits exactly at the threshold before the day runs; any sale
+		// pushes it below before the same closing-day check executes.
+		const store: GameState['stores'][number] = {
+			...baseGame.stores[0]!,
+			products: [
+				{
+					productId: 'snacks',
+					brandId: 'common-ground',
+					lots: [{ receivedDay: 1, quantity: 10 }],
+					reorderThreshold: 10,
+					targetStock: 40,
+					sellingPrice: 5
+				}
+			]
+		};
+		const game: GameState = { ...baseGame, stores: [store] };
+
+		// Pre-advance the current view is not below the threshold yet.
+		expect(buildStoreStockRecoveryViews(game, store.id).get('snacks')?.eligibility).toBe(
+			'not-below-threshold'
+		);
+
+		const result = simulateDay(game);
+		const report = result.reports.at(-1)!;
+		expect(report.day).toBe(7);
+		const productReport = report.storeReports
+			.find((candidate) => candidate.storeId === store.id)
+			?.productReports.find((candidate) => candidate.productId === 'snacks');
+		if (!productReport) {
+			throw new Error('expected a completed snacks product report');
+		}
+
+		// Sales happen before the closing-day check.
+		expect(productReport.unitsSold).toBeGreaterThan(0);
+
+		// The check measured the post-sales shelf, not the morning quantity.
+		const postSalesStock =
+			10 - productReport.unitsSold - productReport.wasteUnits - productReport.shrinkUnits;
+		expect(postSalesStock).toBeLessThan(10);
+		expect(productReport.warehouseUnits + productReport.importedUnits).toBe(40 - postSalesStock);
+
+		// The completed day carries positive receipt evidence.
+		expect(productReport.warehouseUnits > 0 || productReport.importedUnits > 0).toBe(true);
 	});
 
 	test('keeps production-close pressure separate from post-replenishment inventory and report attribution', () => {

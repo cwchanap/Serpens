@@ -6,9 +6,9 @@ import {
 	selectRouteOperations,
 	type RouteOperationalSummary
 } from './logisticsReadModels';
-import { getStoreProductStatus } from './stock';
+import { getAffectedStockProductIds } from './stock';
 import type { ManagementPanelId } from './keyboardShortcuts';
-import type { GameState, LoanInstrument, ManagerActionRecord } from './types';
+import type { GameState, LoanInstrument, ManagerActionRecord, ProductId } from './types';
 
 /** Debt-service coverage ratio below which a covenant-risk alert fires. */
 export const COVENANT_THRESHOLD = 1.25;
@@ -36,6 +36,8 @@ export interface GameAlert {
 	message?: string;
 	cityId?: string;
 	storeId?: string;
+	/** Deterministic primary focus product for store-stock alerts. */
+	productId?: ProductId;
 	buildingId?: string;
 	tileId?: string;
 	decisionId?: string;
@@ -240,7 +242,8 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 	const alerts: GameAlert[] = [];
 
 	for (const store of game.stores) {
-		if (!store.products.some((product) => getStoreProductStatus(product) !== 'Healthy')) {
+		const affectedProductIds = getAffectedStockProductIds(store.products);
+		if (affectedProductIds.length === 0) {
 			continue;
 		}
 
@@ -249,7 +252,8 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 			kind: 'store-stock',
 			cityId: store.cityId,
 			storeId: store.id,
-			tileId: store.tileId
+			tileId: store.tileId,
+			productId: affectedProductIds[0]
 		});
 	}
 
