@@ -214,8 +214,11 @@
 
 		const product = store.products.find((candidate) => candidate.productId === productId);
 		const view = recoveryViews.get(productId);
-		const reorder = i18n.format.integer(view?.reorderThreshold ?? product?.reorderThreshold ?? 0);
-		const target = i18n.format.integer(view?.targetStock ?? product?.targetStock ?? 0);
+		// Quoted values come from the committed (normalized) store props, never
+		// from the user's unnormalized input; the next check comes from the
+		// updated recovery read model.
+		const reorder = i18n.format.integer(product?.reorderThreshold ?? 0);
+		const target = i18n.format.integer(product?.targetStock ?? 0);
 
 		const committed =
 			result?.status === 'committed' || (result?.status === 'sandbox-committed' && result.changed);
@@ -254,7 +257,7 @@
 		if (view.supplyMode === 'unassigned-import-fallback') {
 			return i18n.t('storeStockTable.recovery.supplyUnassigned');
 		}
-		const cityName = i18n.labels.worldCity(view.configuredSupplyCityId ?? '').name;
+		const cityName = i18n.labels.worldCity(view.supplyContext.configuredSupplyCityId ?? '').name;
 		return view.supplyMode === 'assigned-city-with-import-fallback'
 			? i18n.t('storeStockTable.recovery.supplyAssigned', { cityName })
 			: i18n.t('storeStockTable.recovery.supplyUnavailable', { cityName });
@@ -500,7 +503,7 @@
 							{/if}
 						</td>
 					</tr>
-					{#if recoveryView && (recoveryView.status !== 'Healthy' || product.productId === focusedProductId)}
+					{#if recoveryView && recoveryView.eligibility !== 'not-replenishable-product' && (getStoreProductStatus(product) !== 'Healthy' || product.productId === focusedProductId)}
 						<tr class="recovery-row" data-testid={`store-recovery-${product.productId}`}>
 							<td colspan={9}>
 								<div class="recovery-detail">
@@ -531,23 +534,21 @@
 											})}
 										</p>
 									{/if}
-									{#if recoveryView.eligibility !== 'not-replenishable-product'}
-										<div
-											class="recovery-actions"
-											data-testid={`store-recovery-actions-${product.productId}`}
+									<div
+										class="recovery-actions"
+										data-testid={`store-recovery-actions-${product.productId}`}
+									>
+										<button type="button" onclick={() => onManageSupplySource(store.cityId)}>
+											{i18n.t('storeStockTable.actions.manageSupplySource')}
+										</button>
+										<button
+											type="button"
+											disabled={!plannerProductIds.includes(product.productId)}
+											onclick={() => onPlanSupply(product.productId)}
 										>
-											<button type="button" onclick={() => onManageSupplySource(store.cityId)}>
-												{i18n.t('storeStockTable.actions.manageSupplySource')}
-											</button>
-											<button
-												type="button"
-												disabled={!plannerProductIds.includes(product.productId)}
-												onclick={() => onPlanSupply(product.productId)}
-											>
-												{i18n.t('storeStockTable.actions.planSupply')}
-											</button>
-										</div>
-									{/if}
+											{i18n.t('storeStockTable.actions.planSupply')}
+										</button>
+									</div>
 								</div>
 							</td>
 						</tr>

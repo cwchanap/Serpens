@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { collectGameAlerts } from './alerts';
-import { getAffectedStockProductIds } from './stock';
 import { createEmptyFinanceState } from './finance';
 import * as finance from './finance';
 import * as financeMetrics from './financeMetrics';
@@ -490,7 +489,7 @@ describe('collectGameAlerts', () => {
 		});
 	});
 
-	it('puts the first shared affected-product id on the alert as the primary focus', () => {
+	it('emits a store-stock alert with subject identity only and no product snapshot', () => {
 		expect.assertions(2);
 		const affectedStore = store({
 			products: [
@@ -501,7 +500,15 @@ describe('collectGameAlerts', () => {
 		const alerts = collectGameAlerts(baseGame({ stores: [affectedStore] }));
 
 		expect(alerts).toHaveLength(1);
-		expect(alerts[0].productId).toBe(getAffectedStockProductIds(affectedStore.products)[0]);
+		// The alert carries subject identity only: which store is affected is
+		// persisted, but the affected product choice stays live in game.stores.
+		expect(alerts[0]).toEqual({
+			id: 'store-stock:store-1',
+			kind: 'store-stock',
+			cityId: 'harbor-city',
+			storeId: 'store-1',
+			tileId: 'tile-1'
+		});
 	});
 
 	it('keeps one alert when several products are affected', () => {
@@ -521,9 +528,9 @@ describe('collectGameAlerts', () => {
 		);
 
 		expect(alerts).toHaveLength(1);
-		// The primary focus is deterministic: first out-of-stock product in
-		// store order, never an alphabetical or per-product split.
-		expect(alerts[0].productId).toBe('snacks');
+		// Multiple affected products never split into per-product alerts and
+		// never snapshot a primary product onto the alert.
+		expect('productId' in alerts[0]).toBe(false);
 	});
 
 	it('keeps stock alerts reference-only for localization at the presentation boundary', () => {

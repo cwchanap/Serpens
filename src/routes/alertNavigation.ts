@@ -1,6 +1,7 @@
 import type { GameAlert } from '$lib/game/alerts';
+import { getAffectedStockProductIds } from '$lib/game/stock';
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
-import type { ProductId, Store } from '$lib/game/types';
+import type { GameState, ProductId } from '$lib/game/types';
 
 export interface AlertPanelNavigation {
 	panelId: ManagementPanelId;
@@ -37,18 +38,30 @@ export function resolveAlertNavigation(alert: GameAlert): AlertNavigation | null
 	return alert.kind === 'decision' ? { panelId: 'decisions', focusedFinanceLoanId: null } : null;
 }
 
+export interface StockAlertDestination {
+	cityId: string;
+	tileId: string;
+	storeId: string;
+	productId: ProductId | null;
+}
+
 /**
- * Validates a store-stock alert against the store detail that is about to
- * open: the alert must name the selected store, and its optional focus
- * product must still be stocked (otherwise the row cannot be focused).
+ * Resolves a store-stock alert against the live game state: the alert must
+ * name an existing store, and the destination (city/tile/store plus the
+ * currently affected primary product) is derived from that live store —
+ * never from snapshot data on the alert or reactive UI selection.
  */
-export function resolveStockAlertFocus(
+export function resolveStockAlertDestination(
 	alert: GameAlert,
-	selectedStore: Store | null
-): { productId: ProductId | null } | null {
+	game: GameState
+): StockAlertDestination | null {
 	if (alert.kind !== 'store-stock' || !alert.storeId) return null;
-	if (!selectedStore || selectedStore.id !== alert.storeId) return null;
-	if (!alert.productId) return { productId: null };
-	const isStocked = selectedStore.products.some((product) => product.productId === alert.productId);
-	return { productId: isStocked ? alert.productId : null };
+	const store = game.stores.find((candidate) => candidate.id === alert.storeId);
+	if (!store) return null;
+	return {
+		cityId: store.cityId,
+		tileId: store.tileId,
+		storeId: store.id,
+		productId: getAffectedStockProductIds(store.products)[0] ?? null
+	};
 }

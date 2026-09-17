@@ -578,46 +578,63 @@ export function localizeStockStatus(status: StoreProductStatus, i18n: I18nBundle
 	}
 }
 
+function formatCountMessage(i18n: I18nBundle, baseKey: string, count: number): string {
+	return tScoped(i18n, baseKey, count === 1 ? 'one' : 'other', { count });
+}
+
+/**
+ * Compact count summary for the TileInspector attention line, e.g.
+ * "1 product out of stock, 2 products need import". Deliberately does NOT
+ * name products — alert copy names them via `localizeAffectedStockProducts`.
+ */
 export function localizeStockTrouble(
-	products: readonly StoreProduct[],
+	products: readonly Pick<StoreProduct, 'lots' | 'reorderThreshold'>[],
 	i18n: I18nBundle
 ): string | null {
-	// getAffectedStockProductIds owns both membership and display order
-	// (out-of-stock first, then needs-import, store order within each group);
-	// the status lookup below only picks each product's label bucket, never
-	// the order.
-	const outOfStock: string[] = [];
-	const needsImport: string[] = [];
-	const productById = new Map(products.map((product) => [product.productId, product]));
-	for (const productId of getAffectedStockProductIds(products)) {
-		const product = productById.get(productId);
-		if (!product) continue;
-		const label = i18n.labels.productCategory(productId);
-		if (getStoreProductStatus(product) === 'Out of stock') {
-			outOfStock.push(label);
-		} else {
-			needsImport.push(label);
+	let outOfStock = 0;
+	let needsImport = 0;
+
+	for (const product of products) {
+		const status = getStoreProductStatus(product);
+		if (status === 'Out of stock') {
+			outOfStock += 1;
+		} else if (status === 'Needs import') {
+			needsImport += 1;
 		}
 	}
 
 	const parts: string[] = [];
-	if (outOfStock.length > 0) {
-		parts.push(i18n.t('copy.stockTrouble.outOfStock', { products: i18n.format.list(outOfStock) }));
+	if (outOfStock > 0) {
+		parts.push(formatCountMessage(i18n, 'copy.stockTrouble.outOfStock', outOfStock));
 	}
-	if (needsImport.length > 0) {
-		parts.push(
-			i18n.t('copy.stockTrouble.needsImport', { products: i18n.format.list(needsImport) })
-		);
+	if (needsImport > 0) {
+		parts.push(formatCountMessage(i18n, 'copy.stockTrouble.needsImport', needsImport));
 	}
 
 	return parts.length > 0 ? i18n.format.list(parts) : null;
+}
+
+/**
+ * Alert-only product namer: lists every live affected product by its
+ * localized label in OOS-first stable order. Healthy products are absent.
+ * Module-private because only `localizeAlert` needs it.
+ */
+function localizeAffectedStockProducts(
+	products: readonly Pick<StoreProduct, 'productId' | 'lots' | 'reorderThreshold'>[],
+	i18n: I18nBundle
+): string | null {
+	const affectedIds = getAffectedStockProductIds(products);
+	if (affectedIds.length === 0) {
+		return null;
+	}
+	return i18n.format.list(affectedIds.map((productId) => i18n.labels.productCategory(productId)));
 }
 
 export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundle): string {
 	if (alert.kind === 'store-stock' && alert.storeId) {
 		const store = game.stores.find((candidate) => candidate.id === alert.storeId);
 		if (store) {
-			const summary = localizeStockTrouble(store.products, i18n);
+			const summary = localizeAffectedStockProducts(store.products, i18n);
 			if (summary) {
 				return i18n.t('copy.alerts.storeStock', {
 					storeName: storeDisplayName(

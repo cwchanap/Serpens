@@ -689,9 +689,7 @@ export const en = {
 				'not-below-threshold':
 					"Stock is currently at or above the reorder threshold, so it is not eligible yet — the actual check runs after that closing day's sales, and stock that drops below the threshold later that day can still become eligible.",
 				'blocked-by-zero-threshold':
-					'Replenishment stays blocked while the reorder threshold is 0 — raise it with the reorder input in this row.',
-				'not-replenishable-product':
-					"This product is not part of the store's replenishable catalog, so supply handoffs cannot replenish it."
+					'Replenishment stays blocked while the reorder threshold is 0 — raise it with the reorder input in this row.'
 			},
 			receipt:
 				'Last receipt — day {day}: {warehouse} units from the city warehouse, {imported} units imported ({outcome}). A past record; current shelf stock may differ.',
@@ -1676,8 +1674,14 @@ export const en = {
 			outOfStock: 'Out of stock'
 		},
 		stockTrouble: {
-			outOfStock: 'Out of stock: {products}',
-			needsImport: 'Needs import: {products}'
+			outOfStock: {
+				one: '{count} product out of stock',
+				other: '{count} products out of stock'
+			},
+			needsImport: {
+				one: '{count} product needs import',
+				other: '{count} products need import'
+			}
 		},
 		alerts: {
 			storeStock: '{storeName}: {summary}',

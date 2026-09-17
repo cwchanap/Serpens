@@ -5,8 +5,13 @@ import {
 	getRetailReplenishmentOutcome,
 	resolveRetailSupplyContext
 } from './retailSupply';
-import { getStoreProductStatus, getStoreProductStock, type StoreProductStatus } from './stock';
-import type { GameState, ProductId, RetailReplenishmentOutcome, WorldCityId } from './types';
+import { getStoreProductStock } from './stock';
+import type {
+	GameState,
+	ProductId,
+	RetailReplenishmentContext,
+	RetailReplenishmentOutcome
+} from './types';
 
 export type StockRecoveryEligibility =
 	| 'eligible-at-current-stock'
@@ -27,15 +32,9 @@ export interface StockReceiptEvidence {
 }
 
 export interface StockRecoveryView {
-	productId: ProductId;
-	currentStock: number;
-	status: StoreProductStatus;
-	reorderThreshold: number;
-	targetStock: number;
 	eligibility: StockRecoveryEligibility;
 	nextCheckDay: number;
-	configuredSupplyCityId: WorldCityId | null;
-	resolvedSupplyCityId: WorldCityId | null;
+	supplyContext: RetailReplenishmentContext;
 	supplyMode: StockRecoverySupplyMode;
 	lastReceipt: StockReceiptEvidence | null;
 }
@@ -77,15 +76,9 @@ export function buildStoreStockRecoveryViews(
 					: 'not-below-threshold';
 
 		views.set(product.productId, {
-			productId: product.productId,
-			currentStock,
-			status: getStoreProductStatus(product),
-			reorderThreshold: product.reorderThreshold,
-			targetStock: product.targetStock,
 			eligibility,
 			nextCheckDay,
-			configuredSupplyCityId: context.configuredSupplyCityId,
-			resolvedSupplyCityId: context.resolvedSupplyCityId,
+			supplyContext: context,
 			supplyMode,
 			lastReceipt: findLastReceipt(game, storeId, product.productId)
 		});

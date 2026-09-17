@@ -688,9 +688,7 @@ export const ja = {
 				'not-below-threshold':
 					'現在の在庫は再発注しきい値以上のため、まだ補充対象ではありません。実際の確認はその締め日の販売処理後に行われるため、本日の販売でしきい値を下回れば後から補充対象になることがあります。',
 				'blocked-by-zero-threshold':
-					'再発注しきい値が 0 のため補充されません。この行の再発注しきい値入力を上げてください。',
-				'not-replenishable-product':
-					'この商品はこの店舗の自動補充対象外のため、仕入操作では補充できません。'
+					'再発注しきい値が 0 のため補充されません。この行の再発注しきい値入力を上げてください。'
 			},
 			receipt:
 				'前回の入荷 — {day} 日:都市倉庫から {warehouse} 単位、輸入 {imported} 単位({outcome})。過去の記録であり、現在の店頭在庫とは異なる場合があります。',
@@ -1650,8 +1648,14 @@ export const ja = {
 			outOfStock: '在庫切れ'
 		},
 		stockTrouble: {
-			outOfStock: '在庫切れ: {products}',
-			needsImport: '輸入待ち: {products}'
+			outOfStock: {
+				one: '{count} 商品が在庫切れ',
+				other: '{count} 商品が在庫切れ'
+			},
+			needsImport: {
+				one: '{count} 商品が輸入待ち',
+				other: '{count} 商品が輸入待ち'
+			}
 		},
 		alerts: {
 			storeStock: '{storeName}: {summary}',
