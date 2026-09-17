@@ -1,5 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAlertNavigation } from './alertNavigation';
+import type { GameAlert } from '$lib/game/alerts';
+import type { Store } from '$lib/game/types';
+import { resolveAlertNavigation, resolveStockAlertFocus } from './alertNavigation';
+
+const focusStore: Store = {
+	id: 'store-1',
+	level: 1,
+	name: 'Corner Market',
+	archetypeId: 'convenience',
+	location: { neighborhoodId: 'downtown', x: 1, y: 1 },
+	cityId: 'harbor-city',
+	tileId: 'harbor-city-1-1',
+	mapX: 1,
+	mapY: 1,
+	daysOpen: 3,
+	reputation: 50,
+	stockHealth: 80,
+	products: [
+		{
+			productId: 'snacks',
+			brandId: 'common-ground',
+			lots: [{ receivedDay: 1, quantity: 40 }],
+			reorderThreshold: 10,
+			targetStock: 50,
+			sellingPrice: 5
+		}
+	],
+	staffMorale: 70,
+	staffCapacity: 2,
+	localDemand: 50,
+	managerQuality: 40
+};
+
+const stockAlert: GameAlert = {
+	id: 'store-stock:store-1',
+	kind: 'store-stock',
+	storeId: 'store-1'
+};
 
 describe('alert navigation', () => {
 	it('navigates manager exceptions to Staff', () => {
@@ -91,6 +128,47 @@ describe('alert navigation', () => {
 				kind: 'logistics-origin-stock'
 			})
 		).toBeNull();
+	});
+
+	describe('stock alert focus', () => {
+		it('returns null for non-stock alerts', () => {
+			expect(
+				resolveStockAlertFocus(
+					{ id: 'decision:system-notice-1', kind: 'decision', decisionId: 'system-notice-1' },
+					focusStore
+				)
+			).toBeNull();
+		});
+
+		it('returns null when the stock alert has no storeId', () => {
+			expect(
+				resolveStockAlertFocus({ id: 'store-stock:x', kind: 'store-stock' }, focusStore)
+			).toBeNull();
+		});
+
+		it('returns null when no store detail is selected', () => {
+			expect(resolveStockAlertFocus(stockAlert, null)).toBeNull();
+		});
+
+		it('returns null when the selected store does not match the alert store', () => {
+			expect(resolveStockAlertFocus(stockAlert, { ...focusStore, id: 'store-2' })).toBeNull();
+		});
+
+		it('returns the alert product when the matching store stocks it', () => {
+			expect(resolveStockAlertFocus({ ...stockAlert, productId: 'snacks' }, focusStore)).toEqual({
+				productId: 'snacks'
+			});
+		});
+
+		it('returns a null product when the alert product is no longer stocked by the store', () => {
+			expect(resolveStockAlertFocus({ ...stockAlert, productId: 'apparel' }, focusStore)).toEqual({
+				productId: null
+			});
+		});
+
+		it('returns a null product when the alert carries no focus product', () => {
+			expect(resolveStockAlertFocus(stockAlert, focusStore)).toEqual({ productId: null });
+		});
 	});
 
 	it('returns null focusedFinanceLoanId for finance panel without a loanId', () => {

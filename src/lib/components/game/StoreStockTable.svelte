@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { asset } from '$app/paths';
 	import { getProductArt } from '$lib/assets/gameArt';
 	import { getArchetype } from '$lib/game/archetypes';
@@ -30,6 +31,8 @@
 		canUpdateBrand?: boolean;
 		allowedProductIds?: readonly ProductId[];
 		disabledReason?: string | null;
+		/** Deep-link focus target from a stock alert; transient, never persisted. */
+		focusedProductId?: ProductId | null;
 	}
 
 	let {
@@ -43,7 +46,8 @@
 		canUpdateInventoryTargets = true,
 		canUpdateBrand = true,
 		allowedProductIds = store.products.map((product) => product.productId),
-		disabledReason = null
+		disabledReason = null,
+		focusedProductId = null
 	}: Props = $props();
 	const allowedProductSet = $derived(new Set(allowedProductIds));
 	const hasDisallowedProduct = $derived(
@@ -168,6 +172,31 @@
 		if (!getSupportedBrands(productId).some((brand) => brand.id === brandId)) return;
 		onUpdateBrand(store.id, productId, brandId);
 	}
+
+	function stockRowId(productId: ProductId): string {
+		return `${store.id}-stock-row-${productId}`;
+	}
+
+	// Deep-link focus from a stock alert: focus each new (store, product)
+	// request exactly once, after the mounting dialog's focus trap has placed
+	// its synchronous initial focus (hence the tick wait). `appliedFocusKey`
+	// is plain bookkeeping, not reactive state — it exists only to keep the
+	// effect from re-focusing on unrelated rerenders.
+	let appliedFocusKey: string | null = null;
+
+	$effect(() => {
+		const productId = focusedProductId;
+		if (!productId) return;
+		const key = `${store.id}:${productId}`;
+		if (appliedFocusKey === key) return;
+		appliedFocusKey = key;
+		void tick().then(() => {
+			const row = document.getElementById(stockRowId(productId));
+			if (!row) return;
+			row.focus();
+			row.scrollIntoView({ block: 'nearest' });
+		});
+	});
 </script>
 
 <section class="stock-table" aria-labelledby={`${store.id}-stock-heading`}>
@@ -205,7 +234,11 @@
 					{@const report = getProductReport(product.productId)}
 					{@const freshnessPercent = getFreshnessPercent(product.productId, report)}
 					{@const pressureKind = getPressureKind(product.productId, product, report)}
-					<tr>
+					<tr
+						id={stockRowId(product.productId)}
+						tabindex="-1"
+						data-testid={`store-product-row-${product.productId}`}
+					>
 						<td>
 							<div class="product-cell">
 								<span class="product-thumb">

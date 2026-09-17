@@ -41,6 +41,8 @@
 		canAssignStaff?: boolean;
 		canUnassignStaff?: boolean;
 		disabledReason?: string | null;
+		/** Deep-link focus target forwarded to the stock table; transient. */
+		focusedProductId?: ProductId | null;
 	}
 
 	let {
@@ -64,7 +66,8 @@
 		canHireStaff = true,
 		canAssignStaff = true,
 		canUnassignStaff = true,
-		disabledReason = null
+		disabledReason = null,
+		focusedProductId = null
 	}: Props = $props();
 
 	let storeOrdinal = $derived(getStoreOrdinal(game.stores, store.id));
@@ -282,6 +285,7 @@
 					{canUpdateBrand}
 					{allowedProductIds}
 					{disabledReason}
+					{focusedProductId}
 				/>
 			</div>
 			<div

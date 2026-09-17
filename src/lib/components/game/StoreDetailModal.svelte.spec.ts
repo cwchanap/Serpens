@@ -389,6 +389,50 @@ describe('StoreDetailModal', () => {
 		await expect.element(summary).toHaveTextContent(/Inventory loss expense: \$8/i);
 	});
 
+	it('focuses the alerted product row after mount settles and keeps it out of the tab cycle', async () => {
+		expect.assertions(4);
+		const p = props();
+		render(StoreDetailModal, { ...p, focusedProductId: 'snacks' });
+
+		const row = page.getByTestId('store-product-row-snacks');
+		await expect.poll(() => document.activeElement).toBe(row.element());
+		await expect.element(row).toHaveAttribute('tabindex', '-1');
+
+		// The programmatically focused row is not a Tab stop: pressing Tab while
+		// it holds focus is left to the browser's normal focus cycle.
+		const rowTab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+		row.element().dispatchEvent(rowTab);
+		expect(rowTab.defaultPrevented).toBe(false);
+		expect(document.activeElement).toBe(row.element());
+	});
+
+	it('wraps Tab from the last stock control back to the first modal control, skipping rows', async () => {
+		expect.assertions(2);
+		const p = props();
+		render(StoreDetailModal, { ...p, focusedProductId: 'snacks' });
+
+		const row = page.getByTestId('store-product-row-snacks');
+		await expect.poll(() => document.activeElement).toBe(row.element());
+
+		const targetStock = page.getByRole('spinbutton', { name: /target stock/i });
+		await targetStock.click();
+		const cycleTab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+		targetStock.element().dispatchEvent(cycleTab);
+
+		const closeButton = page.getByRole('button', { name: /close store details/i });
+		expect(document.activeElement).toBe(closeButton.element());
+	});
+
+	it('keeps focus on the normal modal controls when no product is focused', async () => {
+		expect.assertions(2);
+		render(StoreDetailModal, props());
+
+		await expect.element(page.getByRole('dialog', { name: /corner market/i })).toBeVisible();
+		await expect
+			.poll(() => document.activeElement)
+			.toBe(page.getByRole('button', { name: /close store details/i }).element());
+	});
+
 	it('renders the neutral pressure summary when the latest report has no pressure', async () => {
 		expect.assertions(2);
 		const neutralReport: DailyStoreReport = {
