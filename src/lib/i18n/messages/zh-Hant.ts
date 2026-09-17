@@ -683,8 +683,7 @@ export const zhHant = {
 				'eligible-at-current-stock': '庫存低於補貨門檻，下次營業日結算檢查可進行補充。',
 				'not-below-threshold':
 					'庫存目前高於或等於補貨門檻，尚未符合補充資格——實際檢查在該營業日銷售結算後執行，當天銷售後若降至門檻以下，仍可能獲得補充。',
-				'blocked-by-zero-threshold': '補貨門檻為 0，因此不會補充——請在此列提高補貨門檻輸入值。',
-				'not-replenishable-product': '此商品不屬於本門市的可補貨目錄，供貨作業無法補充它。'
+				'blocked-by-zero-threshold': '補貨門檻為 0，因此不會補充——請在此列提高補貨門檻輸入值。'
 			},
 			receipt:
 				'最近一次收貨——第 {day} 天：由城市倉庫入庫 {warehouse} 單位、進口 {imported} 單位（{outcome}）。這是過往紀錄，目前貨架庫存可能不同。',
@@ -1629,8 +1628,14 @@ export const zhHant = {
 			outOfStock: '缺貨'
 		},
 		stockTrouble: {
-			outOfStock: '缺貨：{products}',
-			needsImport: '需要進口：{products}'
+			outOfStock: {
+				one: '{count} 項商品缺貨',
+				other: '{count} 項商品缺貨'
+			},
+			needsImport: {
+				one: '{count} 項商品需要進口',
+				other: '{count} 項商品需要進口'
+			}
 		},
 		alerts: {
 			storeStock: '{storeName}: {summary}',

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import { createNewGame } from './state';
-import { getStoreProductStatus, getStoreProductStock } from './stock';
 import { buildStoreStockRecoveryViews } from './stockRecovery';
 import type {
 	DailyProductReport,
@@ -75,23 +74,28 @@ function viewFor(game: GameState, productId: ProductId) {
 }
 
 describe('buildStoreStockRecoveryViews', () => {
-	test('copies current stock, status, threshold, and target from live product state', () => {
-		expect.assertions(4);
+	test('exposes only recovery context and never row-owned product values', () => {
+		expect.assertions(7);
 		const liveProduct = product('snacks', { initialQuantity: 4 });
 		const game = storeGame([liveProduct]);
 		const view = viewFor(game, 'snacks');
 
-		expect(view.productId).toBe('snacks');
-		expect(view.currentStock).toBe(getStoreProductStock(liveProduct));
-		expect(view.status).toBe(getStoreProductStatus(liveProduct));
-		expect(view).toMatchObject({
-			currentStock: 4,
-			status: 'Needs import',
-			reorderThreshold: 10,
-			targetStock: 60,
-			// Day 1 game: the first closing-day check is day 7.
-			nextCheckDay: 7
-		});
+		// The row already owns stock/status/threshold/target and the map key
+		// owns the product identity; the view adds only the missing context.
+		expect(Object.keys(view).sort()).toEqual([
+			'eligibility',
+			'lastReceipt',
+			'nextCheckDay',
+			'supplyContext',
+			'supplyMode'
+		]);
+		expect('productId' in view).toBe(false);
+		expect('currentStock' in view).toBe(false);
+		expect('status' in view).toBe(false);
+		expect('reorderThreshold' in view).toBe(false);
+		expect('targetStock' in view).toBe(false);
+		// Day 1 game: the first closing-day check is day 7.
+		expect(view.nextCheckDay).toBe(7);
 	});
 
 	test('reports eligible-at-current-stock below the reorder threshold', () => {
@@ -132,8 +136,8 @@ describe('buildStoreStockRecoveryViews', () => {
 		const view = viewFor(storeGame([product('snacks', { initialQuantity: 4 })]), 'snacks');
 
 		expect(view.supplyMode).toBe('assigned-city-with-import-fallback');
-		expect(view.configuredSupplyCityId).toBe('industry-city');
-		expect(view.resolvedSupplyCityId).toBe('industry-city');
+		expect(view.supplyContext.configuredSupplyCityId).toBe('industry-city');
+		expect(view.supplyContext.resolvedSupplyCityId).toBe('industry-city');
 	});
 
 	test('reports unassigned-import-fallback without a supply assignment', () => {
@@ -145,8 +149,8 @@ describe('buildStoreStockRecoveryViews', () => {
 		const view = viewFor(game, 'snacks');
 
 		expect(view.supplyMode).toBe('unassigned-import-fallback');
-		expect(view.configuredSupplyCityId).toBeNull();
-		expect(view.resolvedSupplyCityId).toBeNull();
+		expect(view.supplyContext.configuredSupplyCityId).toBeNull();
+		expect(view.supplyContext.resolvedSupplyCityId).toBeNull();
 	});
 
 	test('reports unavailable-source-import-fallback for a configured but unavailable source', () => {
@@ -158,8 +162,8 @@ describe('buildStoreStockRecoveryViews', () => {
 		const view = viewFor(game, 'snacks');
 
 		expect(view.supplyMode).toBe('unavailable-source-import-fallback');
-		expect(view.configuredSupplyCityId).toBe('breadbasket-basin');
-		expect(view.resolvedSupplyCityId).toBeNull();
+		expect(view.supplyContext.configuredSupplyCityId).toBe('breadbasket-basin');
+		expect(view.supplyContext.resolvedSupplyCityId).toBeNull();
 	});
 
 	test('selects the latest receipt newest-first by report day', () => {
@@ -222,7 +226,7 @@ describe('buildStoreStockRecoveryViews', () => {
 	});
 
 	test('keeps historical receipt evidence visible when current stock is empty again', () => {
-		expect.assertions(4);
+		expect.assertions(3);
 		const game = storeGame([product('snacks', { initialQuantity: 0 })], {
 			reports: [
 				receiptReport(
@@ -235,8 +239,8 @@ describe('buildStoreStockRecoveryViews', () => {
 		});
 		const view = viewFor(game, 'snacks');
 
-		expect(view.currentStock).toBe(0);
-		expect(view.status).toBe('Out of stock');
+		// Empty shelf again, but still below its (non-zero) threshold.
+		expect(view.eligibility).toBe('eligible-at-current-stock');
 		expect(view.lastReceipt?.day).toBe(7);
 		expect(view.lastReceipt).toMatchObject({
 			warehouseUnits: 6,

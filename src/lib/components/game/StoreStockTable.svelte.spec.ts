@@ -1028,16 +1028,18 @@ describe('StoreStockTable recovery context', () => {
 		await expect.element(page.getByRole('button', { name: 'Manage supply source' })).toBeEnabled();
 	});
 
-	it('omits misleading supply handoffs for the defensive not-replenishable state', async () => {
-		expect.assertions(3);
+	it('renders no recovery detail at all for the defensive not-replenishable state', async () => {
+		expect.assertions(4);
 		const apparelStore: Store = {
 			...store,
 			products: [productWithStock('apparel', 2)]
 		};
 		renderWithRecovery(apparelStore, { focusedProductId: 'apparel' });
 
-		const detail = page.getByTestId('store-recovery-apparel');
-		await expect.element(detail).toHaveTextContent('replenishable catalog');
+		// The read-model/test-only state has no player copy and no handoff
+		// chrome: no eligibility line, no receipt, no actions.
+		expect(document.querySelector('[data-testid="store-recovery-apparel"]')).toBeNull();
+		expect(document.querySelector('[data-testid="recovery-eligibility-apparel"]')).toBeNull();
 		expect(page.getByRole('button', { name: 'Manage supply source' }).elements()).toHaveLength(0);
 		expect(page.getByRole('button', { name: 'Plan supply' }).elements()).toHaveLength(0);
 	});

@@ -179,7 +179,7 @@ export function getStoreProductStatus(
  * store's product order. Healthy products are omitted.
  */
 export function getAffectedStockProductIds(
-	products: readonly StoreProduct[]
+	products: readonly Pick<StoreProduct, 'productId' | 'lots' | 'reorderThreshold'>[]
 ): readonly ProductId[] {
 	const outOfStock: ProductId[] = [];
 	const needsImport: ProductId[] = [];

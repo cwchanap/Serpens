@@ -1,42 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import type { GameAlert } from '$lib/game/alerts';
-import type { Store } from '$lib/game/types';
-import { resolveAlertNavigation, resolveStockAlertFocus } from './alertNavigation';
-
-const focusStore: Store = {
-	id: 'store-1',
-	level: 1,
-	name: 'Corner Market',
-	archetypeId: 'convenience',
-	location: { neighborhoodId: 'downtown', x: 1, y: 1 },
-	cityId: 'harbor-city',
-	tileId: 'harbor-city-1-1',
-	mapX: 1,
-	mapY: 1,
-	daysOpen: 3,
-	reputation: 50,
-	stockHealth: 80,
-	products: [
-		{
-			productId: 'snacks',
-			brandId: 'common-ground',
-			lots: [{ receivedDay: 1, quantity: 40 }],
-			reorderThreshold: 10,
-			targetStock: 50,
-			sellingPrice: 5
-		}
-	],
-	staffMorale: 70,
-	staffCapacity: 2,
-	localDemand: 50,
-	managerQuality: 40
-};
+import { createNewGame } from '$lib/game/state';
+import type { GameState, Store } from '$lib/game/types';
+import { resolveAlertNavigation, resolveStockAlertDestination } from './alertNavigation';
 
 const stockAlert: GameAlert = {
 	id: 'store-stock:store-1',
 	kind: 'store-stock',
 	storeId: 'store-1'
 };
+
+function storeFixture(products: Store['products']): Store {
+	return {
+		id: 'store-1',
+		level: 1,
+		name: 'Corner Market',
+		archetypeId: 'convenience',
+		location: { neighborhoodId: 'downtown', x: 1, y: 1 },
+		cityId: 'harbor-city',
+		tileId: 'harbor-city-1-1',
+		mapX: 1,
+		mapY: 1,
+		daysOpen: 3,
+		reputation: 50,
+		stockHealth: 80,
+		products,
+		staffMorale: 70,
+		staffCapacity: 2,
+		localDemand: 50,
+		managerQuality: 40
+	};
+}
+
+function gameFixture(store: Store): GameState {
+	return { ...createNewGame('convenience', 1), stores: [store] };
+}
 
 describe('alert navigation', () => {
 	it('navigates manager exceptions to Staff', () => {
@@ -130,44 +128,95 @@ describe('alert navigation', () => {
 		).toBeNull();
 	});
 
-	describe('stock alert focus', () => {
+	describe('stock alert destination', () => {
+		const affectedStore = storeFixture([
+			{
+				productId: 'snacks',
+				brandId: 'common-ground',
+				lots: [{ receivedDay: 1, quantity: 40 }],
+				reorderThreshold: 10,
+				targetStock: 50,
+				sellingPrice: 5
+			},
+			{
+				productId: 'bottled-water',
+				brandId: 'common-ground',
+				lots: [],
+				reorderThreshold: 10,
+				targetStock: 50,
+				sellingPrice: 5
+			}
+		]);
+
 		it('returns null for non-stock alerts', () => {
 			expect(
-				resolveStockAlertFocus(
+				resolveStockAlertDestination(
 					{ id: 'decision:system-notice-1', kind: 'decision', decisionId: 'system-notice-1' },
-					focusStore
+					gameFixture(affectedStore)
 				)
 			).toBeNull();
 		});
 
 		it('returns null when the stock alert has no storeId', () => {
 			expect(
-				resolveStockAlertFocus({ id: 'store-stock:x', kind: 'store-stock' }, focusStore)
+				resolveStockAlertDestination(
+					{ id: 'store-stock:x', kind: 'store-stock' },
+					gameFixture(affectedStore)
+				)
 			).toBeNull();
 		});
 
-		it('returns null when no store detail is selected', () => {
-			expect(resolveStockAlertFocus(stockAlert, null)).toBeNull();
+		it('returns null when the alert store no longer exists in the game', () => {
+			const renamedStore = { ...affectedStore, id: 'store-2' };
+			expect(resolveStockAlertDestination(stockAlert, gameFixture(renamedStore))).toBeNull();
+			expect(
+				resolveStockAlertDestination(stockAlert, {
+					...gameFixture(affectedStore),
+					stores: []
+				})
+			).toBeNull();
 		});
 
-		it('returns null when the selected store does not match the alert store', () => {
-			expect(resolveStockAlertFocus(stockAlert, { ...focusStore, id: 'store-2' })).toBeNull();
-		});
-
-		it('returns the alert product when the matching store stocks it', () => {
-			expect(resolveStockAlertFocus({ ...stockAlert, productId: 'snacks' }, focusStore)).toEqual({
-				productId: 'snacks'
+		it('returns the full live destination with the OOS-first primary product', () => {
+			expect(resolveStockAlertDestination(stockAlert, gameFixture(affectedStore))).toEqual({
+				cityId: 'harbor-city',
+				tileId: 'harbor-city-1-1',
+				storeId: 'store-1',
+				productId: 'bottled-water'
 			});
 		});
 
-		it('returns a null product when the alert product is no longer stocked by the store', () => {
-			expect(resolveStockAlertFocus({ ...stockAlert, productId: 'apparel' }, focusStore)).toEqual({
+		it('derives the product from current game.stores, not alert snapshot data', () => {
+			expect.assertions(2);
+			const game = gameFixture(affectedStore);
+			// Live state moves on after the alert fired: bottled-water recovers
+			// and snacks drops out of stock instead.
+			game.stores[0]!.products = [
+				{ ...game.stores[0]!.products[0]!, lots: [] },
+				{ ...game.stores[0]!.products[1]!, lots: [{ receivedDay: 2, quantity: 30 }] }
+			];
+
+			const destination = resolveStockAlertDestination(stockAlert, game);
+			expect(destination).not.toBeNull();
+			expect(destination!.productId).toBe('snacks');
+		});
+
+		it('keeps the destination with a null product when nothing is currently affected', () => {
+			const recoveredGame = gameFixture(
+				storeFixture(
+					affectedStore.products.map((product) => ({
+						...product,
+						lots: [{ receivedDay: 2, quantity: 30 }]
+					}))
+				)
+			);
+
+			expect(resolveStockAlertDestination(stockAlert, recoveredGame)).toEqual({
+				cityId: 'harbor-city',
+				tileId: 'harbor-city-1-1',
+				storeId: 'store-1',
 				productId: null
 			});
-		});
-
-		it('returns a null product when the alert carries no focus product', () => {
-			expect(resolveStockAlertFocus(stockAlert, focusStore)).toEqual({ productId: null });
 		});
 	});
 

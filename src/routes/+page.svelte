@@ -19,7 +19,7 @@
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
 	import { localizeGameAlert } from '$lib/i18n/gameCopy';
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
-	import { resolveAlertNavigation, resolveStockAlertFocus } from './alertNavigation';
+	import { resolveAlertNavigation, resolveStockAlertDestination } from './alertNavigation';
 	import { createInitialEventRuntime } from '$lib/game/eventSelection';
 	import {
 		MANAGEMENT_PANEL_SHORTCUT_KEY,
@@ -2722,28 +2722,26 @@
 			openManagementPanel(navigation.panelId);
 			return;
 		}
-		if (alert.kind === 'store-stock' && alert.tileId) {
-			if (game && alert.cityId && alert.cityId !== game.activeCityId) {
+		if (alert.kind === 'store-stock') {
+			const destination = game ? resolveStockAlertDestination(alert, game) : null;
+			if (!destination || !game) return;
+
+			if (destination.cityId !== game.activeCityId) {
 				if (
-					!isWorldCityId(alert.cityId) ||
+					!isWorldCityId(destination.cityId) ||
 					!worldCitySelectionAvailable ||
-					!allowedWorldCityIds.includes(alert.cityId)
+					!allowedWorldCityIds.includes(destination.cityId)
 				) {
 					return;
 				}
-				const result = await gameRouteController.selectAlertCity(alert.cityId);
+				const result = await gameRouteController.selectAlertCity(destination.cityId);
 				if (result.status !== 'committed' && result.status !== 'sandbox-committed') {
 					return;
 				}
 			}
 			showRetailMap();
-			selectedTileId = alert.tileId;
-			await tick();
-			// Only open the detail when the alert names the now-selected store;
-			// otherwise stop without opening the wrong detail.
-			const focus = resolveStockAlertFocus(alert, selectedStore);
-			if (!focus) return;
-			focusedStockProductId = focus.productId;
+			selectedTileId = destination.tileId;
+			focusedStockProductId = destination.productId;
 			isStoreDetailOpen = true;
 			return;
 		}

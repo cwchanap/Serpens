@@ -3666,7 +3666,7 @@ test('cross-city stock alert deep-links to the origin city and tile', async ({ p
 	const alertsList = page.getByRole('group', { name: /alerts list/i });
 	await expect(alertsList).toBeVisible();
 	const stockAlert = alertsList.getByRole('button', {
-		name: /store #2: out of stock: games/i
+		name: /store #2: games/i
 	});
 	await expect(stockAlert).toHaveCount(1);
 	await stockAlert.click();

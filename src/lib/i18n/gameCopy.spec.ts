@@ -389,7 +389,7 @@ describe('game copy builders', () => {
 		expect(localizeStockStatus('Healthy', i18n)).toBe('Healthy');
 		expect(
 			localizeStockTrouble([stockProduct('bottled-water', 0), stockProduct('snacks', 2)], i18n)
-		).toBe('Out of stock: Bottled Water and Needs import: Snacks');
+		).toBe('1 product out of stock and 1 product needs import');
 		expect(localizeStockStatus('Healthy', createI18n('ja'))).not.toBe('Healthy');
 	});
 
@@ -456,16 +456,15 @@ describe('game copy builders', () => {
 		};
 
 		// The hand-written alert carries no productId/affectedProductIds, so the
-		// copy is derived from the store's current products.
+		// copy is derived from the store's current products: every affected
+		// product is named, ordered by the shared OOS-first rule.
 		const en = createI18n('en');
 		const summary = en.format.list(
 			troubledGame.stores[0]!.products.map((product) =>
 				en.labels.productCategory(product.productId)
 			)
 		);
-		expect(localizeAlert(alert, troubledGame, en)).toBe(
-			`Store #1: ${en.t('copy.stockTrouble.outOfStock', { products: summary })}`
-		);
+		expect(localizeAlert(alert, troubledGame, en)).toBe(`Store #1: ${summary}`);
 		expect(
 			localizeAlert(
 				{ id: 'unknown', kind: 'decision', message: 'Keep original message' },
@@ -2183,26 +2182,28 @@ describe('game copy builders', () => {
 		).toBeNull();
 	});
 
-	it('localizeStockTrouble names affected products with out-of-stock names before needs-import names', () => {
-		expect.assertions(5);
+	it('localizeStockTrouble returns the count summary with out-of-stock counted before needs-import', () => {
+		expect.assertions(4);
 		const en = createI18n('en');
 		const products = [
-			stockProduct('bottled-water', 20), // healthy → must stay absent
-			stockProduct('snacks', 2), // needs import (first in its group)
-			stockProduct('produce', 0), // out of stock (first in its group)
-			stockProduct('pantry', 1) // needs import (second in its group)
+			stockProduct('bottled-water', 20), // healthy → not counted
+			stockProduct('snacks', 2), // needs import
+			stockProduct('produce', 0), // out of stock
+			stockProduct('pantry', 1) // needs import
 		];
 
 		const summary = localizeStockTrouble(products, en);
-		expect(summary).not.toBeNull();
-		expect(summary!.startsWith('Out of stock: Produce')).toBe(true);
-		expect(summary!.indexOf('Out of stock')).toBeLessThan(summary!.indexOf('Needs import'));
-		// Store product order is retained within each group.
-		expect(summary!.indexOf('Snacks')).toBeLessThan(summary!.indexOf('Pantry'));
+		expect(summary).toBe('1 product out of stock and 2 products need import');
+		// Compact count copy for the inspector: no product names, no healthy
+		// mention.
 		expect(summary).not.toContain('Bottled Water');
+		expect(summary).not.toContain('Produce');
+		expect(
+			localizeStockTrouble([stockProduct('bottled-water', 0), stockProduct('snacks', 0)], en)
+		).toBe('2 products out of stock');
 	});
 
-	it('localizeStockTrouble joins named groups with a locale-aware list separator', () => {
+	it('localizeStockTrouble joins the count groups with a locale-aware list separator', () => {
 		expect.assertions(4);
 		const en = createI18n('en');
 		const ja = createI18n('ja');
@@ -2212,7 +2213,7 @@ describe('game copy builders', () => {
 
 		// English Intl.ListFormat conjunction joins two items with " and ".
 		expect(localizeStockTrouble(products, en)).toBe(
-			'Out of stock: Produce and Needs import: Snacks'
+			'1 product out of stock and 1 product needs import'
 		);
 
 		expect(localizeStockTrouble(products, ja)).toContain('在庫切れ');
@@ -2223,11 +2224,49 @@ describe('game copy builders', () => {
 		expect(localizeStockTrouble(products, zh)).not.toContain(', ');
 	});
 
+	it('store-stock alert names all live affected products OOS-first and skips healthy ones', () => {
+		expect.assertions(3);
+		const en = createI18n('en');
+		const game = createNewGame('convenience', 20260708);
+		const mixedStore = {
+			...game.stores[0]!,
+			products: [
+				stockProduct('bottled-water', 20), // healthy → absent
+				stockProduct('snacks', 2), // needs import (second in the list)
+				stockProduct('produce', 0), // out of stock (first named)
+				stockProduct('pantry', 1) // needs import
+			]
+		};
+		const mixedGame = {
+			...game,
+			stores: [mixedStore, ...game.stores.slice(1)]
+		};
+		// A hand-written alert needs only the storeId to derive live names.
+		const alert: GameAlert = {
+			id: 'store-stock:store-1',
+			kind: 'store-stock',
+			message: 'stale',
+			storeId: 'store-1'
+		};
+
+		const message = localizeAlert(alert, mixedGame, en);
+		expect(message).toBe(`Store #1: ${en.format.list(['Produce', 'Snacks', 'Pantry'])}`);
+		expect(message).not.toContain('Bottled Water');
+		// OOS-first stable order: the out-of-stock product is named first even
+		// though it appears later in the store's product list.
+		expect(message.indexOf('Produce')).toBeLessThan(message.indexOf('Snacks'));
+	});
+
 	it('keeps the stock trouble and stock recovery copy key sets identical across locales', () => {
 		const englishTroubleKeys = flattenStrings(messagesByLocale.en.copy.stockTrouble).map(
 			({ key }) => key
 		);
-		expect(englishTroubleKeys).toEqual(['outOfStock', 'needsImport']);
+		expect(englishTroubleKeys).toEqual([
+			'outOfStock.one',
+			'outOfStock.other',
+			'needsImport.one',
+			'needsImport.other'
+		]);
 
 		const englishRecoveryKeys = flattenStrings(messagesByLocale.en.storeStockTable)
 			.map(({ key }) => key)
