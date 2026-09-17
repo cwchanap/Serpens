@@ -687,7 +687,7 @@ export const en = {
 				'eligible-at-current-stock':
 					'Stock is below the reorder threshold, so the next closing-day check can replenish it.',
 				'not-below-threshold':
-					'Stock is at or above the reorder threshold, so the next check will not replenish it.',
+					"Stock is currently at or above the reorder threshold, so it is not eligible yet — the actual check runs after that closing day's sales, and stock that drops below the threshold later that day can still become eligible.",
 				'blocked-by-zero-threshold':
 					'Replenishment stays blocked while the reorder threshold is 0 — raise it with the reorder input in this row.',
 				'not-replenishable-product':

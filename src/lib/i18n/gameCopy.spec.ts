@@ -2253,6 +2253,24 @@ describe('game copy builders', () => {
 		}
 	});
 
+	it('pins not-below-threshold copy to the post-sales closing-day reevaluation', () => {
+		expect.assertions(6);
+		// The check runs after that closing day's sales, so stock currently
+		// at/above the threshold can still become eligible later that day.
+		const reevaluationFragments = {
+			en: "after that closing day's sales",
+			ja: '販売処理後',
+			'zh-Hant': '銷售結算後'
+		} as const;
+		for (const locale of ['en', 'ja', 'zh-Hant'] as const) {
+			const copy =
+				messagesByLocale[locale].storeStockTable.recovery.eligibility['not-below-threshold'];
+			expect(copy).toContain(reevaluationFragments[locale]);
+			// Stale untruthful wording: the check CAN replenish after sales.
+			expect(copy).not.toContain('will not replenish');
+		}
+	});
+
 	function stockProduct(productId: ProductId, quantity: number): StoreProduct {
 		const definition = getProductDefinition(productId);
 		return {

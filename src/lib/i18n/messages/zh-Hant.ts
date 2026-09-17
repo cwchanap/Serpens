@@ -681,7 +681,8 @@ export const zhHant = {
 			nextCheck: '下次檢查：第 {day} 天結束後、銷售結算後執行——這是排定檢查，不保證到貨。',
 			eligibility: {
 				'eligible-at-current-stock': '庫存低於補貨門檻，下次營業日結算檢查可進行補充。',
-				'not-below-threshold': '庫存高於或等於補貨門檻，下次檢查不會補充。',
+				'not-below-threshold':
+					'庫存目前高於或等於補貨門檻，尚未符合補充資格——實際檢查在該營業日銷售結算後執行，當天銷售後若降至門檻以下，仍可能獲得補充。',
 				'blocked-by-zero-threshold': '補貨門檻為 0，因此不會補充——請在此列提高補貨門檻輸入值。',
 				'not-replenishable-product': '此商品不屬於本門市的可補貨目錄，供貨作業無法補充它。'
 			},

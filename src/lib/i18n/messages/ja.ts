@@ -685,7 +685,8 @@ export const ja = {
 			eligibility: {
 				'eligible-at-current-stock':
 					'在庫が再発注しきい値を下回っているため、次の締め日確認で補充されます。',
-				'not-below-threshold': '在庫が再発注しきい値以上のため、次の確認では補充されません。',
+				'not-below-threshold':
+					'現在の在庫は再発注しきい値以上のため、まだ補充対象ではありません。実際の確認はその締め日の販売処理後に行われるため、本日の販売でしきい値を下回れば後から補充対象になることがあります。',
 				'blocked-by-zero-threshold':
 					'再発注しきい値が 0 のため補充されません。この行の再発注しきい値入力を上げてください。',
 				'not-replenishable-product':
