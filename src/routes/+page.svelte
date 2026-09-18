@@ -2095,6 +2095,7 @@
 		isBuildMenuOpen = false;
 		isGameMenuOpen = false;
 		isStoreDetailOpen = false;
+		focusedStockProductId = null;
 		isCheatSheetOpen = false;
 		isAlertsMenuOpen = false;
 		isSavePanelOpen = false;
@@ -2654,6 +2655,7 @@
 	function closeInspector() {
 		selectedTileId = null;
 		isStoreDetailOpen = false;
+		focusedStockProductId = null;
 	}
 
 	function openStoreDetail(): void {
@@ -2798,7 +2800,7 @@
 				return;
 			}
 			if (isStoreDetailOpen) {
-				isStoreDetailOpen = false;
+				closeStoreDetail();
 				return;
 			}
 			if (isBuildMenuOpen) {

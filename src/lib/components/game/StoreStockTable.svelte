@@ -187,7 +187,7 @@
 			void onUpdate(store.id, productId, { sellingPrice: value });
 			return;
 		}
-		void commitInventoryTargets(productId, field, value);
+		void commitInventoryTargets(productId, field, value, input);
 	}
 
 	type InventoryStatusKind = 'saved' | 'unchanged' | 'not-saved';
@@ -207,7 +207,8 @@
 	async function commitInventoryTargets(
 		productId: ProductId,
 		field: 'reorderThreshold' | 'targetStock',
-		value: number
+		value: number,
+		input: HTMLInputElement
 	): Promise<void> {
 		const patch: StoreProductPatch =
 			field === 'reorderThreshold' ? { reorderThreshold: value } : { targetStock: value };
@@ -219,14 +220,23 @@
 		const view = recoveryViews.get(productId);
 		// Quoted values come from the committed (normalized) store props, never
 		// from the user's unnormalized input; the next check comes from the
-		// updated recovery read model.
-		const reorder = i18n.format.integer(product?.reorderThreshold ?? 0);
+		// updated recovery read model. The reorder threshold keeps fractional
+		// values, so it needs the decimal formatter — quoting it as an integer
+		// would acknowledge a different threshold than the one stored.
+		const reorder = i18n.format.decimal(product?.reorderThreshold ?? 0);
 		const target = i18n.format.integer(product?.targetStock ?? 0);
 
 		const committed =
 			result?.status === 'committed' || (result?.status === 'sandbox-committed' && result.changed);
 		const unchanged =
 			result?.status === 'unchanged' || (result?.status === 'sandbox-committed' && !result.changed);
+
+		if (!committed && product) {
+			// The one-way `value=` binding only rewrites the DOM when the stored
+			// product changes, so a rejected or no-change edit leaves the attempted
+			// value on screen; restore the control from committed state.
+			input.value = String(product[field]);
+		}
 
 		if (committed) {
 			inventoryStatus = {
