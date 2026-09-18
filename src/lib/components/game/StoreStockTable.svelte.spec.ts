@@ -966,7 +966,7 @@ describe('StoreStockTable recovery context', () => {
 			result: { status: 'sandbox-committed', changed: false } as GameRouteCommitResult
 		}
 	])('gives neutral no-change text for a $label', async ({ result }) => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const onUpdate = vi.fn(async () => result);
 		renderWithRecovery(unhealthyStore, { onUpdate, focusedProductId: 'bottled-water' });
 
@@ -977,6 +977,26 @@ describe('StoreStockTable recovery context', () => {
 		const status = page.getByTestId('inventory-status-bottled-water');
 		await expect.element(status).toHaveTextContent('No settings changed: reorder 4, target 16');
 		await expect.element(status).not.toHaveTextContent('Saved:');
+		// A no-change result still restores the control to the stored value.
+		expect((reorder.element() as HTMLInputElement).value).toBe('4');
+	});
+
+	it('quotes a fractional stored reorder threshold without rounding in the acknowledgement', async () => {
+		expect.assertions(2);
+		const decimalStore: Store = {
+			...unhealthyStore,
+			products: [{ ...unhealthyStore.products[0]!, reorderThreshold: 12.5 }]
+		};
+		const onUpdate = vi.fn(async () => ({ status: 'committed' }) as GameRouteCommitResult);
+		renderWithRecovery(decimalStore, { onUpdate, recoveryViews: new Map() });
+
+		const reorder = page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' });
+		await reorder.fill('13');
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
+
+		const status = page.getByTestId('inventory-status-bottled-water');
+		await expect.element(status).toHaveTextContent('Saved: reorder 12.5');
+		await expect.element(status).not.toHaveTextContent('reorder 13');
 	});
 
 	it.each([
@@ -987,7 +1007,7 @@ describe('StoreStockTable recovery context', () => {
 		['null', null],
 		['undefined', undefined]
 	] as const)('never claims success for a %s inventory-update result', async (_label, result) => {
-		expect.assertions(2);
+		expect.assertions(3);
 		const onUpdate = vi.fn(async () => result as GameRouteCommitResult | null);
 		renderWithRecovery(unhealthyStore, { onUpdate, focusedProductId: 'bottled-water' });
 
@@ -1000,6 +1020,8 @@ describe('StoreStockTable recovery context', () => {
 		const status = page.getByTestId('inventory-status-bottled-water');
 		await expect.element(status).toHaveTextContent('Inventory settings were not saved.');
 		await expect.element(status).not.toHaveTextContent('Saved:');
+		// A non-committed edit restores the control to the stored value.
+		expect(reorder.value).toBe('4');
 	});
 
 	it('hands off to manage-supply-source with the current retail city and to the planner with the product', async () => {
