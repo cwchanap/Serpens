@@ -134,6 +134,18 @@ export function updateStoreProduct(
 	if (!isLotCompatibleQuantity(targetStock)) {
 		return game;
 	}
+	if (
+		nextBrandId === currentBrandId &&
+		sellingPrice === product.sellingPrice &&
+		reorderThreshold === product.reorderThreshold &&
+		targetStock === product.targetStock &&
+		calculateStockHealth(store.products) === store.stockHealth
+	) {
+		// A patch that normalizes onto the stored values writes nothing, so
+		// preserve identity — the sandbox commit boundary reads reference
+		// equality to report the edit as unchanged rather than a save.
+		return game;
+	}
 	const products = store.products.map((candidate, index) =>
 		index === productIndex
 			? {

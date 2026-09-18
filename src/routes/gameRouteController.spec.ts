@@ -1829,6 +1829,23 @@ describe('GameRouteController', () => {
 			expect(result).toEqual({ status: 'sandbox-committed', changed: false });
 		});
 
+		it('reports unchanged for a sandbox inventory-target edit matching the stored values', async () => {
+			const harness = createHarness();
+			const game = createNewGame('convenience', 3);
+			harness.controller.loadSandboxGame(game);
+			const product = game.stores[0]!.products[0]!;
+
+			const result = await harness.controller.updateStoreInventoryTargets(
+				'store-1',
+				product.productId,
+				product.reorderThreshold,
+				product.targetStock
+			);
+
+			expect(result).toEqual({ status: 'sandbox-committed', changed: false });
+			expect(harness.controller.state.sandboxGame).toBe(game);
+		});
+
 		it('preflights retail supply selections so only a changed sandbox selection publishes and autosaves', async () => {
 			const missingGame = createHarness();
 			expect(
