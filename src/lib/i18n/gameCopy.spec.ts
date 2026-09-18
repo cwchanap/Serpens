@@ -2257,6 +2257,30 @@ describe('game copy builders', () => {
 		expect(message.indexOf('Produce')).toBeLessThan(message.indexOf('Snacks'));
 	});
 
+	it('store-stock alert falls back to the stored message when no product is currently affected', () => {
+		expect.assertions(1);
+		const en = createI18n('en');
+		const game = createNewGame('convenience', 20260708);
+		// The alert was raised earlier; by the time it renders the shelf has
+		// recovered, so there are no live product names to quote.
+		const recoveredStore = {
+			...game.stores[0]!,
+			products: [stockProduct('bottled-water', 20), stockProduct('snacks', 20)]
+		};
+		const recoveredGame = {
+			...game,
+			stores: [recoveredStore, ...game.stores.slice(1)]
+		};
+		const alert: GameAlert = {
+			id: 'store-stock:store-1',
+			kind: 'store-stock',
+			message: 'Keep original message',
+			storeId: 'store-1'
+		};
+
+		expect(localizeAlert(alert, recoveredGame, en)).toBe('Keep original message');
+	});
+
 	it('keeps the stock trouble and stock recovery copy key sets identical across locales', () => {
 		const englishTroubleKeys = flattenStrings(messagesByLocale.en.copy.stockTrouble).map(
 			({ key }) => key

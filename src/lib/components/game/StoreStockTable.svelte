@@ -167,7 +167,11 @@
 		}
 	}
 
-	function updateNumber(productId: ProductId, field: keyof StoreProductPatch, event: Event): void {
+	function updateNumber(
+		productId: ProductId,
+		field: 'sellingPrice' | 'reorderThreshold' | 'targetStock',
+		event: Event
+	): void {
 		const allowed =
 			allowedProductSet.has(productId) &&
 			(field === 'sellingPrice' ? canUpdateSellingPrice : canUpdateInventoryTargets);
@@ -183,7 +187,6 @@
 			void onUpdate(store.id, productId, { sellingPrice: value });
 			return;
 		}
-		if (field !== 'reorderThreshold' && field !== 'targetStock') return;
 		void commitInventoryTargets(productId, field, value);
 	}
 
