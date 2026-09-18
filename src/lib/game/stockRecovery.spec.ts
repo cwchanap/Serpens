@@ -74,6 +74,21 @@ function viewFor(game: GameState, productId: ProductId) {
 }
 
 describe('buildStoreStockRecoveryViews', () => {
+	test('returns an empty map when the store id is unknown', () => {
+		expect.assertions(1);
+		const game = storeGame([product('snacks', { initialQuantity: 4 })]);
+
+		expect(buildStoreStockRecoveryViews(game, 'store-missing').size).toBe(0);
+	});
+
+	test('returns an empty map when the store city does not resolve to a world city', () => {
+		expect.assertions(1);
+		const game = storeGame([product('snacks', { initialQuantity: 4 })]);
+		game.stores = [{ ...game.stores[0]!, cityId: 'not-a-world-city' }];
+
+		expect(buildStoreStockRecoveryViews(game, game.stores[0]!.id).size).toBe(0);
+	});
+
 	test('exposes only recovery context and never row-owned product values', () => {
 		expect.assertions(7);
 		const liveProduct = product('snacks', { initialQuantity: 4 });
@@ -223,6 +238,63 @@ describe('buildStoreStockRecoveryViews', () => {
 		});
 
 		expect(viewFor(game, 'snacks').lastReceipt?.outcome).toBe(expectedOutcome);
+	});
+
+	test('skips reports without replenishment context for this store and keeps searching older days', () => {
+		expect.assertions(2);
+		const game = storeGame([product('snacks', { initialQuantity: 4 })], {
+			reports: [
+				receiptReport(
+					7,
+					'store-1',
+					[{ productId: 'snacks', warehouseUnits: 5, importedUnits: 0 }],
+					assignedContext
+				),
+				// Another store's report carries no evidence for this store.
+				receiptReport(
+					14,
+					'store-2',
+					[{ productId: 'snacks', warehouseUnits: 9, importedUnits: 0 }],
+					assignedContext
+				),
+				// A day this store reported but attempted no replenishment.
+				receiptReport(
+					21,
+					'store-1',
+					[{ productId: 'snacks', warehouseUnits: 8, importedUnits: 0 }],
+					null
+				)
+			]
+		});
+
+		const view = viewFor(game, 'snacks');
+		expect(view.lastReceipt?.day).toBe(7);
+		expect(view.lastReceipt?.warehouseUnits).toBe(5);
+	});
+
+	test('skips reports whose product row is missing and keeps searching older days', () => {
+		expect.assertions(2);
+		const game = storeGame([product('snacks', { initialQuantity: 4 })], {
+			reports: [
+				receiptReport(
+					7,
+					'store-1',
+					[{ productId: 'snacks', warehouseUnits: 5, importedUnits: 0 }],
+					assignedContext
+				),
+				// The store replenished on day 14, but not this product.
+				receiptReport(
+					14,
+					'store-1',
+					[{ productId: 'produce', warehouseUnits: 9, importedUnits: 0 }],
+					assignedContext
+				)
+			]
+		});
+
+		const view = viewFor(game, 'snacks');
+		expect(view.lastReceipt?.day).toBe(7);
+		expect(view.lastReceipt?.warehouseUnits).toBe(5);
 	});
 
 	test('keeps historical receipt evidence visible when current stock is empty again', () => {

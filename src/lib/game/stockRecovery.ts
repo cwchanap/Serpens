@@ -106,9 +106,11 @@ function findLastReceipt(
 		const productReport = storeReport.productReports.find(
 			(candidate) => candidate.productId === productId
 		);
-		if (!productReport || (productReport.warehouseUnits <= 0 && productReport.importedUnits <= 0)) {
+		if (!productReport) {
 			continue;
 		}
+		// The shared outcome rule doubles as the positive-quantity filter: a
+		// report that moved no warehouse or import units yields no outcome.
 		const outcome = getRetailReplenishmentOutcome(storeReport.replenishment, productReport);
 		if (!outcome) {
 			continue;

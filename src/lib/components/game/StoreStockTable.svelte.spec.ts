@@ -8,6 +8,7 @@ import { getProductDefinition } from '$lib/game/products';
 import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { buildStoreStockRecoveryViews } from '$lib/game/stockRecovery';
+import type { StockRecoveryView } from '$lib/game/stockRecovery';
 import { createI18n } from '$lib/i18n';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import type {
@@ -1056,5 +1057,99 @@ describe('StoreStockTable recovery context', () => {
 		).not.toBeNull();
 		// No secondary modal is introduced for the recovery context.
 		expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(0);
+	});
+
+	it('names the configured supply city as unavailable when it cannot serve the store', async () => {
+		expect.assertions(2);
+		const unavailableSourceGame = stockTableGame(unhealthyStore, {
+			retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'breadbasket-basin' }]
+		});
+		renderWithRecovery(unhealthyStore, {
+			focusedProductId: 'bottled-water',
+			recoveryViews: buildStoreStockRecoveryViews(unavailableSourceGame, 'store-1')
+		});
+
+		const detail = page.getByTestId('store-recovery-bottled-water');
+		await expect
+			.element(detail)
+			.toHaveTextContent('Assigned supply city Breadbasket Basin is unavailable');
+		await expect.element(detail).toHaveTextContent('imports cover shortages');
+	});
+
+	it('still renders recovery context when a supplied view carries no configured city', async () => {
+		expect.assertions(1);
+		// A hand-built view may not satisfy the read-model invariant that a
+		// non-unassigned mode implies a configured city; the row must not break.
+		const inconsistentView: StockRecoveryView = {
+			eligibility: 'eligible-at-current-stock',
+			nextCheckDay: 7,
+			supplyContext: {
+				retailCityId: 'harbor-city',
+				configuredSupplyCityId: null,
+				resolvedSupplyCityId: null
+			},
+			supplyMode: 'unavailable-source-import-fallback',
+			lastReceipt: null
+		};
+		renderWithRecovery(unhealthyStore, {
+			focusedProductId: 'bottled-water',
+			recoveryViews: new Map([['bottled-water', inconsistentView]])
+		});
+
+		await expect
+			.element(page.getByTestId('store-recovery-bottled-water'))
+			.toHaveTextContent('is unavailable; imports cover shortages');
+	});
+
+	it('acknowledges a committed change without a next-check suffix when no recovery view exists', async () => {
+		expect.assertions(2);
+		const onUpdate = vi.fn(async () => ({ status: 'committed' }) as GameRouteCommitResult);
+		renderWithRecovery(unhealthyStore, { onUpdate, recoveryViews: new Map() });
+
+		const reorder = page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' });
+		await reorder.fill('8');
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
+
+		const status = page.getByTestId('inventory-status-bottled-water');
+		await expect.element(status).toHaveTextContent('Saved: reorder 4, target 16');
+		await expect.element(status).not.toHaveTextContent('Next check');
+	});
+
+	it('renders no status row when the product leaves the store before the commit resolves', async () => {
+		expect.assertions(2);
+		let resolveUpdate: (result: GameRouteCommitResult) => void = () => {};
+		const onUpdate = vi.fn(
+			() =>
+				new Promise<GameRouteCommitResult>((resolve) => {
+					resolveUpdate = resolve;
+				})
+		);
+		const props = {
+			i18n: createI18n('en'),
+			store: unhealthyStore,
+			ordinal: 1,
+			latestReport: { ...latestReport, productReports: [] },
+			onUpdate,
+			recoveryViews: buildStoreStockRecoveryViews(stockTableGame(unhealthyStore), 'store-1'),
+			plannerProductIds: ['bottled-water'] as readonly ProductId[],
+			focusedProductId: 'bottled-water' as ProductId | null
+		};
+		const instance = render(StoreStockTable, props);
+
+		const reorder = page.getByRole('spinbutton', { name: 'Reorder threshold for Bottled Water' });
+		await reorder.fill('8');
+		await page.getByRole('cell', { name: 'Bottled Water' }).click();
+		expect(onUpdate).toHaveBeenCalledTimes(1);
+
+		// The parent swapped in a store without the edited product before the
+		// route commit resolved; the commit still settles, but no row can show it.
+		instance.rerender({
+			...props,
+			store: { ...unhealthyStore, products: [productWithStock('snacks')] }
+		});
+		resolveUpdate({ status: 'committed' });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(document.querySelector('[data-testid="inventory-status-bottled-water"]')).toBeNull();
 	});
 });
