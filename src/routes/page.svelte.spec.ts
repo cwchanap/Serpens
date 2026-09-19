@@ -52,6 +52,9 @@ import {
 	type GameRouteControllerOptions
 } from './gameRouteController';
 import { createStoreDetailFocus } from './storeDetailFocus.svelte';
+// Raw source of the route component: lets the wiring pin below assert the
+// focus-guard polarity without mounting the page.
+import pageSource from './+page.svelte?raw';
 interface Deferred<T> {
 	promise: Promise<T>;
 	resolve(value: T): void;
@@ -1746,5 +1749,15 @@ describe('store detail focus route wiring', () => {
 			'open',
 			'openDirect'
 		]);
+	});
+
+	// Pins the page-side wiring, which the module tests above cannot see: the
+	// callback must be true when a store IS selected. The inverted form
+	// (`() => !selectedStore`) makes every `open()` a silent no-op while a
+	// store is selected and opens the overlay with none.
+	it('page wiring keeps the focus-guard polarity: callback is true when a store IS selected', () => {
+		const wiring = pageSource.match(/createStoreDetailFocus\((.*)\)/)?.[1] ?? '';
+		expect(wiring).toContain('selectedStore');
+		expect(wiring).not.toMatch(/!\s*selectedStore\b/);
 	});
 });
