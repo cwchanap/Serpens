@@ -112,14 +112,26 @@ export const en = {
 		stockHealth: 'Stock health',
 		staffMorale: 'Staff morale',
 		level: 'Level {level} / {max}',
-		nextLabel: 'Next: {benefit}',
-		nextBenefit: {
-			unlockProductStaff: 'Unlocks product #{productNumber} + {staffCapacity} staff capacity',
-			revenue: '+10% revenue'
+		upgradeCard: {
+			heading: 'Store upgrade',
+			levelTransition: 'Level {from} → {to}',
+			cost: 'Cost {cost}',
+			revenueMultiplier: 'Revenue ×{before} → ×{after}',
+			unlocksProduct: 'Unlocks {product}',
+			staffCapacity: 'Staff capacity {before} → {after}',
+			staffing:
+				'Staffing {beforeManagers} manager + {beforeGeneral} general → {afterManagers} manager + {afterGeneral} general',
+			nextMilestone: 'Next milestone: {product} at Level {level}'
 		},
 		upgrade: 'Upgrade — {cost}',
 		maxLevel: 'Max level',
 		notEnoughCash: 'Not enough cash.',
+		upgradeStatus: {
+			success: 'Upgrade complete.',
+			reviewStockSupply: 'Review {product} stock & supply',
+			unchanged: 'Level is already up to date.',
+			notApplied: 'Upgrade was not applied.'
+		},
 		openDetails: 'Open Details ▸',
 		tileStats: 'Tile stats',
 		demand: 'Demand',

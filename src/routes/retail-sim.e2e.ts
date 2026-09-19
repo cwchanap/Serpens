@@ -3952,6 +3952,10 @@ async function injectCashAndReload(page: Page, cash: number): Promise<void> {
 }
 
 test('player upgrades a store from the tile inspector', async ({ page }) => {
+	test.setTimeout(45_000);
+	// Height must be tall enough that the fixed control-desk footer does not
+	// overlap the tile inspector's Upgrade button.
+	await page.setViewportSize({ width: 1920, height: 1080 });
 	await page.goto('/');
 
 	await buildRetailStoreAt(page, {
@@ -3963,15 +3967,74 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 
 	await injectCashAndReload(page, 1_000_000);
 
-	await clickMapTile(page, 1, 6);
+	// The first click after a reload can race the map scene's camera/input
+	// settle and land without opening the inspector; retry like a player would.
+	// The visibility check retries within the 500ms window instead of firing
+	// an immediate (non-retrying) probe, so a slow open cannot trigger a
+	// redundant second canvas click.
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		await clickMapTile(page, 1, 6);
+		try {
+			await expect(inspector).toBeVisible({ timeout: 500 });
+			break;
+		} catch {
+			// Retry the canvas click.
+		}
+	}
 	await expect(inspector).toBeVisible();
 	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 1 / 10');
 
+	// Real Upgrade clicks take the store 1 → 2 → 3; no save hand-editing.
 	const upgradeButton = inspector.getByRole('button', { name: /Upgrade/i });
 	await upgradeButton.click();
-
 	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 2 / 10');
+	await upgradeButton.click();
+	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 3 / 10');
+
+	// The 3 → 4 milestone preview is visible and advertises the Snacks unlock.
+	const upgradeCard = inspector.getByTestId('upgrade-card');
+	await expect(upgradeCard).toBeVisible();
+	const unlockRow = upgradeCard.getByTestId('upgrade-unlock');
+	await expect(unlockRow).toContainText('Unlocks Snacks');
+	await expect(unlockRow.getByRole('img', { name: 'Snacks' })).toBeVisible();
+
+	await upgradeButton.click();
+
+	// The purchase commits: level 4 plus the truthful confirmation ack.
+	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 4 / 10');
+	await expect(inspector.getByTestId('upgrade-status')).toContainText('Upgrade complete.');
+
+	// The milestone CTA hands off to Store Detail focused on the Snacks row.
+	await expect(inspector.getByTestId('upgrade-review-stock-supply')).toContainText('Snacks');
+	await inspector.getByTestId('upgrade-review-stock-supply').click();
+	const storeModal = page.locator('[role="dialog"][aria-modal="true"]');
+	await expect(storeModal.getByRole('tab', { name: /stock/i })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	const snacksRow = storeModal.getByTestId('store-product-row-snacks');
+	await expect(snacksRow).toBeFocused();
+
+	// The existing threshold/target controls stay usable for the new category.
+	const snacksReorder = storeModal.getByRole('spinbutton', {
+		name: /reorder threshold for snacks/i
+	});
+	await expect(snacksReorder).toBeVisible();
+	await expect(snacksReorder).toBeEnabled();
+	await expect(
+		storeModal.getByRole('spinbutton', { name: /target stock for snacks/i })
+	).toBeVisible();
+
+	// The existing Plan Supply handoff for Snacks is enabled and usable.
+	const planSupply = storeModal
+		.getByTestId('store-recovery-actions-snacks')
+		.getByRole('button', { name: 'Plan supply' });
+	await expect(planSupply).toBeEnabled();
+	await planSupply.click();
+	const advisor = page.getByRole('dialog', { name: /supply advisor/i });
+	await expect(advisor).toBeVisible();
+	await expect(advisor.getByRole('combobox', { name: 'Category' })).toHaveValue('snacks');
 });
 
 test('store card Open Details stays reachable above the control desk on a narrow viewport', async ({
@@ -3993,6 +4056,13 @@ test('store card Open Details stays reachable above the control desk on a narrow
 	await clickMapTile(page, 1, 6);
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
+
+	// HPA-283: the taller upgrade preview card stays visible on the bottom
+	// sheet and Upgrade remains reachable above the control desk — the click
+	// must land and commit the level change.
+	await expect(inspector.getByTestId('upgrade-card')).toBeVisible();
+	await inspector.getByRole('button', { name: /Upgrade/i }).click();
+	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 2 / 10');
 
 	const modal = await openStoreDetail(page);
 	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();

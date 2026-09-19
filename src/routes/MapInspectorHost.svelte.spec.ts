@@ -5,6 +5,7 @@ import { getIndustryTilesByResource } from '$lib/game/industry';
 import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import type { RailSegment } from '$lib/game/rail';
+import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import { createNewGame } from '$lib/game/state';
 import type {
 	CityTile,
@@ -12,6 +13,7 @@ import type {
 	GameState,
 	IndustrialBuilding,
 	IndustryTile,
+	ProductId,
 	Store
 } from '$lib/game/types';
 import { createI18n, type I18nBundle } from '$lib/i18n';
@@ -27,8 +29,8 @@ interface InspectorProps {
 	selectedStore: Store | null;
 	latestStoreReport: DailyStoreReport | null;
 	canUpgradeStore: boolean;
-	onUpgradeStore: (storeId: string) => void;
-	onOpenStoreDetails: () => void;
+	onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
+	onOpenStoreDetails: (productId: ProductId | null) => void;
 	onRetailClickFeedback: () => void;
 	onCloseRetailInspector: () => void;
 
@@ -169,12 +171,36 @@ describe('MapInspectorHost', () => {
 	});
 
 	it('forwards Open Details once from the retail inspector', async () => {
-		expect.assertions(1);
+		expect.assertions(2);
 		const onOpenStoreDetails = vi.fn();
 		render(MapInspectorHost, inspectorProps({ showRetailInspector: true, onOpenStoreDetails }));
 
 		await page.getByRole('button', { name: /open details/i }).click();
 		expect(onOpenStoreDetails).toHaveBeenCalledTimes(1);
+		// Normal Details forwards a null focus request.
+		expect(onOpenStoreDetails).toHaveBeenCalledWith(null);
+	});
+
+	it('forwards the milestone product from the review-stock handoff through the host', async () => {
+		expect.assertions(2);
+		const base = inspectorProps();
+		const milestoneStore: Store = { ...base.selectedStore!, level: 3 };
+		const onOpenStoreDetails = vi.fn();
+		render(
+			MapInspectorHost,
+			inspectorProps({
+				showRetailInspector: true,
+				game: { ...base.game, cash: 100_000, stores: [milestoneStore] },
+				selectedStore: milestoneStore,
+				onUpgradeStore: async () => ({ status: 'committed' }),
+				onOpenStoreDetails
+			})
+		);
+
+		await page.getByRole('button', { name: /upgrade/i }).click();
+		await expect.element(page.getByTestId('upgrade-review-stock-supply')).toBeVisible();
+		await page.getByRole('button', { name: /review snacks stock & supply/i }).click();
+		expect(onOpenStoreDetails).toHaveBeenCalledWith('snacks');
 	});
 
 	it('forwards Close once from the retail inspector', async () => {

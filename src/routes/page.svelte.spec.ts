@@ -51,6 +51,10 @@ import {
 	createMutationAvailability,
 	type GameRouteControllerOptions
 } from './gameRouteController';
+import { createStoreDetailFocus } from './storeDetailFocus.svelte';
+// Raw source of the route component: lets the wiring pin below assert the
+// focus-guard polarity without mounting the page.
+import pageSource from './+page.svelte?raw';
 interface Deferred<T> {
 	promise: Promise<T>;
 	resolve(value: T): void;
@@ -1684,5 +1688,97 @@ describe('GameRouteController scenario integration', () => {
 		await controller.state.retryScenarioOperation!();
 		expect(controller.state.scenariosReady).toBe(true);
 		expect(controller.state.activeScenarioRun).toBe(run);
+	});
+});
+
+describe('store detail focus route wiring', () => {
+	it('normal Details (openStoreDetail(null)) opens focused on no product', () => {
+		const focus = createStoreDetailFocus(() => true);
+		focus.open(null);
+		expect(focus.isOpen).toBe(true);
+		expect(focus.focusedProductId).toBe(null);
+
+		// Brief default parameter: openStoreDetail() === openStoreDetail(null).
+		const defaulted = createStoreDetailFocus(() => true);
+		defaulted.open();
+		expect(defaulted.focusedProductId).toBe(null);
+		expect(defaulted.isOpen).toBe(true);
+	});
+
+	it('openStoreDetail("snacks") focuses the unlocked product', () => {
+		const focus = createStoreDetailFocus(() => true);
+		focus.open('snacks');
+		expect(focus.focusedProductId).toBe('snacks');
+		expect(focus.isOpen).toBe(true);
+	});
+
+	it('applies the brief guard per call: no selected store leaves the overlay closed', () => {
+		let hasStore = false;
+		const focus = createStoreDetailFocus(() => hasStore);
+		focus.open('snacks');
+		expect(focus.isOpen).toBe(false);
+		expect(focus.focusedProductId).toBe(null);
+
+		hasStore = true;
+		focus.open('snacks');
+		expect(focus.isOpen).toBe(true);
+		expect(focus.focusedProductId).toBe('snacks');
+	});
+
+	it('close clears focus, as every existing detail-close path does', () => {
+		const focus = createStoreDetailFocus(() => true);
+		focus.open('snacks');
+		focus.close();
+		expect(focus.isOpen).toBe(false);
+		expect(focus.focusedProductId).toBe(null);
+	});
+
+	it('stock-alert deep-link opens focused without the selectedStore guard', () => {
+		const focus = createStoreDetailFocus(() => false);
+		focus.openDirect('snacks');
+		expect(focus.isOpen).toBe(true);
+		expect(focus.focusedProductId).toBe('snacks');
+	});
+
+	it('exposes exactly one focus state — full surface, no second atom', () => {
+		const focus = createStoreDetailFocus(() => true);
+		expect(Object.keys(focus).sort()).toEqual([
+			'close',
+			'focusedProductId',
+			'isOpen',
+			'open',
+			'openDirect'
+		]);
+	});
+
+	// Pins the page-side wiring, which the module tests above cannot see: the
+	// callback must be true when a store IS selected. The inverted form
+	// (`() => !selectedStore`) makes every `open()` a silent no-op while a
+	// store is selected and opens the overlay with none.
+	it('page wiring keeps the focus-guard polarity: callback is true when a store IS selected', () => {
+		// Slice from the call to its matching close paren, then collapse
+		// whitespace, so a prettier re-wrap across lines cannot dodge the pin.
+		expect(pageSource).toContain('createStoreDetailFocus(');
+		const callStart = pageSource.indexOf('createStoreDetailFocus(');
+		const argsStart = callStart + 'createStoreDetailFocus('.length;
+		let depth = 0;
+		let wiring = '';
+		for (let i = argsStart - 1; i < pageSource.length; i += 1) {
+			const char = pageSource[i];
+			if (char === '(') depth += 1;
+			else if (char === ')') {
+				depth -= 1;
+				if (depth === 0) {
+					wiring = pageSource.slice(argsStart, i);
+					break;
+				}
+			}
+		}
+		wiring = wiring.replace(/\s+/g, ' ').trim();
+		expect(wiring).toContain('selectedStore');
+		// `/![\w.$]*\s*selectedStore\b/` catches both `!selectedStore` and the
+		// property-routed `!game.selectedStore` inversion; `!==` comparisons
+		// and `selectedStoreX`-style identifiers stay clean.
+		expect(wiring).not.toMatch(/![\w.$]*\s*selectedStore\b/);
 	});
 });

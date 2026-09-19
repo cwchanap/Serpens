@@ -112,14 +112,26 @@ export const ja = {
 		stockHealth: '在庫健全度',
 		staffMorale: '従業員士気',
 		level: 'レベル {level} / {max}',
-		nextLabel: '次: {benefit}',
-		nextBenefit: {
-			unlockProductStaff: '商品 #{productNumber} を解放し、スタッフ上限が {staffCapacity} 増加',
-			revenue: '売上 +10%'
+		upgradeCard: {
+			heading: '店舗アップグレード',
+			levelTransition: 'レベル {from} → {to}',
+			cost: 'コスト {cost}',
+			revenueMultiplier: '売上 ×{before} → ×{after}',
+			unlocksProduct: '{product} を解放',
+			staffCapacity: 'スタッフ上限 {before} → {after}',
+			staffing:
+				'必要スタッフ マネージャー {beforeManagers} + 一般 {beforeGeneral} → マネージャー {afterManagers} + 一般 {afterGeneral}',
+			nextMilestone: '次のマイルストーン: レベル {level} で {product}'
 		},
 		upgrade: 'アップグレード - {cost}',
 		maxLevel: '最大レベル',
 		notEnoughCash: '現金が足りません。',
+		upgradeStatus: {
+			success: 'アップグレードが完了しました。',
+			reviewStockSupply: '{product}の在庫・補給を確認',
+			unchanged: 'レベルはすでに最新です。',
+			notApplied: 'アップグレードは適用されませんでした。'
+		},
 		openDetails: '詳細を開く ▸',
 		tileStats: 'タイル情報',
 		demand: '需要',

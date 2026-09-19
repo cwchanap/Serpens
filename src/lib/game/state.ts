@@ -1,10 +1,12 @@
 import { getArchetype } from './archetypes';
 import {
 	canUpgradeStore,
+	getStoreRevenueMultiplier,
 	getStoreUpgradeCost,
 	getStoreStaffCapacityBonus,
 	getUnlockedProductCount,
-	isMilestoneLevel
+	isMilestoneLevel,
+	STORE_MILESTONE_LEVELS
 } from './leveling';
 import {
 	computeStoreLocalDemand,
@@ -37,6 +39,7 @@ import {
 import {
 	generateHiringCandidates,
 	generateStarterStaffForStore,
+	getStaffingRequirement,
 	HIRING_CANDIDATE_COUNT
 } from './staffing';
 import { calculateStockHealth, createStoreProduct, initializeStoreProducts } from './stock';
@@ -58,6 +61,8 @@ import type {
 	CompanyPolicy,
 	DecisionItem,
 	GameState,
+	ProductId,
+	StaffingRequirement,
 	Store,
 	SystemDecisionOption,
 	StoreLocation
@@ -270,6 +275,108 @@ export function getExpansionSetupCost(tile: CityTile, archetypeId: ArchetypeId):
 	);
 }
 
+interface StoreUpgradeResolution {
+	currentLevel: number;
+	nextLevel: number;
+	cost: number;
+	unlockedProductId: ProductId | null;
+	staffCapacityAfter: number;
+}
+
+export interface StoreUpgradePreview extends StoreUpgradeResolution {
+	revenueMultiplierBefore: number;
+	revenueMultiplierAfter: number;
+	staffCapacityBefore: number;
+	staffCapacityAfter: number;
+	staffingRequirementBefore: StaffingRequirement;
+	staffingRequirementAfter: StaffingRequirement;
+	nextProductMilestone: { level: number; productId: ProductId } | null;
+}
+
+/**
+ * Pure projection of everything `upgradeStore` would change for `store`, or
+ * null at max level. `upgradeStore` is the only mutator; this never touches
+ * game state.
+ */
+function resolveStoreUpgrade(store: Store): StoreUpgradeResolution | null {
+	if (!canUpgradeStore(store.level)) {
+		return null;
+	}
+
+	const nextLevel = store.level + 1;
+	let unlockedProductId: ProductId | null = null;
+	let staffCapacityAfter = store.staffCapacity;
+
+	if (isMilestoneLevel(nextLevel)) {
+		const archetype = getArchetype(store.archetypeId);
+		const unlockedCount = getUnlockedProductCount(nextLevel);
+		const newProductId = archetype.startingProductIds.find(
+			(productId) => !store.products.some((product) => product.productId === productId)
+		);
+
+		// Cap at unlockedCount: a store only catches up to its level's unlock
+		// budget — never gains more categories than its milestones allow.
+		if (newProductId && store.products.length < unlockedCount) {
+			unlockedProductId = newProductId;
+		}
+
+		staffCapacityAfter = clampScore(
+			store.staffCapacity +
+				getStoreStaffCapacityBonus(nextLevel) -
+				getStoreStaffCapacityBonus(store.level)
+		);
+	}
+
+	return {
+		currentLevel: store.level,
+		nextLevel,
+		cost: getStoreUpgradeCost(store.level),
+		unlockedProductId,
+		staffCapacityAfter
+	};
+}
+
+/**
+ * Display-only projection of a store upgrade (inspector/upgrade button).
+ * Pure: never mutates `store` or any game state. Returns null at max level.
+ */
+export function previewStoreUpgrade(store: Store): StoreUpgradePreview | null {
+	const resolution = resolveStoreUpgrade(store);
+
+	if (!resolution) {
+		return null;
+	}
+
+	const archetype = getArchetype(store.archetypeId);
+	const nextMilestoneLevel = STORE_MILESTONE_LEVELS.find((level) => level > store.level);
+	let nextProductMilestone: StoreUpgradePreview['nextProductMilestone'] = null;
+
+	// Validated-store invariant: product count equals the level's unlocked count
+	// and IDs belong to the archetype's unlocked prefix, so the next milestone's
+	// product is the authored entry at (unlockedCount - 1).
+	if (nextMilestoneLevel !== undefined) {
+		const productIndex = getUnlockedProductCount(nextMilestoneLevel) - 1;
+		nextProductMilestone = {
+			level: nextMilestoneLevel,
+			productId: archetype.startingProductIds[productIndex]!
+		};
+	}
+
+	return {
+		currentLevel: resolution.currentLevel,
+		nextLevel: resolution.nextLevel,
+		cost: resolution.cost,
+		unlockedProductId: resolution.unlockedProductId,
+		revenueMultiplierBefore: getStoreRevenueMultiplier(store.level),
+		revenueMultiplierAfter: getStoreRevenueMultiplier(resolution.nextLevel),
+		staffCapacityBefore: store.staffCapacity,
+		staffCapacityAfter: resolution.staffCapacityAfter,
+		staffingRequirementBefore: getStaffingRequirement(store.archetypeId, store.level),
+		staffingRequirementAfter: getStaffingRequirement(store.archetypeId, resolution.nextLevel),
+		nextProductMilestone
+	};
+}
+
 export function upgradeStore(game: GameState, storeId: string): GameState {
 	const index = game.stores.findIndex((store) => store.id === storeId);
 
@@ -279,52 +386,29 @@ export function upgradeStore(game: GameState, storeId: string): GameState {
 	}
 
 	const store = game.stores[index]!;
+	const resolution = resolveStoreUpgrade(store);
 
-	if (!canUpgradeStore(store.level)) {
+	if (!resolution || game.cash < resolution.cost) {
 		return game;
 	}
 
-	const cost = getStoreUpgradeCost(store.level);
-
-	if (game.cash < cost) {
-		return game;
-	}
-
-	const nextLevel = store.level + 1;
 	let products = store.products;
-	let staffCapacity = store.staffCapacity;
 
-	if (isMilestoneLevel(nextLevel)) {
-		const archetype = getArchetype(store.archetypeId);
-		const unlockedCount = getUnlockedProductCount(nextLevel);
-		const newProductId = archetype.startingProductIds.find(
-			(productId) => !products.some((product) => product.productId === productId)
-		);
-
-		// Cap at unlockedCount: a store only catches up to its level's unlock
-		// budget — never gains more categories than its milestones allow.
-		if (newProductId && products.length < unlockedCount) {
-			products = [...products, createStoreProduct(newProductId, game.day)];
-		}
-
-		staffCapacity = clampScore(
-			store.staffCapacity +
-				getStoreStaffCapacityBonus(nextLevel) -
-				getStoreStaffCapacityBonus(store.level)
-		);
+	if (resolution.unlockedProductId) {
+		products = [...products, createStoreProduct(resolution.unlockedProductId, game.day)];
 	}
 
 	const upgradedStore: Store = {
 		...store,
-		level: nextLevel,
+		level: resolution.nextLevel,
 		products,
-		staffCapacity,
+		staffCapacity: resolution.staffCapacityAfter,
 		stockHealth: calculateStockHealth(products)
 	};
 
 	return {
 		...game,
-		cash: game.cash - cost,
+		cash: game.cash - resolution.cost,
 		stores: game.stores.map((candidate, candidateIndex) =>
 			candidateIndex === index ? upgradedStore : candidate
 		)

@@ -5,6 +5,7 @@
 	import RailSegmentInspector from '$lib/components/game/RailSegmentInspector.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
 	import type { RailSegment } from '$lib/game/rail';
+	import type { GameRouteCommitResult } from '$lib/game/commandResult';
 	import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 	import type {
 		CityTile,
@@ -12,6 +13,7 @@
 		GameState,
 		IndustrialBuilding,
 		IndustryTile,
+		ProductId,
 		Store
 	} from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
@@ -26,8 +28,8 @@
 		selectedStore: Store | null;
 		latestStoreReport: DailyStoreReport | null;
 		canUpgradeStore: boolean;
-		onUpgradeStore: (storeId: string) => void;
-		onOpenStoreDetails: () => void;
+		onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
+		onOpenStoreDetails: (productId: ProductId | null) => void;
 		onRetailClickFeedback: () => void;
 		onCloseRetailInspector: () => void;
 
