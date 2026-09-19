@@ -7,12 +7,13 @@ import {
 	createNewGame,
 	getExpansionSetupCost,
 	openStore,
+	previewStoreUpgrade,
 	updatePolicy,
 	upgradeStore
 } from './state';
 import { simulateDay } from './simulateDay';
 import { getStoreUpgradeCost, MAX_STORE_LEVEL } from './leveling';
-import type { City, CityTile, GameState } from './types';
+import type { ArchetypeId, City, CityTile, GameState, ProductId, Store } from './types';
 import { systemDecision } from './testHelpers';
 
 type OptionalKeys<T> = {
@@ -699,6 +700,175 @@ describe('game state', () => {
 			const productIds = game.stores[0]!.products.map((product) => product.productId);
 			expect(new Set(productIds).size).toBe(productIds.length);
 			expect(productIds).toEqual(['bottled-water', 'snacks', 'soft-drinks', 'essentials']);
+		});
+	});
+
+	describe('store upgrade preview', () => {
+		// Builds a game whose founding store is a valid store at `level`: every
+		// step goes through upgradeStore, so product count and roster match the
+		// validated-store invariants the preview relies on.
+		function gameWithStoreUpgradedTo(archetypeId: ArchetypeId, level: number): GameState {
+			let game: GameState = { ...createNewGame(archetypeId, 20260603), cash: 10_000_000 };
+			const storeId = game.stores[0]!.id;
+			for (let current = game.stores[0]!.level; current < level; current += 1) {
+				game = upgradeStore(game, storeId);
+			}
+			return game;
+		}
+
+		test('previewStoreUpgrade projects a non-milestone step (2 → 3)', () => {
+			expect.assertions(9);
+			const store = gameWithStoreUpgradedTo('convenience', 2).stores[0]!;
+			const preview = previewStoreUpgrade(store)!;
+
+			expect(preview.currentLevel).toBe(2);
+			expect(preview.nextLevel).toBe(3);
+			expect(preview.cost).toBe(16_000);
+			expect(preview.unlockedProductId).toBeNull();
+			expect(preview.revenueMultiplierBefore).toBe(1.1);
+			expect(preview.revenueMultiplierAfter).toBe(1.2);
+			expect(preview.staffCapacityBefore).toBe(store.staffCapacity);
+			expect(preview.staffCapacityAfter).toBe(store.staffCapacity);
+			expect(preview.nextProductMilestone).toEqual({
+				level: 4,
+				productIndex: 1,
+				productId: 'snacks'
+			});
+		});
+
+		test('previewStoreUpgrade projects the 3 → 4 milestone unlock', () => {
+			expect.assertions(9);
+			const store = gameWithStoreUpgradedTo('convenience', 3).stores[0]!;
+			const preview = previewStoreUpgrade(store)!;
+
+			expect(preview.nextLevel).toBe(4);
+			expect(preview.cost).toBe(24_000);
+			expect(preview.unlockedProductId).toBe('snacks');
+			expect(preview.revenueMultiplierBefore).toBe(1.2);
+			expect(preview.revenueMultiplierAfter).toBe(1.2); // milestone excluded from revenue count
+			expect(preview.staffingRequirementBefore).toEqual({ manager: 1, general: 1 });
+			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 2 });
+			expect(preview.staffCapacityAfter - preview.staffCapacityBefore).toBe(8);
+			// Closed form keys off store.level (3), so the next milestone is 4 itself.
+			expect(preview.nextProductMilestone).toEqual({
+				level: 4,
+				productIndex: 1,
+				productId: 'snacks'
+			});
+		});
+
+		test('previewStoreUpgrade projects the 6 → 7 milestone unlock', () => {
+			expect.assertions(8);
+			const store = gameWithStoreUpgradedTo('convenience', 6).stores[0]!;
+			const preview = previewStoreUpgrade(store)!;
+
+			expect(store.products.map((product) => product.productId)).toEqual([
+				'bottled-water',
+				'snacks'
+			]);
+			expect(preview.nextLevel).toBe(7);
+			expect(preview.unlockedProductId).toBe('soft-drinks');
+			expect(preview.revenueMultiplierBefore).toBe(1.4);
+			expect(preview.revenueMultiplierAfter).toBe(1.4); // milestone excluded from revenue count
+			expect(preview.staffingRequirementBefore).toEqual({ manager: 1, general: 2 });
+			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 3 });
+			expect(preview.staffCapacityAfter - preview.staffCapacityBefore).toBe(8);
+		});
+
+		test('convenience 9 → 10 unlocks Essentials, never Household', () => {
+			expect.assertions(6);
+			const game = gameWithStoreUpgradedTo('convenience', 9);
+			const store = game.stores[0]!;
+			const preview = previewStoreUpgrade(store)!;
+
+			expect(preview.nextProductMilestone).toEqual({
+				level: 10,
+				productIndex: 3,
+				productId: 'essentials'
+			});
+			expect(preview.unlockedProductId).toBe('essentials');
+			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 4 });
+
+			const upgraded = upgradeStore(game, store.id).stores[0]!;
+			expect(upgraded.level).toBe(10);
+			expect(upgraded.products.map((product) => product.productId)).toEqual([
+				'bottled-water',
+				'snacks',
+				'soft-drinks',
+				'essentials'
+			]);
+			expect(upgraded.products.some((product) => product.productId === 'household')).toBe(false);
+		});
+
+		test('previewStoreUpgrade returns null at max level', () => {
+			expect.assertions(1);
+			const base = createNewGame('convenience', 20260603);
+			const maxedStore = { ...base.stores[0]!, level: MAX_STORE_LEVEL };
+			expect(previewStoreUpgrade(maxedStore)).toBeNull();
+		});
+
+		test('preview parity: mutation level, cost, product, and capacity match the preview', () => {
+			expect.assertions(5);
+			const game = gameWithStoreUpgradedTo('convenience', 6);
+			const store = game.stores[0]!;
+			const preview = previewStoreUpgrade(store)!;
+
+			const result = upgradeStore(game, store.id);
+			const upgraded = result.stores[0]!;
+
+			expect(upgraded.level).toBe(preview.nextLevel);
+			expect(result.cash).toBe(game.cash - preview.cost);
+			expect(upgraded.products.at(-1)!.productId).toBe(preview.unlockedProductId);
+			expect(upgraded.staffCapacity).toBe(preview.staffCapacityAfter);
+			expect(upgraded.products.length).toBe(store.products.length + 1);
+		});
+
+		test('preview parity holds for all four archetypes at the 3 → 4 milestone', () => {
+			expect.assertions(16);
+			const expectations: Array<[ArchetypeId, ProductId]> = [
+				['convenience', 'snacks'],
+				['boutique', 'home-goods'],
+				['electronics', 'accessories'],
+				['grocery', 'pantry']
+			];
+
+			for (const [archetypeId, expectedProductId] of expectations) {
+				const game = gameWithStoreUpgradedTo(archetypeId, 3);
+				const store = game.stores[0]!;
+				const preview = previewStoreUpgrade(store)!;
+				const upgraded = upgradeStore(game, store.id).stores[0]!;
+
+				expect(preview.unlockedProductId).toBe(expectedProductId);
+				expect(upgraded.products.at(-1)!.productId).toBe(expectedProductId);
+				expect(upgraded.level).toBe(preview.nextLevel);
+				expect(upgraded.staffCapacity).toBe(preview.staffCapacityAfter);
+			}
+		});
+
+		test('nextProductMilestone follows the closed-form first-milestone rule', () => {
+			expect.assertions(6);
+			const base = createNewGame('convenience', 20260603);
+			const milestoneAt = (level: number) =>
+				previewStoreUpgrade({ ...base.stores[0]!, level })?.nextProductMilestone ?? null;
+
+			expect(milestoneAt(1)).toEqual({ level: 4, productIndex: 1, productId: 'snacks' });
+			expect(milestoneAt(3)).toEqual({ level: 4, productIndex: 1, productId: 'snacks' });
+			expect(milestoneAt(4)).toEqual({ level: 7, productIndex: 2, productId: 'soft-drinks' });
+			expect(milestoneAt(6)).toEqual({ level: 7, productIndex: 2, productId: 'soft-drinks' });
+			expect(milestoneAt(7)).toEqual({ level: 10, productIndex: 3, productId: 'essentials' });
+			expect(milestoneAt(10)).toBeNull();
+		});
+
+		test('previewStoreUpgrade is pure and leaves the store untouched', () => {
+			expect.assertions(2);
+			const store = gameWithStoreUpgradedTo('convenience', 3).stores[0]!;
+			const snapshot = JSON.parse(JSON.stringify(store)) as Store;
+			const products = store.products;
+
+			previewStoreUpgrade(store);
+
+			expect(store).toEqual(snapshot);
+			expect(store.products).toBe(products);
 		});
 	});
 });
