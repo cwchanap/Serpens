@@ -121,9 +121,13 @@
 	} | null>(null);
 
 	// One-shot acknowledgement: changing the selected store retires the status,
-	// and returning to that store never replays it.
+	// and returning to that store never replays it. The generation also retires
+	// any in-flight attempt — a settle after leaving and reselecting the same
+	// store is still a stale result.
+	let selectionGeneration = 0;
 	$effect(() => {
 		void store?.id;
+		selectionGeneration += 1;
 		upgradeAck = null;
 	});
 
@@ -141,6 +145,7 @@
 		if (upgradePending || !upgradeAllowed || !store || !upgradePreview || !canAffordUpgrade) return;
 		const sourceStoreId = store.id;
 		const sourcePreview = upgradePreview;
+		const sourceGeneration = selectionGeneration;
 		upgradePending = true;
 		// A new attempt retires the previous acknowledgement so the stale
 		// status never outlives the pending window it belongs to.
@@ -153,8 +158,9 @@
 				// A rejecting callback is a not-applied upgrade, not a crash.
 				result = null;
 			}
-			// A late settle after switching stores is dropped, not acknowledged.
-			if (store?.id !== sourceStoreId) return;
+			// A late settle after any selection change is dropped, not
+			// acknowledged — including switching away and back to the same store.
+			if (store?.id !== sourceStoreId || selectionGeneration !== sourceGeneration) return;
 			let kind: UpgradeAckKind = 'not-applied';
 			if (isGameRouteCommitted(result)) {
 				kind = 'success';
