@@ -126,6 +126,12 @@ export const ja = {
 		upgrade: 'アップグレード - {cost}',
 		maxLevel: '最大レベル',
 		notEnoughCash: '現金が足りません。',
+		upgradeStatus: {
+			success: 'アップグレードが完了しました。',
+			reviewStock: '在庫を確認',
+			unchanged: 'レベルはすでに最新です。',
+			notApplied: 'アップグレードは適用されませんでした。'
+		},
 		openDetails: '詳細を開く ▸',
 		tileStats: 'タイル情報',
 		demand: '需要',

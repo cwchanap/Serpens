@@ -126,6 +126,12 @@ export const zhHant = {
 		upgrade: '升級 - {cost}',
 		maxLevel: '最高等級',
 		notEnoughCash: '現金不足。',
+		upgradeStatus: {
+			success: '升級完成。',
+			reviewStock: '檢查庫存',
+			unchanged: '等級已是最新。',
+			notApplied: '升級未生效。'
+		},
 		openDetails: '開啟詳細 ▸',
 		tileStats: '地塊資訊',
 		demand: '需求',
