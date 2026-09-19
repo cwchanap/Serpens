@@ -112,10 +112,16 @@ export const zhHant = {
 		stockHealth: '庫存健康度',
 		staffMorale: '員工士氣',
 		level: '等級 {level} / {max}',
-		nextLabel: '下一步：{benefit}',
-		nextBenefit: {
-			unlockProductStaff: '解鎖商品 #{productNumber}，員工上限 +{staffCapacity}',
-			revenue: '營收 +10%'
+		upgradeCard: {
+			heading: '店鋪升級',
+			levelTransition: '等級 {from} → {to}',
+			cost: '費用 {cost}',
+			revenueMultiplier: '營收 ×{before} → ×{after}',
+			unlocksProduct: '解鎖{product}',
+			staffCapacity: '員工上限 {before} → {after}',
+			staffing:
+				'人力需求 經理 {beforeManagers} + 一般 {beforeGeneral} → 經理 {afterManagers} + 一般 {afterGeneral}',
+			nextMilestone: '下一個里程碑：等級 {level} 解鎖{product}'
 		},
 		upgrade: '升級 - {cost}',
 		maxLevel: '最高等級',
