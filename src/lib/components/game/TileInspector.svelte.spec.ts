@@ -2,7 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import TileInspector from './TileInspector.svelte';
-import { getStoreArt } from '$lib/assets/gameArt';
+import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
 import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createI18n, type I18nBundle } from '$lib/i18n';
@@ -249,7 +249,7 @@ describe('TileInspector store upgrade', () => {
 	});
 
 	it('shows Max level button text and hides the cash hint at MAX_STORE_LEVEL', async () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const maxStore: Store = { ...store, id: 'store-max', level: 10 };
 		const richGame: GameState = {
 			...defaultGame,
@@ -263,10 +263,11 @@ describe('TileInspector store upgrade', () => {
 		const button = page.getByRole('button', { name: /Max level/i });
 		await expect.element(button).toBeDisabled();
 		await expect.element(page.getByText('Not enough cash.')).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('upgrade-card')).not.toBeInTheDocument();
 	});
 
 	it('shows the cash hint when the store can upgrade but cash is insufficient', async () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const level2Store: Store = { ...store, id: 'store-broke', level: 2 };
 		const brokeGame: GameState = {
 			...defaultGame,
@@ -280,37 +281,51 @@ describe('TileInspector store upgrade', () => {
 		const button = page.getByRole('button', { name: /Upgrade/i });
 		await expect.element(button).toBeDisabled();
 		await expect.element(page.getByText('Not enough cash.')).toBeVisible();
+		await expect.element(page.getByTestId('upgrade-card')).toBeVisible();
 	});
 
-	it('describes the next milestone benefit when approaching a milestone level', async () => {
-		expect.assertions(2);
-		const level3Store: Store = { ...store, id: 'store-milestone', level: 3 };
+	it('shows the visible upgrade card for an ordinary level (2 → 3)', async () => {
+		expect.assertions(5);
+		const level2Store: Store = { ...store, id: 'store-ordinary', level: 2 };
 		const richGame: GameState = {
 			...defaultGame,
-			cash: 1_000_000,
-			stores: [level3Store]
-		};
-
-		renderInspector({ game: richGame, store: level3Store });
-
-		await expect.element(page.getByTitle(/Level 3 \/ 10/i)).toBeInTheDocument();
-		await expect
-			.element(page.getByTitle('Next: Unlocks product #2 + 8 staff capacity'))
-			.toBeVisible();
-	});
-
-	it('describes the revenue benefit when the next level is not a milestone', async () => {
-		expect.assertions(1);
-		const level2Store: Store = { ...store, id: 'store-revenue', level: 2 };
-		const richGame: GameState = {
-			...defaultGame,
-			cash: 1_000_000,
+			cash: 100_000,
 			stores: [level2Store]
 		};
 
 		renderInspector({ game: richGame, store: level2Store });
 
-		await expect.element(page.getByTitle('Next: +10% revenue')).toBeVisible();
+		await expect.element(page.getByTestId('upgrade-card')).toBeVisible();
+		await expect.element(page.getByText(/Level 2 → 3/)).toBeVisible();
+		await expect.element(page.getByText('Cost $16,000')).toBeVisible();
+		await expect.element(page.getByText('Revenue ×1.1 → ×1.2')).toBeVisible();
+		await expect.element(page.getByText('Next milestone: Snacks at Level 4')).toBeVisible();
+	});
+
+	it('shows the milestone card with the Snacks unlock, capacity, and staffing changes (3 → 4)', async () => {
+		expect.assertions(9);
+		const level3Store: Store = { ...store, id: 'store-milestone', level: 3 };
+		const richGame: GameState = {
+			...defaultGame,
+			cash: 100_000,
+			stores: [level3Store]
+		};
+
+		renderInspector({ game: richGame, store: level3Store });
+
+		await expect.element(page.getByTestId('upgrade-card')).toBeVisible();
+		await expect.element(page.getByText(/Level 3 → 4/)).toBeVisible();
+		await expect.element(page.getByText('Cost $24,000')).toBeVisible();
+		await expect.element(page.getByText('Unlocks Snacks')).toBeVisible();
+		const unlockImage = page.getByTestId('upgrade-unlock').getByRole('img');
+		await expect.element(unlockImage).toHaveAttribute('src', getProductArt('snacks').path);
+		await expect.element(unlockImage).toHaveAttribute('alt', 'Snacks');
+		await expect.element(page.getByText('Staff capacity 70 → 78')).toBeVisible();
+		await expect
+			.element(page.getByText('Staffing 1 manager + 1 general → 1 manager + 2 general'))
+			.toBeVisible();
+		// Milestone levels are excluded from the revenue model — no increase is claimed.
+		await expect.element(page.getByTestId('upgrade-revenue')).not.toBeInTheDocument();
 	});
 });
 
@@ -404,7 +419,7 @@ describe('TileInspector localization', () => {
 
 describe('TileInspector capability', () => {
 	it('combines challenge permission with level and affordability guards', async () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const onUpgradeStore = vi.fn();
 		const upgradeable = { ...store, level: 2 };
 		renderInspector({
@@ -418,5 +433,6 @@ describe('TileInspector capability', () => {
 		await expect.element(page.getByRole('button', { name: /upgrade/i })).toBeDisabled();
 		await expect.element(page.getByText('Unavailable in this challenge.')).toBeVisible();
 		expect(onUpgradeStore).not.toHaveBeenCalled();
+		await expect.element(page.getByTestId('upgrade-card')).toBeVisible();
 	});
 });

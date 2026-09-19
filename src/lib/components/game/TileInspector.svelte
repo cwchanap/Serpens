@@ -6,15 +6,8 @@
 	import { getStoreProductStock } from '$lib/game/stock';
 	import { ARCHETYPES } from '$lib/game/archetypes';
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
-	import { getStoreOrdinal } from '$lib/game/state';
-	import {
-		MAX_STORE_LEVEL,
-		STORE_MILESTONE_CAPACITY_BONUS,
-		canUpgradeStore,
-		getStoreUpgradeCost,
-		getUnlockedProductCount,
-		isMilestoneLevel
-	} from '$lib/game/leveling';
+	import { getStoreOrdinal, previewStoreUpgrade } from '$lib/game/state';
+	import { MAX_STORE_LEVEL } from '$lib/game/leveling';
 	import { formatStoreLocation, localizeStockTrouble, storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
@@ -59,24 +52,47 @@
 				: ''
 	);
 
-	const upgradeCost = $derived(store ? getStoreUpgradeCost(store.level) : 0);
+	// Display-only projection; shown regardless of cash or command availability.
+	const storeHasKnownArchetype = $derived(
+		store ? ARCHETYPES.some((archetype) => archetype.id === store.archetypeId) : false
+	);
+	const upgradePreview = $derived(
+		store && storeHasKnownArchetype ? previewStoreUpgrade(store) : null
+	);
+	const upgradeCost = $derived(upgradePreview?.cost ?? 0);
 	const canAffordUpgrade = $derived(store ? game.cash >= upgradeCost : false);
-	const storeCanUpgrade = $derived(store ? canUpgradeStore(store.level) : false);
-	const nextBenefit = $derived.by(() => {
-		if (!store || !storeCanUpgrade) return i18n.t('tileInspector.maxLevel');
-		return isMilestoneLevel(store.level + 1)
-			? i18n.t('tileInspector.nextBenefit.unlockProductStaff', {
-					productNumber: i18n.format.integer(getUnlockedProductCount(store.level + 1)),
-					staffCapacity: i18n.format.integer(STORE_MILESTONE_CAPACITY_BONUS)
-				})
-			: i18n.t('tileInspector.nextBenefit.revenue');
-	});
+	const storeCanUpgrade = $derived(upgradePreview !== null);
+	const upgradeRevenueChanged = $derived(
+		upgradePreview !== null &&
+			upgradePreview.revenueMultiplierBefore !== upgradePreview.revenueMultiplierAfter
+	);
+	const upgradeProduct = $derived(upgradePreview?.unlockedProductId ?? null);
+	const upgradeProductArt = $derived(upgradeProduct ? getProductArt(upgradeProduct) : null);
+	const upgradeProductName = $derived(
+		upgradeProduct ? i18n.labels.productCategory(upgradeProduct) : ''
+	);
+	const upgradeCapacityChanged = $derived(
+		upgradePreview !== null &&
+			upgradePreview.staffCapacityBefore !== upgradePreview.staffCapacityAfter
+	);
+	const upgradeStaffingChanged = $derived(
+		upgradePreview !== null &&
+			(upgradePreview.staffingRequirementBefore.manager !==
+				upgradePreview.staffingRequirementAfter.manager ||
+				upgradePreview.staffingRequirementBefore.general !==
+					upgradePreview.staffingRequirementAfter.general)
+	);
+	// Only future milestones; the milestone this upgrade unlocks is its own row.
+	const upgradeNextMilestone = $derived(
+		upgradePreview?.nextProductMilestone &&
+			upgradePreview.nextProductMilestone.level !== upgradePreview.nextLevel
+			? upgradePreview.nextProductMilestone
+			: null
+	);
 
 	const attentionMessage = $derived(store ? localizeStockTrouble(store.products, i18n) : null);
 	const staffing = $derived(
-		store && ARCHETYPES.some((archetype) => archetype.id === store.archetypeId)
-			? summarizeStoreStaffing(game, store)
-			: null
+		store && storeHasKnownArchetype ? summarizeStoreStaffing(game, store) : null
 	);
 	const onShiftStaff = $derived(
 		store ? game.staff.filter((person) => person.assignedStoreId === store.id).slice(0, 5) : []
@@ -229,12 +245,86 @@
 						aria-label={i18n.t('staffPanel.storeStaffing')}
 					></meter>
 				</div>{/if}
+			{#if upgradePreview}
+				<section
+					class="upgrade-card"
+					data-testid="upgrade-card"
+					aria-label={i18n.t('tileInspector.upgradeCard.heading')}
+				>
+					<h4>{i18n.t('tileInspector.upgradeCard.heading')}</h4>
+					<p class="upgrade-step">
+						{i18n.t('tileInspector.upgradeCard.levelTransition', {
+							from: i18n.format.integer(upgradePreview.currentLevel),
+							to: i18n.format.integer(upgradePreview.nextLevel)
+						})}
+						<span>
+							{i18n.t('tileInspector.upgradeCard.cost', {
+								cost: i18n.format.currency(upgradePreview.cost)
+							})}
+						</span>
+					</p>
+					<ul>
+						{#if upgradeRevenueChanged}
+							<li data-testid="upgrade-revenue">
+								{i18n.t('tileInspector.upgradeCard.revenueMultiplier', {
+									before: i18n.format.decimal(upgradePreview.revenueMultiplierBefore),
+									after: i18n.format.decimal(upgradePreview.revenueMultiplierAfter)
+								})}
+							</li>
+						{/if}
+						{#if upgradeProduct}
+							<li data-testid="upgrade-unlock">
+								<img
+									src={asset(upgradeProductArt?.path ?? '')}
+									alt={upgradeProductName}
+									width="28"
+									height="28"
+								/>{i18n.t('tileInspector.upgradeCard.unlocksProduct', {
+									product: upgradeProductName
+								})}
+							</li>
+						{/if}
+						{#if upgradeCapacityChanged}
+							<li>
+								{i18n.t('tileInspector.upgradeCard.staffCapacity', {
+									before: i18n.format.integer(upgradePreview.staffCapacityBefore),
+									after: i18n.format.integer(upgradePreview.staffCapacityAfter)
+								})}
+							</li>
+						{/if}
+						{#if upgradeStaffingChanged}
+							<li>
+								{i18n.t('tileInspector.upgradeCard.staffing', {
+									beforeManagers: i18n.format.integer(
+										upgradePreview.staffingRequirementBefore.manager
+									),
+									beforeGeneral: i18n.format.integer(
+										upgradePreview.staffingRequirementBefore.general
+									),
+									afterManagers: i18n.format.integer(
+										upgradePreview.staffingRequirementAfter.manager
+									),
+									afterGeneral: i18n.format.integer(upgradePreview.staffingRequirementAfter.general)
+								})}
+							</li>
+						{/if}
+						{#if upgradeNextMilestone}
+							<li>
+								{i18n.t('tileInspector.upgradeCard.nextMilestone', {
+									product: i18n.labels.productCategory(upgradeNextMilestone.productId),
+									level: i18n.format.integer(upgradeNextMilestone.level)
+								})}
+							</li>
+						{/if}
+					</ul>
+				</section>
+			{/if}
 			<div class="actions">
+				<!-- Task 3 (HPA-283): also disable while an upgrade command is pending. -->
 				<button
 					type="button"
 					class="upgrade btn-primary"
 					disabled={!upgradeAllowed || !storeCanUpgrade || !canAffordUpgrade}
-					title={i18n.t('tileInspector.nextLabel', { benefit: nextBenefit })}
 					aria-label={storeCanUpgrade
 						? i18n.t('tileInspector.upgrade', { cost: i18n.format.currency(upgradeCost) })
 						: i18n.t('tileInspector.maxLevel')}
@@ -466,6 +556,49 @@
 		font-family: var(--font-mono);
 		background: var(--moss);
 		color: var(--paper-50);
+	}
+	.upgrade-card {
+		border: 1px solid var(--paper-edge);
+		background: var(--paper-50);
+		padding: 10px 12px;
+		display: grid;
+		gap: 8px;
+	}
+	.upgrade-card h4 {
+		margin: 0;
+		font: 700 11px var(--font-ui);
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--brass-700);
+	}
+	.upgrade-step {
+		margin: 0;
+		display: flex;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 4px 10px;
+		font: 700 13px var(--font-mono);
+	}
+	.upgrade-card ul {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: grid;
+		gap: 6px;
+	}
+	.upgrade-card li {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px;
+		font: 12px var(--font-body);
+		min-width: 0;
+	}
+	.upgrade-card li img {
+		width: 28px;
+		height: 28px;
+		object-fit: contain;
+		flex-shrink: 0;
 	}
 	.actions button :global(svg) {
 		width: 16px;
