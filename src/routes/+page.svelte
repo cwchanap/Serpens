@@ -742,7 +742,7 @@
 	// Focused store-detail overlay state (HPA-293 deep-link), extracted into
 	// storeDetailFocus.svelte.ts so page.svelte.spec.ts can pin the open/close
 	// focus contract.
-	const storeDetailFocus = createStoreDetailFocus(() => !selectedStore);
+	const storeDetailFocus = createStoreDetailFocus(() => selectedStore !== null);
 	let selectedIndustryBuilding = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		const tile = selectedIndustryTile;

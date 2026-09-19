@@ -9,6 +9,10 @@ import type { ProductId } from '$lib/game/types';
  *
  * The focused product is transient (a deep-link target from a stock alert or
  * milestone CTA); it is never persisted.
+ *
+ * @param hasSelectedStore must return true when a store IS selected (e.g.
+ * `() => selectedStore !== null`); `open()` silently refuses to open the
+ * overlay while it returns false. Do NOT invert this (e.g. `!selectedStore`).
  */
 export function createStoreDetailFocus(hasSelectedStore: () => boolean) {
 	let isOpen = $state(false);
