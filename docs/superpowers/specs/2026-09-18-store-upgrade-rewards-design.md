@@ -6,81 +6,92 @@
 
 ## Goal
 
-Make store upgrades understandable before purchase and visibly meaningful after purchase without creating another progression system.
+Make the existing retail-store upgrade understandable before purchase and visibly meaningful after a real commit, without creating another progression, reward, planner, or persistence system.
 
-The player should be able to answer, from the existing retail inspector:
+From the current retail inspector, the player should be able to answer:
 
 1. What level am I buying?
 2. What does it cost?
 3. What actually changes at that level?
-4. If a product unlocks, where do I configure its stock and inspect its supply path?
+4. If a product unlocks, where do I configure its stock and inspect its existing supply path?
 
-The slice stays in **one ticket / one PR**. Planning, implementation, localization, focused tests, and the milestone E2E journey all land together.
+The complete slice remains **one ticket / one PR**.
 
-## Existing code we should preserve
+## Existing authority boundaries
 
-The current game already owns the important rules:
+Keep these owners unchanged:
 
-- `src/lib/game/leveling.ts`
-  - max store level;
-  - milestone levels 4 / 7 / 10;
-  - pre-upgrade-level cost;
-  - non-milestone revenue multiplier;
-  - milestone staff-capacity bonus.
-- `src/lib/game/state.ts::upgradeStore`
-  - affordability / max-level no-op behavior;
-  - product materialization;
-  - cash deduction;
-  - staff-capacity mutation.
-- `src/lib/game/archetypes.ts`
-  - authored product order for all four retail archetypes.
-- `src/lib/game/staffing.ts::getStaffingRequirement`
-  - real staffing requirement at each level.
-- `src/routes/gameRouteController.ts::upgradeStore`
-  - existing command, persistence, scenario gating, and `GameRouteCommitResult`.
-- `src/lib/components/game/TileInspector.svelte`
-  - existing upgrade action and compact inspector surface.
-- HPA-293 stock-recovery flow
-  - transient `focusedStockProductId`;
-  - Store Detail stock-row focus;
-  - per-product stock controls;
-  - existing Supply Planner handoff and availability.
+- `src/lib/game/leveling.ts`: level cap, milestone levels, cost curve, revenue multiplier, staff-capacity bonus.
+- `src/lib/game/state.ts::upgradeStore`: authoritative mutation, cash deduction, product materialization, capacity mutation, stock-health refresh.
+- `src/lib/game/archetypes.ts`: authored product order.
+- `src/lib/game/staffing.ts::getStaffingRequirement`: staffing requirement by archetype / level.
+- `src/routes/gameRouteController.ts::upgradeStore`: command, persistence, scenario gating, `GameRouteCommitResult`.
+- `src/lib/components/game/TileInspector.svelte`: current upgrade surface.
+- HPA-293’s existing Store Detail flow: `focusedStockProductId`, stock controls, supply context, and per-product Supply Planner handoff.
 
-Those are the authority boundaries for this ticket.
+No controller change, save-schema change, planner-domain change, or new art is needed.
 
 ## Current UX gap
 
-The existing inspector currently compresses the upgrade into:
+The inspector currently shows only a cost button plus tooltip-only generic benefit text.
 
-- a cost button;
-- a tooltip-only “next benefit”;
-- generic “unlock product + staff capacity” copy at milestones.
+That hides:
 
-That hides the important facts:
-
-- the actual product identity;
-- the actual multiplier before/after on ordinary levels;
-- the fact that milestone levels intentionally **do not** add the ordinary revenue step;
-- the difference between staff capacity and staffing requirement;
-- the next future product milestone between unlock levels;
-- what the player should inspect immediately after a product unlock.
+- the actual product identity at milestones;
+- the real ordinary-level multiplier before → after;
+- the fact that levels 4 / 7 / 10 intentionally do **not** add the ordinary revenue step;
+- staff capacity versus staffing requirement;
+- the next real product milestone;
+- the existing stock / supply decision that follows a product unlock.
 
 ## Design decisions
 
-### 1. Add one pure upgrade-preview boundary and make the transition consume it
+### 1. Colocate upgrade effects, preview, and mutation in `state.ts`
 
-Create `src/lib/game/storeUpgrade.ts` with a pure preview function:
+Do **not** add `src/lib/game/storeUpgrade.ts`.
+
+Extract the mutation-relevant effects from the current `upgradeStore` body into one small colocated helper, for example:
 
 ```ts
-export interface StoreUpgradePreview {
+interface StoreUpgradeResolution {
   currentLevel: number;
   nextLevel: number;
   cost: number;
+  unlockedProductId: ProductId | null;
+  staffCapacityAfter: number;
+}
+
+function resolveStoreUpgrade(store: Store): StoreUpgradeResolution | null;
+```
+
+`null` means max level.
+
+The helper owns only values that the mutation actually consumes:
+
+- next level;
+- pre-upgrade-level cost;
+- real product materialization decision;
+- post-upgrade staff capacity.
+
+`upgradeStore()` remains the only mutator. It continues to:
+
+- reject unknown / max-level / insufficient-cash upgrades;
+- deduct cash;
+- call `createStoreProduct(..., game.day)` only when `unlockedProductId` is non-null;
+- recompute stock health;
+- replace the upgraded store in `GameState`.
+
+### 2. Build the display preview from the same resolution, not vice versa
+
+Export `previewStoreUpgrade(store)` from `state.ts`.
+
+Its display DTO may add fields that the mutation does not need:
+
+```ts
+export interface StoreUpgradePreview extends StoreUpgradeResolution {
   revenueMultiplierBefore: number;
   revenueMultiplierAfter: number;
-  unlockedProductId: ProductId | null;
   staffCapacityBefore: number;
-  staffCapacityAfter: number;
   staffingRequirementBefore: StaffingRequirement;
   staffingRequirementAfter: StaffingRequirement;
   nextProductMilestone: {
@@ -92,294 +103,357 @@ export interface StoreUpgradePreview {
 export function previewStoreUpgrade(store: Store): StoreUpgradePreview | null;
 ```
 
-`null` means max level.
+The preview derives display-only fields from existing helpers:
 
-The helper must derive everything from existing rules:
-
-- `getStoreUpgradeCost`;
 - `getStoreRevenueMultiplier`;
-- `isMilestoneLevel`;
-- `getUnlockedProductCount`;
-- `getStoreStaffCapacityBonus`;
-- `getArchetype(...).startingProductIds`;
-- `getStaffingRequirement`.
+- `getStaffingRequirement`;
+- the same unlock resolver used by `resolveStoreUpgrade`.
 
-Do not copy numeric balance constants into UI code.
+The mutation must **not** consume revenue multipliers, staffing requirements, milestone labels, or other presentation fields.
 
-The current product-unlock selection logic should move into this preview boundary so `upgradeStore()` and the UI cannot disagree about which product is next. The transition still performs the mutation and remains authoritative; the preview only describes that transition.
+### 3. Preserve the existing unlock-count cap, including catch-up states
 
-### 2. Keep affordability outside the domain preview
+The current transition does not mean “milestone ⇒ next authored product”.
 
-Affordability is current game-state context, not a property of the upgrade rules.
+At a milestone, product materialization occurs only when both are true:
 
-`TileInspector` continues to compute:
+1. there is an authored product not already in the store; and
+2. `products.length < getUnlockedProductCount(nextLevel)`.
+
+The preview must use exactly that rule.
+
+Important cases:
+
+- normal 3 → 4 convenience: unlock Snacks;
+- catch-up / pre-materialized milestone: if the store already has the level-4 unlock budget, `unlockedProductId === null` while staff capacity still increases;
+- 9 → 10 convenience: unlock Essentials;
+- Household remains unreachable because the level cap allows only four products.
+
+`nextProductMilestone` means the next future milestone that would **actually materialize a product under the same resolver**, not simply the next string in `startingProductIds`.
+
+### 4. Affordability remains inspector state
+
+Cash is not part of the preview.
+
+`TileInspector` continues to derive affordability from current game state:
 
 ```ts
 game.cash >= preview.cost
 ```
 
-This keeps the preview reusable and side-effect free.
+The preview card remains visible whenever a next upgrade exists, even when:
 
-### 3. Replace the tooltip-only hint with a visible compact upgrade card
+- cash is insufficient;
+- the current scenario disallows upgrading;
+- another route-level disabled reason applies.
 
-Keep the action in `TileInspector`; do not add an upgrade screen or modal.
+Purchase availability is separate from visibility of what the player is saving toward.
 
-The card shows:
+### 5. Replace tooltip-only benefit text with a visible compact upgrade card
+
+Keep the feature inside `TileInspector`; no new screen/modal.
+
+When a preview exists, show:
 
 - `Level N → N+1`;
 - exact cost;
-- disabled reason for maximum level, insufficient cash, or command unavailability;
-- actual benefits.
+- real effects.
 
 For an ordinary level:
 
-- show the model multiplier before → after;
-- label it as a **revenue model multiplier**, not guaranteed revenue or profit;
-- show the next product milestone, e.g. “Next product unlock: Level 4 · Snacks”.
+- show revenue **model multiplier** before → after;
+- do not promise sales or profit;
+- show the next real product milestone if one exists.
 
-For a milestone level:
+For a milestone:
 
-- show the actual product name and existing registered product art;
-- show staff capacity before → after / delta;
-- show any changed staffing requirement;
-- do **not** claim a revenue multiplier step when the multiplier is unchanged.
+- show the exact product only when `unlockedProductId !== null`;
+- reuse `getProductArt(productId)`;
+- show staff capacity before → after;
+- show changed staffing requirement;
+- do not show a revenue increase when the multiplier is unchanged.
 
-The convenience archetype’s fifth authored product remains unreachable because the level cap unlocks only four products. The preview follows the same unlock budget as the real transition.
+For catch-up milestones with no product materialization, show only the effects that really occur.
 
-### 4. Use existing product art only
+The current tooltip-specific “Next: +10% revenue” / “product #2” behavior is removed; benefits are readable without hover.
 
-Product imagery comes from `getProductArt(productId)`.
+### 6. Await the existing command result and guard the in-flight purchase
 
-No new raster/vector art is required, so this ticket does **not** need a separate image-generation task.
-
-### 5. Make post-upgrade feedback transient and local to the inspector
-
-Do not persist completion state and do not add a global notification/event system.
-
-Change the existing upgrade callback to return the controller result:
+Change the existing callback contract to:
 
 ```ts
-(storeId: string) => Promise<GameRouteCommitResult | null>
+onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>
 ```
 
-`TileInspector` captures the pure preview immediately before the command and shows a one-shot completion card only when the result proves the command committed:
+The route simply returns `gameRouteController.upgradeStore(storeId)`; the controller stays unchanged.
 
-- scenario: `status === 'committed'`;
-- sandbox: `status === 'sandbox-committed' && changed === true`.
+`TileInspector` owns local `upgradePending` state:
 
-All other results — unchanged, rejected, busy, unavailable, failed, confirmation-required — show no success treatment.
+- ignore a second click while pending;
+- disable the upgrade button until the first promise settles;
+- capture the preview before invoking the command.
 
-The transient feedback is keyed by `storeId`; it is rendered only for the currently selected store. Closing the inspector naturally discards it. Reloading or reopening an already-upgraded store does not recreate it.
+This prevents two sandbox clicks from applying 3 → 4 and then 4 → 5 while both confirmations still refer to the 3 → 4 preview.
 
-Because `upgradeStore()` consumes the same preview helper, the completion card can safely report the attained level and captured effects without inventing a second source of truth.
+### 7. Add one shared committed-result predicate
 
-### 6. Reuse HPA-293’s focused Store Detail flow for the new product
-
-Do not add a second planner handoff to the upgrade card.
-
-Widen the existing detail callback so the inspector may optionally name a product:
+Add beside `GameRouteCommitResult` in `src/lib/game/commandResult.ts`:
 
 ```ts
-onOpenDetails(productId?: ProductId): void
+export function isGameRouteCommitted(
+  result: GameRouteCommitResult | null | undefined
+): boolean;
 ```
 
-The route’s existing `openStoreDetail` becomes:
+It returns true only for:
 
-- no argument → current behavior, Stock tab opens normally;
-- product argument → set `focusedStockProductId` and open the same Store Detail modal.
+- `status === 'committed'`;
+- `status === 'sandbox-committed' && changed === true`.
 
-After a successful milestone upgrade, the confirmation card exposes an action such as “Review Snacks stock & supply”. That action opens Store Detail with the unlocked product focused.
+Use it for the new upgrade confirmation.
 
-This reuses HPA-293 behavior:
+Do **not** refactor Finance, Logistics, or other existing copies in this ticket.
 
-- the existing stock row;
-- existing threshold / target controls;
-- existing supply-source context;
-- existing per-product Supply Planner button;
-- existing planner product validation.
+### 8. Keep completion feedback transient and truly one-shot
 
-No new inventory, supply, logistics, or planner behavior is introduced.
+After the awaited command returns:
 
-### 7. Planner availability remains honest
+- show confirmation only when `isGameRouteCommitted(result)` is true;
+- rejected / unchanged / busy / unavailable / failed / confirmation-required results do not celebrate;
+- do not persist acknowledgement state.
 
-The focused stock row already receives `plannerProductIds`.
+The confirmation reports the captured real preview:
 
-If the product is not a valid planner category, the planner action stays unavailable. Add concise disabled explanatory copy/title if necessary so the player is not left with a silent disabled control.
+- attained level;
+- actual ordinary/milestone effects;
+- optional unlocked-product follow-up.
 
-If the product is supported but scenario/action constraints prevent a recommendation, the existing Supply Planner remains responsible for explaining that state.
+Clear confirmation when:
 
-Do not fabricate a recommendation in the upgrade flow.
+- the selected `store.id` changes;
+- the inspector closes/unmounts;
+- a pending result settles after the user has already switched to another store.
 
-## Detailed behavior
+This prevents a success banner from reappearing merely because the player later returns to the same store.
 
-### Ordinary example: level 2 → 3
+Use a non-blocking `role="status"`; never steal focus.
 
-Expected preview:
+### 9. Reuse HPA-293’s focused Store Detail path
 
-- cost from `getStoreUpgradeCost(2)`;
-- revenue multiplier changes from the level-2 value to the level-3 value;
+Widen:
+
+```ts
+onOpenDetails: () => void
+```
+
+to:
+
+```ts
+onOpenDetails: (productId?: ProductId) => void
+```
+
+The ordinary Details button passes no product.
+
+The route becomes equivalent to:
+
+```ts
+function openStoreDetail(productId: ProductId | null = null): void {
+  if (!selectedStore) return;
+  focusedStockProductId = productId;
+  isStoreDetailOpen = true;
+}
+```
+
+A successful milestone confirmation may call:
+
+```ts
+onOpenDetails(preview.unlockedProductId)
+```
+
+That opens the existing Stock tab with the newly unlocked product focused.
+
+No second focus atom, no planner state in the upgrade card, and no new stock/supply command.
+
+### 10. Leave StoreStockTable / Supply Planner behavior unchanged
+
+HPA-293 already owns the focused row and planner handoff.
+
+For the normal 3 → 4 convenience journey, Snacks is a supported planner product and the existing Plan Supply button should be enabled.
+
+This ticket does **not** add:
+
+- planner-disabled explanatory chrome;
+- planner category mappings;
+- new planner recommendations;
+- direct upgrade-card → planner state;
+- StoreStockTable changes.
+
+If the deterministic 3 → 4 journey cannot use the existing Snacks planner handoff, treat that as a spec/integration failure to investigate rather than adding fallback UI here.
+
+## Detailed examples
+
+### Level 2 → 3
+
+Preview shows:
+
+- exact 2 → 3 cost;
+- revenue model multiplier before → after;
 - no product unlock;
-- no staff-capacity change;
-- no staffing-requirement change;
-- next milestone points to level 4 and the actual second authored product.
+- no capacity/staffing change;
+- next actual product milestone.
 
-### Milestone example: level 3 → 4
+### Normal level 3 → 4
 
-Expected preview:
+Preview shows:
 
-- cost uses level 3;
-- revenue multiplier before and after is unchanged;
-- exact second product unlock is shown;
-- staff capacity increases by the real milestone delta;
-- staffing requirement reflects the level-4 rule;
-- completion feedback appears only after a real successful command.
+- pre-upgrade-level cost;
+- unchanged revenue multiplier;
+- actual second product;
+- real staff-capacity change;
+- real staffing-requirement change.
 
-### Level 9 → 10
+After a successful commit, the confirmation offers “Review <product> stock & supply”.
 
-Expected preview:
+### Catch-up level 3 → 4
 
-- exact fourth reachable product;
-- final staff-capacity / staffing change;
-- no fifth product;
-- no later milestone.
+If the store already contains the level-4 product budget:
+
+- `unlockedProductId === null`;
+- no product unlock is advertised or celebrated;
+- capacity/staffing still reflect the real level-4 transition.
+
+### Level 9 → 10 convenience
+
+Preview shows Essentials as the fourth reachable product.
+
+Household is never previewed.
 
 ### Maximum level
 
-No preview/purchase is offered. Existing max-level behavior remains.
+`previewStoreUpgrade` returns `null`; no next-upgrade card is rendered and the existing max-level state remains.
 
 ## State ownership
 
-### Authoritative persisted state
+### Persisted
 
 Unchanged:
 
 - `GameState`;
-- store `level`;
-- `products`;
-- `staffCapacity`;
 - cash;
+- store level / products / staff capacity;
 - scenario run state.
 
-### New derived state
+### Derived
 
-Pure only:
+- `resolveStoreUpgrade(store)`: pure mutation effects.
+- `previewStoreUpgrade(store)`: pure display projection.
 
-- `StoreUpgradePreview`.
+### Transient UI
 
-### New transient UI state
+- `upgradePending`;
+- one current-store success confirmation.
 
-Local to `TileInspector` only:
+No new persistence field, event log, acknowledgement registry, or global store.
 
-- last successful preview for the selected `storeId`.
+## Accessibility / responsive requirements
 
-No save-schema field, migration, compatibility layer, acknowledgement log, or global store is added.
-
-## Accessibility and responsive behavior
-
-The benefits must be readable without hover.
-
-Requirements:
-
-- visible labels for level, cost, and each benefit;
-- product image has localized product-name alt text in the upgrade card;
-- successful confirmation uses a non-blocking status region;
-- no focus stealing after purchase;
-- the focused-product action is a normal keyboard-operable button;
-- narrow layouts stack the preview content instead of requiring horizontal scrolling.
+- all benefits visible without hover;
+- purchase button disabled independently of preview visibility;
+- product art uses localized product-name alt text where meaningful;
+- confirmation uses non-blocking status semantics;
+- no focus stealing;
+- narrow layout stacks the card;
+- browser coverage proves the real overlay does not intercept Upgrade or “Review … stock & supply” clicks.
 
 ## Localization
 
-Add/update copy in:
+Update EN / JA / zh-Hant copy for:
 
-- `src/lib/i18n/messages/en.ts`;
-- `src/lib/i18n/messages/ja.ts`;
-- `src/lib/i18n/messages/zh-Hant.ts`.
+- level transition / cost;
+- revenue model multiplier;
+- unlocked product;
+- staff capacity;
+- staffing requirement;
+- next product milestone;
+- successful upgrade confirmation;
+- review-stock-and-supply CTA.
 
-Copy must distinguish:
-
-- model multiplier vs guaranteed business outcome;
-- staff capacity vs staff requirement;
-- “unlocked product” vs inventory received;
-- planner unavailable vs planner recommendation.
+Do not introduce planner-unavailable copy in this ticket.
 
 ## Test strategy
 
-### Pure domain tests
+### Domain / state tests
 
-Cover at minimum:
+Cover:
 
 - 2 → 3;
-- 3 → 4;
+- normal 3 → 4;
+- catch-up 3 → 4 with no product materialization but capacity gain;
 - 6 → 7;
 - 9 → 10;
 - max level;
-- all four archetypes’ milestone product identities;
-- convenience never advertises the fifth product;
-- preview does not mutate the input store;
-- `upgradeStore` materializes the same product/capacity/level described by the preview.
+- all four archetypes;
+- convenience Essentials vs unreachable Household;
+- nextProductMilestone based on real future materialization;
+- preview purity;
+- preview/mutation parity for next level, cost, product materialization, and staff capacity.
 
 ### Component tests
 
-`TileInspector.svelte.spec.ts` should prove:
+Replace the current tooltip assertions.
 
-- visible ordinary multiplier delta;
-- visible milestone product art/name/capacity/staffing effects;
-- insufficient cash / command-disabled / max-level states;
-- successful command shows confirmation once;
-- rejected/no-op command shows no success treatment;
-- focused product detail action passes the real product ID;
-- no benefit depends on hover.
+Prove:
+
+- ordinary card is visible;
+- milestone product / capacity / staffing effects are visible;
+- catch-up milestone does not invent an unlock;
+- insufficient cash still shows the preview;
+- command-disabled state still shows the preview;
+- max-level state;
+- pending click disables/rejects a second purchase;
+- only committed results produce success;
+- confirmation clears on store change;
+- milestone CTA forwards the real product ID.
 
 ### Route / host tests
 
-Pin the widened `onOpenDetails(productId?)` callback and the route’s focused-stock behavior without adding another route state owner.
+Pin:
+
+- `upgradeStoreHandler` returns the existing controller result;
+- `onOpenDetails()` clears focus to null;
+- `onOpenDetails(productId)` sets exactly that product;
+- existing close paths still clear `focusedStockProductId`.
 
 ### E2E
 
-Add one deterministic milestone journey:
+Use the existing real upgrade flow; do not hand-edit store level/products in the save.
 
-1. load a store at level 3 with enough cash;
-2. inspect the visible 3 → 4 upgrade preview;
-3. purchase through the existing command;
-4. verify level 4 and the actual unlocked product;
-5. verify completion feedback;
-6. open that product’s stock/supply action;
-7. verify Store Detail focuses the unlocked product;
-8. verify the existing planner handoff is present/available only according to current planner support.
+1. create convenience store;
+2. use existing `injectCashAndReload`;
+3. set a viewport large enough that the real overlay cannot intercept the new actions;
+4. click Upgrade twice through the existing inspector to reach level 3;
+5. assert the visible 3 → 4 Snacks preview;
+6. purchase;
+7. assert level 4 / Snacks / success confirmation;
+8. click “Review Snacks stock & supply”;
+9. assert Store Detail focuses Snacks;
+10. assert existing threshold/target controls and existing Plan Supply button are usable.
 
-Do not add a second browser journey for ordinary levels; unit/component coverage is sufficient.
+One browser journey is sufficient; ordinary-level behavior stays in unit/component tests.
 
 ## Non-goals
 
+- new progression module / state machine;
 - industrial upgrade redesign;
-- new rewards, currency, inventory, or staff grants;
-- automatic hiring;
-- upgrade ROI/forecasting;
 - technology tree;
-- new progression state machine;
-- new planner behavior;
-- new supply command;
-- global event bus;
+- new rewards, inventory, staff, or currency;
+- auto-hiring;
+- ROI / forecast logic;
+- planner changes;
+- StoreStockTable changes;
+- new event bus / notification system;
 - persistent completion history;
-- broad inspector/layout rewrite;
 - map effects (HPA-295);
-- economic rebalance;
-- save migration or backwards-compatibility work.
-
-## Files expected to change
-
-Primary:
-
-- `src/lib/game/storeUpgrade.ts` + spec;
-- `src/lib/game/state.ts` + focused upgrade tests;
-- `src/lib/components/game/TileInspector.svelte` + spec;
-- `src/routes/MapInspectorHost.svelte` + spec;
-- `src/routes/+page.svelte` + route spec;
-- locale files;
-- `src/routes/retail-sim.e2e.ts`.
-
-Possible small follow-up only if required for honest disabled copy:
-
-- `src/lib/components/game/StoreStockTable.svelte` + spec.
-
-No schema, persistence codec, planner-domain, or art registry files should need changes.
+- balance changes;
+- save migration / backward-compatibility work;
+- new art generation.
