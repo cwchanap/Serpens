@@ -3999,6 +3999,7 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 	await expect(inspector.getByTestId('upgrade-status')).toContainText('Upgrade complete.');
 
 	// The milestone CTA hands off to Store Detail focused on the Snacks row.
+	await expect(inspector.getByTestId('upgrade-review-stock')).toContainText('Snacks');
 	await inspector.getByTestId('upgrade-review-stock').click();
 	const storeModal = page.locator('[role="dialog"][aria-modal="true"]');
 	await expect(storeModal.getByRole('tab', { name: /stock/i })).toHaveAttribute(
