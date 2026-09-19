@@ -5,7 +5,7 @@
 	import { getArchetype } from '$lib/game/archetypes';
 	import { getSupportedBrands } from '$lib/game/brands';
 	import { getProductDefinition, getProductFreshnessPercent } from '$lib/game/products';
-	import type { GameRouteCommitResult } from '$lib/game/commandResult';
+	import { isGameRouteCommitted, type GameRouteCommitResult } from '$lib/game/commandResult';
 	import type { StockRecoveryView } from '$lib/game/stockRecovery';
 	import { getStoreProductStatus, getStoreProductStock } from '$lib/game/stock';
 	import { localizeStockStatus, tScoped } from '$lib/i18n/gameCopy';
@@ -226,8 +226,8 @@
 		const reorder = i18n.format.decimal(product?.reorderThreshold ?? 0);
 		const target = i18n.format.integer(product?.targetStock ?? 0);
 
-		const committed =
-			result?.status === 'committed' || (result?.status === 'sandbox-committed' && result.changed);
+		// A void (fire-and-forget) update resolves to nothing committed.
+		const committed = isGameRouteCommitted(result ?? null);
 		const unchanged =
 			result?.status === 'unchanged' || (result?.status === 'sandbox-committed' && !result.changed);
 

@@ -36,3 +36,9 @@ export type GameRouteCommitResult =
 	  }
 	| { status: 'unavailable' }
 	| { status: 'failed' };
+
+export function isGameRouteCommitted(result: GameRouteCommitResult | null | undefined): boolean {
+	return (
+		result?.status === 'committed' || (result?.status === 'sandbox-committed' && result.changed)
+	);
+}

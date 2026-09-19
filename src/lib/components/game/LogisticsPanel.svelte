@@ -11,7 +11,7 @@
 		type RecurringRouteUpdateInput
 	} from '$lib/game/interCityLogistics';
 	import type { GameState, MaterialId, WorldCityId } from '$lib/game/types';
-	import type { GameRouteCommitResult } from '$lib/game/commandResult';
+	import { isGameRouteCommitted, type GameRouteCommitResult } from '$lib/game/commandResult';
 	import { localizeLogisticsFailure } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
 	import {
@@ -200,12 +200,6 @@
 		return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 	}
 
-	function isCommitted(result: GameRouteCommitResult): boolean {
-		return (
-			result.status === 'committed' || (result.status === 'sandbox-committed' && result.changed)
-		);
-	}
-
 	function describeResult(result: GameRouteCommitResult): string {
 		if (result.status === 'logistics-rejected')
 			return localizeLogisticsFailure(result.reason, i18n);
@@ -254,7 +248,7 @@
 		submitting = true;
 		try {
 			const result = await onDispatchManualTransfer(input);
-			if (!isCommitted(result)) {
+			if (!isGameRouteCommitted(result)) {
 				statusMessage = describeResult(result);
 				return;
 			}
@@ -331,7 +325,7 @@
 			const result = editingRouteId
 				? await onUpdateRecurringRoute(editingRouteId, updateInput)
 				: await onCreateRecurringRoute(input);
-			if (!isCommitted(result)) {
+			if (!isGameRouteCommitted(result)) {
 				statusMessage = describeResult(result);
 				return;
 			}
@@ -370,7 +364,7 @@
 				route.state === 'active'
 					? await onPauseRecurringRoute(route.routeId)
 					: await onResumeRecurringRoute(route.routeId);
-			if (!isCommitted(result)) {
+			if (!isGameRouteCommitted(result)) {
 				statusMessage = describeResult(result);
 				return;
 			}
@@ -396,7 +390,7 @@
 		submitting = true;
 		try {
 			const result = await onReprioritizeRecurringRoute(route.routeId, priority);
-			statusMessage = isCommitted(result)
+			statusMessage = isGameRouteCommitted(result)
 				? i18n.t('logisticsPanel.ui.routeReprioritized')
 				: describeResult(result);
 		} finally {
@@ -409,7 +403,7 @@
 		submitting = true;
 		try {
 			const result = await onRemoveRecurringRoute(route.routeId);
-			if (!isCommitted(result)) {
+			if (!isGameRouteCommitted(result)) {
 				statusMessage = describeResult(result);
 				return;
 			}

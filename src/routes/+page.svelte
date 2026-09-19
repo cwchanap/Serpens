@@ -183,6 +183,7 @@
 		type GameRouteCommitResult,
 		type GameRouteControllerState
 	} from './gameRouteController';
+	import { isGameRouteCommitted } from '$lib/game/commandResult';
 	import {
 		beginFinancePurchaseConfirmation,
 		createFinancePurchaseReviewState,
@@ -2300,18 +2301,12 @@
 		return gameRouteController.reprioritizeRecurringRoute(routeId, priority);
 	}
 
-	function isCommittedResult(result: GameRouteCommitResult): boolean {
-		return (
-			result.status === 'committed' || (result.status === 'sandbox-committed' && result.changed)
-		);
-	}
-
 	async function removeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
 		if (!game || !mutationAvailability.manageLogistics) {
 			return { status: 'unavailable' };
 		}
 		const result = await gameRouteController.removeRecurringRoute(routeId);
-		if (isCommittedResult(result)) {
+		if (isGameRouteCommitted(result)) {
 			if (selectedLogisticsRouteId === routeId) selectedLogisticsRouteId = null;
 			if (focusedLogisticsRouteId === routeId) focusedLogisticsRouteId = null;
 		}
@@ -2618,7 +2613,7 @@
 			result = await gameRouteController.financeIndustrialBuilding(...request.command.args);
 		}
 
-		if (isCommittedResult(result)) {
+		if (isGameRouteCommitted(result)) {
 			if (financePurchaseReview.generation !== request.generation) return;
 			selectedTileId = null;
 			selectedIndustryTileId = null;
