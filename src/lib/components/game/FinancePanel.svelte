@@ -12,7 +12,7 @@
 	import type { I18nBundle } from '$lib/i18n';
 	import type { FinanceFailureCode } from '$lib/game/finance';
 	import type { GameState, LoanInstrument, LoanTermDays } from '$lib/game/types';
-	import type { GameRouteCommitResult } from '$lib/game/commandResult';
+	import { isGameRouteCommitted, type GameRouteCommitResult } from '$lib/game/commandResult';
 
 	type ReviewAction =
 		| { kind: 'borrow'; amount: number; termDays: LoanTermDays }
@@ -216,12 +216,6 @@
 		}
 	}
 
-	function isCommitted(result: GameRouteCommitResult): boolean {
-		return (
-			result.status === 'committed' || (result.status === 'sandbox-committed' && result.changed)
-		);
-	}
-
 	function describeResult(result: GameRouteCommitResult): string {
 		if (result.status === 'domain-rejected') return financeFailureMessage(result.code);
 		if (result.status === 'busy') return i18n.t('financePanel.ui.busy');
@@ -252,7 +246,7 @@
 				result = await onRefinance(action.loanId, action.termDays);
 			}
 
-			if (!isCommitted(result)) {
+			if (!isGameRouteCommitted(result)) {
 				const failure = describeResult(result);
 				const field =
 					action.kind === 'borrow'
