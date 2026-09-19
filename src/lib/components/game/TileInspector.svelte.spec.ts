@@ -596,8 +596,47 @@ describe('TileInspector upgrade acknowledgement', () => {
 		instance.rerender({ ...baseProps, store: storeB });
 		resolveCommand({ status: 'committed' });
 
-		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
+		// Wait for the pending window to close before asserting absence —
+		// the dropped/published result settles in the same microtask.
 		await expect.element(page.getByRole('button', { name: /Upgrade/i })).toBeEnabled();
+		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
+	});
+
+	it('drops a stale settled result when selection returned to the source store while pending', async () => {
+		expect.assertions(2);
+		let resolveCommand: (result: GameRouteCommitResult | null) => void = () => {};
+		const onUpgradeStore = vi.fn(
+			() =>
+				new Promise<GameRouteCommitResult | null>((resolve) => {
+					resolveCommand = resolve;
+				})
+		);
+		const storeA = { ...store, id: 'store-revisit-a', level: 2 };
+		const storeB = { ...store, id: 'store-revisit-b', level: 2 };
+		const game: GameState = { ...defaultGame, cash: 100_000, stores: [storeA, storeB] };
+		const baseProps = {
+			game,
+			tile,
+			latestStoreReport: null,
+			onUpgradeStore,
+			onOpenDetails: vi.fn(),
+			onClose: vi.fn(),
+			i18n: createI18n('en')
+		};
+		const instance = render(TileInspector, { ...baseProps, store: storeA });
+
+		await page.getByRole('button', { name: /Upgrade/i }).click();
+		// Selecting away and back must still retire the pending attempt's
+		// result — the acknowledgement contract is one-shot per selection,
+		// not per store id.
+		instance.rerender({ ...baseProps, store: storeB });
+		instance.rerender({ ...baseProps, store: storeA });
+		resolveCommand({ status: 'committed' });
+
+		// The button re-enables in the same finally that drops or publishes
+		// the result, so once it is enabled any stale ack is already visible.
+		await expect.element(page.getByRole('button', { name: /Upgrade/i })).toBeEnabled();
+		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
 	});
 });
 
