@@ -283,24 +283,14 @@ interface StoreUpgradeResolution {
 	staffCapacityAfter: number;
 }
 
-export interface StoreUpgradeNextProductMilestone {
-	level: number;
-	productIndex: number;
-	productId: ProductId;
-}
-
-export interface StoreUpgradePreview {
-	currentLevel: number;
-	nextLevel: number;
-	cost: number;
-	unlockedProductId: ProductId | null;
+export interface StoreUpgradePreview extends StoreUpgradeResolution {
 	revenueMultiplierBefore: number;
 	revenueMultiplierAfter: number;
 	staffCapacityBefore: number;
 	staffCapacityAfter: number;
 	staffingRequirementBefore: StaffingRequirement;
 	staffingRequirementAfter: StaffingRequirement;
-	nextProductMilestone: StoreUpgradeNextProductMilestone | null;
+	nextProductMilestone: { level: number; productId: ProductId } | null;
 }
 
 /**
@@ -359,7 +349,7 @@ export function previewStoreUpgrade(store: Store): StoreUpgradePreview | null {
 
 	const archetype = getArchetype(store.archetypeId);
 	const nextMilestoneLevel = STORE_MILESTONE_LEVELS.find((level) => level > store.level);
-	let nextProductMilestone: StoreUpgradeNextProductMilestone | null = null;
+	let nextProductMilestone: StoreUpgradePreview['nextProductMilestone'] = null;
 
 	// Validated-store invariant: product count equals the level's unlocked count
 	// and IDs belong to the archetype's unlocked prefix, so the next milestone's
@@ -368,7 +358,6 @@ export function previewStoreUpgrade(store: Store): StoreUpgradePreview | null {
 		const productIndex = getUnlockedProductCount(nextMilestoneLevel) - 1;
 		nextProductMilestone = {
 			level: nextMilestoneLevel,
-			productIndex,
 			productId: archetype.startingProductIds[productIndex]!
 		};
 	}

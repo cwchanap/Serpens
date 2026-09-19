@@ -142,8 +142,17 @@
 		const sourceStoreId = store.id;
 		const sourcePreview = upgradePreview;
 		upgradePending = true;
+		// A new attempt retires the previous acknowledgement so the stale
+		// status never outlives the pending window it belongs to.
+		upgradeAck = null;
 		try {
-			const result = await onUpgradeStore(sourceStoreId);
+			let result: GameRouteCommitResult | null;
+			try {
+				result = await onUpgradeStore(sourceStoreId);
+			} catch {
+				// A rejecting callback is a not-applied upgrade, not a crash.
+				result = null;
+			}
 			// A late settle after switching stores is dropped, not acknowledged.
 			if (store?.id !== sourceStoreId) return;
 			let kind: UpgradeAckKind = 'not-applied';
@@ -301,9 +310,9 @@
 				<section
 					class="upgrade-card"
 					data-testid="upgrade-card"
-					aria-label={i18n.t('tileInspector.upgradeCard.heading')}
+					aria-labelledby="upgrade-card-heading"
 				>
-					<h4>{i18n.t('tileInspector.upgradeCard.heading')}</h4>
+					<h4 id="upgrade-card-heading">{i18n.t('tileInspector.upgradeCard.heading')}</h4>
 					<p class="upgrade-step">
 						{i18n.t('tileInspector.upgradeCard.levelTransition', {
 							from: i18n.format.integer(upgradePreview.currentLevel),
