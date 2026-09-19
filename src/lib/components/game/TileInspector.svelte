@@ -11,7 +11,7 @@
 	import { MAX_STORE_LEVEL } from '$lib/game/leveling';
 	import { formatStoreLocation, localizeStockTrouble, storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
-	import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
+	import type { CityTile, DailyStoreReport, GameState, ProductId, Store } from '$lib/game/types';
 	import type { Attachment } from 'svelte/attachments';
 	import { on } from 'svelte/events';
 
@@ -22,7 +22,7 @@
 		latestStoreReport: DailyStoreReport | null;
 		i18n: I18nBundle;
 		onUpgradeStore?: (storeId: string) => Promise<GameRouteCommitResult | null>;
-		onOpenDetails: () => void;
+		onOpenDetails: (productId: ProductId | null) => void;
 		onClose: () => void;
 		onClickFeedback?: () => void;
 		canUpgradeStore?: boolean;
@@ -115,7 +115,10 @@
 
 	type UpgradeAckKind = 'success' | 'unchanged' | 'not-applied';
 	let upgradePending = $state(false);
-	let upgradeAck = $state<{ kind: UpgradeAckKind; milestoneUnlocked: boolean } | null>(null);
+	let upgradeAck = $state<{
+		kind: UpgradeAckKind;
+		unlockedProductId: ProductId | null;
+	} | null>(null);
 
 	// One-shot acknowledgement: changing the selected store retires the status,
 	// and returning to that store never replays it.
@@ -154,7 +157,7 @@
 			}
 			upgradeAck = {
 				kind,
-				milestoneUnlocked: sourcePreview.unlockedProductId !== null
+				unlockedProductId: sourcePreview.unlockedProductId
 			};
 		} finally {
 			upgradePending = false;
@@ -382,7 +385,7 @@
 						: i18n.t('tileInspector.maxLevel')}</button
 				><button
 					type="button"
-					onclick={onOpenDetails}
+					onclick={() => onOpenDetails(null)}
 					aria-label={i18n.t('tileInspector.openDetails')}
 					><HudIcon name="details" />{i18n.t('tileInspector.details')}</button
 				>
@@ -398,8 +401,13 @@
 					data-testid="upgrade-status"
 				>
 					<p role="status">{upgradeAckText}</p>
-					{#if upgradeAck.kind === 'success' && upgradeAck.milestoneUnlocked}
-						<button type="button" onclick={onOpenDetails} data-testid="upgrade-review-stock">
+					{#if upgradeAck.kind === 'success' && upgradeAck.unlockedProductId !== null}
+						{@const unlockedProductId = upgradeAck.unlockedProductId}
+						<button
+							type="button"
+							onclick={() => onOpenDetails(unlockedProductId)}
+							data-testid="upgrade-review-stock"
+						>
 							<HudIcon name="details" />{i18n.t('tileInspector.upgradeStatus.reviewStock')}
 						</button>
 					{/if}
