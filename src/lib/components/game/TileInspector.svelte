@@ -415,7 +415,7 @@
 						<button
 							type="button"
 							onclick={() => onOpenDetails(unlockedProductId)}
-							data-testid="upgrade-review-stock"
+							data-testid="upgrade-review-stock-supply"
 						>
 							<HudIcon name="details" />{i18n.t('tileInspector.upgradeStatus.reviewStockSupply', {
 								product: i18n.labels.productCategory(unlockedProductId)
