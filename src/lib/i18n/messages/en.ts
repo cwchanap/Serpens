@@ -128,7 +128,7 @@ export const en = {
 		notEnoughCash: 'Not enough cash.',
 		upgradeStatus: {
 			success: 'Upgrade complete.',
-			reviewStock: 'Review stock',
+			reviewStockSupply: 'Review {product} stock & supply',
 			unchanged: 'Level is already up to date.',
 			notApplied: 'Upgrade was not applied.'
 		},

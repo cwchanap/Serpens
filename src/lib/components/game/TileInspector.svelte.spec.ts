@@ -392,7 +392,7 @@ describe('TileInspector upgrade acknowledgement', () => {
 	});
 
 	it('offers the review-stock handoff for a milestone-unlock success', async () => {
-		expect.assertions(4);
+		expect.assertions(5);
 		const onOpenDetails = vi.fn();
 		const milestone = upgradableGame('store-milestone-ack', 3);
 		renderInspector({
@@ -405,7 +405,9 @@ describe('TileInspector upgrade acknowledgement', () => {
 		await page.getByRole('button', { name: /Upgrade/i }).click();
 
 		await expect.element(page.getByTestId('upgrade-review-stock')).toBeVisible();
-		await page.getByRole('button', { name: 'Review stock' }).click();
+		const reviewCta = page.getByRole('button', { name: /Review Snacks stock & supply/ });
+		await expect.element(reviewCta).toHaveTextContent('Snacks');
+		await reviewCta.click();
 		expect(onOpenDetails).toHaveBeenCalledTimes(1);
 		// The milestone CTA deep-links the unlocked product row.
 		expect(onOpenDetails).toHaveBeenCalledWith('snacks');

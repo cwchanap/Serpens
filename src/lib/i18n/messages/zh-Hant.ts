@@ -128,7 +128,7 @@ export const zhHant = {
 		notEnoughCash: '現金不足。',
 		upgradeStatus: {
 			success: '升級完成。',
-			reviewStock: '檢查庫存',
+			reviewStockSupply: '檢查{product}庫存與補給',
 			unchanged: '等級已是最新。',
 			notApplied: '升級未生效。'
 		},

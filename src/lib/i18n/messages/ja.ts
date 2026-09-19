@@ -128,7 +128,7 @@ export const ja = {
 		notEnoughCash: '現金が足りません。',
 		upgradeStatus: {
 			success: 'アップグレードが完了しました。',
-			reviewStock: '在庫を確認',
+			reviewStockSupply: '{product}の在庫・補給を確認',
 			unchanged: 'レベルはすでに最新です。',
 			notApplied: 'アップグレードは適用されませんでした。'
 		},
