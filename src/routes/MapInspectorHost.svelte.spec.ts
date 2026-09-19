@@ -198,8 +198,8 @@ describe('MapInspectorHost', () => {
 		);
 
 		await page.getByRole('button', { name: /upgrade/i }).click();
-		await expect.element(page.getByTestId('upgrade-review-stock')).toBeVisible();
-		await page.getByRole('button', { name: 'Review stock' }).click();
+		await expect.element(page.getByTestId('upgrade-review-stock-supply')).toBeVisible();
+		await page.getByRole('button', { name: /review snacks stock & supply/i }).click();
 		expect(onOpenStoreDetails).toHaveBeenCalledWith('snacks');
 	});
 

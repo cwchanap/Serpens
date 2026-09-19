@@ -403,7 +403,7 @@ describe('TileInspector upgrade acknowledgement', () => {
 		const status = page.getByTestId('upgrade-status');
 		await expect.element(status).toHaveTextContent('Upgrade complete.');
 		await expect.element(status).not.toHaveTextContent('Upgrade was not applied.');
-		await expect.element(page.getByTestId('upgrade-review-stock')).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('upgrade-review-stock-supply')).not.toBeInTheDocument();
 	});
 
 	it('offers the review-stock handoff for a milestone-unlock success', async () => {
@@ -419,7 +419,7 @@ describe('TileInspector upgrade acknowledgement', () => {
 
 		await page.getByRole('button', { name: /Upgrade/i }).click();
 
-		await expect.element(page.getByTestId('upgrade-review-stock')).toBeVisible();
+		await expect.element(page.getByTestId('upgrade-review-stock-supply')).toBeVisible();
 		const reviewCta = page.getByRole('button', { name: /Review Snacks stock & supply/ });
 		await expect.element(reviewCta).toHaveTextContent('Snacks');
 		await reviewCta.click();
@@ -462,7 +462,7 @@ describe('TileInspector upgrade acknowledgement', () => {
 		const status = page.getByTestId('upgrade-status');
 		await expect.element(status).toHaveTextContent('Upgrade was not applied.');
 		await expect.element(status).not.toHaveTextContent('Upgrade complete.');
-		await expect.element(page.getByTestId('upgrade-review-stock')).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('upgrade-review-stock-supply')).not.toBeInTheDocument();
 	});
 
 	it('clears the acknowledgement when the store changes and never replays it', async () => {
@@ -566,7 +566,7 @@ describe('TileInspector upgrade acknowledgement', () => {
 			.element(page.getByTestId('upgrade-status'))
 			.toHaveTextContent('Upgrade was not applied.');
 		await expect.element(button).toBeEnabled();
-		await expect.element(page.getByTestId('upgrade-review-stock')).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('upgrade-review-stock-supply')).not.toBeInTheDocument();
 	});
 
 	it('drops a stale settled result when the store changed while the command was pending', async () => {

@@ -1758,8 +1758,8 @@ describe('store detail focus route wiring', () => {
 	it('page wiring keeps the focus-guard polarity: callback is true when a store IS selected', () => {
 		// Slice from the call to its matching close paren, then collapse
 		// whitespace, so a prettier re-wrap across lines cannot dodge the pin.
+		expect(pageSource).toContain('createStoreDetailFocus(');
 		const callStart = pageSource.indexOf('createStoreDetailFocus(');
-		expect(callStart).toBeGreaterThanOrEqual(0);
 		const argsStart = callStart + 'createStoreDetailFocus('.length;
 		let depth = 0;
 		let wiring = '';
