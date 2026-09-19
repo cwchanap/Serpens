@@ -7,7 +7,7 @@ import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
 import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createI18n, type I18nBundle } from '$lib/i18n';
-import type { CityTile, DailyStoreReport, GameState, Store } from '$lib/game/types';
+import type { CityTile, DailyStoreReport, GameState, ProductId, Store } from '$lib/game/types';
 
 const tile: CityTile = {
 	id: 'harbor-city-1-1',
@@ -109,7 +109,7 @@ function renderInspector(
 		latestStoreReport: DailyStoreReport | null;
 		onClose: () => void;
 		onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
-		onOpenDetails: () => void;
+		onOpenDetails: (productId: ProductId | null) => void;
 		onClickFeedback: () => void;
 		i18n: I18nBundle;
 		canUpgradeStore: boolean;
@@ -175,7 +175,7 @@ describe('TileInspector basic card', () => {
 		await expect.element(page.getByText('0 / 2', { exact: true })).toBeVisible();
 	});
 	it('shows store identity, an out-of-stock attention flag, and opens details', async () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const onOpenDetails = vi.fn();
 		const outOfStockStore: Store = {
 			...store,
@@ -198,6 +198,8 @@ describe('TileInspector basic card', () => {
 		await expect.element(page.getByText(/out of stock/i)).toBeVisible();
 		await page.getByRole('button', { name: /open details/i }).click();
 		expect(onOpenDetails).toHaveBeenCalledTimes(1);
+		// Normal Details always opens the detail unfocused.
+		expect(onOpenDetails).toHaveBeenCalledWith(null);
 	});
 
 	it('shows the vital gauges (revenue, stock health, staff morale)', async () => {
@@ -341,7 +343,7 @@ describe('TileInspector upgrade acknowledgement', () => {
 			game: GameState;
 			store: Store;
 			onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
-			onOpenDetails: () => void;
+			onOpenDetails: (productId: ProductId | null) => void;
 		}> = {}
 	) {
 		const target = upgradableGame('store-ack', 2);
@@ -390,7 +392,7 @@ describe('TileInspector upgrade acknowledgement', () => {
 	});
 
 	it('offers the review-stock handoff for a milestone-unlock success', async () => {
-		expect.assertions(3);
+		expect.assertions(4);
 		const onOpenDetails = vi.fn();
 		const milestone = upgradableGame('store-milestone-ack', 3);
 		renderInspector({
@@ -405,6 +407,8 @@ describe('TileInspector upgrade acknowledgement', () => {
 		await expect.element(page.getByTestId('upgrade-review-stock')).toBeVisible();
 		await page.getByRole('button', { name: 'Review stock' }).click();
 		expect(onOpenDetails).toHaveBeenCalledTimes(1);
+		// The milestone CTA deep-links the unlocked product row.
+		expect(onOpenDetails).toHaveBeenCalledWith('snacks');
 		await expect.element(page.getByTestId('upgrade-status')).toHaveTextContent('Upgrade complete.');
 	});
 

@@ -2652,11 +2652,10 @@
 		focusedStockProductId = null;
 	}
 
-	function openStoreDetail(): void {
-		if (selectedStore) {
-			focusedStockProductId = null;
-			isStoreDetailOpen = true;
-		}
+	function openStoreDetail(productId: ProductId | null = null): void {
+		if (!selectedStore) return;
+		focusedStockProductId = productId;
+		isStoreDetailOpen = true;
 	}
 
 	function closeStoreDetail(): void {

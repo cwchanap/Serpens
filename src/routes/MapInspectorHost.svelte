@@ -13,6 +13,7 @@
 		GameState,
 		IndustrialBuilding,
 		IndustryTile,
+		ProductId,
 		Store
 	} from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
@@ -28,7 +29,7 @@
 		latestStoreReport: DailyStoreReport | null;
 		canUpgradeStore: boolean;
 		onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
-		onOpenStoreDetails: () => void;
+		onOpenStoreDetails: (productId: ProductId | null) => void;
 		onRetailClickFeedback: () => void;
 		onCloseRetailInspector: () => void;
 
