@@ -2402,10 +2402,9 @@
 		void gameRouteController.updateStoreProductBrand(storeId, productId, brandId);
 	}
 
-	function upgradeStoreHandler(storeId: string): void {
-		if (game && mutationAvailability.upgradeStore) {
-			void gameRouteController.upgradeStore(storeId);
-		}
+	async function upgradeStoreHandler(storeId: string): Promise<GameRouteCommitResult | null> {
+		if (!game || !mutationAvailability.upgradeStore) return null;
+		return gameRouteController.upgradeStore(storeId);
 	}
 
 	function upgradeBuildingHandler(buildingId: string): void {

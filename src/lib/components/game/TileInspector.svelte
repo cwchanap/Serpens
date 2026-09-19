@@ -7,6 +7,7 @@
 	import { ARCHETYPES } from '$lib/game/archetypes';
 	import { summarizeStoreStaffing } from '$lib/game/staffing';
 	import { getStoreOrdinal, previewStoreUpgrade } from '$lib/game/state';
+	import { isGameRouteCommitted, type GameRouteCommitResult } from '$lib/game/commandResult';
 	import { MAX_STORE_LEVEL } from '$lib/game/leveling';
 	import { formatStoreLocation, localizeStockTrouble, storeDisplayName } from '$lib/i18n/gameCopy';
 	import type { I18nBundle } from '$lib/i18n';
@@ -20,7 +21,7 @@
 		store: Store | null;
 		latestStoreReport: DailyStoreReport | null;
 		i18n: I18nBundle;
-		onUpgradeStore?: (storeId: string) => void;
+		onUpgradeStore?: (storeId: string) => Promise<GameRouteCommitResult | null>;
 		onOpenDetails: () => void;
 		onClose: () => void;
 		onClickFeedback?: () => void;
@@ -34,7 +35,7 @@
 		store,
 		latestStoreReport,
 		i18n,
-		onUpgradeStore = () => {},
+		onUpgradeStore = async () => null,
 		onOpenDetails,
 		onClose,
 		onClickFeedback = () => {},
@@ -111,6 +112,54 @@
 			.join(' ')
 	);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
+
+	type UpgradeAckKind = 'success' | 'unchanged' | 'not-applied';
+	let upgradePending = $state(false);
+	let upgradeAck = $state<{ kind: UpgradeAckKind; milestoneUnlocked: boolean } | null>(null);
+
+	// One-shot acknowledgement: changing the selected store retires the status,
+	// and returning to that store never replays it.
+	$effect(() => {
+		void store?.id;
+		upgradeAck = null;
+	});
+
+	const upgradeAckText = $derived(
+		upgradeAck === null
+			? ''
+			: upgradeAck.kind === 'success'
+				? i18n.t('tileInspector.upgradeStatus.success')
+				: upgradeAck.kind === 'unchanged'
+					? i18n.t('tileInspector.upgradeStatus.unchanged')
+					: i18n.t('tileInspector.upgradeStatus.notApplied')
+	);
+
+	async function handleUpgrade(): Promise<void> {
+		if (upgradePending || !upgradeAllowed || !store || !upgradePreview || !canAffordUpgrade) return;
+		const sourceStoreId = store.id;
+		const sourcePreview = upgradePreview;
+		upgradePending = true;
+		try {
+			const result = await onUpgradeStore(sourceStoreId);
+			// A late settle after switching stores is dropped, not acknowledged.
+			if (store?.id !== sourceStoreId) return;
+			let kind: UpgradeAckKind = 'not-applied';
+			if (isGameRouteCommitted(result)) {
+				kind = 'success';
+			} else if (
+				result?.status === 'unchanged' ||
+				(result?.status === 'sandbox-committed' && !result.changed)
+			) {
+				kind = 'unchanged';
+			}
+			upgradeAck = {
+				kind,
+				milestoneUnlocked: sourcePreview.unlockedProductId !== null
+			};
+		} finally {
+			upgradePending = false;
+		}
+	}
 
 	function closeInspector(): void {
 		onClickFeedback();
@@ -320,17 +369,14 @@
 				</section>
 			{/if}
 			<div class="actions">
-				<!-- Task 3 (HPA-283): also disable while an upgrade command is pending. -->
 				<button
 					type="button"
 					class="upgrade btn-primary"
-					disabled={!upgradeAllowed || !storeCanUpgrade || !canAffordUpgrade}
+					disabled={!upgradeAllowed || !storeCanUpgrade || !canAffordUpgrade || upgradePending}
 					aria-label={storeCanUpgrade
 						? i18n.t('tileInspector.upgrade', { cost: i18n.format.currency(upgradeCost) })
 						: i18n.t('tileInspector.maxLevel')}
-					onclick={() => {
-						if (upgradeAllowed) onUpgradeStore(store.id);
-					}}
+					onclick={handleUpgrade}
 					>{storeCanUpgrade
 						? `↑ ${i18n.format.currency(upgradeCost)}`
 						: i18n.t('tileInspector.maxLevel')}</button
@@ -345,6 +391,20 @@
 					{i18n.t('tileInspector.notEnoughCash')}
 				</p>{/if}
 			{#if !upgradeAllowed && disabledReason}<p class="hint">{disabledReason}</p>{/if}
+			{#if upgradeAck}
+				<div
+					class="upgrade-ack"
+					class:not-applied={upgradeAck.kind === 'not-applied'}
+					data-testid="upgrade-status"
+				>
+					<p role="status">{upgradeAckText}</p>
+					{#if upgradeAck.kind === 'success' && upgradeAck.milestoneUnlocked}
+						<button type="button" onclick={onOpenDetails} data-testid="upgrade-review-stock">
+							<HudIcon name="details" />{i18n.t('tileInspector.upgradeStatus.reviewStock')}
+						</button>
+					{/if}
+				</div>
+			{/if}
 		{:else if tile}
 			<header>
 				<p class="eyebrow">
@@ -654,6 +714,33 @@
 	.hint {
 		color: var(--wax-red);
 		font: 12px var(--font-body);
+	}
+	.upgrade-ack {
+		border: 1px solid var(--paper-edge);
+		background: var(--paper-50);
+		padding: 8px 10px;
+		display: grid;
+		gap: 6px;
+		font: 12px var(--font-body);
+	}
+	.upgrade-ack p {
+		margin: 0;
+	}
+	.upgrade-ack.not-applied p {
+		color: var(--wax-red);
+	}
+	.upgrade-ack button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		font: 700 12px var(--font-ui);
+		min-height: 36px;
+		padding: 6px;
+	}
+	.upgrade-ack button :global(svg) {
+		width: 16px;
+		height: 16px;
 	}
 	.tile-stats {
 		display: grid;

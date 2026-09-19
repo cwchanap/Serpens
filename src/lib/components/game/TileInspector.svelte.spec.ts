@@ -2,6 +2,7 @@ import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import TileInspector from './TileInspector.svelte';
+import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
 import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
@@ -107,7 +108,7 @@ function renderInspector(
 		store: Store | null;
 		latestStoreReport: DailyStoreReport | null;
 		onClose: () => void;
-		onUpgradeStore: (storeId: string) => void;
+		onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
 		onOpenDetails: () => void;
 		onClickFeedback: () => void;
 		i18n: I18nBundle;
@@ -326,6 +327,179 @@ describe('TileInspector store upgrade', () => {
 			.toBeVisible();
 		// Milestone levels are excluded from the revenue model — no increase is claimed.
 		await expect.element(page.getByTestId('upgrade-revenue')).not.toBeInTheDocument();
+	});
+});
+
+describe('TileInspector upgrade acknowledgement', () => {
+	const upgradableGame = (storeId: string, level: number): { game: GameState; store: Store } => ({
+		game: { ...defaultGame, cash: 100_000, stores: [{ ...store, id: storeId, level }] },
+		store: { ...store, id: storeId, level }
+	});
+
+	function renderUpgradable(
+		overrides: Partial<{
+			game: GameState;
+			store: Store;
+			onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
+			onOpenDetails: () => void;
+		}> = {}
+	) {
+		const target = upgradableGame('store-ack', 2);
+		return renderInspector({
+			game: overrides.game ?? target.game,
+			store: overrides.store ?? target.store,
+			onUpgradeStore: overrides.onUpgradeStore,
+			onOpenDetails: overrides.onOpenDetails
+		});
+	}
+
+	it('allows one pending upgrade command, keeping the button disabled until it settles', async () => {
+		expect.assertions(5);
+		let resolveCommand: (result: GameRouteCommitResult | null) => void = () => {};
+		const command = new Promise<GameRouteCommitResult | null>((resolve) => {
+			resolveCommand = resolve;
+		});
+		const onUpgradeStore = vi.fn(() => command);
+		renderUpgradable({ onUpgradeStore });
+
+		const button = page.getByRole('button', { name: /Upgrade/i });
+		await button.click();
+		expect(onUpgradeStore).toHaveBeenCalledTimes(1);
+		await expect.element(button).toBeDisabled();
+
+		// A click while pending waits for the control to re-enable instead of
+		// issuing a second command.
+		const secondClick = button.click();
+		expect(onUpgradeStore).toHaveBeenCalledTimes(1);
+		resolveCommand({ status: 'committed' });
+		await secondClick;
+		expect(onUpgradeStore).toHaveBeenCalledTimes(2);
+		await expect.element(button).toBeEnabled();
+	});
+
+	it('acknowledges a committed upgrade as a success without the stock handoff', async () => {
+		expect.assertions(3);
+		renderUpgradable({ onUpgradeStore: async () => ({ status: 'committed' }) });
+
+		await page.getByRole('button', { name: /Upgrade/i }).click();
+
+		const status = page.getByTestId('upgrade-status');
+		await expect.element(status).toHaveTextContent('Upgrade complete.');
+		await expect.element(status).not.toHaveTextContent('Upgrade was not applied.');
+		await expect.element(page.getByTestId('upgrade-review-stock')).not.toBeInTheDocument();
+	});
+
+	it('offers the review-stock handoff for a milestone-unlock success', async () => {
+		expect.assertions(3);
+		const onOpenDetails = vi.fn();
+		const milestone = upgradableGame('store-milestone-ack', 3);
+		renderInspector({
+			game: milestone.game,
+			store: milestone.store,
+			onUpgradeStore: async () => ({ status: 'committed' }),
+			onOpenDetails
+		});
+
+		await page.getByRole('button', { name: /Upgrade/i }).click();
+
+		await expect.element(page.getByTestId('upgrade-review-stock')).toBeVisible();
+		await page.getByRole('button', { name: 'Review stock' }).click();
+		expect(onOpenDetails).toHaveBeenCalledTimes(1);
+		await expect.element(page.getByTestId('upgrade-status')).toHaveTextContent('Upgrade complete.');
+	});
+
+	it.each([
+		{ label: 'unchanged result', result: { status: 'unchanged' } as GameRouteCommitResult },
+		{
+			label: 'sandbox-committed result without change',
+			result: { status: 'sandbox-committed', changed: false } as GameRouteCommitResult
+		}
+	])('stays neutral for a $label', async ({ result }) => {
+		expect.assertions(3);
+		renderUpgradable({ onUpgradeStore: async () => result });
+
+		await page.getByRole('button', { name: /Upgrade/i }).click();
+
+		const status = page.getByTestId('upgrade-status');
+		await expect.element(status).toHaveTextContent('Level is already up to date.');
+		await expect.element(status).not.toHaveTextContent('Upgrade complete.');
+		await expect.element(page.getByText('Upgrade was not applied.')).not.toBeInTheDocument();
+	});
+
+	it.each([
+		{ label: 'busy result', result: { status: 'busy' } as GameRouteCommitResult },
+		{ label: 'failed result', result: { status: 'failed' } as GameRouteCommitResult },
+		{ label: 'unavailable result', result: { status: 'unavailable' } as GameRouteCommitResult },
+		{ label: 'rejected result', result: { status: 'rejected' } as GameRouteCommitResult },
+		{ label: 'missing result', result: null }
+	])('reports the upgrade as not applied for a $label', async ({ result }) => {
+		expect.assertions(3);
+		renderUpgradable({ onUpgradeStore: async () => result });
+
+		await page.getByRole('button', { name: /Upgrade/i }).click();
+
+		const status = page.getByTestId('upgrade-status');
+		await expect.element(status).toHaveTextContent('Upgrade was not applied.');
+		await expect.element(status).not.toHaveTextContent('Upgrade complete.');
+		await expect.element(page.getByTestId('upgrade-review-stock')).not.toBeInTheDocument();
+	});
+
+	it('clears the acknowledgement when the store changes and never replays it', async () => {
+		expect.assertions(3);
+		const storeA = { ...store, id: 'store-switch-a', level: 2 };
+		const storeB = { ...store, id: 'store-switch-b', level: 2 };
+		const game: GameState = { ...defaultGame, cash: 100_000, stores: [storeA, storeB] };
+		const baseProps = {
+			game,
+			tile,
+			latestStoreReport: null,
+			onUpgradeStore: async () => ({ status: 'committed' }) as GameRouteCommitResult,
+			onOpenDetails: vi.fn(),
+			onClose: vi.fn(),
+			i18n: createI18n('en')
+		};
+		const instance = render(TileInspector, { ...baseProps, store: storeA });
+
+		await page.getByRole('button', { name: /Upgrade/i }).click();
+		await expect.element(page.getByTestId('upgrade-status')).toHaveTextContent('Upgrade complete.');
+
+		instance.rerender({ ...baseProps, store: storeB });
+		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
+
+		// Returning to the original store must not replay the retired status.
+		instance.rerender({ ...baseProps, store: storeA });
+		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
+	});
+
+	it('drops a stale settled result when the store changed while the command was pending', async () => {
+		expect.assertions(2);
+		let resolveCommand: (result: GameRouteCommitResult | null) => void = () => {};
+		const onUpgradeStore = vi.fn(
+			() =>
+				new Promise<GameRouteCommitResult | null>((resolve) => {
+					resolveCommand = resolve;
+				})
+		);
+		const storeA = { ...store, id: 'store-stale-a', level: 2 };
+		const storeB = { ...store, id: 'store-stale-b', level: 2 };
+		const game: GameState = { ...defaultGame, cash: 100_000, stores: [storeA, storeB] };
+		const baseProps = {
+			game,
+			tile,
+			latestStoreReport: null,
+			onUpgradeStore,
+			onOpenDetails: vi.fn(),
+			onClose: vi.fn(),
+			i18n: createI18n('en')
+		};
+		const instance = render(TileInspector, { ...baseProps, store: storeA });
+
+		await page.getByRole('button', { name: /Upgrade/i }).click();
+		instance.rerender({ ...baseProps, store: storeB });
+		resolveCommand({ status: 'committed' });
+
+		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: /Upgrade/i })).toBeEnabled();
 	});
 });
 

@@ -5,6 +5,7 @@ import { getIndustryTilesByResource } from '$lib/game/industry';
 import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import type { RailSegment } from '$lib/game/rail';
+import type { GameRouteCommitResult } from '$lib/game/commandResult';
 import { createNewGame } from '$lib/game/state';
 import type {
 	CityTile,
@@ -27,7 +28,7 @@ interface InspectorProps {
 	selectedStore: Store | null;
 	latestStoreReport: DailyStoreReport | null;
 	canUpgradeStore: boolean;
-	onUpgradeStore: (storeId: string) => void;
+	onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
 	onOpenStoreDetails: () => void;
 	onRetailClickFeedback: () => void;
 	onCloseRetailInspector: () => void;

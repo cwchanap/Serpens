@@ -126,6 +126,12 @@ export const en = {
 		upgrade: 'Upgrade — {cost}',
 		maxLevel: 'Max level',
 		notEnoughCash: 'Not enough cash.',
+		upgradeStatus: {
+			success: 'Upgrade complete.',
+			reviewStock: 'Review stock',
+			unchanged: 'Level is already up to date.',
+			notApplied: 'Upgrade was not applied.'
+		},
 		openDetails: 'Open Details ▸',
 		tileStats: 'Tile stats',
 		demand: 'Demand',
