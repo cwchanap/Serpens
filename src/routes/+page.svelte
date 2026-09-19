@@ -195,6 +195,7 @@
 		type PendingFinancedPurchase,
 		shouldRefreshFinancedPurchase
 	} from './financePurchaseReview';
+	import { createStoreDetailFocus } from './storeDetailFocus.svelte';
 	import FinancePurchaseReviewHost from './FinancePurchaseReviewHost.svelte';
 	import ManagementPanelHost from './ManagementPanelHost.svelte';
 	import MapInspectorHost from './MapInspectorHost.svelte';
@@ -409,9 +410,6 @@
 	let logisticsRoutePreset = $state<RecurringRouteInput | null>(null);
 	let focusedRetailSupplyCityId = $state<WorldCityId | null>(null);
 	let isCheatSheetOpen = $state(false);
-	let isStoreDetailOpen = $state(false);
-	// Transient deep-link target from a stock alert; never persisted.
-	let focusedStockProductId = $state<ProductId | null>(null);
 	let isGameMenuOpen = $state(false);
 	let isAlertsMenuOpen = $state(false);
 	let isBuildMenuOpen = $state(false);
@@ -741,6 +739,10 @@
 				) ?? null)
 			: null;
 	});
+	// Focused store-detail overlay state (HPA-293 deep-link), extracted into
+	// storeDetailFocus.svelte.ts so page.svelte.spec.ts can pin the open/close
+	// focus contract.
+	const storeDetailFocus = createStoreDetailFocus(() => !selectedStore);
 	let selectedIndustryBuilding = $derived.by(() => {
 		const currentGame: GameState | null = game;
 		const tile = selectedIndustryTile;
@@ -798,7 +800,7 @@
 		!isPlacementModeActive &&
 			(financePurchaseReview.purchase !== null ||
 				isSupplyAdvisorOpen ||
-				isStoreDetailOpen ||
+				storeDetailFocus.isOpen ||
 				isCheatSheetOpen ||
 				isBuildMenuOpen ||
 				activeManagementPanelId !== null ||
@@ -819,7 +821,7 @@
 			!isScenarioResultsDialogOpen &&
 			!isCheatSheetOpen &&
 			!isSupplyAdvisorOpen &&
-			!isStoreDetailOpen &&
+			!storeDetailFocus.isOpen &&
 			!isBuildMenuOpen &&
 			!isGameMenuOpen &&
 			!isAlertsMenuOpen &&
@@ -968,7 +970,7 @@
 	let hasBlockingOverlay = $derived(
 		financePurchaseReview.purchase !== null ||
 			isSupplyAdvisorOpen ||
-			isStoreDetailOpen ||
+			storeDetailFocus.isOpen ||
 			isCheatSheetOpen ||
 			isSavePanelOpen ||
 			isScenarioCatalogOpen ||
@@ -1855,8 +1857,7 @@
 		clearLogisticsRouteSelection();
 		logisticsRoutePreset = null;
 		focusedRetailSupplyCityId = null;
-		isStoreDetailOpen = false;
-		focusedStockProductId = null;
+		storeDetailFocus.close();
 		isBuildMenuOpen = false;
 		isSupplyAdvisorOpen = false;
 		// Pause the auto-tick whenever the active play mode or scenario run
@@ -2095,8 +2096,7 @@
 		isSupplyAdvisorOpen = false;
 		isBuildMenuOpen = false;
 		isGameMenuOpen = false;
-		isStoreDetailOpen = false;
-		focusedStockProductId = null;
+		storeDetailFocus.close();
 		isCheatSheetOpen = false;
 		isAlertsMenuOpen = false;
 		isSavePanelOpen = false;
@@ -2648,32 +2648,20 @@
 
 	function closeInspector() {
 		selectedTileId = null;
-		isStoreDetailOpen = false;
-		focusedStockProductId = null;
-	}
-
-	function openStoreDetail(productId: ProductId | null = null): void {
-		if (!selectedStore) return;
-		focusedStockProductId = productId;
-		isStoreDetailOpen = true;
-	}
-
-	function closeStoreDetail(): void {
-		isStoreDetailOpen = false;
-		focusedStockProductId = null;
+		storeDetailFocus.close();
 	}
 
 	/** Stock-table handoff: manage this store's retail supply source. */
 	function manageStoreSupplySource(retailCityId: string): void {
 		const cityId = resolveWorldCityId(retailCityId);
 		if (!cityId) return;
-		closeStoreDetail();
+		storeDetailFocus.close();
 		openStoresManagement(cityId);
 	}
 
 	/** Stock-table handoff: open the supply planner for one product. */
 	function planStoreSupplyProduct(productId: ProductId): void {
-		closeStoreDetail();
+		storeDetailFocus.close();
 		planSupplyProduct(productId);
 	}
 
@@ -2736,8 +2724,7 @@
 			}
 			showRetailMap();
 			selectedTileId = destination.tileId;
-			focusedStockProductId = destination.productId;
-			isStoreDetailOpen = true;
+			storeDetailFocus.openDirect(destination.productId);
 			return;
 		}
 		if (alert.kind === 'factory-blocked' && alert.tileId) {
@@ -2792,8 +2779,8 @@
 				isSupplyAdvisorOpen = false;
 				return;
 			}
-			if (isStoreDetailOpen) {
-				closeStoreDetail();
+			if (storeDetailFocus.isOpen) {
+				storeDetailFocus.close();
 				return;
 			}
 			if (isBuildMenuOpen) {
@@ -3116,7 +3103,7 @@
 			latestStoreReport={latestSelectedStoreReport}
 			canUpgradeStore={mutationAvailability.upgradeStore}
 			onUpgradeStore={upgradeStoreHandler}
-			onOpenStoreDetails={openStoreDetail}
+			onOpenStoreDetails={storeDetailFocus.open}
 			onRetailClickFeedback={() => playSfx('sfx.ui.click')}
 			onCloseRetailInspector={closeInspector}
 			showIndustryInspector={shouldShowIndustryInspector}
@@ -3144,7 +3131,7 @@
 		/>
 	</section>
 
-	{#if isStoreDetailOpen && selectedStore}
+	{#if storeDetailFocus.isOpen && selectedStore}
 		<StoreDetailModal
 			game={game ?? starterMapState}
 			{i18n}
@@ -3152,7 +3139,7 @@
 			staff={game?.staff ?? []}
 			hiringCandidates={game?.hiringCandidates ?? []}
 			latestStoreReport={latestSelectedStoreReport}
-			focusedProductId={focusedStockProductId}
+			focusedProductId={storeDetailFocus.focusedProductId}
 			{plannerProductIds}
 			onManageSupplySource={manageStoreSupplySource}
 			onPlanSupply={planStoreSupplyProduct}
@@ -3170,7 +3157,7 @@
 			canUnassignStaff={mutationAvailability.unassignStaff}
 			disabledReason={mutationDisabledReason}
 			onClickFeedback={() => playSfx('sfx.ui.click')}
-			onClose={closeStoreDetail}
+			onClose={storeDetailFocus.close}
 		/>
 	{/if}
 
