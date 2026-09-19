@@ -330,6 +330,21 @@ describe('TileInspector store upgrade', () => {
 		// Milestone levels are excluded from the revenue model — no increase is claimed.
 		await expect.element(page.getByTestId('upgrade-revenue')).not.toBeInTheDocument();
 	});
+
+	it('localizes the milestone unlock image alt in Japanese', async () => {
+		expect.assertions(1);
+		const level3Store: Store = { ...store, id: 'store-milestone-ja', level: 3 };
+		const richGame: GameState = {
+			...defaultGame,
+			cash: 100_000,
+			stores: [level3Store]
+		};
+
+		renderInspector({ game: richGame, store: level3Store, i18n: createI18n('ja') });
+
+		const unlockImage = page.getByTestId('upgrade-unlock').getByRole('img');
+		await expect.element(unlockImage).toHaveAttribute('alt', 'スナック');
+	});
 });
 
 describe('TileInspector upgrade acknowledgement', () => {
@@ -475,6 +490,83 @@ describe('TileInspector upgrade acknowledgement', () => {
 		// Returning to the original store must not replay the retired status.
 		instance.rerender({ ...baseProps, store: storeA });
 		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
+	});
+
+	it('rejects handler re-entry while the first command is still pending', async () => {
+		expect.assertions(5);
+		let resolveCommand: (result: GameRouteCommitResult | null) => void = () => {};
+		const onUpgradeStore = vi.fn(
+			() =>
+				new Promise<GameRouteCommitResult | null>((resolve) => {
+					resolveCommand = resolve;
+				})
+		);
+		renderUpgradable({ onUpgradeStore });
+
+		const button = page.getByRole('button', { name: /Upgrade/i });
+		await expect.element(button).toBeEnabled();
+		const buttonElement = button.element() as HTMLButtonElement;
+
+		// A raw dispatched click provably reaches the handler: the first one
+		// sets `upgradePending`, which disables the button.
+		buttonElement.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		await expect.element(button).toBeDisabled();
+		expect(onUpgradeStore).toHaveBeenCalledTimes(1);
+
+		// The same raw dispatch while pending must be rejected by the
+		// handler-level guard, not only by the disabled attribute (dispatched
+		// events bypass disabled-element suppression, and Svelte's delegation
+		// still invokes `onclick` when `event.target` is the button itself).
+		buttonElement.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+		await Promise.resolve();
+		expect(onUpgradeStore).toHaveBeenCalledTimes(1);
+
+		resolveCommand({ status: 'committed' });
+		await expect.element(page.getByTestId('upgrade-status')).toHaveTextContent('Upgrade complete.');
+	});
+
+	it('clears the previous acknowledgement when a second upgrade attempt starts', async () => {
+		expect.assertions(3);
+		let resolveSecond: (result: GameRouteCommitResult | null) => void = () => {};
+		const onUpgradeStore = vi
+			.fn<() => Promise<GameRouteCommitResult | null>>()
+			.mockResolvedValueOnce({ status: 'committed' })
+			.mockImplementationOnce(
+				() =>
+					new Promise<GameRouteCommitResult | null>((resolve) => {
+						resolveSecond = resolve;
+					})
+			);
+		renderUpgradable({ onUpgradeStore });
+
+		const button = page.getByRole('button', { name: /Upgrade/i });
+		await button.click();
+		await expect.element(page.getByTestId('upgrade-status')).toHaveTextContent('Upgrade complete.');
+
+		// The retry's pending window must not show the first attempt's ack.
+		await button.click();
+		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
+
+		resolveSecond({ status: 'committed' });
+		await expect.element(page.getByTestId('upgrade-status')).toHaveTextContent('Upgrade complete.');
+	});
+
+	it('reports a rejecting upgrade callback as not applied', async () => {
+		expect.assertions(3);
+		renderUpgradable({
+			onUpgradeStore: vi.fn(async () => {
+				throw new Error('network failure');
+			})
+		});
+
+		const button = page.getByRole('button', { name: /Upgrade/i });
+		await button.click();
+
+		await expect
+			.element(page.getByTestId('upgrade-status'))
+			.toHaveTextContent('Upgrade was not applied.');
+		await expect.element(button).toBeEnabled();
+		await expect.element(page.getByTestId('upgrade-review-stock')).not.toBeInTheDocument();
 	});
 
 	it('drops a stale settled result when the store changed while the command was pending', async () => {

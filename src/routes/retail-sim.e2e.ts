@@ -3952,7 +3952,7 @@ async function injectCashAndReload(page: Page, cash: number): Promise<void> {
 }
 
 test('player upgrades a store from the tile inspector', async ({ page }) => {
-	test.setTimeout(90_000);
+	test.setTimeout(45_000);
 	// Height must be tall enough that the fixed control-desk footer does not
 	// overlap the tile inspector's Upgrade button.
 	await page.setViewportSize({ width: 1920, height: 1080 });
@@ -3969,11 +3969,18 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 
 	// The first click after a reload can race the map scene's camera/input
 	// settle and land without opening the inspector; retry like a player would.
+	// The visibility check retries within the 500ms window instead of firing
+	// an immediate (non-retrying) probe, so a slow open cannot trigger a
+	// redundant second canvas click.
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	for (let attempt = 0; attempt < 3; attempt += 1) {
 		await clickMapTile(page, 1, 6);
-		if (await inspector.isVisible().catch(() => false)) break;
-		await page.waitForTimeout(500);
+		try {
+			await expect(inspector).toBeVisible({ timeout: 500 });
+			break;
+		} catch {
+			// Retry the canvas click.
+		}
 	}
 	await expect(inspector).toBeVisible();
 	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 1 / 10');

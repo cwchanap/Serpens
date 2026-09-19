@@ -731,7 +731,6 @@ describe('game state', () => {
 			expect(preview.staffCapacityAfter).toBe(store.staffCapacity);
 			expect(preview.nextProductMilestone).toEqual({
 				level: 4,
-				productIndex: 1,
 				productId: 'snacks'
 			});
 		});
@@ -752,7 +751,6 @@ describe('game state', () => {
 			// Closed form keys off store.level (3), so the next milestone is 4 itself.
 			expect(preview.nextProductMilestone).toEqual({
 				level: 4,
-				productIndex: 1,
 				productId: 'snacks'
 			});
 		});
@@ -783,7 +781,6 @@ describe('game state', () => {
 
 			expect(preview.nextProductMilestone).toEqual({
 				level: 10,
-				productIndex: 3,
 				productId: 'essentials'
 			});
 			expect(preview.unlockedProductId).toBe('essentials');
@@ -851,11 +848,11 @@ describe('game state', () => {
 			const milestoneAt = (level: number) =>
 				previewStoreUpgrade({ ...base.stores[0]!, level })?.nextProductMilestone ?? null;
 
-			expect(milestoneAt(1)).toEqual({ level: 4, productIndex: 1, productId: 'snacks' });
-			expect(milestoneAt(3)).toEqual({ level: 4, productIndex: 1, productId: 'snacks' });
-			expect(milestoneAt(4)).toEqual({ level: 7, productIndex: 2, productId: 'soft-drinks' });
-			expect(milestoneAt(6)).toEqual({ level: 7, productIndex: 2, productId: 'soft-drinks' });
-			expect(milestoneAt(7)).toEqual({ level: 10, productIndex: 3, productId: 'essentials' });
+			expect(milestoneAt(1)).toEqual({ level: 4, productId: 'snacks' });
+			expect(milestoneAt(3)).toEqual({ level: 4, productId: 'snacks' });
+			expect(milestoneAt(4)).toEqual({ level: 7, productId: 'soft-drinks' });
+			expect(milestoneAt(6)).toEqual({ level: 7, productId: 'soft-drinks' });
+			expect(milestoneAt(7)).toEqual({ level: 10, productId: 'essentials' });
 			expect(milestoneAt(10)).toBeNull();
 		});
 
