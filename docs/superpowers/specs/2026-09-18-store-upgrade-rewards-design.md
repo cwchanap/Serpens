@@ -1,7 +1,7 @@
 # HPA-283 Store Upgrade Rewards & Next Supply Decision — Design
 
-**Linear:** HPA-283  
-**Status:** implementation design for the single HPA-283 delivery PR  
+**Linear:** HPA-283\
+**Status:** implementation design for the single HPA-283 delivery PR\
 **Baseline:** `main` after HPA-293 / PR #58 (`2b23a4003377abfc53168a408cfd04a4e149c3e6`)
 
 ## Goal
