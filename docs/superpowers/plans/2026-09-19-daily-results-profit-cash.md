@@ -18,7 +18,7 @@
 - `operatingCashFlow + financingCashFlow` is the only displayed cash reconciliation.
 - Contributors are supporting evidence, not another additive bridge.
 - Never double-subtract import spend, principal repayment, or interest paid.
-- Do not reinterpret existing `netIncome` semantics.
+- Do not reinterpret existing `netIncome` semantics, and do not surface company `netIncome` as a separate headline because the real simulation aliases it to `operatingCashFlow`.
 - No `DailyReport` / `DailyStoreReport` schema changes.
 - No save codec/migration.
 - No transaction/action ledger.
@@ -57,14 +57,25 @@ Do not route the card through a new global store or controller.
 - `src/lib/game/reports.ts`
 - `src/lib/game/reports.spec.ts`
 
-### 1.1 Write failing fixtures first
+### 1.1 Extend the existing `report()` fixture first
 
-Add focused report fixtures for:
+Do not add a second `DailyReport` builder. Extend the existing `report()` helper in `reports.spec.ts` with options for the recorded fields needed by the projection, including:
+
+- `operatingIncome`;
+- store / production import spend;
+- principal borrowed / repaid;
+- interest paid;
+- `financingCashFlow`;
+- `netCashChange`.
+
+Keep the real company invariant `netIncome === operatingCashFlow` in normal fixtures. Do not create a normal case where those differ; that would model a report the simulation does not produce.
+
+Use the extended fixture for:
 
 1. no reports;
 2. one ordinary completed day;
 3. two completed days with absolute comparison;
-4. positive operating income + negative net cash change caused by recorded cash pressure;
+4. positive operating income + negative net cash change from recorded cash pressure;
 5. import-purchase evidence;
 6. principal-repayment evidence;
 7. borrowing inflow;
@@ -72,7 +83,7 @@ Add focused report fixtures for:
 9. more than two candidate contributors;
 10. equal-magnitude candidates.
 
-Keep these as `DailyReport` fixtures. Do not run `simulateDay` just to test a presentation projection.
+Do not run `simulateDay` just to test a presentation projection.
 
 ### 1.2 Add `buildDailyResultView`
 
@@ -94,7 +105,6 @@ export interface DailyResultComparison {
   previousDay: number;
   revenueDelta: number;
   operatingIncomeDelta: number;
-  netIncomeDelta: number;
   netCashChangeDelta: number;
 }
 
@@ -203,8 +213,9 @@ Render:
 - explicit “Day N completed result”;
 - Revenue;
 - Operating income;
-- Net income;
 - Net cash change.
+
+Do **not** render company `netIncome`; in the real write path it duplicates `operatingCashFlow`, which already appears in the cash bridge.
 
 Each metric may render a comparison subline only when `comparison !== null`:
 
@@ -215,7 +226,7 @@ Each metric may render a comparison subline only when `comparison !== null`:
 
 No percentages.
 
-Use signed currency formatting through a tiny local formatter/helper; do not add another general formatting subsystem.
+Reuse `i18n.format.currency` for all currency values. A tiny local `formatSignedDelta` may prefix `+` when the delta is positive, then delegate the amount formatting to `i18n.format.currency`. Do not create another currency formatter.
 
 ### 2.4 Separate live cash
 
@@ -266,8 +277,8 @@ Normal buttons only. No bespoke focus handling.
 Cover:
 
 - no-report state;
-- current cash separate from report;
-- exact four metrics;
+- current cash separate from report, with a pinned fixture where live cash is 1,000 and `latest.cashAfter` is 800 and only 1,000 appears in the current-cash block;
+- exact three headline metrics;
 - one-report no comparison;
 - signed delta with explicit previous day;
 - negative values;
@@ -293,8 +304,8 @@ bun run check
 
 - `src/routes/ManagementPanelHost.svelte`
 - `src/routes/ManagementPanelHost.svelte.spec.ts`
-- `src/lib/components/game/ReportsPanel.svelte`
-- `src/lib/components/game/ReportsPanel.svelte.spec.ts`
+
+`ReportsPanel.svelte` and its existing specs should remain unchanged unless implementation reveals a real integration need. The host already owns composition and has both `panelGame.reports` and panel navigation.
 
 ### 3.1 Dashboard composition
 
@@ -327,32 +338,26 @@ In `ManagementPanelHost.svelte.spec.ts`, prove:
 
 Do this before E2E so browser failures are not used to debug host wiring.
 
-### 3.3 Reports composition
+### 3.3 Reports composition stays in the host
 
-Import the same Daily Result component into `ReportsPanel`.
+Do **not** make `ReportsPanel` own a second report-history input and do not synthesize `[summary.latest]`.
 
-Extend its props with one optional callback:
-
-```ts
-onOpenFinance?: () => void;
-```
-
-Render the card before the existing report overview.
-
-Production path passes:
-
-- reports from `game.reports`;
-- live `game.cash`;
-- Finance action.
-
-If a component test intentionally omits `game`, fall back only far enough to render the supplied latest report:
+In the existing `panelId === 'reports'` branch, compose:
 
 ```text
-reports = summary.latest ? [summary.latest] : []
-currentCash = null
+if summary.latest exists:
+  DailyResultSummary(
+    reports = panelGame.reports,
+    currentCash = panelGame.cash,
+    onOpenFinance = () => onSelectPanel('finance')
+  )
+
+ReportsPanel(existing props)
 ```
 
-Do not fabricate prior history or current cash in that test-only fallback.
+When `summary.latest` is absent, skip the Daily Result card entirely so `ReportsPanel` keeps its existing `reportsPanel.empty` message as the sole Reports empty state.
+
+This also means existing `ReportsPanel.svelte.spec.ts` cases that omit `game` do not need fake one-day history or another empty-state assertion.
 
 ### 3.4 Preserve existing report UX
 
@@ -366,21 +371,25 @@ Do not change:
 
 The new card is an explanation layer above them.
 
-### 3.5 Reports tests
+### 3.5 Host composition tests
 
-Add focused assertions for:
+In `ManagementPanelHost.svelte.spec.ts`, add focused assertions for:
 
-- explicit latest Day N card;
-- required four metrics;
-- current cash separate when game supplied;
-- Finance callback;
-- existing chart/window test still passes;
-- existing detail metrics remain reachable.
+- Dashboard explicit latest Day N card;
+- three headline metrics;
+- current cash separate;
+- Reports callback from Dashboard;
+- Finance callback from Dashboard;
+- Reports branch renders the same card when a latest report exists;
+- Reports branch does **not** render the card when no latest report exists;
+- Scorecard and existing ReportsPanel remain present.
+
+Keep existing ReportsPanel chart/window/detail specs unchanged.
 
 Run:
 
 ```bash
-bun run test:unit -- --run   src/routes/ManagementPanelHost.svelte.spec.ts   src/lib/components/game/ReportsPanel.svelte.spec.ts
+bun run test:unit -- --run src/routes/ManagementPanelHost.svelte.spec.ts
 ```
 
 ---
@@ -425,7 +434,7 @@ Add one compact localized disclosure:
 
 ```text
 Uses this store report's gross margin, store operating costs, and inventory loss only.
-Shared payroll, production, logistics, and financing are outside this store result.
+Import purchases and shared payroll, production, logistics, and financing are outside this store result.
 ```
 
 This avoids implying company-wide profit allocation.
@@ -468,7 +477,7 @@ Use `src/routes/time-flow.e2e.ts` only as an affected verification target; do no
 
 ### 5.1 Deterministic completed-result journey
 
-Reuse existing save/test helpers instead of creating a new fixture framework.
+Reuse the existing `installSandboxAutoSave` / `replaceBrowserAutoSave` helpers instead of creating a new fixture framework.
 
 The browser journey should:
 
@@ -476,7 +485,7 @@ The browser journey should:
 2. keep live current cash intentionally different from the latest report’s `cashAfter` so the separation is observable;
 3. open Dashboard;
 4. assert “Day N completed result”;
-5. assert Revenue / Operating income / Net income / Net cash change;
+5. assert Revenue / Operating income / Net cash change;
 6. assert current cash separately;
 7. assert absolute comparison references the preceding Day N-1;
 8. click Reports and verify existing supporting report detail;
@@ -529,7 +538,7 @@ Do not expand HPA-282 into accounting fixes if an unrelated existing failure app
 - [ ] `buildDailyResultView` is pure and lives in `reports.ts`.
 - [ ] `ReportSummary` shape remains unchanged.
 - [ ] Latest + previous report only; no new history/window.
-- [ ] Four required metrics are explicitly dated.
+- [ ] Three distinct headline metrics are explicitly dated; company `netIncome` is not shown as a duplicate of operating cash flow.
 - [ ] Comparisons are absolute signed deltas with explicit previous day.
 - [ ] No report = no fabricated zeros.
 - [ ] Current cash is visibly separate and live.
@@ -541,7 +550,7 @@ Do not expand HPA-282 into accounting fixes if an unrelated existing failure app
 - [ ] Dashboard reuses existing panel navigation.
 - [ ] Reports keeps existing 7/14/30 windows and detailed evidence.
 - [ ] Store inspector uses `DailyStoreReport.netIncome` directly.
-- [ ] Store result disclosure excludes shared/company-level costs.
+- [ ] Store result disclosure explicitly excludes import purchases and shared/company-level costs.
 - [ ] EN / JA / zh-Hant copy is complete.
 - [ ] Narrow/keyboard smoke passes.
 - [ ] No schema, persistence, simulation, finance-engine, allocation, backend, art, or SFX work.
