@@ -4,7 +4,7 @@
 
 **Goal:** Surface one truthful completed-day result, explain the exact profit-vs-cash distinction from recorded report evidence, compare it with the prior completed day, and show a precisely scoped store operating result.
 
-**Architecture:** Keep `DailyReport` / `DailyStoreReport` and `simulateDay` authoritative. Add one pure latest-day projection in `reports.ts`; render it through one reusable Daily Result component on Dashboard and Reports; reuse existing management-panel navigation for supporting detail. The selected-store inspector reads the existing store report directly. No schema, finance-engine, simulation, persistence, action-history, or analytics-framework work.
+**Architecture:** Keep `DailyReport` / `DailyStoreReport` and `simulateDay` authoritative. Add one pure latest-day projection in `reports.ts`; render one presentation-only Daily Result card on Dashboard; add the one missing Net cash change row to the existing Reports detail grid; reuse existing management-panel navigation for supporting detail. The selected-store inspector reads the existing store report directly. No schema, finance-engine, simulation, persistence, action-history, or analytics-framework work.
 
 **Tech:** TypeScript, Svelte 5 / SvelteKit, Vitest, Playwright, Bun.
 
@@ -28,7 +28,11 @@
 - No economic rebalance.
 - No new art or SFX.
 - Preserve existing 7/14/30 report-window controls and detailed evidence.
+- Do not mount DailyResultSummary on Reports; add only the missing Net cash change row there.
 - Reuse existing management navigation instead of route/deep-link infrastructure.
+- Reuse the existing reconciled `getImportSpend(report)` helper for contributor evidence.
+- Add shared locale-aware signed currency formatting; do not hand-roll a component formatter.
+- Add one whole-catalog locale-key parity test rather than another HPA-282-only key list.
 
 ## Delivery shape
 
@@ -40,9 +44,10 @@ DailyReport[]
     v
 buildDailyResultView (pure)
     |
-    +--> DailyResultSummary --> Dashboard
-    |                       --> Reports
+    +--> ManagementPanelHost --> DailyResultSummary --> Dashboard only
     |
+    +--> ReportsPanel existing detail grid + Net cash change row
+
 DailyStoreReport -----------> TileInspector
 ```
 
@@ -132,7 +137,11 @@ Implementation rules:
 
 Do not change `ReportSummary` shape; that would force unrelated fixture churn for no product value.
 
-### 1.3 Pin exact accounting boundaries
+### 1.3 Reuse reconciled import spend and pin exact accounting boundaries
+
+Export the existing `getImportSpend(report)` from `reports.ts` and use it for the `import-spend` contributor. Do not read raw `report.importSpend` directly.
+
+Add one fixture where store + production detail exceeds raw `report.importSpend` and prove the contributor uses the reconciled value, matching `summarizeReports`.
 
 Tests must explicitly prove:
 
@@ -174,18 +183,34 @@ bun run test:unit -- --run src/lib/game/reports.spec.ts
 
 **Modify**
 
+- `src/lib/i18n/format.ts`
+- `src/lib/i18n/format.spec.ts`
 - `src/lib/i18n/messages/en.ts`
 - `src/lib/i18n/messages/ja.ts`
 - `src/lib/i18n/messages/zh-Hant.ts`
-- `src/lib/i18n/locales.spec.ts` only if explicit key-parity coverage requires updates
+- `src/lib/i18n/locales.spec.ts`
 
-### 2.1 Component API
+### 2.1 Shared formatting, locale parity, and component API
 
-Keep the API presentation-only:
+Add `signedCurrency(value: number): string` to `LocaleFormatters` / `createLocaleFormatters` using a dedicated `Intl.NumberFormat` with `signDisplay: 'exceptZero'`. Cover positive, negative, zero, and at least EN / JA / zh-Hant in `format.spec.ts`.
+
+Add a whole-catalog locale parity assertion in `locales.spec.ts` using the existing `collectLeafPaths`:
+
+```ts
+for (const locale of ['ja', 'zh-Hant'] as const) {
+  expect(collectLeafPaths(messagesByLocale[locale]).sort()).toEqual(
+    collectLeafPaths(messagesByLocale.en).sort()
+  );
+}
+```
+
+Run this test before adding HPA-282 copy. If it exposes small pre-existing omissions, fill them. If an asymmetry is intentional, use a narrowly documented allowlist; no HPA-282 key may be allowlisted.
+
+Keep the component API presentation-only:
 
 ```ts
 interface Props {
-  reports: readonly DailyReport[];
+  view: DailyResultView | null;
   currentCash: number | null;
   i18n: I18nBundle;
   onOpenReports?: () => void;
@@ -193,9 +218,23 @@ interface Props {
 }
 ```
 
-The component calls `buildDailyResultView(reports)`.
+`ManagementPanelHost` owns `buildDailyResultView(panelGame.reports)`; the component only renders the supplied projection.
 
-No `GameState`, controller, mutation callback, or writable state.
+Pin these stable semantic test IDs before writing specs:
+
+```text
+daily-result
+daily-result-day
+daily-result-revenue
+daily-result-operating-income
+daily-result-net-cash-change
+daily-result-current-cash
+daily-result-bridge
+daily-result-contributor
+store-operating-result
+```
+
+No `GameState`, report history, controller, mutation callback, or writable state belongs in DailyResultSummary.
 
 ### 2.2 Empty state
 
@@ -226,13 +265,15 @@ Each metric may render a comparison subline only when `comparison !== null`:
 
 No percentages.
 
-Reuse `i18n.format.currency` for all currency values. A tiny local `formatSignedDelta` may prefix `+` when the delta is positive, then delegate the amount formatting to `i18n.format.currency`. Do not create another currency formatter.
+Use `i18n.format.currency` for ordinary currency and `i18n.format.signedCurrency` for signed deltas. Do not add a local sign/currency helper.
 
 ### 2.4 Separate live cash
 
-Render “Current cash” outside the completed-day metric group.
+Render “Current cash” outside the completed-day metric group with `data-testid="daily-result-current-cash"`.
 
 Never label `latest.cashAfter` as current.
+
+The existing Dashboard tower header still shows the same live cash as an unlabeled ticker; keep it unchanged. HPA-282 tests must target the labeled card block by testid so the two renderings are never ambiguous.
 
 If `currentCash === null`, omit the live-cash value rather than falling back to report cash.
 
@@ -274,38 +315,41 @@ Normal buttons only. No bespoke focus handling.
 
 ### 2.8 Component tests
 
+Construct `DailyResultView | null` fixtures directly; read-model semantics belong in Task 1.
+
 Cover:
 
 - no-report state;
 - current cash separate from report, with a pinned fixture where live cash is 1,000 and `latest.cashAfter` is 800 and only 1,000 appears in the current-cash block;
 - exact three headline metrics;
 - one-report no comparison;
-- signed delta with explicit previous day;
+- signed delta with explicit previous day via `i18n.format.signedCurrency`;
 - negative values;
 - exact operating/financing/net bridge;
 - positive-operating / negative-cash explanation;
 - contributor ordering + at-most-two presentation;
 - optional Reports callback;
 - optional Finance callback;
-- buttons absent when callbacks omitted.
+- buttons absent when callbacks omitted;
+- pinned testids resolve the intended values without matching the Dashboard header ticker.
 
 Run:
 
 ```bash
-bun run test:unit -- --run src/lib/components/game/DailyResultSummary.svelte.spec.ts
+bun run test:unit -- --run   src/lib/i18n/format.spec.ts   src/lib/i18n/locales.spec.ts   src/lib/components/game/DailyResultSummary.svelte.spec.ts
 bun run check
 ```
 
 ---
 
-## Task 3 — Reuse the card on Dashboard and Reports
+## Task 3 — Compose Dashboard once and extend the existing Reports detail
 
 **Modify**
 
 - `src/routes/ManagementPanelHost.svelte`
 - `src/routes/ManagementPanelHost.svelte.spec.ts`
-
-`ReportsPanel.svelte` and its existing specs should remain unchanged unless implementation reveals a real integration need. The host already owns composition and has both `panelGame.reports` and panel navigation.
+- `src/lib/components/game/ReportsPanel.svelte`
+- `src/lib/components/game/ReportsPanel.svelte.spec.ts`
 
 ### 3.1 Dashboard composition
 
@@ -316,9 +360,15 @@ DailyResultSummary
 Scorecard
 ```
 
+Derive once in the host:
+
+```ts
+const dailyResultView = $derived(buildDailyResultView(panelGame.reports));
+```
+
 Pass:
 
-- `reports={panelGame.reports}`;
+- `view={dailyResultView}`;
 - `currentCash={panelGame.cash}`;
 - Reports action → `onSelectPanel('reports')`;
 - Finance action → `onSelectPanel('finance')`.
@@ -338,26 +388,22 @@ In `ManagementPanelHost.svelte.spec.ts`, prove:
 
 Do this before E2E so browser failures are not used to debug host wiring.
 
-### 3.3 Reports composition stays in the host
+### 3.3 Reports gets one missing row, not another card
 
-Do **not** make `ReportsPanel` own a second report-history input and do not synthesize `[summary.latest]`.
+Leave the Reports host branch structurally unchanged: it renders the existing `ReportsPanel` only.
 
-In the existing `panelId === 'reports'` branch, compose:
+Inside the existing expanded `.metrics` grid, add:
 
-```text
-if summary.latest exists:
-  DailyResultSummary(
-    reports = panelGame.reports,
-    currentCash = panelGame.cash,
-    onOpenFinance = () => onSelectPanel('finance')
-  )
-
-ReportsPanel(existing props)
+```svelte
+<div data-testid="reports-net-cash-change">
+  <span>{i18n.t('reportsPanel.metrics.netCashChange')}</span>
+  <strong>{i18n.format.currency(summary.latest.netCashChange)}</strong>
+</div>
 ```
 
-When `summary.latest` is absent, skip the Daily Result card entirely so `ReportsPanel` keeps its existing `reportsPanel.empty` message as the sole Reports empty state.
+Place it with `operatingCashFlow` and `financingCashFlow` so those three rows form the recorded bridge.
 
-This also means existing `ReportsPanel.svelte.spec.ts` cases that omit `game` do not need fake one-day history or another empty-state assertion.
+No DailyResultSummary mount, no `summary.latest` host condition, no second Reports empty state, and no new Reports history prop.
 
 ### 3.4 Preserve existing report UX
 
@@ -366,30 +412,31 @@ Do not change:
 - revenue/cost chart math;
 - 7/14/30 controls;
 - by-store/by-product evidence;
-- report details;
-- market/logistics/modifier sections.
+- market/logistics/modifier sections;
+- existing `reportsPanel.empty` behavior.
 
-The new card is an explanation layer above them.
+The only Reports presentation change is the Net cash change row in the existing details grid.
 
-### 3.5 Host composition tests
+### 3.5 Focused composition/report tests
 
-In `ManagementPanelHost.svelte.spec.ts`, add focused assertions for:
+In `ManagementPanelHost.svelte.spec.ts`, prove:
 
-- Dashboard explicit latest Day N card;
-- three headline metrics;
-- current cash separate;
-- Reports callback from Dashboard;
-- Finance callback from Dashboard;
-- Reports branch renders the same card when a latest report exists;
-- Reports branch does **not** render the card when no latest report exists;
-- Scorecard and existing ReportsPanel remain present.
+- the host-derived view feeds Dashboard;
+- Dashboard renders the Daily Result card + Scorecard;
+- Reports action calls the existing panel selection path;
+- Finance action does the same;
+- labeled current cash is the card value, not a report `cashAfter`.
 
-Keep existing ReportsPanel chart/window/detail specs unchanged.
+In `ReportsPanel.svelte.spec.ts`, prove:
+
+- expanded details render Net cash change beside the existing operating/financing cash-flow rows;
+- no Daily Result card exists on Reports;
+- existing chart/window/empty-state behavior remains unchanged.
 
 Run:
 
 ```bash
-bun run test:unit -- --run src/routes/ManagementPanelHost.svelte.spec.ts
+bun run test:unit -- --run   src/routes/ManagementPanelHost.svelte.spec.ts   src/lib/components/game/ReportsPanel.svelte.spec.ts
 ```
 
 ---
@@ -428,16 +475,18 @@ Show:
 
 Keep the existing 14-day revenue sparkline; do not add a second profit chart.
 
-### 4.3 Scope disclosure
+### 4.3 Scope disclosure without consuming inspector height
 
-Add one compact localized disclosure:
+Add `data-testid="store-operating-result"` to the result value.
+
+Put the longer scope explanation behind a native `<details>/<summary>` compact disclosure, following the repo’s existing scope/finance disclosure idiom, rather than rendering two permanent body-copy lines:
 
 ```text
 Uses this store report's gross margin, store operating costs, and inventory loss only.
 Import purchases and shared payroll, production, logistics, and financing are outside this store result.
 ```
 
-This avoids implying company-wide profit allocation.
+Keep the summary short (for example, localized “What this result includes”). The disclosure is supplemental; the “Store operating result” label remains visible without expanding it.
 
 ### 4.4 Honest unavailable state
 
@@ -455,7 +504,7 @@ Cover:
 - positive store result;
 - negative store result;
 - explicit Day N;
-- disclosure text;
+- disclosure summary + expanded disclosure text;
 - selecting a different store/report updates result;
 - existing HPA-283 upgrade card/reachability behavior remains unchanged.
 
@@ -488,13 +537,13 @@ The browser journey should:
 5. assert Revenue / Operating income / Net cash change;
 6. assert current cash separately;
 7. assert absolute comparison references the preceding Day N-1;
-8. click Reports and verify existing supporting report detail;
-9. navigate to Finance via the Daily Result action and verify the existing finance panel;
-10. return to retail map, select a store, and assert Day N store operating result + scope.
+8. click Reports and expand the existing detail grid; assert `reports-net-cash-change` sits with the recorded cash-flow evidence;
+9. reopen Dashboard, use its Finance action, and verify the existing finance panel;
+10. return to retail map, select a store, and assert `store-operating-result` + compact scope disclosure.
 
 Do not create a browser-only accounting implementation. The save/report fixture is the source.
 
-### 5.2 Narrow-layout / keyboard smoke
+### 5.2 Narrow-layout / keyboard smoke and existing inspector regression
 
 At <=600px, in the same deterministic setup:
 
@@ -503,7 +552,15 @@ At <=600px, in the same deterministic setup:
 - tab to a supporting-detail action and activate it;
 - assert negative values remain text-visible.
 
-Do not repeat the whole journey at the narrow viewport.
+Also extend the existing `store card actions stay reachable on the bottom sheet at 600px` regression rather than writing another inspector test:
+
+- install/select a store state that has a completed `latestStoreReport`;
+- assert `store-operating-result` is present;
+- keep its scope disclosure collapsed;
+- assert the existing Upgrade click still commits/reaches the expected state;
+- assert Open Details remains reachable above the control desk.
+
+Do not repeat the whole management journey in this inspector regression.
 
 ### 5.3 Keep exact accounting edges in unit/component tests
 
@@ -525,10 +582,10 @@ bun run test:e2e -- src/routes/retail-sim.e2e.ts src/routes/time-flow.e2e.ts
 git diff --check main...HEAD
 ```
 
-Also keep the existing daily accounting reconciliation tests green:
+Also keep the formatter/localization and daily accounting boundaries green:
 
 ```bash
-bun run test:unit -- --run src/lib/game/simulateDay.spec.ts src/lib/game/reports.spec.ts
+bun run test:unit -- --run   src/lib/i18n/format.spec.ts   src/lib/i18n/locales.spec.ts   src/lib/game/simulateDay.spec.ts   src/lib/game/reports.spec.ts
 ```
 
 Do not expand HPA-282 into accounting fixes if an unrelated existing failure appears.
@@ -547,10 +604,17 @@ Do not expand HPA-282 into accounting fixes if an unrelated existing failure app
 - [ ] Contributor evidence is at most two, deterministic, and not added twice.
 - [ ] Interest accrued is not presented as paid cash.
 - [ ] Principal repayment is not presented as another operating expense.
+- [ ] Dashboard host derives one `DailyResultView | null`; DailyResultSummary is presentation-only.
 - [ ] Dashboard reuses existing panel navigation.
-- [ ] Reports keeps existing 7/14/30 windows and detailed evidence.
+- [ ] Dashboard card uses shared `signedCurrency`, not a local formatter.
+- [ ] Dashboard card testids are pinned and current cash targets the labeled block.
+- [ ] Reports has no duplicate Daily Result card; it adds only Net cash change to the existing detail bridge.
+- [ ] Reports keeps existing 7/14/30 windows and empty/detail behavior.
+- [ ] `getImportSpend` is exported/reused and detail>raw reconciliation is tested.
+- [ ] Whole-catalog locale-key parity is enforced; no HPA-282 key is allowlisted.
 - [ ] Store inspector uses `DailyStoreReport.netIncome` directly.
-- [ ] Store result disclosure explicitly excludes import purchases and shared/company-level costs.
+- [ ] Store result disclosure explicitly excludes import purchases and shared/company-level costs behind a compact disclosure.
+- [ ] Existing <=600px Upgrade/Open Details reachability stays green with store result present.
 - [ ] EN / JA / zh-Hant copy is complete.
 - [ ] Narrow/keyboard smoke passes.
 - [ ] No schema, persistence, simulation, finance-engine, allocation, backend, art, or SFX work.
