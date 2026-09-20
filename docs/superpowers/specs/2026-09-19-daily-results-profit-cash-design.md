@@ -60,9 +60,11 @@ cashAfter = cashBefore + netCashChange
 
 HPA-282 must **display these recorded values**, not recalculate them from the current wallet or replay the day.
 
-The ticket deliberately does not reinterpret the existing `netIncome` field. It remains a recorded report value and is rendered as-is. The profit-vs-cash explanation uses the authoritative operating/financing cash-flow totals for reconciliation and uses `operatingIncome` for the specific “positive operating result while cash fell” case.
+Company-level `DailyReport.netIncome` is currently a legacy alias of `operatingCashFlow` in the real simulation write path. HPA-282 keeps that persisted field untouched but **does not surface it as a separate company headline or comparison metric**. Showing both would present one recorded cash-flow value under two names.
 
-This avoids quietly changing economic semantics in a presentation-polish ticket.
+Store-level `DailyStoreReport.netIncome` has different semantics: it is the store-scoped operating result `grossMargin - operatingCosts - inventoryLossExpense`. The inspector may read that field directly, but labels it **Store operating result**, never company net income.
+
+The profit-vs-cash explanation therefore uses `operatingIncome` for operating performance and the authoritative operating/financing cash-flow totals for cash reconciliation. This avoids quietly changing economic semantics while also avoiding a misleading duplicate “profit” number.
 
 ## Current UX gap
 
@@ -104,7 +106,6 @@ export interface DailyResultComparison {
   previousDay: number;
   revenueDelta: number;
   operatingIncomeDelta: number;
-  netIncomeDelta: number;
   netCashChangeDelta: number;
 }
 
@@ -221,7 +222,6 @@ It shows:
 - **Day N completed result** heading;
 - revenue;
 - operating income;
-- net income;
 - net cash change;
 - signed absolute delta vs **Day N-1** when available;
 - current cash in a visually separate block;
@@ -229,6 +229,10 @@ It shows:
 - at most two recorded contributors;
 - short scope/explanation copy;
 - existing Reports / Finance navigation actions only when callbacks are supplied.
+
+Company `netIncome` is intentionally absent from the card because the real simulation stores it as the same value as `operatingCashFlow`, which the cash bridge already shows.
+
+Formatting reuses `i18n.format.currency`. For signed comparison deltas, use only a tiny local `formatSignedDelta` wrapper that prefixes `+` when the value is positive; do not create another currency formatter.
 
 No chart, history selector, modal, or new dashboard app.
 
@@ -260,11 +264,18 @@ The card can navigate to:
 
 Use `ManagementPanelHost`’s existing `onSelectPanel`; do not create route state or a new navigation system.
 
-### 8. Reports reuses the same card and keeps existing 7/14/30-day behavior
+### 8. The management host composes the same card above Reports
 
-Place the Daily Result card near the top of Reports before the existing trend/evidence sections.
+Do not make `ReportsPanel.svelte` own or synthesize another report-history input.
 
-Reports keeps:
+In `ManagementPanelHost.svelte`, the Reports branch composes:
+
+1. `DailyResultSummary` from `panelGame.reports` and live `panelGame.cash`;
+2. the existing `ReportsPanel`.
+
+Mount the Daily Result card in the Reports branch only when `summary.latest` exists. When there is no completed report, keep the existing `reportsPanel.empty` message as the single Reports empty state. Dashboard remains the surface that can show the shared card’s empty state plus live cash and Scorecard.
+
+Reports keeps unchanged:
 
 - 7 / 14 / 30 chart window controls;
 - existing detailed report expander;
@@ -294,7 +305,7 @@ Add beside the existing revenue metric:
 
 Add compact disclosure:
 
-> Uses this store report’s gross margin, store operating costs, and inventory loss only; shared payroll, production, logistics, and financing are outside this store result.
+> Uses this store report’s gross margin, store operating costs, and inventory loss only; import purchases and shared payroll, production, logistics, and financing are outside this store result.
 
 Derive Day N from `game.reports.at(-1)?.day` only when `latestStoreReport` exists.
 
@@ -304,8 +315,8 @@ Do not modify `DailyStoreReport`, invent cost allocation, or add a store profit 
 
 No reports:
 
-- “No completed-day results yet.”
-- current cash may still be shown separately;
+- Dashboard may show “No completed-day results yet” plus current cash and Scorecard;
+- Reports keeps its existing `reportsPanel.empty` state and does not mount a second empty Daily Result card;
 - no zero revenue/income/cash-change values are fabricated;
 - no comparison appears.
 
@@ -386,7 +397,9 @@ Reuse existing metric names where already available.
 
 ### Pure report read model
 
-In `reports.spec.ts`, cover:
+Extend the existing `report()` fixture in `reports.spec.ts`; do not fork a second `DailyReport` builder. Add options for the recorded fields needed by these cases while preserving the real company invariant `netIncome === operatingCashFlow`.
+
+Cover:
 
 - no reports;
 - one report;
@@ -407,8 +420,8 @@ In `reports.spec.ts`, cover:
 Cover:
 
 - no-report state without fabricated zeros;
-- current cash displayed separately;
-- four required latest-day metrics;
+- current cash displayed separately, including a fixture where live cash is 1,000 and report `cashAfter` is 800 so only 1,000 is labelled current;
+- three headline metrics: revenue, operating income, net cash change;
 - Day N / Day N-1 labels;
 - signed absolute deltas;
 - exact cash bridge;
@@ -425,8 +438,9 @@ Pin:
 - Dashboard renders Daily Result + existing Scorecard;
 - Dashboard Reports action switches through existing host navigation;
 - Dashboard Finance action switches through existing host navigation;
-- Reports renders the same latest-day card;
-- existing report windows and detailed evidence remain intact.
+- Reports host renders the same latest-day card only when a latest report exists;
+- Reports with no latest report keeps only the existing `reportsPanel.empty` state;
+- existing report windows and detailed evidence remain intact without changing `ReportsPanel` history ownership.
 
 ### Store inspector
 
@@ -441,13 +455,13 @@ Cover:
 
 ### E2E
 
-One focused management journey:
+One focused management journey, reusing the existing `installSandboxAutoSave` / `replaceBrowserAutoSave` helpers instead of creating another browser-save fixture path:
 
 1. load a deterministic game with completed report evidence;
 2. open Dashboard;
 3. assert explicit Day N completed result;
 4. assert current cash is separate;
-5. inspect the four required metrics;
+5. inspect the three distinct headline metrics;
 6. follow Reports action and verify detailed evidence;
 7. follow Finance action where financing evidence exists;
 8. select a store and verify the store-scoped result;
@@ -457,15 +471,16 @@ Exact positive-income/negative-cash accounting edge cases remain cheaper and mor
 
 ## Risks
 
-### Existing `netIncome` semantics
+### Existing company/store `netIncome` semantics differ
 
-The field already has established persisted/runtime semantics.
+Company `DailyReport.netIncome` is an alias of operating cash flow, while store `DailyStoreReport.netIncome` is a store-scoped operating result.
 
 Mitigation:
 
-- render it verbatim;
-- do not redefine it;
-- use operating income + the exact cash-flow bridge for explanation;
+- do not surface company `netIncome` as a separate metric;
+- do not rename or migrate either persisted field;
+- label the store field “Store operating result” and disclose its scope, including excluded import purchases;
+- use operating income + the exact cash-flow bridge for company-level explanation;
 - keep economic changes out of this ticket.
 
 ### Double-counting cash contributors
@@ -489,12 +504,12 @@ Mitigation:
 
 ### Store result overclaim
 
-Store reports omit company/shared costs.
+Store reports omit import purchases and company/shared costs.
 
 Mitigation:
 
 - label “Store operating result”;
-- keep an explicit scope disclosure;
+- explicitly disclose that import purchases plus shared payroll, production, logistics, and financing are outside the store result;
 - never call it company profit.
 
 ## Non-goals
