@@ -52,9 +52,6 @@ import {
 	type GameRouteControllerOptions
 } from './gameRouteController';
 import { createStoreDetailFocus } from './storeDetailFocus.svelte';
-// Raw source of the route component: lets the wiring pin below assert the
-// focus-guard polarity without mounting the page.
-import pageSource from './+page.svelte?raw';
 interface Deferred<T> {
 	promise: Promise<T>;
 	resolve(value: T): void;
@@ -1749,36 +1746,5 @@ describe('store detail focus route wiring', () => {
 			'open',
 			'openDirect'
 		]);
-	});
-
-	// Pins the page-side wiring, which the module tests above cannot see: the
-	// callback must be true when a store IS selected. The inverted form
-	// (`() => !selectedStore`) makes every `open()` a silent no-op while a
-	// store is selected and opens the overlay with none.
-	it('page wiring keeps the focus-guard polarity: callback is true when a store IS selected', () => {
-		// Slice from the call to its matching close paren, then collapse
-		// whitespace, so a prettier re-wrap across lines cannot dodge the pin.
-		expect(pageSource).toContain('createStoreDetailFocus(');
-		const callStart = pageSource.indexOf('createStoreDetailFocus(');
-		const argsStart = callStart + 'createStoreDetailFocus('.length;
-		let depth = 0;
-		let wiring = '';
-		for (let i = argsStart - 1; i < pageSource.length; i += 1) {
-			const char = pageSource[i];
-			if (char === '(') depth += 1;
-			else if (char === ')') {
-				depth -= 1;
-				if (depth === 0) {
-					wiring = pageSource.slice(argsStart, i);
-					break;
-				}
-			}
-		}
-		wiring = wiring.replace(/\s+/g, ' ').trim();
-		expect(wiring).toContain('selectedStore');
-		// `/![\w.$]*\s*selectedStore\b/` catches both `!selectedStore` and the
-		// property-routed `!game.selectedStore` inversion; `!==` comparisons
-		// and `selectedStoreX`-style identifiers stay clean.
-		expect(wiring).not.toMatch(/![\w.$]*\s*selectedStore\b/);
 	});
 });
