@@ -10,10 +10,4 @@ declare global {
 	}
 }
 
-// Vite `?raw` imports (used by route wiring pins in page.svelte.spec.ts).
-declare module '*?raw' {
-	const content: string;
-	export default content;
-}
-
 export {};
