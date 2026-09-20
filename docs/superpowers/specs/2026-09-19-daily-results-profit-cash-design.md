@@ -147,7 +147,7 @@ Candidate evidence:
 
 | Kind | Signed amount | Meaning |
 | --- | ---: | --- |
-| import spend | `-report.importSpend` | recorded inventory/import cash purchase |
+| import spend | `-getImportSpend(report)` | reconciled inventory/import cash purchase |
 | principal repaid | `-report.principalRepaid` | financing cash outflow |
 | interest paid | `-report.interestPaid` | cash interest payment |
 | principal borrowed | `+report.principalBorrowed` | financing cash inflow |
@@ -159,6 +159,8 @@ Explicitly exclude:
 - refinanced principal: useful finance evidence but not a standalone net cash direction;
 - inventory loss expense: operating-income evidence, not a same-day cash purchase;
 - current cash commands after report close.
+
+Reuse the existing `getImportSpend(report)` reconciliation from `reports.ts` rather than reading raw `report.importSpend` directly. Export that helper so both window summaries and the new daily-result projection use the same answer. In normal simulation output the raw and detailed totals agree; the shared helper also keeps hand-built fixtures/saves consistent with existing report-window semantics.
 
 This keeps the explanation honest.
 
@@ -197,17 +199,17 @@ It must **not** say that a particular click, upgrade, purchase, or player decisi
 
 For all other sign combinations, use the same compact cash bridge without manufacturing a special story.
 
-### 5. Reuse one Daily Result card on Dashboard and Reports
+### 5. Add one presentation-only Daily Result card for Dashboard
 
-Add a small reusable presentation component, for example:
+Add one small reusable presentation component:
 
 `src/lib/components/game/DailyResultSummary.svelte`
 
-Inputs stay narrow:
+Keep result derivation outside the component. `ManagementPanelHost` derives `buildDailyResultView(panelGame.reports)` once and passes the projection:
 
 ```ts
 interface Props {
-  reports: readonly DailyReport[];
+  view: DailyResultView | null;
   currentCash: number | null;
   i18n: I18nBundle;
   onOpenReports?: () => void;
@@ -215,9 +217,7 @@ interface Props {
 }
 ```
 
-The component derives `buildDailyResultView(reports)`.
-
-It shows:
+The component shows:
 
 - **Day N completed result** heading;
 - revenue;
@@ -230,9 +230,20 @@ It shows:
 - short scope/explanation copy;
 - existing Reports / Finance navigation actions only when callbacks are supplied.
 
-Company `netIncome` is intentionally absent from the card because the real simulation stores it as the same value as `operatingCashFlow`, which the cash bridge already shows.
+Company `netIncome` is intentionally absent because the real simulation stores it as the same value as `operatingCashFlow`, which the cash bridge already shows.
 
-Formatting reuses `i18n.format.currency`. For signed comparison deltas, use only a tiny local `formatSignedDelta` wrapper that prefixes `+` when the value is positive; do not create another currency formatter.
+Use shared `i18n.format.signedCurrency` for signed deltas. Add it to `createLocaleFormatters` with `Intl.NumberFormat(..., { signDisplay: 'exceptZero' })`; do not add another component-local sign/currency formatter.
+
+Pin stable semantic test IDs before tests are written:
+
+- `daily-result`;
+- `daily-result-day`;
+- `daily-result-revenue`;
+- `daily-result-operating-income`;
+- `daily-result-net-cash-change`;
+- `daily-result-current-cash`;
+- `daily-result-bridge`;
+- repeated `daily-result-contributor`.
 
 No chart, history selector, modal, or new dashboard app.
 
@@ -247,6 +258,8 @@ Rules:
 - report `cashAfter` remains detail evidence in Reports;
 - spending/upgrading after day close can change current cash without changing the completed result;
 - never calculate `netCashChange` as `currentCash - report.cashBefore`.
+
+The Dashboard tower header already renders the same live cash as an unlabeled ticker. Keep that existing header behavior; the HPA-282 card is the **labeled explanatory current-cash surface** and exposes `data-testid="daily-result-current-cash"` so tests never accidentally match the header ticker.
 
 This is a core correctness boundary.
 
@@ -264,27 +277,25 @@ The card can navigate to:
 
 Use `ManagementPanelHost`’s existing `onSelectPanel`; do not create route state or a new navigation system.
 
-### 8. The management host composes the same card above Reports
+### 8. Keep Reports as the detailed evidence surface
 
-Do not make `ReportsPanel.svelte` own or synthesize another report-history input.
+Do not mount `DailyResultSummary` on Reports. The existing `ReportsPanel` detail grid already renders revenue, operating income, operating cash flow, financing cash flow, cash-after, import spend, principal/interest activity, and the rest of the supporting evidence.
 
-In `ManagementPanelHost.svelte`, the Reports branch composes:
+Add exactly one missing row to that existing `.metrics` grid:
 
-1. `DailyResultSummary` from `panelGame.reports` and live `panelGame.cash`;
-2. the existing `ReportsPanel`.
+- **Net cash change** = `summary.latest.netCashChange`.
 
-Mount the Daily Result card in the Reports branch only when `summary.latest` exists. When there is no completed report, keep the existing `reportsPanel.empty` message as the single Reports empty state. Dashboard remains the surface that can show the shared card’s empty state plus live cash and Scorecard.
+Place it immediately after operating cash flow / financing cash flow so the recorded bridge reads naturally in one place.
 
-Reports keeps unchanged:
+Reports otherwise keeps unchanged:
 
 - 7 / 14 / 30 chart window controls;
 - existing detailed report expander;
 - product/store/market/logistics evidence;
-- existing aggregation semantics.
+- existing aggregation semantics;
+- existing `reportsPanel.empty` behavior.
 
-The card’s comparison is always latest completed day vs immediately preceding completed day, independent of chart window. It does not create another history range.
-
-Inside Reports, only the Finance action is needed; “Open Reports” would be redundant.
+This removes the duplicate Reports card, the extra host branch, and the split empty-state rule. Dashboard is the only Daily Result card surface; its “Reports” action opens this existing detailed evidence surface.
 
 ### 9. Store inspector shows a store-scoped operating result, not company profit
 
@@ -303,7 +314,9 @@ Add beside the existing revenue metric:
 - Day N revenue;
 - Day N **Store operating result**.
 
-Add compact disclosure:
+Add `data-testid="store-operating-result"` to the value.
+
+Keep scope explanation compact so HPA-282 does not undo HPA-283’s bottom-sheet reachability work. Use the repo’s existing native disclosure idiom (`<details>/<summary>`, modeled on compact scope/finance disclosures) rather than an always-visible two-sentence paragraph:
 
 > Uses this store report’s gross margin, store operating costs, and inventory loss only; import purchases and shared payroll, production, logistics, and financing are outside this store result.
 
@@ -315,8 +328,8 @@ Do not modify `DailyStoreReport`, invent cost allocation, or add a store profit 
 
 No reports:
 
-- Dashboard may show “No completed-day results yet” plus current cash and Scorecard;
-- Reports keeps its existing `reportsPanel.empty` state and does not mount a second empty Daily Result card;
+- Dashboard shows the Daily Result card’s “No completed-day results yet” state plus labeled current cash and Scorecard;
+- Reports keeps its existing `reportsPanel.empty` state;
 - no zero revenue/income/cash-change values are fabricated;
 - no comparison appears.
 
@@ -358,9 +371,11 @@ Pure derived state:
 - latest/previous comparison;
 - top-two contributor selection.
 
-Presentation-only state:
+Presentation-only derived data:
 
-- none required beyond existing management-panel selection.
+- `ManagementPanelHost` derives one `DailyResultView | null` from `panelGame.reports` and passes it to the Dashboard card.
+
+No additional writable state is required beyond existing management-panel selection.
 
 No dismissal state, cache, global store, telemetry, or backend.
 
@@ -377,6 +392,10 @@ No dismissal state, cache, global store, telemetry, or backend.
 - keyboard navigation continues through existing management tabs/actions.
 
 ## Localization
+
+Before adding HPA-282 copy, add one catalog-wide parity assertion in `locales.spec.ts` using the existing `collectLeafPaths`: Japanese and Traditional Chinese leaf paths must equal English leaf paths. This prevents silent English fallback from hiding future missing locale keys.
+
+If that test exposes pre-existing intentional asymmetries, use a small explicit allowlist with reasons; do **not** allowlist any HPA-282 key. If pre-existing omissions are small/unintentional, fill them in this PR rather than adding another scoped feature-key list.
 
 Update EN / JA / zh-Hant for:
 
@@ -420,38 +439,41 @@ Cover:
 Cover:
 
 - no-report state without fabricated zeros;
-- current cash displayed separately, including a fixture where live cash is 1,000 and report `cashAfter` is 800 so only 1,000 is labelled current;
+- current cash displayed separately, including a fixture where live cash is 1,000 and report `cashAfter` is 800 so only `daily-result-current-cash` contains 1,000;
 - three headline metrics: revenue, operating income, net cash change;
 - Day N / Day N-1 labels;
-- signed absolute deltas;
+- signed absolute deltas through `i18n.format.signedCurrency`;
 - exact cash bridge;
 - at most two contributors;
 - divergence explanation;
 - optional navigation callbacks;
 - negative-value accessibility;
+- pinned semantic test IDs;
 - narrow-layout class/structure.
 
 ### Dashboard / Reports composition
 
 Pin:
 
+- `ManagementPanelHost` derives `buildDailyResultView(panelGame.reports)` once for Dashboard;
 - Dashboard renders Daily Result + existing Scorecard;
 - Dashboard Reports action switches through existing host navigation;
 - Dashboard Finance action switches through existing host navigation;
-- Reports host renders the same latest-day card only when a latest report exists;
-- Reports with no latest report keeps only the existing `reportsPanel.empty` state;
-- existing report windows and detailed evidence remain intact without changing `ReportsPanel` history ownership.
+- Reports does **not** mount Daily Result;
+- Reports detail adds `netCashChange` beside operating/financing cash flow;
+- existing report windows, empty state, and detailed evidence remain intact.
 
 ### Store inspector
 
 Cover:
 
 - no completed store report → em dash / unavailable result;
-- latest report → revenue + store operating result;
+- latest report → revenue + `store-operating-result`;
 - explicit Day N;
-- scope disclosure;
+- collapsed compact scope disclosure;
 - negative store result;
-- selecting another store uses that store’s report only.
+- selecting another store uses that store’s report only;
+- existing HPA-283 upgrade actions remain reachable on the <=600px bottom sheet with the new result present.
 
 ### E2E
 
@@ -462,10 +484,11 @@ One focused management journey, reusing the existing `installSandboxAutoSave` / 
 3. assert explicit Day N completed result;
 4. assert current cash is separate;
 5. inspect the three distinct headline metrics;
-6. follow Reports action and verify detailed evidence;
-7. follow Finance action where financing evidence exists;
+6. follow Reports action and verify the existing detail grid includes recorded Net cash change beside operating/financing cash flow;
+7. reopen Dashboard and follow Finance action where financing evidence exists;
 8. select a store and verify the store-scoped result;
-9. repeat the Daily Result surface at a narrow viewport to prove readable stacking/keyboard access.
+9. repeat the Dashboard Daily Result surface at a narrow viewport to prove readable stacking/keyboard access;
+10. extend the existing <=600px store-card reachability regression so Upgrade/Open Details remain reachable with the new store operating result present.
 
 Exact positive-income/negative-cash accounting edge cases remain cheaper and more deterministic in pure/component fixtures; the browser test proves navigation/composition, not a second simulation harness.
 
@@ -491,25 +514,29 @@ Mitigation:
 
 - show operating/financing totals as the reconciliation;
 - label contributors as evidence only;
-- never add them again to derive net cash change.
+- never add them again to derive net cash change;
+- reuse exported `getImportSpend(report)` so the daily card and report-window summaries agree even for hand-built fixtures.
 
 ### Current cash drift after day close
 
-Player commands can change cash after the latest report.
+Player commands can change cash after the latest report, and the Dashboard header already shows the same live cash as an unlabeled ticker.
 
 Mitigation:
 
-- current cash has its own live label;
+- the Daily Result card’s labeled `daily-result-current-cash` is the authoritative HPA-282 explanatory surface;
+- keep the existing header ticker unchanged;
 - the Daily Result card never uses current cash in report arithmetic.
 
-### Store result overclaim
+### Store result overclaim and narrow inspector budget
 
-Store reports omit import purchases and company/shared costs.
+Store reports omit import purchases and company/shared costs, while the <=600px inspector is height-capped and recently gained the HPA-283 upgrade card.
 
 Mitigation:
 
 - label “Store operating result”;
 - explicitly disclose that import purchases plus shared payroll, production, logistics, and financing are outside the store result;
+- put the longer scope explanation behind a compact native disclosure rather than always-visible body copy;
+- extend the existing <=600px store-card reachability regression instead of adding a second narrow inspector test;
 - never call it company profit.
 
 ## Non-goals
