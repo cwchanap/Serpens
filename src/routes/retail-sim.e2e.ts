@@ -4040,9 +4040,10 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 test('store card Open Details stays reachable above the control desk on a narrow viewport', async ({
 	page
 }) => {
-	// At <=980px the inspector is a bottom sheet; the fixed control desk must not
-	// cover its Open Details button (regression: the button was obscured and the
-	// click was intercepted).
+	// At 960px the inspector is still the right-side overlay (the fixed bottom
+	// sheet only applies at <=600px); the control desk's left dock and centered
+	// time controls must not cover its Open Details button (regression: the
+	// button was obscured and the click was intercepted).
 	await page.setViewportSize({ width: 960, height: 800 });
 	await page.goto('/');
 
@@ -4057,9 +4058,43 @@ test('store card Open Details stays reachable above the control desk on a narrow
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
 
-	// HPA-283: the taller upgrade preview card stays visible on the bottom
-	// sheet and Upgrade remains reachable above the control desk — the click
-	// must land and commit the level change.
+	// HPA-283: the taller upgrade preview card and its Upgrade action stay
+	// reachable on the narrow right-side overlay — the click must land and
+	// commit the level change.
+	await expect(inspector.getByTestId('upgrade-card')).toBeVisible();
+	await inspector.getByRole('button', { name: /Upgrade/i }).click();
+	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 2 / 10');
+
+	const modal = await openStoreDetail(page);
+	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
+});
+
+test('store card actions stay reachable on the bottom sheet at 600px', async ({ page }) => {
+	// At <=600px the inspector becomes a fixed bottom sheet inset above the
+	// control desk's horizontal dock and time controls. The taller upgrade
+	// card must not push Upgrade or Open Details under the desk — each click
+	// must land, not be intercepted.
+	await page.setViewportSize({ width: 600, height: 800 });
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	await clickMapTile(page, 1, 6);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	await expect(inspector).toBeVisible();
+
+	// Prove this exercises the bottom sheet, not the right-side overlay: the
+	// sheet spans nearly the full viewport width, while the overlay caps at
+	// 400px.
+	const inspectorBox = await inspector.boundingBox();
+	if (!inspectorBox) throw new Error('Tile inspector has no bounding box');
+	expect(inspectorBox.width).toBeGreaterThan(400);
+
 	await expect(inspector.getByTestId('upgrade-card')).toBeVisible();
 	await inspector.getByRole('button', { name: /Upgrade/i }).click();
 	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 2 / 10');
