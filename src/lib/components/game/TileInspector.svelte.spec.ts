@@ -602,6 +602,39 @@ describe('TileInspector upgrade acknowledgement', () => {
 		await expect.element(page.getByTestId('upgrade-status')).not.toBeInTheDocument();
 	});
 
+	it('still acknowledges when the same store republishes while the command is pending', async () => {
+		expect.assertions(2);
+		let resolveCommand: (result: GameRouteCommitResult | null) => void = () => {};
+		const onUpgradeStore = vi.fn(
+			() =>
+				new Promise<GameRouteCommitResult | null>((resolve) => {
+					resolveCommand = resolve;
+				})
+		);
+		const selectedStore = { ...store, id: 'store-republish', level: 2 };
+		const game: GameState = { ...defaultGame, cash: 100_000, stores: [selectedStore] };
+		const baseProps = {
+			game,
+			tile,
+			latestStoreReport: null,
+			onUpgradeStore,
+			onOpenDetails: vi.fn(),
+			onClose: vi.fn(),
+			i18n: createI18n('en')
+		};
+		const instance = render(TileInspector, { ...baseProps, store: selectedStore });
+
+		await page.getByRole('button', { name: /Upgrade/i }).click();
+		// A committed upgrade publishes the new GameState synchronously, so the
+		// page hands the inspector a new Store object with the same id before
+		// the command promise settles. Same selection — the result is not stale.
+		instance.rerender({ ...baseProps, store: { ...selectedStore, level: 3 } });
+		resolveCommand({ status: 'committed' });
+
+		await expect.element(page.getByRole('button', { name: /Upgrade/i })).toBeEnabled();
+		await expect.element(page.getByTestId('upgrade-status')).toHaveTextContent('Upgrade complete.');
+	});
+
 	it('drops a stale settled result when selection returned to the source store while pending', async () => {
 		expect.assertions(2);
 		let resolveCommand: (result: GameRouteCommitResult | null) => void = () => {};

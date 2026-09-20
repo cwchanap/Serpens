@@ -125,8 +125,14 @@
 	// any in-flight attempt — a settle after leaving and reselecting the same
 	// store is still a stale result.
 	let selectionGeneration = 0;
+	let selectedStoreId: string | null = null;
 	$effect(() => {
-		void store?.id;
+		// The effect tracks the `store` prop itself, so it also fires when a
+		// republished GameState replaces the store object — e.g. the committed
+		// upgrade's own publish. Only an actual id change is a new selection.
+		const storeId = store?.id ?? null;
+		if (storeId === selectedStoreId) return;
+		selectedStoreId = storeId;
 		selectionGeneration += 1;
 		upgradeAck = null;
 	});
