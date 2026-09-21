@@ -393,6 +393,7 @@ export const en = {
 			operatingIncome: 'Operating income',
 			operatingCashFlow: 'Operating cash flow',
 			financingCashFlow: 'Financing cash flow',
+			netCashChange: 'Net cash change',
 			revenue: 'Revenue',
 			cashAfter: 'Cash after',
 			principalBorrowed: 'Principal borrowed',

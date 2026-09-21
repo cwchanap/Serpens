@@ -392,6 +392,7 @@ export const zhHant = {
 			operatingIncome: '營業利益',
 			operatingCashFlow: '營業現金流',
 			financingCashFlow: '融資現金流',
+			netCashChange: '現金淨變動',
 			revenue: '營收',
 			cashAfter: '結束現金',
 			principalBorrowed: '借入本金',
