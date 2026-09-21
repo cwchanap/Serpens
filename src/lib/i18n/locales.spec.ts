@@ -131,6 +131,15 @@ describe('locale resolution', () => {
 		}
 	});
 
+	it('provides the identical whole-catalog key set in every supported locale', () => {
+		expect.assertions(2);
+		for (const locale of ['ja', 'zh-Hant'] as const) {
+			expect(collectLeafPaths(messagesByLocale[locale]).sort()).toEqual(
+				collectLeafPaths(messagesByLocale.en).sort()
+			);
+		}
+	});
+
 	it('does not retain retired active-logistics omission copy', () => {
 		for (const locale of Object.keys(messagesByLocale) as (keyof typeof messagesByLocale)[]) {
 			const catalog = messagesByLocale[locale];

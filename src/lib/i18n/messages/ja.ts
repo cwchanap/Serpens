@@ -2038,5 +2038,34 @@ export const ja = {
 			unknownBuildingType: '不明な工業施設タイプ',
 			requiresCash: '{buildingName} の建設には {amount} の現金が必要です。'
 		}
+	},
+	dailyResult: {
+		title: '1日の結果',
+		empty: '完了した日の結果はまだありません',
+		dayCompletedResult: '{day}日目の完了結果',
+		vsDay: '{day}日目との差分',
+		currentCash: '現在の現金',
+		metrics: {
+			revenue: '売上',
+			operatingIncome: '営業利益',
+			netCashChange: '現金増減'
+		},
+		bridge: {
+			operatingCashFlow: '営業キャッシュフロー',
+			financingCashFlow: '財務キャッシュフロー',
+			netCashChange: '現金増減'
+		},
+		explanation: {
+			operatingProfitCashFall:
+				'営業利益はプラスでしたが、現金は減少しました。輸入と財務による現金流出が、営業による流入を上回っています。',
+			neutral: '営業利益はその日の成果を示し、現金増減は実際に動いた現金の額を示します。'
+		},
+		contributors: {
+			title: '記録された現金の影響項',
+			importSpend: '外部輸入',
+			principalRepaid: '返済元本',
+			interestPaid: '支払利息',
+			principalBorrowed: '借入元本'
+		}
 	}
 } as const satisfies Messages;

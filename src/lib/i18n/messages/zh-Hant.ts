@@ -2011,5 +2011,34 @@ export const zhHant = {
 			unknownBuildingType: '未知的工業建築類型',
 			requiresCash: '{buildingName} 需要 {amount} 現金。'
 		}
+	},
+	dailyResult: {
+		title: '每日結果',
+		empty: '尚未有已完成日的結果',
+		dayCompletedResult: '第 {day} 天完成結果',
+		vsDay: '與第 {day} 天比較',
+		currentCash: '目前現金',
+		metrics: {
+			revenue: '營收',
+			operatingIncome: '營業利益',
+			netCashChange: '現金淨變動'
+		},
+		bridge: {
+			operatingCashFlow: '營業現金流',
+			financingCashFlow: '融資現金流',
+			netCashChange: '現金淨變動'
+		},
+		explanation: {
+			operatingProfitCashFall:
+				'營業利益為正，但現金仍減少——進口與融資流出的現金超過營運帶進的現金。',
+			neutral: '營業利益衡量當日表現；現金淨變動則是實際進出的現金。'
+		},
+		contributors: {
+			title: '已記錄的現金影響項',
+			importSpend: '外部進口',
+			principalRepaid: '償還本金',
+			interestPaid: '已付利息',
+			principalBorrowed: '借入本金'
+		}
 	}
 } as const satisfies Messages;
