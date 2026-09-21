@@ -8,6 +8,19 @@ describe('createLocaleFormatters', () => {
 		expect(createLocaleFormatters('ja').currency(12345)).toContain('$');
 	});
 
+	it('formats signed currency with an explicit sign except at zero', () => {
+		expect.assertions(9);
+		expect(createLocaleFormatters('en').signedCurrency(120)).toBe('+$120');
+		expect(createLocaleFormatters('en').signedCurrency(-45)).toBe('-$45');
+		expect(createLocaleFormatters('en').signedCurrency(0)).toBe('$0');
+		expect(createLocaleFormatters('ja').signedCurrency(120)).toBe('+$120');
+		expect(createLocaleFormatters('ja').signedCurrency(-45)).toBe('-$45');
+		expect(createLocaleFormatters('ja').signedCurrency(0)).toBe('$0');
+		expect(createLocaleFormatters('zh-Hant').signedCurrency(120)).toBe('+$120');
+		expect(createLocaleFormatters('zh-Hant').signedCurrency(-45)).toBe('-$45');
+		expect(createLocaleFormatters('zh-Hant').signedCurrency(0)).toBe('$0');
+	});
+
 	it('formats integers, percents, dates, and lists', () => {
 		expect.assertions(5);
 		const format = createLocaleFormatters('en');

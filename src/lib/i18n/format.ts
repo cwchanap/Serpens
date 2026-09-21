@@ -2,6 +2,7 @@ import type { SupportedLocale } from './locales';
 
 export interface LocaleFormatters {
 	currency(value: number): string;
+	signedCurrency(value: number): string;
 	integer(value: number): string;
 	decimal(value: number): string;
 	percent(value: number): string;
@@ -15,6 +16,13 @@ export function createLocaleFormatters(locale: SupportedLocale): LocaleFormatter
 		style: 'currency',
 		currency: 'USD',
 		currencyDisplay: 'narrowSymbol',
+		maximumFractionDigits: 0
+	});
+	const signedCurrencyFormatter = new Intl.NumberFormat(locale, {
+		style: 'currency',
+		currency: 'USD',
+		currencyDisplay: 'narrowSymbol',
+		signDisplay: 'exceptZero',
 		maximumFractionDigits: 0
 	});
 	const integerFormatter = new Intl.NumberFormat(locale, {
@@ -43,6 +51,7 @@ export function createLocaleFormatters(locale: SupportedLocale): LocaleFormatter
 
 	return {
 		currency: (value) => currencyFormatter.format(value),
+		signedCurrency: (value) => signedCurrencyFormatter.format(value),
 		integer: (value) => integerFormatter.format(value),
 		decimal: (value) => decimalFormatter.format(value),
 		percent: (value) => percentFormatter.format(value),

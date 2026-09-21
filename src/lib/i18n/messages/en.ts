@@ -2070,6 +2070,36 @@ export const en = {
 			unknownBuildingType: 'Unknown industrial building type',
 			requiresCash: '{buildingName} requires {amount} cash.'
 		}
+	},
+	dailyResult: {
+		title: 'Daily result',
+		empty: 'No completed-day results yet',
+		dayCompletedResult: 'Day {day} completed result',
+		vsDay: 'vs Day {day}',
+		currentCash: 'Current cash',
+		metrics: {
+			revenue: 'Revenue',
+			operatingIncome: 'Operating income',
+			netCashChange: 'Net cash change'
+		},
+		bridge: {
+			operatingCashFlow: 'Operating cash flow',
+			financingCashFlow: 'Financing cash flow',
+			netCashChange: 'Net cash change'
+		},
+		explanation: {
+			operatingProfitCashFall:
+				'Operating income was positive, but cash still fell — imports and financing moved more cash out than operations brought in.',
+			neutral:
+				"Operating income measures the day's performance; net cash change is how much cash actually moved."
+		},
+		contributors: {
+			title: 'Recorded cash contributors',
+			importSpend: 'External imports',
+			principalRepaid: 'Principal repaid',
+			interestPaid: 'Interest paid',
+			principalBorrowed: 'Principal borrowed'
+		}
 	}
 } as const;
 
