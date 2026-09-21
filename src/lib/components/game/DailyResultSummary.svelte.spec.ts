@@ -121,7 +121,7 @@ describe('DailyResultSummary', () => {
 		expect.assertions(2);
 		render(DailyResultSummary, { view: makeView(), currentCash: null, i18n });
 
-		await expect.element(page.getByTestId('store-operating-result')).toBeVisible();
+		await expect.element(page.getByTestId('daily-result-revenue')).toBeVisible();
 		expect(page.getByText('vs Day').elements()).toHaveLength(0);
 	});
 
