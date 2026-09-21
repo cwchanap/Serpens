@@ -109,6 +109,13 @@ export const zhHant = {
 		tileHeading: '地塊 {x}, {y}',
 		storeVitals: '店鋪指標',
 		revenuePerDay: '每日營收',
+		storeResult: {
+			label: '店鋪營業損益',
+			day: '第 {day} 天',
+			scopeSummary: '此結果包含的項目',
+			scopeIncluded: '僅採計此店鋪報告的毛利、店鋪營運成本與庫存損失。',
+			scopeExcluded: '進貨採購以及共用的薪資、生產、物流與融資成本不包含在此店鋪結果內。'
+		},
 		stockHealth: '庫存健康度',
 		staffMorale: '員工士氣',
 		level: '等級 {level} / {max}',

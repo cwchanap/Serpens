@@ -109,6 +109,14 @@ export const ja = {
 		tileHeading: 'タイル {x}, {y}',
 		storeVitals: '店舗指標',
 		revenuePerDay: '日次売上',
+		storeResult: {
+			label: '店舗営業損益',
+			day: '{day}日目',
+			scopeSummary: 'この結果に含まれるもの',
+			scopeIncluded: 'この店舗レポートの粗利益・店舗運営費・在庫ロスのみで計算しています。',
+			scopeExcluded:
+				'輸入仕入れや共有の人件費・生産・物流・資金調達コストは、この店舗の結果には含まれません。'
+		},
 		stockHealth: '在庫健全度',
 		staffMorale: '従業員士気',
 		level: 'レベル {level} / {max}',

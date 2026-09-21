@@ -112,6 +112,8 @@
 			.join(' ')
 	);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
+	const dailyStoreResult = $derived(latestStoreReport?.netIncome ?? null);
+	const latestReportDay = $derived(latestStoreReport ? (game.reports.at(-1)?.day ?? null) : null);
 
 	type UpgradeAckKind = 'success' | 'unchanged' | 'not-applied';
 	let upgradePending = $state(false);
@@ -249,6 +251,20 @@
 				<div>
 					<p class="eyebrow">{i18n.t('tileInspector.revenuePerDay')}</p>
 					<strong>{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}</strong>
+					<div class="store-result">
+						<p class="eyebrow">{i18n.t('tileInspector.storeResult.label')}</p>
+						<p class="result-line">
+							<strong data-testid="store-operating-result"
+								>{dailyStoreResult === null
+									? '—'
+									: i18n.format.signedCurrency(dailyStoreResult)}</strong
+							>{#if latestReportDay !== null}<span class="result-day"
+									>{i18n.t('tileInspector.storeResult.day', {
+										day: i18n.format.integer(latestReportDay)
+									})}</span
+								>{/if}
+						</p>
+					</div>
 				</div>
 				<svg viewBox="0 0 160 40" aria-hidden="true"
 					><polyline
@@ -258,6 +274,11 @@
 						stroke-width="2"
 					/></svg
 				>
+				<details class="store-result-scope">
+					<summary>{i18n.t('tileInspector.storeResult.scopeSummary')}</summary>
+					<p>{i18n.t('tileInspector.storeResult.scopeIncluded')}</p>
+					<p>{i18n.t('tileInspector.storeResult.scopeExcluded')}</p>
+				</details>
 			</div>
 			<dl class="vitals" aria-label={i18n.t('tileInspector.storeVitals')}>
 				{#each [{ label: i18n.t('tileInspector.stockHealth'), value: store.stockHealth, icon: 'inventory' as const }, { label: i18n.t('tileInspector.staffMorale'), value: store.staffMorale, icon: 'person' as const }] as metric (metric.label)}
@@ -528,9 +549,10 @@
 	}
 	.revenue {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
-		gap: 14px;
+		gap: 6px 14px;
 		padding: 10px 12px;
 		border: 1px solid var(--paper-edge);
 		background: var(--paper-50);
@@ -543,6 +565,30 @@
 	.revenue svg {
 		width: 55%;
 		height: 40px;
+	}
+	.store-result .result-line {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+	.store-result strong {
+		font: 700 18px/1.1 var(--font-mono);
+	}
+	.store-result .result-day {
+		font: 700 11px var(--font-ui);
+		color: var(--ink-500);
+	}
+	.store-result-scope {
+		flex: 1 0 100%;
+		font: 12px/1.4 var(--font-body);
+	}
+	.store-result-scope summary {
+		cursor: pointer;
+		font: 700 11px var(--font-ui);
+		color: var(--brass-700);
+	}
+	.store-result-scope p {
+		margin: 4px 0 0;
 	}
 	.vitals {
 		display: grid;

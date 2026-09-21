@@ -109,6 +109,15 @@ export const en = {
 		tileHeading: 'Tile {x}, {y}',
 		storeVitals: 'Store vitals',
 		revenuePerDay: 'Revenue/day',
+		storeResult: {
+			label: 'Store operating result',
+			day: 'Day {day}',
+			scopeSummary: 'What this result includes',
+			scopeIncluded:
+				"Uses this store report's gross margin, store operating costs, and inventory loss only.",
+			scopeExcluded:
+				'Import purchases and shared payroll, production, logistics, and financing are outside this store result.'
+		},
 		stockHealth: 'Stock health',
 		staffMorale: 'Staff morale',
 		level: 'Level {level} / {max}',
