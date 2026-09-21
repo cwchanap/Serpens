@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { emptyLogisticsReport } from './logisticsReport.testUtils';
-import { clampScore, summarizeReports } from './reports';
+import { buildDailyResultView, clampScore, summarizeReports } from './reports';
 import type { DailyProductionReport, DailyReport, DailyStoreReport } from './types';
 
 function emptyProductionReport(): DailyProductionReport {
@@ -25,7 +25,16 @@ function emptyProductionReport(): DailyProductionReport {
 function report(
 	day: number,
 	netIncome: number,
-	options: { storeImportSpend?: number; productionImportSpend?: number } = {}
+	options: {
+		storeImportSpend?: number;
+		productionImportSpend?: number;
+		operatingIncome?: number;
+		principalBorrowed?: number;
+		principalRepaid?: number;
+		interestPaid?: number;
+		financingCashFlow?: number;
+		netCashChange?: number;
+	} = {}
 ): DailyReport {
 	const productionReport = {
 		...emptyProductionReport(),
@@ -33,6 +42,8 @@ function report(
 	};
 	const storeReports =
 		options.storeImportSpend === undefined ? [] : [storeReport(options.storeImportSpend)];
+	const financingCashFlow = options.financingCashFlow ?? -4;
+	const netCashChange = options.netCashChange ?? netIncome + financingCashFlow;
 
 	return {
 		day,
@@ -43,18 +54,18 @@ function report(
 		payrollCost: 0,
 		importSpend: options.storeImportSpend ?? 0,
 		cashBefore: 10_000,
-		operatingIncome: 300,
+		operatingIncome: options.operatingIncome ?? 300,
 		operatingCashFlow: netIncome,
 		interestAccrued: 0.125,
-		interestPaid: 3,
+		interestPaid: options.interestPaid ?? 3,
 		interestCapitalized: 2,
-		principalBorrowed: 4,
-		principalRepaid: 5,
+		principalBorrowed: options.principalBorrowed ?? 4,
+		principalRepaid: options.principalRepaid ?? 5,
 		refinancedPrincipal: 6,
-		financingCashFlow: -4,
-		netCashChange: netIncome - 4,
+		financingCashFlow,
+		netCashChange,
 		netIncome,
-		cashAfter: 10_000 + netIncome - 4,
+		cashAfter: 10_000 + netCashChange,
 		outstandingPrincipalAfter: 9_000,
 		nextLoanPayment: { loanId: 'loan-1', day: day + 7, amount: 120 },
 		scorecard: {
@@ -193,5 +204,153 @@ describe('reports', () => {
 		expect(summary.sevenDay.averageRevenue).toBe(0);
 		expect(summary.thirtyDay.days).toBe(0);
 		expect(summary.thirtyDay.averageNetIncome).toBe(0);
+	});
+
+	describe('buildDailyResultView', () => {
+		test('returns null when there are no reports', () => {
+			expect(buildDailyResultView([])).toBeNull();
+		});
+
+		test('summarizes one ordinary completed day without comparison', () => {
+			expect.assertions(3);
+			const view = buildDailyResultView([report(1, 300)]);
+
+			expect(view?.latest.day).toBe(1);
+			expect(view?.comparison).toBeNull();
+			expect(view?.contributors).toEqual([
+				{ kind: 'principal-repaid', amount: -5 },
+				{ kind: 'principal-borrowed', amount: 4 }
+			]);
+		});
+
+		test('compares two completed days with absolute signed deltas', () => {
+			expect.assertions(2);
+			const view = buildDailyResultView([
+				report(1, 300),
+				report(2, 320, { operatingIncome: 350, financingCashFlow: -9 })
+			]);
+
+			expect(view?.comparison).toEqual({
+				previousDay: 1,
+				revenueDelta: 1,
+				operatingIncomeDelta: 50,
+				netCashChangeDelta: 15
+			});
+			expect(view?.latest.day).toBe(2);
+		});
+
+		test('explains positive operating income alongside negative net cash change from recorded cash pressure', () => {
+			expect.assertions(4);
+			const view = buildDailyResultView([
+				report(3, 500, { operatingIncome: 500, principalRepaid: 800, financingCashFlow: -800 })
+			]);
+
+			expect(view?.latest.netCashChange).toBe(-300);
+			expect(view?.latest.operatingCashFlow).toBe(500);
+			expect(view?.latest.financingCashFlow).toBe(-800);
+			expect(view?.contributors[0]).toEqual({ kind: 'principal-repaid', amount: -800 });
+		});
+
+		test('consumes recorded netCashChange, operatingCashFlow, and financingCashFlow directly', () => {
+			expect.assertions(4);
+			const source = report(4, 240, {
+				operatingIncome: 240,
+				financingCashFlow: -140,
+				netCashChange: 100
+			});
+			const view = buildDailyResultView([source]);
+
+			expect(view?.latest).toBe(source);
+			expect(view?.latest.netCashChange).toBe(100);
+			expect(view?.latest.operatingCashFlow).toBe(240);
+			expect(view?.latest.financingCashFlow).toBe(-140);
+		});
+
+		test('uses reconciled import spend for the import-purchase contributor, matching summarizeReports', () => {
+			expect.assertions(3);
+			const day = report(5, 300, { storeImportSpend: 40, productionImportSpend: 35 });
+			const view = buildDailyResultView([day]);
+
+			expect(day.importSpend).toBe(40);
+			expect(view?.contributors[0]).toEqual({ kind: 'import-spend', amount: -75 });
+			expect(summarizeReports([day]).sevenDay.importSpend).toBe(75);
+		});
+
+		test('surfaces principal repayment as a negative contributor', () => {
+			expect.assertions(1);
+			const view = buildDailyResultView([report(6, 300, { principalRepaid: 80 })]);
+
+			expect(view?.contributors).toEqual([
+				{ kind: 'principal-repaid', amount: -80 },
+				{ kind: 'principal-borrowed', amount: 4 }
+			]);
+		});
+
+		test('surfaces borrowing as a positive inflow contributor', () => {
+			expect.assertions(1);
+			const view = buildDailyResultView([report(7, 300, { principalBorrowed: 200 })]);
+
+			expect(view?.contributors).toEqual([
+				{ kind: 'principal-borrowed', amount: 200 },
+				{ kind: 'principal-repaid', amount: -5 }
+			]);
+		});
+
+		test('surfaces paid interest as a negative contributor', () => {
+			expect.assertions(1);
+			const view = buildDailyResultView([report(8, 300, { interestPaid: 25 })]);
+
+			expect(view?.contributors).toEqual([
+				{ kind: 'interest-paid', amount: -25 },
+				{ kind: 'principal-repaid', amount: -5 }
+			]);
+		});
+
+		test('keeps only the two largest when there are more than two candidate contributors', () => {
+			expect.assertions(1);
+			const view = buildDailyResultView([
+				report(9, 300, {
+					storeImportSpend: 30,
+					productionImportSpend: 20,
+					principalBorrowed: 70,
+					principalRepaid: 60,
+					interestPaid: 50
+				})
+			]);
+
+			expect(view?.contributors).toEqual([
+				{ kind: 'principal-borrowed', amount: 70 },
+				{ kind: 'principal-repaid', amount: -60 }
+			]);
+		});
+
+		test('breaks equal-magnitude ties by declaration order', () => {
+			expect.assertions(1);
+			const view = buildDailyResultView([
+				report(10, 300, {
+					storeImportSpend: 45,
+					productionImportSpend: 45,
+					principalBorrowed: 90,
+					principalRepaid: 90,
+					interestPaid: 90
+				})
+			]);
+
+			expect(view?.contributors).toEqual([
+				{ kind: 'import-spend', amount: -90 },
+				{ kind: 'principal-repaid', amount: -90 }
+			]);
+		});
+
+		test('does not mutate the source reports or array', () => {
+			expect.assertions(2);
+			const reports = [report(1, 300), report(2, 320, { principalBorrowed: 250 })];
+			const snapshot = JSON.parse(JSON.stringify(reports)) as DailyReport[];
+
+			buildDailyResultView(reports);
+
+			expect(reports).toEqual(snapshot);
+			expect(reports).toHaveLength(2);
+		});
 	});
 });
