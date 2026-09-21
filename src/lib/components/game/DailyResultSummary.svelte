@@ -30,7 +30,7 @@
 			{i18n.t('dailyResult.dayCompletedResult', { day: i18n.format.integer(view.latest.day) })}
 		</h3>
 
-		<div class="metrics" data-testid="store-operating-result">
+		<div class="metrics">
 			<div class="metric">
 				<span class="metric-label">{i18n.t('dailyResult.metrics.revenue')}</span>
 				<span class="metric-value" data-testid="daily-result-revenue">
