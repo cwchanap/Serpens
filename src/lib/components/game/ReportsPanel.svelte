@@ -593,6 +593,10 @@
 					<span>{i18n.t('reportsPanel.metrics.financingCashFlow')}</span>
 					<strong>{i18n.format.currency(summary.latest.financingCashFlow)}</strong>
 				</div>
+				<div data-testid="reports-net-cash-change">
+					<span>{i18n.t('reportsPanel.metrics.netCashChange')}</span>
+					<strong>{i18n.format.currency(summary.latest.netCashChange)}</strong>
+				</div>
 				<div>
 					<span>{i18n.t('reportsPanel.metrics.revenue')}</span>
 					<strong>{i18n.format.currency(summary.latest.revenue)}</strong>

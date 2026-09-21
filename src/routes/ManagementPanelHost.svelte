@@ -2,6 +2,7 @@
 	import HudIcon from '$lib/components/game/HudIcon.svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import ActiveModifiers from '$lib/components/game/ActiveModifiers.svelte';
+	import DailyResultSummary from '$lib/components/game/DailyResultSummary.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import LogisticsPanel from '$lib/components/game/LogisticsPanel.svelte';
@@ -23,7 +24,7 @@
 	} from '$lib/game/interCityLogistics';
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
-	import type { ReportSummary } from '$lib/game/reports';
+	import { buildDailyResultView, type ReportSummary } from '$lib/game/reports';
 	import type {
 		CompanyPolicy,
 		GameState,
@@ -138,6 +139,7 @@
 
 	let reportDays = $state(14);
 	const reportWindow = $derived(panelGame.reports.slice(-reportDays));
+	const dailyResultView = $derived(buildDailyResultView(panelGame.reports));
 
 	function requireFinanceMetrics(): FinanceMetrics {
 		if (financeMetrics === null) {
@@ -258,7 +260,16 @@
 		<div class="tower-content">
 			{#key panelId}
 				{#if panelId === 'dashboard'}
-					<Scorecard {i18n} scorecard={panelGame.scorecard} />
+					<div class="dashboard-surfaces">
+						<DailyResultSummary
+							{i18n}
+							view={dailyResultView}
+							currentCash={panelGame.cash}
+							onOpenReports={() => onSelectPanel('reports')}
+							onOpenFinance={() => onSelectPanel('finance')}
+						/>
+						<Scorecard {i18n} scorecard={panelGame.scorecard} />
+					</div>
 				{:else if panelId === 'policies'}
 					<PolicyPanel
 						{i18n}
@@ -477,7 +488,8 @@
 		gap: 1rem;
 	}
 
-	.staff-surfaces {
+	.staff-surfaces,
+	.dashboard-surfaces {
 		display: grid;
 		gap: 1rem;
 	}

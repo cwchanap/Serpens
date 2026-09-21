@@ -393,6 +393,7 @@ export const ja = {
 			operatingIncome: '営業利益',
 			operatingCashFlow: '営業キャッシュフロー',
 			financingCashFlow: '財務キャッシュフロー',
+			netCashChange: '現金増減',
 			revenue: '売上',
 			cashAfter: '終了時現金',
 			principalBorrowed: '借入元本',
