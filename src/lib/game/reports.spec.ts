@@ -239,6 +239,24 @@ describe('reports', () => {
 			expect(view?.latest.day).toBe(2);
 		});
 
+		test('treats zero previous values as absolute deltas without any ratio', () => {
+			expect.assertions(4);
+			const zeroDay = report(1, 0, { operatingIncome: 0, financingCashFlow: 0 });
+			zeroDay.revenue = 0;
+			const latest = report(2, 320, { operatingIncome: 350, financingCashFlow: -9 });
+			const view = buildDailyResultView([zeroDay, latest]);
+
+			expect(zeroDay.netCashChange).toBe(0);
+			expect(zeroDay.operatingCashFlow).toBe(zeroDay.netIncome);
+			expect(view?.latest.day).toBe(2);
+			expect(view?.comparison).toEqual({
+				previousDay: 1,
+				revenueDelta: latest.revenue,
+				operatingIncomeDelta: latest.operatingIncome,
+				netCashChangeDelta: latest.netCashChange
+			});
+		});
+
 		test('explains positive operating income alongside negative net cash change from recorded cash pressure', () => {
 			expect.assertions(4);
 			const view = buildDailyResultView([

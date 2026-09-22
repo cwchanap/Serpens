@@ -2099,7 +2099,7 @@ export const en = {
 		},
 		explanation: {
 			operatingProfitCashFall:
-				'Operating income was positive, but cash still fell — imports and financing moved more cash out than operations brought in.',
+				'Operating income was positive, but cash still fell. Import purchases are reflected in operating cash flow; loan activity is reflected in financing cash flow — see the recorded bridge below.',
 			neutral:
 				"Operating income measures the day's performance; net cash change is how much cash actually moved."
 		},
