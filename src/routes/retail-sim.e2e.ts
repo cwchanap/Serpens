@@ -17,7 +17,7 @@ import { createRecurringRoute } from '../lib/game/interCityLogistics';
 import { openStoreAtTile } from '../lib/game/placement';
 import { buildRail, buildRailPreview } from '../lib/game/railPlacement';
 import { simulateDay } from '../lib/game/simulateDay';
-import { createNewGame } from '../lib/game/state';
+import { createNewGame, upgradeStore } from '../lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '../lib/game/stock';
 import { openWorldCity } from '../lib/game/world';
 import type {
@@ -636,6 +636,17 @@ function groceryProductPressureGame(): GameState {
 		decisions: [],
 		stores
 	};
+}
+
+function dailyResultsJourneyGame(): GameState {
+	// Two closed days give the dashboard a latest (day 2) + previous (day 1)
+	// report from the deterministic convenience seed. The post-close store
+	// upgrade is a real spend that moves live cash (23,880) away from the last
+	// report's cashAfter (31,880) so profit vs cash separation is observable.
+	let game = createNewGame('convenience', 42);
+	game = simulateDay(game);
+	game = simulateDay(game);
+	return upgradeStore(game, 'store-1');
 }
 
 function buildWarehouseInCity(game: GameState, cityId: string): GameState {
@@ -2717,6 +2728,121 @@ test('management panels open from the map menu and close as overlays', async ({ 
 	await expect(page.getByRole('dialog', { name: /reports/i })).toHaveCount(0);
 });
 
+test('daily result journey separates profit from cash across dashboard, reports, finance, and inspector', async ({
+	page
+}) => {
+	const game = dailyResultsJourneyGame();
+	const store = game.stores[0];
+	if (!store) throw new Error('Daily results journey fixture has no starter store.');
+
+	await installSandboxAutoSave(page, game);
+
+	// Dashboard: the completed result card is dated and carries the three
+	// headline metrics with absolute deltas against the preceding day.
+	const dashboard = await openManagementPanel(page, /dashboard/i);
+	const card = dashboard.getByTestId('daily-result');
+	await expect(card.getByTestId('daily-result-day')).toHaveText('Day 2 completed result');
+	await expect(card.getByTestId('daily-result-revenue')).toContainText('$45');
+	await expect(card.getByTestId('daily-result-revenue')).toContainText('-$162 vs Day 1');
+	await expect(card.getByTestId('daily-result-operating-income')).toContainText('-$171');
+	await expect(card.getByTestId('daily-result-operating-income')).toContainText('-$54 vs Day 1');
+	await expect(card.getByTestId('daily-result-net-cash-change')).toContainText('-$141');
+	await expect(card.getByTestId('daily-result-net-cash-change')).toContainText('-$162 vs Day 1');
+
+	// Current cash is live: the fixture's post-close upgrade spend separates it
+	// from the latest report's cashAfter (31,880).
+	await expect(card.getByTestId('daily-result-current-cash')).toContainText('$23,880');
+	await expect(card.getByTestId('daily-result-current-cash')).not.toContainText('$31,880');
+
+	// The card's Reports action lands on the existing reports detail grid, where
+	// net cash change sits with the recorded cash-flow evidence.
+	await card.getByRole('button', { name: /reports/i }).click();
+	const reports = page.getByRole('dialog', { name: /reports/i });
+	await expect(reports).toBeVisible();
+	await reports.getByTestId('report-details-toggle').click();
+	await expect(reports.getByTestId('reports-net-cash-change')).toContainText('-$141');
+
+	// Back to the dashboard and into the existing finance panel via its action.
+	await reports.getByRole('button', { name: /dashboard/i }).click();
+	const reopenedDashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(reopenedDashboard.getByTestId('daily-result-day')).toHaveText(
+		'Day 2 completed result'
+	);
+	await reopenedDashboard
+		.getByTestId('daily-result')
+		.getByRole('button', { name: /finance/i })
+		.click();
+	const finance = page.getByRole('dialog', { name: 'Finance' });
+	await expect(finance).toBeVisible();
+	await expect(
+		finance.getByRole('button', { name: 'Founding loan · Active', exact: true })
+	).toBeVisible();
+	await finance.getByRole('button', { name: /close finance/i }).click();
+
+	// Back on the retail map, the selected store shows its operating result
+	// with the scope disclosure still collapsed.
+	await clickMapTile(page, store.mapX, store.mapY);
+	const inspector = page.getByRole('dialog', { name: /tile details/i });
+	await expect(inspector).toBeVisible();
+	await expect(inspector.getByTestId('store-operating-result')).toContainText('-$171');
+	const storeResultScope = inspector.locator('details.store-result-scope');
+	await expect(storeResultScope).toBeVisible();
+	await expect(storeResultScope).not.toHaveAttribute('open');
+});
+
+test('daily result dashboard stacks and stays keyboard reachable at 600px', async ({ page }) => {
+	// Narrow-layout smoke for the HPA-282 dashboard card: the metric blocks
+	// stack in order without horizontal clipping, negative values stay
+	// text-visible, and the card's supporting-detail action is reachable and
+	// activatable with the keyboard alone.
+	await page.setViewportSize({ width: 600, height: 800 });
+	await installSandboxAutoSave(page, dailyResultsJourneyGame());
+
+	// 'o' is the dashboard mnemonic; the control desk hides its manage cluster
+	// at this width, so open the panel by keyboard.
+	await page.keyboard.press('o');
+	const dashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(dashboard).toBeVisible();
+	const card = dashboard.getByTestId('daily-result');
+
+	const cardBox = await card.boundingBox();
+	if (!cardBox) throw new Error('Daily result card has no bounding box');
+	let previousBottom = Number.NEGATIVE_INFINITY;
+	for (const testId of [
+		'daily-result-revenue',
+		'daily-result-operating-income',
+		'daily-result-net-cash-change'
+	]) {
+		const metric = card.getByTestId(testId);
+		await expect(metric).toBeVisible();
+		const box = await metric.boundingBox();
+		if (!box) throw new Error(`${testId} has no bounding box`);
+		expect(box.x).toBeGreaterThanOrEqual(cardBox.x - 1);
+		expect(box.x + box.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
+		expect(box.y).toBeGreaterThanOrEqual(previousBottom - 1);
+		previousBottom = box.y + box.height;
+	}
+
+	// Negative values remain readable text, not clipped glyphs.
+	await expect(card.getByTestId('daily-result-net-cash-change')).toContainText('-$141');
+
+	// Walk the tab order into the card's supporting-detail action and activate
+	// it with Enter alone.
+	const reportsAction = card.getByRole('button', { name: /reports/i });
+	await reportsAction.scrollIntoViewIfNeeded();
+	for (let attempt = 0; attempt < 40; attempt++) {
+		if (await reportsAction.evaluate((el) => el === document.activeElement)) break;
+		await page.keyboard.press('Tab');
+	}
+	await expect(reportsAction).toBeFocused();
+	await page.keyboard.press('Enter');
+
+	const reports = page.getByRole('dialog', { name: /reports/i });
+	await expect(reports).toBeVisible();
+	await reports.getByTestId('report-details-toggle').click();
+	await expect(reports.getByTestId('reports-net-cash-change')).toContainText('-$141');
+});
+
 test('keyboard shortcuts toggle build, switch views, and Esc closes the hamburger', async ({
 	page
 }) => {
@@ -4084,6 +4210,11 @@ test('store card actions stay reachable on the bottom sheet at 600px', async ({ 
 		expectedStoreCount: 1
 	});
 
+	// HPA-282: close one day so the store carries a completed result, then
+	// prove the added store-result block does not crowd out the sheet's actions.
+	await advanceSimulationDay(page);
+	await waitForSavedReportDay(page, 1);
+
 	await clickMapTile(page, 1, 6);
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
@@ -4095,10 +4226,18 @@ test('store card actions stay reachable on the bottom sheet at 600px', async ({ 
 	if (!inspectorBox) throw new Error('Tile inspector has no bounding box');
 	expect(inspectorBox.width).toBeGreaterThan(400);
 
+	// The store result block renders with its scope disclosure still collapsed.
+	await expect(inspector.getByTestId('store-operating-result')).toBeVisible();
+	const storeResultScope = inspector.locator('details.store-result-scope');
+	await expect(storeResultScope).toBeVisible();
+	await expect(storeResultScope).not.toHaveAttribute('open');
+
 	await expect(inspector.getByTestId('upgrade-card')).toBeVisible();
 	await inspector.getByRole('button', { name: /Upgrade/i }).click();
 	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 2 / 10');
 
+	const openDetails = inspector.getByRole('button', { name: /open details/i });
+	await expectActionClearOfControlDesk(page, openDetails);
 	const modal = await openStoreDetail(page);
 	await expect(modal.getByRole('tab', { name: /stock/i })).toBeVisible();
 });
