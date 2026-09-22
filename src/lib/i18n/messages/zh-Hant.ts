@@ -2038,7 +2038,7 @@ export const zhHant = {
 		},
 		explanation: {
 			operatingProfitCashFall:
-				'營業利益為正，但現金仍減少——進口與融資流出的現金超過營運帶進的現金。',
+				'營業利益為正，但現金仍減少。進口採購反映於營業現金流；借款活動反映於融資現金流——請參閱下方已記錄的橋接明細。',
 			neutral: '營業利益衡量當日表現；現金淨變動則是實際進出的現金。'
 		},
 		contributors: {
