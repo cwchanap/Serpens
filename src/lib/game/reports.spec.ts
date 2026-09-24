@@ -324,6 +324,18 @@ describe('reports', () => {
 			]);
 		});
 
+		test('drops contributors below the formatter-visible minimum so they do not show as $0', () => {
+			expect.assertions(1);
+			const view = buildDailyResultView([
+				report(11, 300, { interestPaid: 0.4, principalBorrowed: 200 })
+			]);
+
+			expect(view?.contributors).toEqual([
+				{ kind: 'principal-borrowed', amount: 200 },
+				{ kind: 'principal-repaid', amount: -5 }
+			]);
+		});
+
 		test('keeps only the two largest when there are more than two candidate contributors', () => {
 			expect.assertions(1);
 			const view = buildDailyResultView([

@@ -88,16 +88,15 @@ export function buildDailyResultView(reports: readonly DailyReport[]): DailyResu
 		'interest-paid': -latest.interestPaid,
 		'principal-borrowed': latest.principalBorrowed
 	};
-	const contributors = DAILY_CASH_CONTRIBUTOR_ORDER.map((kind, order) => ({
-		order,
-		contributor: { kind, amount: amounts[kind] }
+	const contributors = DAILY_CASH_CONTRIBUTOR_ORDER.map((kind) => ({
+		kind,
+		amount: amounts[kind]
 	}))
-		.filter(({ contributor }) => contributor.amount !== 0)
-		.sort(
-			(a, b) => Math.abs(b.contributor.amount) - Math.abs(a.contributor.amount) || a.order - b.order
-		)
-		.slice(0, 2)
-		.map(({ contributor }) => contributor);
+		// Contributors render with the 0-decimal currency formatter; anything
+		// below half a dollar would take a slot and still display as '$0'.
+		.filter((contributor) => Math.abs(contributor.amount) >= 0.5)
+		.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+		.slice(0, 2);
 
 	return { latest, comparison, contributors };
 }

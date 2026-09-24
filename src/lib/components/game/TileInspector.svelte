@@ -113,7 +113,15 @@
 	);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
 	const dailyStoreResult = $derived(latestStoreReport?.netIncome ?? null);
-	const latestReportDay = $derived(latestStoreReport ? (game.reports.at(-1)?.day ?? null) : null);
+	// The day label must come from the report that actually contains this store
+	// report, not from `reports.at(-1)` — the parent decides which report is
+	// "latest" and the label has to track the same source.
+	const latestReportDay = $derived(
+		latestStoreReport
+			? (game.reports.find((report) => report.storeReports.includes(latestStoreReport))?.day ??
+					null)
+			: null
+	);
 
 	type UpgradeAckKind = 'success' | 'unchanged' | 'not-applied';
 	let upgradePending = $state(false);
@@ -248,7 +256,7 @@
 				>
 			</header>
 			<div class="revenue">
-				<div>
+				<div class="revenue-summary">
 					<p class="eyebrow">{i18n.t('tileInspector.revenuePerDay')}</p>
 					<strong>{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}</strong>
 					<div class="store-result">
@@ -258,7 +266,7 @@
 								>{dailyStoreResult === null
 									? '—'
 									: i18n.format.signedCurrency(dailyStoreResult)}</strong
-							>{#if latestReportDay !== null}<span class="result-day"
+							>&#32;{#if latestReportDay !== null}<span class="result-day"
 									>{i18n.t('tileInspector.storeResult.day', {
 										day: i18n.format.integer(latestReportDay)
 									})}</span
@@ -274,11 +282,13 @@
 						stroke-width="2"
 					/></svg
 				>
-				<details class="store-result-scope">
-					<summary>{i18n.t('tileInspector.storeResult.scopeSummary')}</summary>
-					<p>{i18n.t('tileInspector.storeResult.scopeIncluded')}</p>
-					<p>{i18n.t('tileInspector.storeResult.scopeExcluded')}</p>
-				</details>
+				{#if latestStoreReport}
+					<details class="store-result-scope">
+						<summary>{i18n.t('tileInspector.storeResult.scopeSummary')}</summary>
+						<p>{i18n.t('tileInspector.storeResult.scopeIncluded')}</p>
+						<p>{i18n.t('tileInspector.storeResult.scopeExcluded')}</p>
+					</details>
+				{/if}
 			</div>
 			<dl class="vitals" aria-label={i18n.t('tileInspector.storeVitals')}>
 				{#each [{ label: i18n.t('tileInspector.stockHealth'), value: store.stockHealth, icon: 'inventory' as const }, { label: i18n.t('tileInspector.staffMorale'), value: store.staffMorale, icon: 'person' as const }] as metric (metric.label)}
@@ -558,6 +568,13 @@
 		background: var(--paper-50);
 		min-height: 66px;
 		box-sizing: border-box;
+	}
+	.revenue-summary {
+		/* Zero flex-basis keeps the wrap calculation from treating the eyebrow's
+		   max-content width as fixed — the column shrinks into the space left
+		   beside the 55% sparkline instead of pushing it onto its own row. */
+		flex: 1 1 0;
+		min-width: 0;
 	}
 	.revenue strong {
 		font: 700 26px/1.1 var(--font-mono);

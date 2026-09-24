@@ -232,6 +232,37 @@ describe('ManagementPanelHost', () => {
 		expect(onSelectPanel).toHaveBeenCalledWith('reports');
 		expect(onClose).not.toHaveBeenCalled();
 	});
+
+	it('keeps focus inside the dialog when a card action swaps the keyed panel', async () => {
+		expect.assertions(3);
+		const onSelectPanel = vi.fn();
+		const managementItems: { id: ManagementPanelId; label: string; shortcut: string }[] = [
+			{ id: 'dashboard', label: 'Dashboard', shortcut: 'O' },
+			{ id: 'reports', label: 'Reports', shortcut: 'R' }
+		];
+		const props = {
+			...hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard' }),
+			onSelectPanel,
+			managementItems
+		};
+		const instance = render(ManagementPanelHost, props);
+
+		const action = page
+			.getByTestId('daily-result')
+			.getByRole('button', { name: 'Reports', exact: true });
+		await action.click();
+		expect(onSelectPanel).toHaveBeenCalledWith('reports');
+
+		// The parent applies the switch; the keyed swap destroys the focused
+		// button and focus would fall back to <body> without re-homing.
+		await instance.rerender({ ...props, panelId: 'reports', panelLabel: 'Reports' });
+
+		const dialog = page.getByRole('dialog', { name: 'Reports' });
+		await vi.waitFor(() => {
+			expect(document.activeElement?.getAttribute('data-panel-id')).toBe('reports');
+		});
+		expect(dialog.element().contains(document.activeElement)).toBe(true);
+	});
 	it('renders the dashboard dialog shell with its label, day, and cash', async () => {
 		expect.assertions(4);
 		const props = hostProps();

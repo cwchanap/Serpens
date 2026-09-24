@@ -114,7 +114,7 @@ export const zhHant = {
 			day: '第 {day} 天',
 			scopeSummary: '此結果包含的項目',
 			scopeIncluded: '僅採計此店鋪報告的毛利、店鋪營運成本與庫存損失。',
-			scopeExcluded: '進貨採購以及共用的薪資、生產、物流與融資成本不包含在此店鋪結果內。'
+			scopeExcluded: '外部進口以及共用的薪資、生產、物流與融資成本不包含在此店鋪結果內。'
 		},
 		stockHealth: '庫存健康度',
 		staffMorale: '員工士氣',
@@ -2026,27 +2026,13 @@ export const zhHant = {
 		dayCompletedResult: '第 {day} 天完成結果',
 		vsDay: '與第 {day} 天比較',
 		currentCash: '目前現金',
-		metrics: {
-			revenue: '營收',
-			operatingIncome: '營業利益',
-			netCashChange: '現金淨變動'
-		},
-		bridge: {
-			operatingCashFlow: '營業現金流',
-			financingCashFlow: '融資現金流',
-			netCashChange: '現金淨變動'
-		},
 		explanation: {
 			operatingProfitCashFall:
-				'營業利益為正，但現金仍減少。進口採購反映於營業現金流；借款活動反映於融資現金流——請參閱下方已記錄的橋接明細。',
+				'營業利益為正，但現金仍減少。外部進口反映於營業現金流；借款活動反映於融資現金流——請參閱上方已記錄的橋接明細。',
 			neutral: '營業利益衡量當日表現；現金淨變動則是實際進出的現金。'
 		},
 		contributors: {
-			title: '已記錄的現金影響項',
-			importSpend: '外部進口',
-			principalRepaid: '償還本金',
-			interestPaid: '已付利息',
-			principalBorrowed: '借入本金'
+			title: '已記錄的現金影響項目'
 		}
 	}
 } as const satisfies Messages;
