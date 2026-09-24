@@ -13,11 +13,37 @@
 	let { view, currentCash, i18n, onOpenReports, onOpenFinance }: Props = $props();
 
 	const CONTRIBUTOR_LABEL_KEYS: Record<DailyCashContributorKind, TranslationKey> = {
-		'import-spend': 'dailyResult.contributors.importSpend',
-		'principal-repaid': 'dailyResult.contributors.principalRepaid',
-		'interest-paid': 'dailyResult.contributors.interestPaid',
-		'principal-borrowed': 'dailyResult.contributors.principalBorrowed'
+		'import-spend': 'reportsPanel.metrics.imports',
+		'principal-repaid': 'reportsPanel.metrics.principalRepaid',
+		'interest-paid': 'reportsPanel.metrics.interestPaid',
+		'principal-borrowed': 'reportsPanel.metrics.principalBorrowed'
 	};
+
+	const headlineMetrics = $derived.by(() => {
+		if (view === null) return [];
+		const comparison = view.comparison;
+		return [
+			{
+				labelKey: 'reportsPanel.metrics.revenue' as TranslationKey,
+				testId: 'daily-result-revenue',
+				value: view.latest.revenue,
+				delta: comparison?.revenueDelta ?? null
+			},
+			{
+				labelKey: 'reportsPanel.metrics.operatingIncome' as TranslationKey,
+				testId: 'daily-result-operating-income',
+				value: view.latest.operatingIncome,
+				delta: comparison?.operatingIncomeDelta ?? null
+			},
+			{
+				labelKey: 'reportsPanel.metrics.netCashChange' as TranslationKey,
+				testId: 'daily-result-net-cash-change',
+				value: view.latest.netCashChange,
+				delta: comparison?.netCashChangeDelta ?? null
+			}
+		];
+	});
+	const previousDay = $derived(view?.comparison?.previousDay ?? null);
 </script>
 
 <section class="panel paper" aria-labelledby="daily-result-heading" data-testid="daily-result">
@@ -31,48 +57,22 @@
 		</h3>
 
 		<div class="metrics">
-			<div class="metric">
-				<span class="metric-label">{i18n.t('dailyResult.metrics.revenue')}</span>
-				<span class="metric-value" data-testid="daily-result-revenue">
-					{i18n.format.currency(view.latest.revenue)}
-					{#if view.comparison !== null}
-						<span class="metric-delta">
-							{i18n.format.signedCurrency(view.comparison.revenueDelta)}
-							{i18n.t('dailyResult.vsDay', {
-								day: i18n.format.integer(view.comparison.previousDay)
-							})}
-						</span>
-					{/if}
-				</span>
-			</div>
-			<div class="metric">
-				<span class="metric-label">{i18n.t('dailyResult.metrics.operatingIncome')}</span>
-				<span class="metric-value" data-testid="daily-result-operating-income">
-					{i18n.format.currency(view.latest.operatingIncome)}
-					{#if view.comparison !== null}
-						<span class="metric-delta">
-							{i18n.format.signedCurrency(view.comparison.operatingIncomeDelta)}
-							{i18n.t('dailyResult.vsDay', {
-								day: i18n.format.integer(view.comparison.previousDay)
-							})}
-						</span>
-					{/if}
-				</span>
-			</div>
-			<div class="metric">
-				<span class="metric-label">{i18n.t('dailyResult.metrics.netCashChange')}</span>
-				<span class="metric-value" data-testid="daily-result-net-cash-change">
-					{i18n.format.currency(view.latest.netCashChange)}
-					{#if view.comparison !== null}
-						<span class="metric-delta">
-							{i18n.format.signedCurrency(view.comparison.netCashChangeDelta)}
-							{i18n.t('dailyResult.vsDay', {
-								day: i18n.format.integer(view.comparison.previousDay)
-							})}
-						</span>
-					{/if}
-				</span>
-			</div>
+			{#each headlineMetrics as metric (metric.testId)}
+				<div class="metric">
+					<span class="metric-label">{i18n.t(metric.labelKey)}</span>
+					<span class="metric-value" data-testid={metric.testId}>
+						{i18n.format.currency(metric.value)}
+						{#if metric.delta !== null && previousDay !== null}
+							<span class="metric-delta">
+								{i18n.format.signedCurrency(metric.delta)}
+								{i18n.t('dailyResult.vsDay', {
+									day: i18n.format.integer(previousDay)
+								})}
+							</span>
+						{/if}
+					</span>
+				</div>
+			{/each}
 		</div>
 	{/if}
 
@@ -86,15 +86,15 @@
 	{#if view !== null}
 		<div class="bridge" data-testid="daily-result-bridge">
 			<div class="metric">
-				<span class="metric-label">{i18n.t('dailyResult.bridge.operatingCashFlow')}</span>
+				<span class="metric-label">{i18n.t('reportsPanel.metrics.operatingCashFlow')}</span>
 				<span class="metric-value">{i18n.format.currency(view.latest.operatingCashFlow)}</span>
 			</div>
 			<div class="metric">
-				<span class="metric-label">{i18n.t('dailyResult.bridge.financingCashFlow')}</span>
+				<span class="metric-label">{i18n.t('reportsPanel.metrics.financingCashFlow')}</span>
 				<span class="metric-value">{i18n.format.currency(view.latest.financingCashFlow)}</span>
 			</div>
 			<div class="metric">
-				<span class="metric-label">{i18n.t('dailyResult.bridge.netCashChange')}</span>
+				<span class="metric-label">{i18n.t('reportsPanel.metrics.netCashChange')}</span>
 				<span class="metric-value">{i18n.format.currency(view.latest.netCashChange)}</span>
 			</div>
 		</div>
@@ -111,8 +111,7 @@
 			<div class="contributors">
 				<h4>{i18n.t('dailyResult.contributors.title')}</h4>
 				<ul>
-					<!-- ponytail: presentation-side cap; the read model already slices to 2 -->
-					{#each view.contributors.slice(0, 2) as contributor (contributor.kind)}
+					{#each view.contributors as contributor (contributor.kind)}
 						<li data-testid="daily-result-contributor">
 							<span class="metric-label">{i18n.t(CONTRIBUTOR_LABEL_KEYS[contributor.kind])}</span>
 							<span class="metric-value">{i18n.format.signedCurrency(contributor.amount)}</span>

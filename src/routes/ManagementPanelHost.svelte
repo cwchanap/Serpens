@@ -141,6 +141,21 @@
 	const reportWindow = $derived(panelGame.reports.slice(-reportDays));
 	const dailyResultView = $derived(buildDailyResultView(panelGame.reports));
 
+	let dialogEl: HTMLElement | undefined = $state();
+	$effect(() => {
+		// The {#key panelId} block below destroys its contents on every panel
+		// switch — including whatever control initiated it (the dashboard card's
+		// Reports/Finance actions, or a keyboard shortcut pressed from inside a
+		// panel). When that happens focus falls back to <body>, outside the
+		// focusTrap's keydown listener, so hand it to the now-current tab.
+		// `panelId` must be read unconditionally so this effect re-runs on swap.
+		const target = dialogEl?.querySelector<HTMLElement>(
+			`.tower-tabs button[data-panel-id="${panelId}"]`
+		);
+		if (!dialogEl || dialogEl.contains(document.activeElement) || !target) return;
+		target.focus({ preventScroll: true });
+	});
+
 	function requireFinanceMetrics(): FinanceMetrics {
 		if (financeMetrics === null) {
 			throw new Error('ManagementPanelHost invariant: financeMetrics required for finance panel');
@@ -172,6 +187,7 @@
 		data-focused-finance-loan={panelId === 'finance'
 			? (focusedFinanceLoanId ?? undefined)
 			: undefined}
+		bind:this={dialogEl}
 		{@attach focusTrap}
 	>
 		{#if panelId !== 'productChains'}
@@ -248,6 +264,7 @@
 					type="button"
 					aria-label={item.label}
 					title={`${item.label} (${item.shortcut})`}
+					data-panel-id={item.id}
 					aria-current={panelId === item.id ? 'page' : undefined}
 					onclick={() => {
 						if (panelId !== item.id) onSelectPanel(item.id);

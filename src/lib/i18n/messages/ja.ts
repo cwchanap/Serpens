@@ -115,7 +115,7 @@ export const ja = {
 			scopeSummary: 'この結果に含まれるもの',
 			scopeIncluded: 'この店舗レポートの粗利益・店舗運営費・在庫ロスのみで計算しています。',
 			scopeExcluded:
-				'輸入仕入れや共有の人件費・生産・物流・資金調達コストは、この店舗の結果には含まれません。'
+				'外部輸入や共有の人件費・生産・物流・資金調達コストは、この店舗の結果には含まれません。'
 		},
 		stockHealth: '在庫健全度',
 		staffMorale: '従業員士気',
@@ -2054,27 +2054,13 @@ export const ja = {
 		dayCompletedResult: '{day}日目の完了結果',
 		vsDay: '{day}日目との差分',
 		currentCash: '現在の現金',
-		metrics: {
-			revenue: '売上',
-			operatingIncome: '営業利益',
-			netCashChange: '現金増減'
-		},
-		bridge: {
-			operatingCashFlow: '営業キャッシュフロー',
-			financingCashFlow: '財務キャッシュフロー',
-			netCashChange: '現金増減'
-		},
 		explanation: {
 			operatingProfitCashFall:
-				'営業利益はプラスでしたが、現金は減少しました。輸入購入は営業キャッシュフローに、借入などの活動は財務キャッシュフローに反映されます。下の記録された橋渡しをご確認ください。',
+				'営業利益はプラスでしたが、現金は減少しました。外部輸入は営業キャッシュフローに、借入などの活動は財務キャッシュフローに反映されます。上の記録された橋渡しをご確認ください。',
 			neutral: '営業利益はその日の成果を示し、現金増減は実際に動いた現金の額を示します。'
 		},
 		contributors: {
-			title: '記録された現金の影響項',
-			importSpend: '外部輸入',
-			principalRepaid: '返済元本',
-			interestPaid: '支払利息',
-			principalBorrowed: '借入元本'
+			title: '記録された現金増減の要因'
 		}
 	}
 } as const satisfies Messages;

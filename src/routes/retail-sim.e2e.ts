@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PRODUCTION_EVENT_CATALOG } from '../lib/game/eventCatalog';
 import { createInitialEventRuntime, selectEventForDay } from '../lib/game/eventSelection';
 import { LANGUAGE_PREFERENCE_STORAGE_KEY } from '../lib/i18n/locales';
+import { createI18n } from '../lib/i18n';
 import {
 	DEFAULT_INDUSTRY_CITY_HEIGHT,
 	DEFAULT_INDUSTRY_CITY_WIDTH,
@@ -15,6 +16,7 @@ import {
 } from '../lib/game/industryPlacement';
 import { createRecurringRoute } from '../lib/game/interCityLogistics';
 import { openStoreAtTile } from '../lib/game/placement';
+import { buildDailyResultView } from '../lib/game/reports';
 import { buildRail, buildRailPreview } from '../lib/game/railPlacement';
 import { simulateDay } from '../lib/game/simulateDay';
 import { createNewGame, upgradeStore } from '../lib/game/state';
@@ -2734,6 +2736,17 @@ test('daily result journey separates profit from cash across dashboard, reports,
 	const game = dailyResultsJourneyGame();
 	const store = game.stores[0];
 	if (!store) throw new Error('Daily results journey fixture has no starter store.');
+	const resultView = buildDailyResultView(game.reports);
+	if (!resultView?.comparison) {
+		throw new Error('Daily results journey fixture needs a latest and previous report.');
+	}
+	const { latest, comparison } = resultView;
+	const storeReport = latest.storeReports.find((report) => report.storeId === store.id);
+	if (!storeReport) {
+		throw new Error('Daily results journey fixture has no latest report for the starter store.');
+	}
+	const fmt = createI18n('en').format;
+	const vsPreviousDay = `vs Day ${fmt.integer(comparison.previousDay)}`;
 
 	await installSandboxAutoSave(page, game);
 
@@ -2741,18 +2754,27 @@ test('daily result journey separates profit from cash across dashboard, reports,
 	// headline metrics with absolute deltas against the preceding day.
 	const dashboard = await openManagementPanel(page, /dashboard/i);
 	const card = dashboard.getByTestId('daily-result');
-	await expect(card.getByTestId('daily-result-day')).toHaveText('Day 2 completed result');
-	await expect(card.getByTestId('daily-result-revenue')).toContainText('$45');
-	await expect(card.getByTestId('daily-result-revenue')).toContainText('-$162 vs Day 1');
-	await expect(card.getByTestId('daily-result-operating-income')).toContainText('-$171');
-	await expect(card.getByTestId('daily-result-operating-income')).toContainText('-$54 vs Day 1');
-	await expect(card.getByTestId('daily-result-net-cash-change')).toContainText('-$141');
-	await expect(card.getByTestId('daily-result-net-cash-change')).toContainText('-$162 vs Day 1');
+	await expect(card.getByTestId('daily-result-day')).toHaveText(
+		`Day ${fmt.integer(latest.day)} completed result`
+	);
+	await expect(card.getByTestId('daily-result-revenue')).toHaveText(
+		`${fmt.currency(latest.revenue)} ${fmt.signedCurrency(comparison.revenueDelta)} ${vsPreviousDay}`
+	);
+	await expect(card.getByTestId('daily-result-operating-income')).toHaveText(
+		`${fmt.currency(latest.operatingIncome)} ${fmt.signedCurrency(comparison.operatingIncomeDelta)} ${vsPreviousDay}`
+	);
+	await expect(card.getByTestId('daily-result-net-cash-change')).toHaveText(
+		`${fmt.currency(latest.netCashChange)} ${fmt.signedCurrency(comparison.netCashChangeDelta)} ${vsPreviousDay}`
+	);
 
 	// Current cash is live: the fixture's post-close upgrade spend separates it
-	// from the latest report's cashAfter (31,880).
-	await expect(card.getByTestId('daily-result-current-cash')).toContainText('$23,880');
-	await expect(card.getByTestId('daily-result-current-cash')).not.toContainText('$31,880');
+	// from the latest report's cashAfter.
+	await expect(card.getByTestId('daily-result-current-cash')).toHaveText(
+		`Current cash ${fmt.currency(game.cash)}`
+	);
+	await expect(card.getByTestId('daily-result-current-cash')).not.toContainText(
+		fmt.currency(latest.cashAfter)
+	);
 
 	// The card's Reports action lands on the existing reports detail grid, where
 	// net cash change sits with the recorded cash-flow evidence.
@@ -2760,13 +2782,15 @@ test('daily result journey separates profit from cash across dashboard, reports,
 	const reports = page.getByRole('dialog', { name: /reports/i });
 	await expect(reports).toBeVisible();
 	await reports.getByTestId('report-details-toggle').click();
-	await expect(reports.getByTestId('reports-net-cash-change')).toContainText('-$141');
+	await expect(reports.getByTestId('reports-net-cash-change')).toHaveText(
+		`Net cash change ${fmt.currency(latest.netCashChange)}`
+	);
 
 	// Back to the dashboard and into the existing finance panel via its action.
 	await reports.getByRole('button', { name: /dashboard/i }).click();
 	const reopenedDashboard = page.getByRole('dialog', { name: /dashboard/i });
 	await expect(reopenedDashboard.getByTestId('daily-result-day')).toHaveText(
-		'Day 2 completed result'
+		`Day ${fmt.integer(latest.day)} completed result`
 	);
 	await reopenedDashboard
 		.getByTestId('daily-result')
@@ -2784,7 +2808,9 @@ test('daily result journey separates profit from cash across dashboard, reports,
 	await clickMapTile(page, store.mapX, store.mapY);
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
-	await expect(inspector.getByTestId('store-operating-result')).toContainText('-$171');
+	await expect(inspector.getByTestId('store-operating-result')).toHaveText(
+		fmt.signedCurrency(storeReport.netIncome)
+	);
 	const storeResultScope = inspector.locator('details.store-result-scope');
 	await expect(storeResultScope).toBeVisible();
 	await expect(storeResultScope).not.toHaveAttribute('open');
@@ -2796,7 +2822,13 @@ test('daily result dashboard stacks and stays keyboard reachable at 600px', asyn
 	// text-visible, and the card's supporting-detail action is reachable and
 	// activatable with the keyboard alone.
 	await page.setViewportSize({ width: 600, height: 800 });
-	await installSandboxAutoSave(page, dailyResultsJourneyGame());
+	const game = dailyResultsJourneyGame();
+	const netCashChange = game.reports.at(-1)?.netCashChange;
+	if (netCashChange === undefined) {
+		throw new Error('Daily results journey fixture has no latest report.');
+	}
+	const fmt = createI18n('en').format;
+	await installSandboxAutoSave(page, game);
 
 	// 'o' is the dashboard mnemonic; the control desk hides its manage cluster
 	// at this width, so open the panel by keyboard.
@@ -2824,7 +2856,9 @@ test('daily result dashboard stacks and stays keyboard reachable at 600px', asyn
 	}
 
 	// Negative values remain readable text, not clipped glyphs.
-	await expect(card.getByTestId('daily-result-net-cash-change')).toContainText('-$141');
+	await expect(card.getByTestId('daily-result-net-cash-change')).toContainText(
+		fmt.currency(netCashChange)
+	);
 
 	// Walk the tab order into the card's supporting-detail action and activate
 	// it with Enter alone.
@@ -2840,7 +2874,9 @@ test('daily result dashboard stacks and stays keyboard reachable at 600px', asyn
 	const reports = page.getByRole('dialog', { name: /reports/i });
 	await expect(reports).toBeVisible();
 	await reports.getByTestId('report-details-toggle').click();
-	await expect(reports.getByTestId('reports-net-cash-change')).toContainText('-$141');
+	await expect(reports.getByTestId('reports-net-cash-change')).toHaveText(
+		`Net cash change ${fmt.currency(netCashChange)}`
+	);
 });
 
 test('keyboard shortcuts toggle build, switch views, and Esc closes the hamburger', async ({

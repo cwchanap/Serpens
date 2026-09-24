@@ -3,7 +3,7 @@
 	import { asset } from '$app/paths';
 	import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
 	import type { I18nBundle } from '$lib/i18n';
-	import type { ReportSummary } from '$lib/game/reports';
+	import { getImportSpend, type ReportSummary } from '$lib/game/reports';
 	import {
 		localizeEventSourceTitle,
 		localizeBrandName,
@@ -639,7 +639,7 @@
 				</div>
 				<div>
 					<span>{i18n.t('reportsPanel.metrics.imports')}</span>
-					<strong>{i18n.format.currency(summary.latest.importSpend)}</strong>
+					<strong>{i18n.format.currency(getImportSpend(summary.latest))}</strong>
 				</div>
 				<div>
 					<span>{i18n.t('reportsPanel.metrics.inventoryLoss')}</span>

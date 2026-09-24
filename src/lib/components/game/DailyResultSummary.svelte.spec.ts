@@ -197,13 +197,12 @@ describe('DailyResultSummary', () => {
 			.toBeVisible();
 	});
 
-	it('renders at most two contributors in the given order', async () => {
+	it('renders the given contributors in order', async () => {
 		expect.assertions(5);
 		render(DailyResultSummary, {
 			view: makeView({}, null, [
 				{ kind: 'import-spend', amount: -400 },
-				{ kind: 'principal-borrowed', amount: 100 },
-				{ kind: 'interest-paid', amount: -5 }
+				{ kind: 'principal-borrowed', amount: 100 }
 			]),
 			currentCash: null,
 			i18n
@@ -262,7 +261,7 @@ describe('DailyResultSummary', () => {
 		expect(page.getByText('$1,000').elements()).toHaveLength(1);
 	});
 
-	it('renders the day heading and live cash in the empty state', async () => {
+	it('renders live cash without a day heading in the empty state', async () => {
 		expect.assertions(2);
 		render(DailyResultSummary, { view: null, currentCash: 500, i18n });
 

@@ -116,7 +116,7 @@ export const en = {
 			scopeIncluded:
 				"Uses this store report's gross margin, store operating costs, and inventory loss only.",
 			scopeExcluded:
-				'Import purchases and shared payroll, production, logistics, and financing are outside this store result.'
+				'External imports and shared payroll, production, logistics, and financing are outside this store result.'
 		},
 		stockHealth: 'Stock health',
 		staffMorale: 'Staff morale',
@@ -2087,28 +2087,14 @@ export const en = {
 		dayCompletedResult: 'Day {day} completed result',
 		vsDay: 'vs Day {day}',
 		currentCash: 'Current cash',
-		metrics: {
-			revenue: 'Revenue',
-			operatingIncome: 'Operating income',
-			netCashChange: 'Net cash change'
-		},
-		bridge: {
-			operatingCashFlow: 'Operating cash flow',
-			financingCashFlow: 'Financing cash flow',
-			netCashChange: 'Net cash change'
-		},
 		explanation: {
 			operatingProfitCashFall:
-				'Operating income was positive, but cash still fell. Import purchases are reflected in operating cash flow; loan activity is reflected in financing cash flow — see the recorded bridge below.',
+				'Operating income was positive, but cash still fell. External imports are reflected in operating cash flow; loan activity is reflected in financing cash flow — see the recorded bridge above.',
 			neutral:
 				"Operating income measures the day's performance; net cash change is how much cash actually moved."
 		},
 		contributors: {
-			title: 'Recorded cash contributors',
-			importSpend: 'External imports',
-			principalRepaid: 'Principal repaid',
-			interestPaid: 'Interest paid',
-			principalBorrowed: 'Principal borrowed'
+			title: 'Recorded cash contributors'
 		}
 	}
 } as const;
