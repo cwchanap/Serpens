@@ -92,9 +92,9 @@ export function buildDailyResultView(reports: readonly DailyReport[]): DailyResu
 		kind,
 		amount: amounts[kind]
 	}))
-		// Contributors render with the 0-decimal currency formatter; anything
-		// below half a dollar would take a slot and still display as '$0'.
-		.filter((contributor) => Math.abs(contributor.amount) >= 0.5)
+		// The design filters exact zeros only; presentation (rounding, precision)
+		// belongs to the formatter, not this selection logic.
+		.filter((contributor) => contributor.amount !== 0)
 		.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 		.slice(0, 2);
 

@@ -2757,14 +2757,21 @@ test('daily result journey separates profit from cash across dashboard, reports,
 	await expect(card.getByTestId('daily-result-day')).toHaveText(
 		`Day ${fmt.integer(latest.day)} completed result`
 	);
-	await expect(card.getByTestId('daily-result-revenue')).toHaveText(
-		`${fmt.currency(latest.revenue)} ${fmt.signedCurrency(comparison.revenueDelta)} ${vsPreviousDay}`
+	await expect(card.getByTestId('daily-result-revenue')).toHaveText(fmt.currency(latest.revenue));
+	await expect(card.getByTestId('daily-result-revenue-delta')).toHaveText(
+		`${fmt.signedCurrency(comparison.revenueDelta)} ${vsPreviousDay}`
 	);
 	await expect(card.getByTestId('daily-result-operating-income')).toHaveText(
-		`${fmt.currency(latest.operatingIncome)} ${fmt.signedCurrency(comparison.operatingIncomeDelta)} ${vsPreviousDay}`
+		fmt.currency(latest.operatingIncome)
+	);
+	await expect(card.getByTestId('daily-result-operating-income-delta')).toHaveText(
+		`${fmt.signedCurrency(comparison.operatingIncomeDelta)} ${vsPreviousDay}`
 	);
 	await expect(card.getByTestId('daily-result-net-cash-change')).toHaveText(
-		`${fmt.currency(latest.netCashChange)} ${fmt.signedCurrency(comparison.netCashChangeDelta)} ${vsPreviousDay}`
+		fmt.currency(latest.netCashChange)
+	);
+	await expect(card.getByTestId('daily-result-net-cash-change-delta')).toHaveText(
+		`${fmt.signedCurrency(comparison.netCashChangeDelta)} ${vsPreviousDay}`
 	);
 
 	// Current cash is live: the fixture's post-close upgrade spend separates it
@@ -2809,7 +2816,7 @@ test('daily result journey separates profit from cash across dashboard, reports,
 	const inspector = page.getByRole('dialog', { name: /tile details/i });
 	await expect(inspector).toBeVisible();
 	await expect(inspector.getByTestId('store-operating-result')).toHaveText(
-		fmt.signedCurrency(storeReport.netIncome)
+		fmt.currency(storeReport.netIncome)
 	);
 	const storeResultScope = inspector.locator('details.store-result-scope');
 	await expect(storeResultScope).toBeVisible();

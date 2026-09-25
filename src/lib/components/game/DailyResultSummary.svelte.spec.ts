@@ -6,29 +6,11 @@ import type {
 	DailyResultComparison,
 	DailyResultView
 } from '$lib/game/reports';
-import type { DailyProductionReport, DailyReport } from '$lib/game/types';
+import type { DailyReport } from '$lib/game/types';
 import { emptyLogisticsReport } from '$lib/game/logisticsReport.testUtils';
+import { emptyProductionReport } from '$lib/game/productionReport.testUtils';
 import { createI18n } from '$lib/i18n';
 import DailyResultSummary from './DailyResultSummary.svelte';
-
-function emptyProductionReport(): DailyProductionReport {
-	return {
-		produced: [],
-		consumed: [],
-		importedInputs: [],
-		warehousePulls: [],
-		shopImports: [],
-		importSpend: 0,
-		operatingCost: 0,
-		overflowUnits: 0,
-		overflowCost: 0,
-		warehouseCapacity: 0,
-		warehouseUsed: 0,
-		railShipments: [],
-		railUsage: {},
-		cityInventories: []
-	};
-}
 
 function makeDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 	return {
@@ -121,8 +103,9 @@ describe('DailyResultSummary', () => {
 		expect.assertions(2);
 		render(DailyResultSummary, { view: makeView(), currentCash: null, i18n });
 
-		await expect.element(page.getByTestId('daily-result-revenue')).toBeVisible();
-		expect(page.getByText('vs Day').elements()).toHaveLength(0);
+		const revenue = page.getByTestId('daily-result-revenue');
+		await expect.element(revenue).toBeVisible();
+		expect(page.getByTestId('daily-result-revenue-delta').elements()).toHaveLength(0);
 	});
 
 	it('renders signed deltas with the explicit previous day', async () => {
@@ -141,12 +124,12 @@ describe('DailyResultSummary', () => {
 			i18n
 		});
 
-		const revenue = page.getByTestId('daily-result-revenue');
-		await expect.element(revenue).toHaveTextContent('+$120');
-		await expect.element(revenue).toHaveTextContent('vs Day 6');
-		const netCash = page.getByTestId('daily-result-net-cash-change');
-		await expect.element(netCash).toHaveTextContent('-$30');
-		await expect.element(netCash).toHaveTextContent('vs Day 6');
+		const revenueDelta = page.getByTestId('daily-result-revenue-delta');
+		await expect.element(revenueDelta).toHaveTextContent('+$120');
+		await expect.element(revenueDelta).toHaveTextContent('vs Day 6');
+		const netCashDelta = page.getByTestId('daily-result-net-cash-change-delta');
+		await expect.element(netCashDelta).toHaveTextContent('-$30');
+		await expect.element(netCashDelta).toHaveTextContent('vs Day 6');
 	});
 
 	it('renders negative metric values with the currency formatter', async () => {

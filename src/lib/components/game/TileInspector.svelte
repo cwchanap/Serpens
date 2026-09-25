@@ -113,15 +113,9 @@
 	);
 	const dailyRevenue = $derived(latestStoreReport?.revenue ?? null);
 	const dailyStoreResult = $derived(latestStoreReport?.netIncome ?? null);
-	// The day label must come from the report that actually contains this store
-	// report, not from `reports.at(-1)` — the parent decides which report is
-	// "latest" and the label has to track the same source.
-	const latestReportDay = $derived(
-		latestStoreReport
-			? (game.reports.find((report) => report.storeReports.includes(latestStoreReport))?.day ??
-					null)
-			: null
-	);
+	// The parent sources `latestStoreReport` from the latest daily report, so
+	// the latest report's day is the day this store result belongs to.
+	const latestReportDay = $derived(latestStoreReport ? (game.reports.at(-1)?.day ?? null) : null);
 
 	type UpgradeAckKind = 'success' | 'unchanged' | 'not-applied';
 	let upgradePending = $state(false);
@@ -258,14 +252,19 @@
 			<div class="revenue">
 				<div class="revenue-summary">
 					<p class="eyebrow">{i18n.t('tileInspector.revenuePerDay')}</p>
-					<strong>{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}</strong>
+					<p class="result-line">
+						<strong>{dailyRevenue === null ? '—' : i18n.format.currency(dailyRevenue)}</strong
+						>&#32;{#if latestReportDay !== null}<span class="result-day"
+								>{i18n.t('tileInspector.storeResult.day', {
+									day: i18n.format.integer(latestReportDay)
+								})}</span
+							>{/if}
+					</p>
 					<div class="store-result">
 						<p class="eyebrow">{i18n.t('tileInspector.storeResult.label')}</p>
 						<p class="result-line">
 							<strong data-testid="store-operating-result"
-								>{dailyStoreResult === null
-									? '—'
-									: i18n.format.signedCurrency(dailyStoreResult)}</strong
+								>{dailyStoreResult === null ? '—' : i18n.format.currency(dailyStoreResult)}</strong
 							>&#32;{#if latestReportDay !== null}<span class="result-day"
 									>{i18n.t('tileInspector.storeResult.day', {
 										day: i18n.format.integer(latestReportDay)

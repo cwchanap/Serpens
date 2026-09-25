@@ -248,29 +248,29 @@ describe('TileInspector store operating result', () => {
 		await expect.element(page.getByText('What this result includes')).not.toBeInTheDocument();
 	});
 
-	it('shows a positive store result as a signed value', async () => {
+	it('shows a positive store result as an unsigned currency value', async () => {
 		expect.assertions(2);
 		renderInspector({ store, latestStoreReport: positiveReport });
 
-		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('+$42');
-		await expect.element(page.getByText(/\$0/)).not.toBeInTheDocument();
+		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('$42');
+		await expect.element(page.getByText(/\+\$/)).not.toBeInTheDocument();
 	});
 
-	it('shows a negative store result as a signed value', async () => {
+	it('shows a negative store result as a currency value', async () => {
 		expect.assertions(1);
 		renderInspector({ store, latestStoreReport });
 
 		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('-$36');
 	});
 
-	it('labels the result with the completed day from the latest report', async () => {
+	it('labels both the revenue and the result with the completed day from the latest report', async () => {
 		expect.assertions(3);
 		renderInspector({ game: gameWithReport(12, latestStoreReport), store, latestStoreReport });
 
 		// Whitespace must separate the amount from the day so the line does not
 		// read as "-$36Day 12" to assistive tech and text extraction.
 		await expect.element(page.getByText('-$36 Day 12')).toBeVisible();
-		await expect.element(page.getByText('Day 12')).toBeVisible();
+		expect(page.getByText('Day 12', { exact: true }).elements()).toHaveLength(2);
 		await expect.element(page.getByText('Day 0')).not.toBeInTheDocument();
 	});
 
@@ -320,9 +320,9 @@ describe('TileInspector store operating result', () => {
 			store: otherStore,
 			latestStoreReport: otherReport
 		});
-		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('+$57');
+		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('$57');
 		await expect.element(page.getByTestId('store-operating-result')).not.toHaveTextContent('-$36');
-		await expect.element(page.getByText('Day 10')).toBeVisible();
+		expect(page.getByText('Day 10', { exact: true }).elements()).toHaveLength(2);
 	});
 
 	it('keeps the upgrade card reachable alongside the store result', async () => {

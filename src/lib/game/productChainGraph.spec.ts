@@ -21,6 +21,7 @@ import {
 import { MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { emptyLogisticsReport } from './logisticsReport.testUtils';
+import { emptyProductionReport } from './productionReport.testUtils';
 import { createNewGame } from './state';
 import { openWorldCity } from './world';
 import type {
@@ -32,28 +33,6 @@ import type {
 	MaterialId,
 	ProductionRecipeId
 } from './types';
-
-function emptyProductionReport(
-	overrides: Partial<DailyProductionReport> = {}
-): DailyProductionReport {
-	return {
-		produced: [],
-		consumed: [],
-		importedInputs: [],
-		warehousePulls: [],
-		shopImports: [],
-		importSpend: 0,
-		operatingCost: 0,
-		overflowUnits: 0,
-		overflowCost: 0,
-		warehouseCapacity: 0,
-		warehouseUsed: 0,
-		railShipments: [],
-		railUsage: {},
-		...overrides,
-		cityInventories: overrides.cityInventories ?? []
-	};
-}
 
 function latestStoreReport(overrides: Partial<DailyStoreReport> = {}): DailyStoreReport {
 	return {

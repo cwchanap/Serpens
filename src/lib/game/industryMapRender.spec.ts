@@ -4,28 +4,10 @@ import { getIndustryTilesByResource } from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { createIndustryMapSnapshot } from './industryMapRender';
 import { emptyLogisticsReport } from './logisticsReport.testUtils';
+import { emptyProductionReport } from './productionReport.testUtils';
 import { railUsageKey } from './rail';
 import { createNewGame } from './state';
-import type { DailyProductionReport, DailyReport, IndustryCity, RailCell } from './types';
-
-function emptyProductionReport(): DailyProductionReport {
-	return {
-		produced: [],
-		consumed: [],
-		importedInputs: [],
-		warehousePulls: [],
-		shopImports: [],
-		importSpend: 0,
-		operatingCost: 0,
-		overflowUnits: 0,
-		overflowCost: 0,
-		warehouseCapacity: 0,
-		warehouseUsed: 0,
-		railShipments: [],
-		railUsage: {},
-		cityInventories: []
-	};
-}
+import type { DailyReport, IndustryCity, RailCell } from './types';
 
 function makeReport(railUsage: Record<string, number>): DailyReport {
 	return {

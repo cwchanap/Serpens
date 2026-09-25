@@ -6,6 +6,7 @@ import {
 	createRouteDispatchAttempt,
 	emptyLogisticsReport
 } from '$lib/game/logisticsReport.testUtils';
+import { emptyProductionReport } from '$lib/game/productionReport.testUtils';
 import type {
 	DailyProductReport,
 	DailyProductionReport,
@@ -39,25 +40,6 @@ const store: Store = {
 	localDemand: 72,
 	managerQuality: 60
 };
-
-function emptyProductionReport(): DailyProductionReport {
-	return {
-		produced: [],
-		consumed: [],
-		importedInputs: [],
-		warehousePulls: [],
-		shopImports: [],
-		importSpend: 0,
-		operatingCost: 0,
-		overflowUnits: 0,
-		overflowCost: 0,
-		warehouseCapacity: 0,
-		warehouseUsed: 0,
-		railShipments: [],
-		railUsage: {},
-		cityInventories: []
-	};
-}
 
 const summary: ReportSummary = {
 	latest: {
