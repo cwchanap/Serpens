@@ -38,6 +38,7 @@ interface ManagementPanelHostProps {
 	panelId: ManagementPanelId;
 	panelLabel: string;
 	panelGame: GameState;
+	currentCash: number | null;
 	summary: ReportSummary;
 	financeMetrics: FinanceMetrics | null;
 	retailSupplyViews: RetailCitySupplyView[];
@@ -147,6 +148,7 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		panelId: 'dashboard',
 		panelLabel: 'Dashboard',
 		panelGame,
+		currentCash: panelGame.cash,
 		summary: summarizeReports(panelGame.reports),
 		financeMetrics: null,
 		retailSupplyViews: buildRetailCitySupplyViews(panelGame, i18n),
@@ -263,6 +265,22 @@ describe('ManagementPanelHost', () => {
 		});
 		expect(dialog.element().contains(document.activeElement)).toBe(true);
 	});
+
+	it('omits the dashboard Reports/Finance actions when no panel selector is supplied', async () => {
+		expect.assertions(2);
+		render(ManagementPanelHost, { ...hostProps(), onSelectPanel: undefined });
+
+		const card = page.getByTestId('daily-result');
+		expect(card.getByRole('button', { name: 'Reports', exact: true }).elements()).toHaveLength(0);
+		expect(card.getByRole('button', { name: 'Finance', exact: true }).elements()).toHaveLength(0);
+	});
+
+	it('renders no fabricated cash in the dashboard card before a company exists', async () => {
+		expect.assertions(1);
+		render(ManagementPanelHost, hostProps({ currentCash: null }));
+
+		expect(page.getByTestId('daily-result-current-cash').elements()).toHaveLength(0);
+	});
 	it('renders the dashboard dialog shell with its label, day, and cash', async () => {
 		expect.assertions(4);
 		const props = hostProps();
@@ -334,7 +352,11 @@ describe('ManagementPanelHost', () => {
 		let panelGame = compositionGame();
 		panelGame = simulateDay(panelGame);
 		panelGame = { ...panelGame, cash: 999_987 };
-		const props = hostProps({ panelGame, summary: summarizeReports(panelGame.reports) });
+		const props = hostProps({
+			panelGame,
+			currentCash: panelGame.cash,
+			summary: summarizeReports(panelGame.reports)
+		});
 		render(ManagementPanelHost, props);
 
 		const cashAfter = buildDailyResultView(panelGame.reports)!.latest.cashAfter;

@@ -1,26 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { emptyLogisticsReport } from './logisticsReport.testUtils';
+import { emptyProductionReport } from './productionReport.testUtils';
 import { buildDailyResultView, clampScore, summarizeReports } from './reports';
-import type { DailyProductionReport, DailyReport, DailyStoreReport } from './types';
-
-function emptyProductionReport(): DailyProductionReport {
-	return {
-		produced: [],
-		consumed: [],
-		importedInputs: [],
-		warehousePulls: [],
-		shopImports: [],
-		importSpend: 0,
-		operatingCost: 0,
-		overflowUnits: 0,
-		overflowCost: 0,
-		warehouseCapacity: 0,
-		warehouseUsed: 0,
-		railShipments: [],
-		railUsage: {},
-		cityInventories: []
-	};
-}
+import type { DailyReport, DailyStoreReport } from './types';
 
 function report(
 	day: number,
@@ -42,7 +24,15 @@ function report(
 	};
 	const storeReports =
 		options.storeImportSpend === undefined ? [] : [storeReport(options.storeImportSpend)];
-	const financingCashFlow = options.financingCashFlow ?? -4;
+	// Mirror the simulation's financing identity (finance.ts):
+	// financingCashFlow = principalBorrowed - principalRepaid - interestPaid.
+	// Deriving the default keeps fixtures producible by the real game even when
+	// individual components are overridden.
+	const principalBorrowed = options.principalBorrowed ?? 4;
+	const principalRepaid = options.principalRepaid ?? 5;
+	const interestPaid = options.interestPaid ?? 3;
+	const financingCashFlow =
+		options.financingCashFlow ?? principalBorrowed - principalRepaid - interestPaid;
 	const netCashChange = options.netCashChange ?? netIncome + financingCashFlow;
 
 	return {
@@ -57,10 +47,10 @@ function report(
 		operatingIncome: options.operatingIncome ?? 300,
 		operatingCashFlow: netIncome,
 		interestAccrued: 0.125,
-		interestPaid: options.interestPaid ?? 3,
+		interestPaid,
 		interestCapitalized: 2,
-		principalBorrowed: options.principalBorrowed ?? 4,
-		principalRepaid: options.principalRepaid ?? 5,
+		principalBorrowed,
+		principalRepaid,
 		refinancedPrincipal: 6,
 		financingCashFlow,
 		netCashChange,
@@ -324,16 +314,18 @@ describe('reports', () => {
 			]);
 		});
 
-		test('drops contributors below the formatter-visible minimum so they do not show as $0', () => {
-			expect.assertions(1);
+		test('filters exact-zero contributors but keeps non-zero sub-dollar amounts', () => {
+			expect.assertions(2);
 			const view = buildDailyResultView([
-				report(11, 300, { interestPaid: 0.4, principalBorrowed: 200 })
+				report(11, 300, { interestPaid: 0.4, principalBorrowed: 0, principalRepaid: 0 })
 			]);
 
-			expect(view?.contributors).toEqual([
-				{ kind: 'principal-borrowed', amount: 200 },
-				{ kind: 'principal-repaid', amount: -5 }
+			expect(view?.contributors).toEqual([{ kind: 'interest-paid', amount: -0.4 }]);
+
+			const zeroed = buildDailyResultView([
+				report(12, 300, { interestPaid: 0, principalBorrowed: 0, principalRepaid: 0 })
 			]);
+			expect(zeroed?.contributors).toEqual([]);
 		});
 
 		test('keeps only the two largest when there are more than two candidate contributors', () => {

@@ -409,4 +409,63 @@ describe('focusTrap', () => {
 
 		detach();
 	});
+
+	it('reclaims Tab from document.body after the focused element is removed mid-dialog', () => {
+		expect.assertions(2);
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="first">First</button>' +
+				'<button id="gone">Gone</button>' +
+				'</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		const gone = node.querySelector<HTMLButtonElement>('#gone')!;
+		gone.focus();
+		gone.remove();
+		// Removing the focused element silently drops focus to <body>; a keydown
+		// there never reaches a node-level listener, so Tab must be caught at the
+		// document level and focus must come back into the dialog.
+		expect(document.activeElement).toBe(document.body);
+		document.body.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(node.querySelector('#first'));
+
+		detach();
+	});
+
+	it('lets the topmost dialog own Tab when dialogs stack as siblings', () => {
+		expect.assertions(3);
+		const outerDialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="outer-first">Outer first</button>' +
+				'</div>'
+		);
+		const outer = outerDialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detachOuter = focusTrap(outer) as () => void;
+
+		const innerDialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="inner-first">Inner first</button>' +
+				'<button id="inner-last">Inner last</button>' +
+				'</div>'
+		);
+		const inner = innerDialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detachInner = focusTrap(inner) as () => void;
+
+		const innerLast = inner.querySelector<HTMLButtonElement>('#inner-last')!;
+		innerLast.focus();
+		inner.dispatchEvent(tabKey(false));
+		// The inner trap wraps; the outer trap must not steal the keystroke.
+		expect(document.activeElement).toBe(inner.querySelector('#inner-first'));
+
+		// A Shift+Tab reaching the document while focus sits in the inner dialog
+		// still belongs to the inner trap — the outer trap must not reclaim it.
+		document.body.dispatchEvent(tabKey(true));
+		expect(document.activeElement).toBe(inner.querySelector('#inner-last'));
+		expect(document.activeElement).not.toBe(outer.querySelector('#outer-first'));
+
+		detachInner();
+		detachOuter();
+	});
 });

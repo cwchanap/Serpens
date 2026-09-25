@@ -42,6 +42,8 @@
 		managementItems?: { id: ManagementPanelId; label: string; shortcut: string }[];
 		onSelectPanel?: (id: ManagementPanelId) => void;
 		panelGame: GameState;
+		/** Live company cash for the dashboard card; null when no company exists yet. */
+		currentCash: number | null;
 		summary: ReportSummary;
 		financeMetrics: FinanceMetrics | null;
 		retailSupplyViews: RetailCitySupplyView[];
@@ -94,8 +96,9 @@
 		panelId,
 		panelLabel,
 		managementItems = [],
-		onSelectPanel = () => {},
+		onSelectPanel,
 		panelGame,
+		currentCash,
 		summary,
 		financeMetrics,
 		retailSupplyViews,
@@ -148,12 +151,17 @@
 		// Reports/Finance actions, or a keyboard shortcut pressed from inside a
 		// panel). When that happens focus falls back to <body>, outside the
 		// focusTrap's keydown listener, so hand it to the now-current tab.
-		// `panelId` must be read unconditionally so this effect re-runs on swap.
-		const target = dialogEl?.querySelector<HTMLElement>(
-			`.tower-tabs button[data-panel-id="${panelId}"]`
-		);
+		// `panelId` must be read unconditionally so this effect re-runs on swap —
+		// build the selector before the optional chain, because `dialogEl?.`
+		// short-circuits and would otherwise skip the read while dialogEl is
+		// still undefined.
+		const panelTabSelector = `.tower-tabs button[data-panel-id="${panelId}"]`;
+		const target = dialogEl?.querySelector<HTMLElement>(panelTabSelector);
 		if (!dialogEl || dialogEl.contains(document.activeElement) || !target) return;
 		target.focus({ preventScroll: true });
+		// `preventScroll` above stops the page from jumping, but the tab strip
+		// itself scrolls (sideways at ≤600px) — bring the focused tab into view.
+		target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 	});
 
 	function requireFinanceMetrics(): FinanceMetrics {
@@ -267,7 +275,7 @@
 					data-panel-id={item.id}
 					aria-current={panelId === item.id ? 'page' : undefined}
 					onclick={() => {
-						if (panelId !== item.id) onSelectPanel(item.id);
+						if (panelId !== item.id) onSelectPanel?.(item.id);
 					}}
 				>
 					<HudIcon name={item.id} /><span>{item.label}</span>
@@ -281,9 +289,9 @@
 						<DailyResultSummary
 							{i18n}
 							view={dailyResultView}
-							currentCash={panelGame.cash}
-							onOpenReports={() => onSelectPanel('reports')}
-							onOpenFinance={() => onSelectPanel('finance')}
+							{currentCash}
+							onOpenReports={onSelectPanel ? () => onSelectPanel('reports') : undefined}
+							onOpenFinance={onSelectPanel ? () => onSelectPanel('finance') : undefined}
 						/>
 						<Scorecard {i18n} scorecard={panelGame.scorecard} />
 					</div>

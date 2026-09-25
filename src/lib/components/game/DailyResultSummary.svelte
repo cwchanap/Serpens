@@ -27,23 +27,25 @@
 				labelKey: 'reportsPanel.metrics.revenue' as TranslationKey,
 				testId: 'daily-result-revenue',
 				value: view.latest.revenue,
-				delta: comparison?.revenueDelta ?? null
+				delta: comparison?.revenueDelta ?? null,
+				previousDay: comparison?.previousDay ?? null
 			},
 			{
 				labelKey: 'reportsPanel.metrics.operatingIncome' as TranslationKey,
 				testId: 'daily-result-operating-income',
 				value: view.latest.operatingIncome,
-				delta: comparison?.operatingIncomeDelta ?? null
+				delta: comparison?.operatingIncomeDelta ?? null,
+				previousDay: comparison?.previousDay ?? null
 			},
 			{
 				labelKey: 'reportsPanel.metrics.netCashChange' as TranslationKey,
 				testId: 'daily-result-net-cash-change',
 				value: view.latest.netCashChange,
-				delta: comparison?.netCashChangeDelta ?? null
+				delta: comparison?.netCashChangeDelta ?? null,
+				previousDay: comparison?.previousDay ?? null
 			}
 		];
 	});
-	const previousDay = $derived(view?.comparison?.previousDay ?? null);
 </script>
 
 <section class="panel paper" aria-labelledby="daily-result-heading" data-testid="daily-result">
@@ -60,13 +62,15 @@
 			{#each headlineMetrics as metric (metric.testId)}
 				<div class="metric">
 					<span class="metric-label">{i18n.t(metric.labelKey)}</span>
-					<span class="metric-value" data-testid={metric.testId}>
-						{i18n.format.currency(metric.value)}
-						{#if metric.delta !== null && previousDay !== null}
-							<span class="metric-delta">
+					<span class="metric-value">
+						<!-- The testid targets the number alone so exact-value checks do not
+					     have to match the delta subline as well. -->
+						<span data-testid={metric.testId}>{i18n.format.currency(metric.value)}</span>
+						{#if metric.delta !== null && metric.previousDay !== null}
+							<span class="metric-delta" data-testid={`${metric.testId}-delta`}>
 								{i18n.format.signedCurrency(metric.delta)}
 								{i18n.t('dailyResult.vsDay', {
-									day: i18n.format.integer(previousDay)
+									day: i18n.format.integer(metric.previousDay)
 								})}
 							</span>
 						{/if}
