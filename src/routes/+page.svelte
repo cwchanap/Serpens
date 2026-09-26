@@ -3171,6 +3171,7 @@
 			onSelectPanel={(id) =>
 				id === 'logistics' ? openLogisticsManagement() : openManagementPanel(id)}
 			{panelGame}
+			currentCash={game ? game.cash : null}
 			{summary}
 			{financeMetrics}
 			{retailSupplyViews}

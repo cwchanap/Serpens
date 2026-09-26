@@ -2,6 +2,7 @@
 	import HudIcon from '$lib/components/game/HudIcon.svelte';
 	import { focusTrap } from '$lib/a11y/focusTrap';
 	import ActiveModifiers from '$lib/components/game/ActiveModifiers.svelte';
+	import DailyResultSummary from '$lib/components/game/DailyResultSummary.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
 	import LogisticsPanel from '$lib/components/game/LogisticsPanel.svelte';
@@ -23,7 +24,7 @@
 	} from '$lib/game/interCityLogistics';
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
-	import type { ReportSummary } from '$lib/game/reports';
+	import { buildDailyResultView, type ReportSummary } from '$lib/game/reports';
 	import type {
 		CompanyPolicy,
 		GameState,
@@ -41,6 +42,8 @@
 		managementItems?: { id: ManagementPanelId; label: string; shortcut: string }[];
 		onSelectPanel?: (id: ManagementPanelId) => void;
 		panelGame: GameState;
+		/** Live company cash for the dashboard card; null when no company exists yet. */
+		currentCash: number | null;
 		summary: ReportSummary;
 		financeMetrics: FinanceMetrics | null;
 		retailSupplyViews: RetailCitySupplyView[];
@@ -93,8 +96,9 @@
 		panelId,
 		panelLabel,
 		managementItems = [],
-		onSelectPanel = () => {},
+		onSelectPanel,
 		panelGame,
+		currentCash,
 		summary,
 		financeMetrics,
 		retailSupplyViews,
@@ -138,6 +142,29 @@
 
 	let reportDays = $state(14);
 	const reportWindow = $derived(panelGame.reports.slice(-reportDays));
+	const dailyResultView = $derived(buildDailyResultView(panelGame.reports));
+
+	let dialogEl: HTMLElement | undefined = $state();
+	$effect(() => {
+		// The {#key panelId} block below destroys its contents on every panel
+		// switch — including whatever control initiated it (the dashboard card's
+		// Reports/Finance actions, or a keyboard shortcut pressed from inside a
+		// panel). When that happens focus falls back to <body>. The focusTrap's
+		// keydown listener lives on the document, so a body-level Tab IS caught
+		// and reclaimed — but only on the next keypress; focus would sit dead on
+		// <body> until then. Hand it to the now-current tab right away.
+		// `panelId` must be read unconditionally so this effect re-runs on swap —
+		// build the selector before the optional chain, because `dialogEl?.`
+		// short-circuits and would otherwise skip the read while dialogEl is
+		// still undefined.
+		const panelTabSelector = `.tower-tabs button[data-panel-id="${panelId}"]`;
+		const target = dialogEl?.querySelector<HTMLElement>(panelTabSelector);
+		if (!dialogEl || dialogEl.contains(document.activeElement) || !target) return;
+		target.focus({ preventScroll: true });
+		// `preventScroll` above stops the page from jumping, but the tab strip
+		// itself scrolls (sideways at ≤600px) — bring the focused tab into view.
+		target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+	});
 
 	function requireFinanceMetrics(): FinanceMetrics {
 		if (financeMetrics === null) {
@@ -170,6 +197,7 @@
 		data-focused-finance-loan={panelId === 'finance'
 			? (focusedFinanceLoanId ?? undefined)
 			: undefined}
+		bind:this={dialogEl}
 		{@attach focusTrap}
 	>
 		{#if panelId !== 'productChains'}
@@ -246,9 +274,10 @@
 					type="button"
 					aria-label={item.label}
 					title={`${item.label} (${item.shortcut})`}
+					data-panel-id={item.id}
 					aria-current={panelId === item.id ? 'page' : undefined}
 					onclick={() => {
-						if (panelId !== item.id) onSelectPanel(item.id);
+						if (panelId !== item.id) onSelectPanel?.(item.id);
 					}}
 				>
 					<HudIcon name={item.id} /><span>{item.label}</span>
@@ -258,7 +287,16 @@
 		<div class="tower-content">
 			{#key panelId}
 				{#if panelId === 'dashboard'}
-					<Scorecard {i18n} scorecard={panelGame.scorecard} />
+					<div class="dashboard-surfaces">
+						<DailyResultSummary
+							{i18n}
+							view={dailyResultView}
+							{currentCash}
+							onOpenReports={onSelectPanel ? () => onSelectPanel('reports') : undefined}
+							onOpenFinance={onSelectPanel ? () => onSelectPanel('finance') : undefined}
+						/>
+						<Scorecard {i18n} scorecard={panelGame.scorecard} />
+					</div>
 				{:else if panelId === 'policies'}
 					<PolicyPanel
 						{i18n}
@@ -477,7 +515,8 @@
 		gap: 1rem;
 	}
 
-	.staff-surfaces {
+	.staff-surfaces,
+	.dashboard-surfaces {
 		display: grid;
 		gap: 1rem;
 	}

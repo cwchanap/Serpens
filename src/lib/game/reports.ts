@@ -35,6 +35,72 @@ export interface ReportSummary {
 	thirtyDay: ReportWindowSummary;
 }
 
+export type DailyCashContributorKind =
+	| 'import-spend'
+	| 'principal-repaid'
+	| 'interest-paid'
+	| 'principal-borrowed';
+
+export interface DailyCashContributor {
+	kind: DailyCashContributorKind;
+	amount: number;
+}
+
+export interface DailyResultComparison {
+	previousDay: number;
+	revenueDelta: number;
+	operatingIncomeDelta: number;
+	netCashChangeDelta: number;
+}
+
+export interface DailyResultView {
+	latest: DailyReport;
+	comparison: DailyResultComparison | null;
+	contributors: DailyCashContributor[];
+}
+
+const DAILY_CASH_CONTRIBUTOR_ORDER: readonly DailyCashContributorKind[] = [
+	'import-spend',
+	'principal-repaid',
+	'interest-paid',
+	'principal-borrowed'
+];
+
+export function buildDailyResultView(reports: readonly DailyReport[]): DailyResultView | null {
+	const latest = reports.at(-1);
+	if (!latest) {
+		return null;
+	}
+
+	const previous = reports.at(-2);
+	const comparison = previous
+		? {
+				previousDay: previous.day,
+				revenueDelta: latest.revenue - previous.revenue,
+				operatingIncomeDelta: latest.operatingIncome - previous.operatingIncome,
+				netCashChangeDelta: latest.netCashChange - previous.netCashChange
+			}
+		: null;
+
+	const amounts: Record<DailyCashContributorKind, number> = {
+		'import-spend': -getImportSpend(latest),
+		'principal-repaid': -latest.principalRepaid,
+		'interest-paid': -latest.interestPaid,
+		'principal-borrowed': latest.principalBorrowed
+	};
+	const contributors = DAILY_CASH_CONTRIBUTOR_ORDER.map((kind) => ({
+		kind,
+		amount: amounts[kind]
+	}))
+		// The design filters exact zeros only; presentation (rounding, precision)
+		// belongs to the formatter, not this selection logic.
+		.filter((contributor) => contributor.amount !== 0)
+		.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+		.slice(0, 2);
+
+	return { latest, comparison, contributors };
+}
+
 export function clampScore(value: number): number {
 	if (!Number.isFinite(value)) {
 		return 0;
@@ -102,7 +168,7 @@ function summarizeWindow(reports: DailyReport[], windowSize: number): ReportWind
 	};
 }
 
-function getImportSpend(report: DailyReport): number {
+export function getImportSpend(report: DailyReport): number {
 	const productionImportSpend = report.productionReport.importSpend;
 	const detailedImportSpend =
 		report.storeReports.reduce((sum, storeReport) => sum + storeReport.importSpend, 0) +

@@ -109,6 +109,13 @@ export const zhHant = {
 		tileHeading: '地塊 {x}, {y}',
 		storeVitals: '店鋪指標',
 		revenuePerDay: '每日營收',
+		storeResult: {
+			label: '店鋪營業損益',
+			day: '第 {day} 天',
+			scopeSummary: '此結果包含的項目',
+			scopeIncluded: '僅採計此店鋪報告的毛利、店鋪營運成本與庫存損失。',
+			scopeExcluded: '外部進口以及共用的薪資、生產、物流與融資成本不包含在此店鋪結果內。'
+		},
 		stockHealth: '庫存健康度',
 		staffMorale: '員工士氣',
 		level: '等級 {level} / {max}',
@@ -392,6 +399,7 @@ export const zhHant = {
 			operatingIncome: '營業利益',
 			operatingCashFlow: '營業現金流',
 			financingCashFlow: '融資現金流',
+			netCashChange: '現金淨變動',
 			revenue: '營收',
 			cashAfter: '結束現金',
 			principalBorrowed: '借入本金',
@@ -2010,6 +2018,21 @@ export const zhHant = {
 			lockedUntilRetail: '先開設零售店才能解鎖建設。',
 			unknownBuildingType: '未知的工業建築類型',
 			requiresCash: '{buildingName} 需要 {amount} 現金。'
+		}
+	},
+	dailyResult: {
+		title: '每日結果',
+		empty: '尚未有已完成日的結果',
+		dayCompletedResult: '第 {day} 天完成結果',
+		vsDay: '與第 {day} 天比較',
+		currentCash: '目前現金',
+		explanation: {
+			operatingProfitCashFall:
+				'營業利益為正，但現金仍減少。外部進口反映於營業現金流；借款活動反映於融資現金流——請參閱上方已記錄的橋接明細。',
+			neutral: '營業利益衡量當日表現；現金淨變動則是實際進出的現金。'
+		},
+		contributors: {
+			title: '已記錄的現金影響項目'
 		}
 	}
 } as const satisfies Messages;

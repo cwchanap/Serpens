@@ -109,6 +109,15 @@ export const en = {
 		tileHeading: 'Tile {x}, {y}',
 		storeVitals: 'Store vitals',
 		revenuePerDay: 'Revenue/day',
+		storeResult: {
+			label: 'Store operating result',
+			day: 'Day {day}',
+			scopeSummary: 'What this result includes',
+			scopeIncluded:
+				"Uses this store report's gross margin, store operating costs, and inventory loss only.",
+			scopeExcluded:
+				'External imports and shared payroll, production, logistics, and financing are outside this store result.'
+		},
 		stockHealth: 'Stock health',
 		staffMorale: 'Staff morale',
 		level: 'Level {level} / {max}',
@@ -393,6 +402,7 @@ export const en = {
 			operatingIncome: 'Operating income',
 			operatingCashFlow: 'Operating cash flow',
 			financingCashFlow: 'Financing cash flow',
+			netCashChange: 'Net cash change',
 			revenue: 'Revenue',
 			cashAfter: 'Cash after',
 			principalBorrowed: 'Principal borrowed',
@@ -2069,6 +2079,22 @@ export const en = {
 			lockedUntilRetail: 'Open a retail store to unlock construction.',
 			unknownBuildingType: 'Unknown industrial building type',
 			requiresCash: '{buildingName} requires {amount} cash.'
+		}
+	},
+	dailyResult: {
+		title: 'Daily result',
+		empty: 'No completed-day results yet',
+		dayCompletedResult: 'Day {day} completed result',
+		vsDay: 'vs Day {day}',
+		currentCash: 'Current cash',
+		explanation: {
+			operatingProfitCashFall:
+				'Operating income was positive, but cash still fell. External imports are reflected in operating cash flow; loan activity is reflected in financing cash flow — see the recorded bridge above.',
+			neutral:
+				"Operating income measures the day's performance; net cash change is how much cash actually moved."
+		},
+		contributors: {
+			title: 'Recorded cash contributors'
 		}
 	}
 } as const;

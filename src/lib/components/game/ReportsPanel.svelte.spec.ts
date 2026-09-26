@@ -6,6 +6,7 @@ import {
 	createRouteDispatchAttempt,
 	emptyLogisticsReport
 } from '$lib/game/logisticsReport.testUtils';
+import { emptyProductionReport } from '$lib/game/productionReport.testUtils';
 import type {
 	DailyProductReport,
 	DailyProductionReport,
@@ -39,25 +40,6 @@ const store: Store = {
 	localDemand: 72,
 	managerQuality: 60
 };
-
-function emptyProductionReport(): DailyProductionReport {
-	return {
-		produced: [],
-		consumed: [],
-		importedInputs: [],
-		warehousePulls: [],
-		shopImports: [],
-		importSpend: 0,
-		operatingCost: 0,
-		overflowUnits: 0,
-		overflowCost: 0,
-		warehouseCapacity: 0,
-		warehouseUsed: 0,
-		railShipments: [],
-		railUsage: {},
-		cityInventories: []
-	};
-}
 
 const summary: ReportSummary = {
 	latest: {
@@ -952,6 +934,49 @@ describe('ReportsPanel', () => {
 		await expect.element(reportsRegion.getByText('Refinanced principal')).toBeVisible();
 		await expect.element(reportsRegion.getByText('Ending principal')).toBeVisible();
 		await expect.element(reportsRegion.getByText('Amount due')).not.toBeInTheDocument();
+	});
+
+	it('adds the net cash change row beside the operating and financing cash-flow rows', async () => {
+		expect.assertions(6);
+		const i18n = createI18n('en');
+		render(ReportsPanel, { i18n, stores: [], summary });
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
+
+		const row = page.getByTestId('reports-net-cash-change');
+		await expect.element(row).toBeVisible();
+		await expect.element(row).toHaveTextContent('Net cash change');
+		await expect
+			.element(row)
+			.toHaveTextContent(i18n.format.currency(summary.latest!.netCashChange));
+
+		const gridText = row.element().closest('.metrics')!.textContent ?? '';
+		const operatingAt = gridText.indexOf('Operating cash flow');
+		const financingAt = gridText.indexOf('Financing cash flow');
+		const netAt = gridText.indexOf('Net cash change');
+		expect(operatingAt).toBeGreaterThanOrEqual(0);
+		expect(financingAt).toBeGreaterThan(operatingAt);
+		expect(netAt).toBeGreaterThan(financingAt);
+	});
+
+	it('keeps the daily result card off the reports panel', async () => {
+		expect.assertions(3);
+		const game = createNewGame('convenience', 42);
+		game.reports = [summary.latest!];
+		render(ReportsPanel, {
+			i18n: createI18n('en'),
+			game,
+			stores: game.stores,
+			summary,
+			chartDays: 14
+		});
+		if (document.querySelector('[data-testid="report-details-toggle"]'))
+			await page.getByTestId('report-details-toggle').click();
+
+		const trend = page.getByTestId('revenue-trend');
+		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(1);
+		expect(document.querySelector('[data-testid="daily-result"]')).toBeNull();
+		expect(document.querySelector('[data-testid="daily-result-empty"]')).toBeNull();
 	});
 
 	it('lists the latest daily warnings when present', async () => {

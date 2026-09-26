@@ -59,6 +59,14 @@ function removeInert(element: Element): void {
 }
 
 /**
+ * Registry of currently-attached trap nodes, innermost/last-attached last.
+ * Document-level Tab handling needs it to stay stacking-safe: only the trap
+ * that owns the focused element (or the topmost trap, when focus escaped
+ * every dialog) acts on a Tab keypress.
+ */
+const activeTraps: HTMLElement[] = [];
+
+/**
  * Attachment that traps keyboard focus inside a dialog and restores focus to the
  * previously-focused element when the dialog is removed.
  *
@@ -78,6 +86,7 @@ function removeInert(element: Element): void {
  */
 export const focusTrap: Attachment<HTMLElement> = (node) => {
 	const previouslyFocused = document.activeElement as HTMLElement | null;
+	activeTraps.push(node);
 
 	// Inert the backdrop's siblings so screen-reader browse mode and the virtual
 	// cursor cannot reach underlying controls. `aria-modal` + Tab trapping alone
@@ -103,6 +112,16 @@ export const focusTrap: Attachment<HTMLElement> = (node) => {
 
 	function handleKeydown(event: KeyboardEvent): void {
 		if (event.key !== 'Tab') return;
+		const active = document.activeElement;
+		// Attachment order matches open order (a nested dialog always attaches
+		// after its parent), so the last trap containing focus is the deepest one
+		// and owns this keystroke. When focus escaped every dialog (e.g. the
+		// focused control was removed and focus fell to <body>), the topmost trap
+		// reclaims it — stacked dialogs never fight over the keystroke.
+		const containing = activeTraps.filter((trap) => trap.contains(active));
+		const owner = containing.length > 0 ? containing[containing.length - 1] : activeTraps.at(-1);
+		if (owner !== node) return;
+
 		const candidates = getFocusableCandidates(node);
 		if (candidates.length === 0) {
 			event.preventDefault();
@@ -112,7 +131,6 @@ export const focusTrap: Attachment<HTMLElement> = (node) => {
 
 		const first = candidates[0];
 		const last = candidates[candidates.length - 1];
-		const active = document.activeElement;
 
 		if (event.shiftKey) {
 			if (active === first || !node.contains(active)) {
@@ -127,10 +145,17 @@ export const focusTrap: Attachment<HTMLElement> = (node) => {
 		}
 	}
 
-	node.addEventListener('keydown', handleKeydown);
+	// Listening at the document level (not on the node) is what catches Tab
+	// after the focused element was removed mid-dialog: focus silently falls to
+	// <body>, and a keydown there never propagates through the dialog node.
+	document.addEventListener('keydown', handleKeydown);
 
 	return () => {
-		node.removeEventListener('keydown', handleKeydown);
+		// A double-detach would find no node and `indexOf` returns -1, which
+		// would splice the wrong (topmost) trap out — guard the index.
+		const index = activeTraps.indexOf(node);
+		if (index >= 0) activeTraps.splice(index, 1);
+		document.removeEventListener('keydown', handleKeydown);
 		for (const sibling of inerted) {
 			removeInert(sibling);
 		}

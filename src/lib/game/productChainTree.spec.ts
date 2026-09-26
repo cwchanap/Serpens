@@ -10,6 +10,7 @@ import {
 	getStoreFootprintPlacementBlockReason
 } from './storeFootprint';
 import { emptyLogisticsReport } from './logisticsReport.testUtils';
+import { emptyProductionReport } from './productionReport.testUtils';
 import type {
 	CityTile,
 	DailyProductReport,
@@ -85,28 +86,6 @@ function findAvailableRetailFootprintTile(game: GameState): CityTile {
 	return city.tiles.find(
 		(tile) => getStoreFootprintPlacementBlockReason(lookup, tile, occupiedTileIds) === null
 	)!;
-}
-
-function emptyProductionReport(
-	overrides: Partial<DailyProductionReport> = {}
-): DailyProductionReport {
-	return {
-		produced: [],
-		consumed: [],
-		importedInputs: [],
-		warehousePulls: [],
-		shopImports: [],
-		importSpend: 0,
-		operatingCost: 0,
-		overflowUnits: 0,
-		overflowCost: 0,
-		warehouseCapacity: 0,
-		warehouseUsed: 0,
-		railShipments: [],
-		railUsage: {},
-		...overrides,
-		cityInventories: overrides.cityInventories ?? []
-	};
 }
 
 function snackProductReport(overrides: Partial<DailyProductReport> = {}): DailyProductReport {

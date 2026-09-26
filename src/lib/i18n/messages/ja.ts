@@ -109,6 +109,14 @@ export const ja = {
 		tileHeading: 'タイル {x}, {y}',
 		storeVitals: '店舗指標',
 		revenuePerDay: '日次売上',
+		storeResult: {
+			label: '店舗営業損益',
+			day: '{day}日目',
+			scopeSummary: 'この結果に含まれるもの',
+			scopeIncluded: 'この店舗レポートの粗利益・店舗運営費・在庫ロスのみで計算しています。',
+			scopeExcluded:
+				'外部輸入や共有の人件費・生産・物流・資金調達コストは、この店舗の結果には含まれません。'
+		},
 		stockHealth: '在庫健全度',
 		staffMorale: '従業員士気',
 		level: 'レベル {level} / {max}',
@@ -393,6 +401,7 @@ export const ja = {
 			operatingIncome: '営業利益',
 			operatingCashFlow: '営業キャッシュフロー',
 			financingCashFlow: '財務キャッシュフロー',
+			netCashChange: '現金増減',
 			revenue: '売上',
 			cashAfter: '終了時現金',
 			principalBorrowed: '借入元本',
@@ -2037,6 +2046,21 @@ export const ja = {
 			lockedUntilRetail: '建設を解放するには小売店舗を開業してください。',
 			unknownBuildingType: '不明な工業施設タイプ',
 			requiresCash: '{buildingName} の建設には {amount} の現金が必要です。'
+		}
+	},
+	dailyResult: {
+		title: '1日の結果',
+		empty: '完了した日の結果はまだありません',
+		dayCompletedResult: '{day}日目の完了結果',
+		vsDay: '{day}日目との差分',
+		currentCash: '現在の現金',
+		explanation: {
+			operatingProfitCashFall:
+				'営業利益はプラスでしたが、現金は減少しました。外部輸入は営業キャッシュフローに、借入などの活動は財務キャッシュフローに反映されます。上の記録された橋渡しをご確認ください。',
+			neutral: '営業利益はその日の成果を示し、現金増減は実際に動いた現金の額を示します。'
+		},
+		contributors: {
+			title: '記録された現金増減の要因'
 		}
 	}
 } as const satisfies Messages;

@@ -7,7 +7,14 @@ import { getProductArt, getStoreArt } from '$lib/assets/gameArt';
 import { createNewGame } from '$lib/game/state';
 import { initializeStoreProducts } from '$lib/game/stock';
 import { createI18n, type I18nBundle } from '$lib/i18n';
-import type { CityTile, DailyStoreReport, GameState, ProductId, Store } from '$lib/game/types';
+import type {
+	CityTile,
+	DailyReport,
+	DailyStoreReport,
+	GameState,
+	ProductId,
+	Store
+} from '$lib/game/types';
 
 const tile: CityTile = {
 	id: 'harbor-city-1-1',
@@ -220,6 +227,121 @@ describe('TileInspector basic card', () => {
 		await expect.element(page.getByRole('tab', { name: 'Stock' })).not.toBeInTheDocument();
 		await expect.element(page.getByRole('tab', { name: 'Product Chain' })).not.toBeInTheDocument();
 		await expect.element(page.getByRole('tab', { name: 'Staff' })).not.toBeInTheDocument();
+	});
+});
+
+describe('TileInspector store operating result', () => {
+	const positiveReport: DailyStoreReport = { ...latestStoreReport, netIncome: 42 };
+	const gameWithReport = (day: number, storeReport: DailyStoreReport): GameState => ({
+		...defaultGame,
+		reports: [{ day, storeReports: [storeReport] } as unknown as DailyReport]
+	});
+
+	it('shows an em dash result without a day or scope disclosure when there is no store report', async () => {
+		expect.assertions(4);
+		renderInspector({ store });
+
+		const result = page.getByTestId('store-operating-result');
+		await expect.element(result).toHaveTextContent('—');
+		await expect.element(result).not.toHaveTextContent('$0');
+		await expect.element(page.getByText(/^Day \d/)).not.toBeInTheDocument();
+		await expect.element(page.getByText('What this result includes')).not.toBeInTheDocument();
+	});
+
+	it('shows a positive store result as an unsigned currency value', async () => {
+		expect.assertions(2);
+		renderInspector({ store, latestStoreReport: positiveReport });
+
+		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('$42');
+		await expect.element(page.getByText(/\+\$/)).not.toBeInTheDocument();
+	});
+
+	it('shows a negative store result as a currency value', async () => {
+		expect.assertions(1);
+		renderInspector({ store, latestStoreReport });
+
+		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('-$36');
+	});
+
+	it('labels both the revenue and the result with the completed day from the latest report', async () => {
+		expect.assertions(3);
+		renderInspector({ game: gameWithReport(12, latestStoreReport), store, latestStoreReport });
+
+		// Whitespace must separate the amount from the day so the line does not
+		// read as "-$36Day 12" to assistive tech and text extraction.
+		await expect.element(page.getByText('-$36 Day 12')).toBeVisible();
+		expect(page.getByText('Day 12', { exact: true }).elements()).toHaveLength(2);
+		await expect.element(page.getByText('Day 0')).not.toBeInTheDocument();
+	});
+
+	it('keeps the scope explanation behind a collapsed disclosure and expands it on demand', async () => {
+		expect.assertions(4);
+		renderInspector({ store, latestStoreReport });
+
+		const summary = page.getByText('What this result includes');
+		await expect.element(summary).toBeVisible();
+		await expect.element(page.getByText(/External imports and shared payroll/)).not.toBeVisible();
+		await summary.click();
+		await expect.element(page.getByText(/External imports and shared payroll/)).toBeVisible();
+		await expect
+			.element(page.getByText(/gross margin, store operating costs, and inventory loss only/))
+			.toBeVisible();
+	});
+
+	it('uses the newly selected store report only when another store is selected', async () => {
+		expect.assertions(4);
+		const baseProps = {
+			game: gameWithReport(9, latestStoreReport),
+			tile,
+			store,
+			latestStoreReport,
+			onOpenDetails: vi.fn(),
+			onClose: vi.fn(),
+			i18n: createI18n('en')
+		};
+		const instance = render(TileInspector, baseProps);
+		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('-$36');
+
+		const otherStore: Store = { ...store, id: 'store-2', name: 'Second Store' };
+		const otherReport: DailyStoreReport = {
+			...latestStoreReport,
+			storeId: otherStore.id,
+			netIncome: 57
+		};
+		instance.rerender({
+			...baseProps,
+			game: {
+				...defaultGame,
+				stores: [store, otherStore],
+				reports: [
+					{ day: 10, storeReports: [latestStoreReport, otherReport] } as unknown as DailyReport
+				]
+			},
+			store: otherStore,
+			latestStoreReport: otherReport
+		});
+		await expect.element(page.getByTestId('store-operating-result')).toHaveTextContent('$57');
+		await expect.element(page.getByTestId('store-operating-result')).not.toHaveTextContent('-$36');
+		expect(page.getByText('Day 10', { exact: true }).elements()).toHaveLength(2);
+	});
+
+	it('keeps the upgrade card reachable alongside the store result', async () => {
+		expect.assertions(3);
+		const level2Store: Store = { ...store, id: 'store-result-upgrade', level: 2 };
+		renderInspector({
+			game: {
+				...defaultGame,
+				cash: 100_000,
+				stores: [level2Store],
+				reports: [gameWithReport(4, latestStoreReport).reports[0]]
+			},
+			store: level2Store,
+			latestStoreReport
+		});
+
+		await expect.element(page.getByTestId('store-operating-result')).toBeVisible();
+		await expect.element(page.getByTestId('upgrade-card')).toBeVisible();
+		await expect.element(page.getByRole('button', { name: /Upgrade/i })).toBeEnabled();
 	});
 });
 

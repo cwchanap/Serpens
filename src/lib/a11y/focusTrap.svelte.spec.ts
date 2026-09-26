@@ -44,20 +44,24 @@ describe('focusTrap', () => {
 				'</div>'
 		);
 		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
-
-		focusTrap(node);
+		// Detach every trap: `activeTraps` is module-global, so a leaked listener
+		// would let a detached trap still compete for later tests' keydowns.
+		const detach = focusTrap(node) as () => void;
 
 		expect(document.activeElement).toBe(node.querySelector('#first'));
+
+		detach();
 	});
 
 	it('focuses the container itself when it has no focusable children but is focusable', () => {
 		expect.assertions(1);
 		const dialog = mountDialog('<div role="dialog" tabindex="-1"></div>');
 		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
-
-		focusTrap(node);
+		const detach = focusTrap(node) as () => void;
 
 		expect(document.activeElement).toBe(node);
+
+		detach();
 	});
 
 	it('wraps Tab from the last focusable back to the first', () => {
@@ -408,5 +412,79 @@ describe('focusTrap', () => {
 		expect(document.activeElement).toBe(middle);
 
 		detach();
+	});
+
+	it('reclaims Tab from document.body after the focused element is removed mid-dialog', () => {
+		expect.assertions(2);
+		const dialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="first">First</button>' +
+				'<button id="gone">Gone</button>' +
+				'</div>'
+		);
+		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detach = focusTrap(node) as () => void;
+
+		const gone = node.querySelector<HTMLButtonElement>('#gone')!;
+		gone.focus();
+		gone.remove();
+		// Removing the focused element silently drops focus to <body>; a keydown
+		// there never reaches a node-level listener, so Tab must be caught at the
+		// document level and focus must come back into the dialog.
+		expect(document.activeElement).toBe(document.body);
+		document.body.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(node.querySelector('#first'));
+
+		detach();
+	});
+
+	it('lets the topmost dialog own Tab when dialogs stack as siblings', () => {
+		expect.assertions(7);
+		const outerDialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="outer-first">Outer first</button>' +
+				'</div>'
+		);
+		const outer = outerDialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detachOuter = focusTrap(outer) as () => void;
+
+		const innerDialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="inner-first">Inner first</button>' +
+				'<button id="inner-last">Inner last</button>' +
+				'</div>'
+		);
+		const inner = innerDialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detachInner = focusTrap(inner) as () => void;
+
+		const innerLast = inner.querySelector<HTMLButtonElement>('#inner-last')!;
+		innerLast.focus();
+		inner.dispatchEvent(tabKey(false));
+		// The inner trap wraps; the outer trap must not steal the keystroke.
+		expect(document.activeElement).toBe(inner.querySelector('#inner-first'));
+
+		// A Shift+Tab reaching the document while focus sits in the inner dialog
+		// still belongs to the inner trap — the outer trap must not reclaim it.
+		document.body.dispatchEvent(tabKey(true));
+		expect(document.activeElement).toBe(inner.querySelector('#inner-last'));
+		expect(document.activeElement).not.toBe(outer.querySelector('#outer-first'));
+
+		// With focus genuinely on <body>, both traps compete for the keystroke:
+		// the topmost (inner) must win so stacked dialogs never fight over it.
+		(document.activeElement as HTMLElement).blur();
+		expect(document.activeElement).toBe(document.body);
+		document.body.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(inner.querySelector('#inner-first'));
+
+		// Once the inner dialog closes, the outer trap takes over body-level Tab.
+		detachInner();
+		// detachInner restored focus into the outer dialog; drop it back to <body>
+		// so the outer trap is exercised through the same fallback path.
+		(document.activeElement as HTMLElement)?.blur();
+		expect(document.activeElement).toBe(document.body);
+		document.body.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(outer.querySelector('#outer-first'));
+
+		detachOuter();
 	});
 });
