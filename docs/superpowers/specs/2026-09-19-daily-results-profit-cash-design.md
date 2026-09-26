@@ -253,7 +253,7 @@ The Daily Result card receives current cash separately from the report.
 
 Rules:
 
-- “Current cash” comes from live `panelGame.cash`;
+- “Current cash” comes from the page as `game ? game.cash : null` — live game cash only; `null` (starter map, no company yet) hides the line rather than fabricating starter cash;
 - the latest completed result comes only from the latest `DailyReport`;
 - report `cashAfter` remains detail evidence in Reports;
 - spending/upgrading after day close can change current cash without changing the completed result;
@@ -386,7 +386,7 @@ No dismissal state, cache, global store, telemetry, or backend.
 - signed negative values remain readable;
 - comparison always names previous day;
 - navigation uses normal buttons;
-- no focus stealing;
+- focus is never stolen arbitrarily: after a keyed panel swap destroys the focused control and focus falls to `<body>`, the host recovers focus onto the new panel tab (the document-level trap would only reclaim it on the next Tab);
 - contributor meaning is available as text, not color;
 - metric grid collapses cleanly at <=600px;
 - keyboard navigation continues through existing management tabs/actions.

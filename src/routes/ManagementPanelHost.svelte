@@ -149,8 +149,10 @@
 		// The {#key panelId} block below destroys its contents on every panel
 		// switch — including whatever control initiated it (the dashboard card's
 		// Reports/Finance actions, or a keyboard shortcut pressed from inside a
-		// panel). When that happens focus falls back to <body>, outside the
-		// focusTrap's keydown listener, so hand it to the now-current tab.
+		// panel). When that happens focus falls back to <body>. The focusTrap's
+		// keydown listener lives on the document, so a body-level Tab IS caught
+		// and reclaimed — but only on the next keypress; focus would sit dead on
+		// <body> until then. Hand it to the now-current tab right away.
 		// `panelId` must be read unconditionally so this effect re-runs on swap —
 		// build the selector before the optional chain, because `dialogEl?.`
 		// short-circuits and would otherwise skip the read while dialogEl is
