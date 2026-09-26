@@ -132,6 +132,29 @@ describe('DailyResultSummary', () => {
 		await expect.element(netCashDelta).toHaveTextContent('vs Day 6');
 	});
 
+	it('renders a flat day as an explicit $0 delta instead of hiding it', async () => {
+		expect.assertions(2);
+		render(DailyResultSummary, {
+			view: makeView(
+				{},
+				{
+					previousDay: 6,
+					revenueDelta: 0,
+					operatingIncomeDelta: 0,
+					netCashChangeDelta: 0
+				}
+			),
+			currentCash: null,
+			i18n
+		});
+
+		// `signedCurrency` uses signDisplay 'exceptZero', so a flat day renders
+		// '$0' — and must render at all (delta === 0 is not "no comparison").
+		const revenueDelta = page.getByTestId('daily-result-revenue-delta');
+		await expect.element(revenueDelta).toBeVisible();
+		await expect.element(revenueDelta).toHaveTextContent('$0');
+	});
+
 	it('renders negative metric values with the currency formatter', async () => {
 		expect.assertions(1);
 		render(DailyResultSummary, {
@@ -171,6 +194,34 @@ describe('DailyResultSummary', () => {
 			.toBeVisible();
 	});
 
+	it('uses the neutral copy when operating income is exactly zero', async () => {
+		expect.assertions(2);
+		render(DailyResultSummary, {
+			view: makeView({ operatingIncome: 0, netCashChange: -50 }),
+			currentCash: null,
+			i18n
+		});
+
+		await expect
+			.element(page.getByText(/Operating income measures the day's performance/))
+			.toBeVisible();
+		expect(page.getByText(/cash still fell/).elements()).toHaveLength(0);
+	});
+
+	it('uses the neutral copy when net cash change is exactly zero', async () => {
+		expect.assertions(2);
+		render(DailyResultSummary, {
+			view: makeView({ operatingIncome: 300, netCashChange: 0 }),
+			currentCash: null,
+			i18n
+		});
+
+		await expect
+			.element(page.getByText(/Operating income measures the day's performance/))
+			.toBeVisible();
+		expect(page.getByText(/cash still fell/).elements()).toHaveLength(0);
+	});
+
 	it('renders the neutral distinction when operating income and cash move together', async () => {
 		expect.assertions(1);
 		render(DailyResultSummary, { view: makeView(), currentCash: null, i18n });
@@ -197,6 +248,24 @@ describe('DailyResultSummary', () => {
 		await expect.element(items.nth(0)).toHaveTextContent('External imports');
 		await expect.element(items.nth(0)).toHaveTextContent('-$400');
 		await expect.element(items.nth(1)).toHaveTextContent('Principal borrowed');
+	});
+
+	it('labels principal repaid and interest paid contributors', async () => {
+		expect.assertions(4);
+		render(DailyResultSummary, {
+			view: makeView({}, null, [
+				{ kind: 'principal-repaid', amount: -250 },
+				{ kind: 'interest-paid', amount: -5 }
+			]),
+			currentCash: null,
+			i18n
+		});
+
+		const items = page.getByTestId('daily-result-contributor');
+		expect(items.elements()).toHaveLength(2);
+		await expect.element(items.nth(0)).toHaveTextContent('Principal repaid');
+		await expect.element(items.nth(0)).toHaveTextContent('-$250');
+		await expect.element(items.nth(1)).toHaveTextContent('Interest paid');
 	});
 
 	it('omits the contributor list when contributors are empty', async () => {

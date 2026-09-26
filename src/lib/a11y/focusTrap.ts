@@ -151,7 +151,10 @@ export const focusTrap: Attachment<HTMLElement> = (node) => {
 	document.addEventListener('keydown', handleKeydown);
 
 	return () => {
-		activeTraps.splice(activeTraps.indexOf(node), 1);
+		// A double-detach would find no node and `indexOf` returns -1, which
+		// would splice the wrong (topmost) trap out — guard the index.
+		const index = activeTraps.indexOf(node);
+		if (index >= 0) activeTraps.splice(index, 1);
 		document.removeEventListener('keydown', handleKeydown);
 		for (const sibling of inerted) {
 			removeInert(sibling);

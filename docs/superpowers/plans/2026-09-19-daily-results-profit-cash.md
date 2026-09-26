@@ -369,7 +369,7 @@ const dailyResultView = $derived(buildDailyResultView(panelGame.reports));
 Pass:
 
 - `view={dailyResultView}`;
-- `currentCash={panelGame.cash}`;
+- `currentCash` forwarded from the page as `game ? game.cash : null` (null on the starter map hides the line);
 - Reports action → `onSelectPanel('reports')`;
 - Finance action → `onSelectPanel('finance')`.
 
@@ -415,7 +415,7 @@ Do not change:
 - market/logistics/modifier sections;
 - existing `reportsPanel.empty` behavior.
 
-The only Reports presentation change is the Net cash change row in the existing details grid.
+The only Reports presentation change is the Net cash change row in the existing details grid. The existing Imports row additionally reads through the exported `getImportSpend(summary.latest)` helper instead of raw `report.importSpend`, keeping the row in agreement with report-window totals for hand-built fixtures too.
 
 ### 3.5 Focused composition/report tests
 

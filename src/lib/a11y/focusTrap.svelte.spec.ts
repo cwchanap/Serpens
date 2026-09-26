@@ -44,20 +44,24 @@ describe('focusTrap', () => {
 				'</div>'
 		);
 		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
-
-		focusTrap(node);
+		// Detach every trap: `activeTraps` is module-global, so a leaked listener
+		// would let a detached trap still compete for later tests' keydowns.
+		const detach = focusTrap(node) as () => void;
 
 		expect(document.activeElement).toBe(node.querySelector('#first'));
+
+		detach();
 	});
 
 	it('focuses the container itself when it has no focusable children but is focusable', () => {
 		expect.assertions(1);
 		const dialog = mountDialog('<div role="dialog" tabindex="-1"></div>');
 		const node = dialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
-
-		focusTrap(node);
+		const detach = focusTrap(node) as () => void;
 
 		expect(document.activeElement).toBe(node);
+
+		detach();
 	});
 
 	it('wraps Tab from the last focusable back to the first', () => {
@@ -435,7 +439,7 @@ describe('focusTrap', () => {
 	});
 
 	it('lets the topmost dialog own Tab when dialogs stack as siblings', () => {
-		expect.assertions(3);
+		expect.assertions(7);
 		const outerDialog = mountDialog(
 			'<div role="dialog" tabindex="-1">' +
 				'<button id="outer-first">Outer first</button>' +
@@ -465,7 +469,22 @@ describe('focusTrap', () => {
 		expect(document.activeElement).toBe(inner.querySelector('#inner-last'));
 		expect(document.activeElement).not.toBe(outer.querySelector('#outer-first'));
 
+		// With focus genuinely on <body>, both traps compete for the keystroke:
+		// the topmost (inner) must win so stacked dialogs never fight over it.
+		(document.activeElement as HTMLElement).blur();
+		expect(document.activeElement).toBe(document.body);
+		document.body.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(inner.querySelector('#inner-first'));
+
+		// Once the inner dialog closes, the outer trap takes over body-level Tab.
 		detachInner();
+		// detachInner restored focus into the outer dialog; drop it back to <body>
+		// so the outer trap is exercised through the same fallback path.
+		(document.activeElement as HTMLElement)?.blur();
+		expect(document.activeElement).toBe(document.body);
+		document.body.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(outer.querySelector('#outer-first'));
+
 		detachOuter();
 	});
 });

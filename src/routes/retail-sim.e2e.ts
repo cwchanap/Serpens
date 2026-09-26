@@ -643,8 +643,10 @@ function groceryProductPressureGame(): GameState {
 function dailyResultsJourneyGame(): GameState {
 	// Two closed days give the dashboard a latest (day 2) + previous (day 1)
 	// report from the deterministic convenience seed. The post-close store
-	// upgrade is a real spend that moves live cash (23,880) away from the last
-	// report's cashAfter (31,880) so profit vs cash separation is observable.
+	// upgrade is a real spend that separates live cash (23,880) from the last
+	// report's cashAfter (31,880) so live-vs-recorded cash is observable
+	// (day 2 itself is operating income −171 / net cash change −141, so the
+	// "profit up, cash down" sentence does not render on this seed).
 	let game = createNewGame('convenience', 42);
 	game = simulateDay(game);
 	game = simulateDay(game);
