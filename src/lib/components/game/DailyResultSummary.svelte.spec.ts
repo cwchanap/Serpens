@@ -172,13 +172,16 @@ describe('DailyResultSummary', () => {
 		expect.assertions(6);
 		render(DailyResultSummary, { view: makeView(), currentCash: null, i18n });
 
-		const bridge = page.getByTestId('daily-result-bridge');
-		await expect.element(bridge).toHaveTextContent('Operating cash flow');
-		await expect.element(bridge).toHaveTextContent('Financing cash flow');
-		await expect.element(bridge).toHaveTextContent('Net cash change');
-		await expect.element(bridge).toHaveTextContent('$200');
-		await expect.element(bridge).toHaveTextContent('-$5');
-		await expect.element(bridge).toHaveTextContent('$195');
+		// Each amount is pinned to its own row so swapped values cannot pass.
+		const operating = page.getByTestId('daily-result-bridge-operating');
+		await expect.element(operating).toHaveTextContent('Operating cash flow');
+		await expect.element(operating).toHaveTextContent('$200');
+		const financing = page.getByTestId('daily-result-bridge-financing');
+		await expect.element(financing).toHaveTextContent('Financing cash flow');
+		await expect.element(financing).toHaveTextContent('-$5');
+		const net = page.getByTestId('daily-result-bridge-net');
+		await expect.element(net).toHaveTextContent('Net cash change');
+		await expect.element(net).toHaveTextContent('$195');
 	});
 
 	it('explains positive operating income against a falling cash balance', async () => {
@@ -231,6 +234,20 @@ describe('DailyResultSummary', () => {
 			.toBeVisible();
 	});
 
+	it('uses the neutral copy on a losing day where income and cash fell together', async () => {
+		expect.assertions(2);
+		render(DailyResultSummary, {
+			view: makeView({ operatingIncome: -45, netCashChange: -50 }),
+			currentCash: null,
+			i18n
+		});
+
+		await expect
+			.element(page.getByText(/Operating income measures the day's performance/))
+			.toBeVisible();
+		expect(page.getByText(/cash still fell/).elements()).toHaveLength(0);
+	});
+
 	it('renders the given contributors in order', async () => {
 		expect.assertions(5);
 		render(DailyResultSummary, {
@@ -245,12 +262,12 @@ describe('DailyResultSummary', () => {
 		await expect.element(page.getByText('Recorded cash contributors')).toBeVisible();
 		const items = page.getByTestId('daily-result-contributor');
 		expect(items.elements()).toHaveLength(2);
-		await expect.element(items.nth(0)).toHaveTextContent('External imports');
+		await expect.element(items.nth(0)).toHaveTextContent('Import spend');
 		await expect.element(items.nth(0)).toHaveTextContent('-$400');
-		await expect.element(items.nth(1)).toHaveTextContent('Principal borrowed');
+		await expect.element(items.nth(1)).toHaveTextContent('Loan proceeds');
 	});
 
-	it('labels principal repaid and interest paid contributors', async () => {
+	it('labels principal repayment and interest payment contributors', async () => {
 		expect.assertions(4);
 		render(DailyResultSummary, {
 			view: makeView({}, null, [
@@ -263,9 +280,9 @@ describe('DailyResultSummary', () => {
 
 		const items = page.getByTestId('daily-result-contributor');
 		expect(items.elements()).toHaveLength(2);
-		await expect.element(items.nth(0)).toHaveTextContent('Principal repaid');
+		await expect.element(items.nth(0)).toHaveTextContent('Principal repayment');
 		await expect.element(items.nth(0)).toHaveTextContent('-$250');
-		await expect.element(items.nth(1)).toHaveTextContent('Interest paid');
+		await expect.element(items.nth(1)).toHaveTextContent('Interest payment');
 	});
 
 	it('omits the contributor list when contributors are empty', async () => {

@@ -848,9 +848,10 @@ describe('ReportsPanel', () => {
 				...summary,
 				latest: {
 					...summary.latest!,
+					importSpend: 222,
 					productionReport: {
 						...emptyProductionReport(),
-						importSpend: 222,
+						importSpend: 456,
 						overflowUnits: 8,
 						overflowCost: 44
 					}
@@ -865,9 +866,12 @@ describe('ReportsPanel', () => {
 		await expect
 			.element(reportsRegion.getByText('External imports', { exact: true }))
 			.toBeVisible();
-		await expect.element(reportsRegion.getByText('$456')).toBeVisible();
+		// Detail spend ($456) exceeds raw importSpend ($222), so the row is locked
+		// to getImportSpend's max(): reverting to the raw field would render a
+		// second $222 and fail the absence check below.
+		expect(reportsRegion.getByText('$456').elements()).toHaveLength(2);
+		expect(reportsRegion.getByText('$222').elements()).toHaveLength(0);
 		await expect.element(reportsRegion.getByText('Production external imports')).toBeVisible();
-		await expect.element(reportsRegion.getByText('$222')).toBeVisible();
 		await expect.element(reportsRegion.getByText('City inventory overflow')).toBeVisible();
 		await expect.element(reportsRegion.getByText('$44')).toBeVisible();
 	});

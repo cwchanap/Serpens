@@ -93,7 +93,9 @@ export function buildDailyResultView(reports: readonly DailyReport[]): DailyResu
 		amount: amounts[kind]
 	}))
 		// The design filters exact zeros only; presentation (rounding, precision)
-		// belongs to the formatter, not this selection logic.
+		// belongs to the formatter, not this selection logic. Ties in |amount|
+		// resolve to DAILY_CASH_CONTRIBUTOR_ORDER via Array.prototype.sort's
+		// stability, so ordering stays deterministic.
 		.filter((contributor) => contributor.amount !== 0)
 		.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
 		.slice(0, 2);

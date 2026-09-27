@@ -2094,7 +2094,14 @@ export const en = {
 				"Operating income measures the day's performance; net cash change is how much cash actually moved."
 		},
 		contributors: {
-			title: 'Recorded cash contributors'
+			title: 'Recorded cash contributors',
+			// Cash-direction wording: each label names a cash movement, so the
+			// signed amount on the row is expected and cannot collide with the
+			// unsigned activity totals shown under the same names on Reports.
+			importSpend: 'Import spend',
+			principalRepayment: 'Principal repayment',
+			interestPayment: 'Interest payment',
+			loanProceeds: 'Loan proceeds'
 		}
 	}
 } as const;

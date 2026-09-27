@@ -13,10 +13,10 @@
 	let { view, currentCash, i18n, onOpenReports, onOpenFinance }: Props = $props();
 
 	const CONTRIBUTOR_LABEL_KEYS: Record<DailyCashContributorKind, TranslationKey> = {
-		'import-spend': 'reportsPanel.metrics.imports',
-		'principal-repaid': 'reportsPanel.metrics.principalRepaid',
-		'interest-paid': 'reportsPanel.metrics.interestPaid',
-		'principal-borrowed': 'reportsPanel.metrics.principalBorrowed'
+		'import-spend': 'dailyResult.contributors.importSpend',
+		'principal-repaid': 'dailyResult.contributors.principalRepayment',
+		'interest-paid': 'dailyResult.contributors.interestPayment',
+		'principal-borrowed': 'dailyResult.contributors.loanProceeds'
 	};
 
 	const headlineMetrics = $derived.by(() => {
@@ -89,15 +89,15 @@
 
 	{#if view !== null}
 		<div class="bridge" data-testid="daily-result-bridge">
-			<div class="metric">
+			<div class="metric" data-testid="daily-result-bridge-operating">
 				<span class="metric-label">{i18n.t('reportsPanel.metrics.operatingCashFlow')}</span>
 				<span class="metric-value">{i18n.format.currency(view.latest.operatingCashFlow)}</span>
 			</div>
-			<div class="metric">
+			<div class="metric" data-testid="daily-result-bridge-financing">
 				<span class="metric-label">{i18n.t('reportsPanel.metrics.financingCashFlow')}</span>
 				<span class="metric-value">{i18n.format.currency(view.latest.financingCashFlow)}</span>
 			</div>
-			<div class="metric">
+			<div class="metric" data-testid="daily-result-bridge-net">
 				<span class="metric-label">{i18n.t('reportsPanel.metrics.netCashChange')}</span>
 				<span class="metric-value">{i18n.format.currency(view.latest.netCashChange)}</span>
 			</div>

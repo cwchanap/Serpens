@@ -2032,7 +2032,11 @@ export const zhHant = {
 			neutral: '營業利益衡量當日表現；現金淨變動則是實際進出的現金。'
 		},
 		contributors: {
-			title: '已記錄的現金影響項目'
+			title: '已記錄的現金影響項目',
+			importSpend: '進口支出',
+			principalRepayment: '本金償還',
+			interestPayment: '利息支付',
+			loanProceeds: '借款所得'
 		}
 	}
 } as const satisfies Messages;
