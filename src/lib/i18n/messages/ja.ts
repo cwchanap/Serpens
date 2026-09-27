@@ -2060,7 +2060,11 @@ export const ja = {
 			neutral: '営業利益はその日の成果を示し、現金増減は実際に動いた現金の額を示します。'
 		},
 		contributors: {
-			title: '記録された現金増減の要因'
+			title: '記録された現金増減の要因',
+			importSpend: '輸入支出',
+			principalRepayment: '元本返済',
+			interestPayment: '利息支払',
+			loanProceeds: '借入金受取'
 		}
 	}
 } as const satisfies Messages;

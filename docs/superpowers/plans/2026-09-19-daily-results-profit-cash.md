@@ -592,30 +592,30 @@ Do not expand HPA-282 into accounting fixes if an unrelated existing failure app
 
 ## Completion checklist
 
-- [ ] `buildDailyResultView` is pure and lives in `reports.ts`.
-- [ ] `ReportSummary` shape remains unchanged.
-- [ ] Latest + previous report only; no new history/window.
-- [ ] Three distinct headline metrics are explicitly dated; company `netIncome` is not shown as a duplicate of operating cash flow.
-- [ ] Comparisons are absolute signed deltas with explicit previous day.
-- [ ] No report = no fabricated zeros.
-- [ ] Current cash is visibly separate and live.
-- [ ] Net cash change is consumed from the report, never wallet-derived.
-- [ ] Operating + financing cash flow exactly reconcile displayed net cash change.
-- [ ] Contributor evidence is at most two, deterministic, and not added twice.
-- [ ] Interest accrued is not presented as paid cash.
-- [ ] Principal repayment is not presented as another operating expense.
-- [ ] Dashboard host derives one `DailyResultView | null`; DailyResultSummary is presentation-only.
-- [ ] Dashboard reuses existing panel navigation.
-- [ ] Dashboard card uses shared `signedCurrency`, not a local formatter.
-- [ ] Dashboard card testids are pinned and current cash targets the labeled block.
-- [ ] Reports has no duplicate Daily Result card; it adds only Net cash change to the existing detail bridge.
-- [ ] Reports keeps existing 7/14/30 windows and empty/detail behavior.
-- [ ] `getImportSpend` is exported/reused and detail>raw reconciliation is tested.
-- [ ] Whole-catalog locale-key parity is enforced; no HPA-282 key is allowlisted.
-- [ ] Store inspector uses `DailyStoreReport.netIncome` directly.
-- [ ] Store result disclosure explicitly excludes import purchases and shared/company-level costs behind a compact disclosure.
-- [ ] Existing <=600px Upgrade/Open Details reachability stays green with store result present.
-- [ ] EN / JA / zh-Hant copy is complete.
-- [ ] Narrow/keyboard smoke passes.
-- [ ] No schema, persistence, simulation, finance-engine, allocation, backend, art, or SFX work.
-- [ ] Full gates pass.
+- [x] `buildDailyResultView` is pure and lives in `reports.ts`.
+- [x] `ReportSummary` shape remains unchanged.
+- [x] Latest + previous report only; no new history/window.
+- [x] Three distinct headline metrics are explicitly dated; company `netIncome` is not shown as a duplicate of operating cash flow.
+- [x] Comparisons are absolute signed deltas with explicit previous day.
+- [x] No report = no fabricated zeros.
+- [x] Current cash is visibly separate and live.
+- [x] Net cash change is consumed from the report, never wallet-derived.
+- [x] Operating + financing cash flow exactly reconcile displayed net cash change.
+- [x] Contributor evidence is at most two, deterministic, and not added twice.
+- [x] Interest accrued is not presented as paid cash.
+- [x] Principal repayment is not presented as another operating expense.
+- [x] Dashboard host derives one `DailyResultView | null`; DailyResultSummary is presentation-only.
+- [x] Dashboard reuses existing panel navigation.
+- [x] Dashboard card uses shared `signedCurrency`, not a local formatter.
+- [x] Dashboard card testids are pinned and current cash targets the labeled block.
+- [x] Reports has no duplicate Daily Result card; it adds only Net cash change to the existing detail bridge.
+- [x] Reports keeps existing 7/14/30 windows and empty/detail behavior.
+- [x] `getImportSpend` is exported/reused and detail>raw reconciliation is tested.
+- [x] Whole-catalog locale-key parity is enforced; no HPA-282 key is allowlisted.
+- [x] Store inspector uses `DailyStoreReport.netIncome` directly.
+- [x] Store result disclosure explicitly excludes import purchases and shared/company-level costs behind a compact disclosure.
+- [x] Existing <=600px Upgrade/Open Details reachability stays green with store result present.
+- [x] EN / JA / zh-Hant copy is complete.
+- [x] Narrow/keyboard smoke passes.
+- [x] No schema, persistence, simulation, finance-engine, allocation, backend, art, or SFX work.
+- [x] Full gates pass.

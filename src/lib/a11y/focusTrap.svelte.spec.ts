@@ -487,4 +487,37 @@ describe('focusTrap', () => {
 
 		detachOuter();
 	});
+
+	it('keeps the outer trap registered when an inner trap detaches twice', () => {
+		expect.assertions(2);
+		const outerDialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="outer-first">Outer first</button>' +
+				'</div>'
+		);
+		const outer = outerDialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detachOuter = focusTrap(outer) as () => void;
+
+		const innerDialog = mountDialog(
+			'<div role="dialog" tabindex="-1">' +
+				'<button id="inner-first">Inner first</button>' +
+				'</div>'
+		);
+		const inner = innerDialog.querySelector<HTMLDivElement>('[role="dialog"]')!;
+		const detachInner = focusTrap(inner) as () => void;
+
+		// A double detach (index -1) must not splice the topmost — here the
+		// outer — trap out of the registry; that would orphan body-level Tab.
+		detachInner();
+		detachInner();
+		innerDialog.remove();
+
+		// Focus escaped to <body>; only a still-registered outer trap reclaims it.
+		(document.activeElement as HTMLElement)?.blur();
+		expect(document.activeElement).toBe(document.body);
+		document.body.dispatchEvent(tabKey(false));
+		expect(document.activeElement).toBe(outer.querySelector('#outer-first'));
+
+		detachOuter();
+	});
 });

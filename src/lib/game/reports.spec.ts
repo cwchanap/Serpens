@@ -229,6 +229,24 @@ describe('reports', () => {
 			expect(view?.latest.day).toBe(2);
 		});
 
+		test('compares against the middle day once three reports exist', () => {
+			expect.assertions(1);
+			const view = buildDailyResultView([
+				report(1, 300),
+				report(2, 320, { operatingIncome: 350, financingCashFlow: -9 }),
+				report(3, 340, { operatingIncome: 280, financingCashFlow: -14 })
+			]);
+
+			// With three reports, `at(-2)` and `[0]` differ; the deltas below only
+			// match day 2, not day 1 (day-1 deltas would be 2 / -20 / 30).
+			expect(view?.comparison).toEqual({
+				previousDay: 2,
+				revenueDelta: 1,
+				operatingIncomeDelta: -70,
+				netCashChangeDelta: 15
+			});
+		});
+
 		test('treats zero previous values as absolute deltas without any ratio', () => {
 			expect.assertions(4);
 			const zeroDay = report(1, 0, { operatingIncome: 0, financingCashFlow: 0 });
