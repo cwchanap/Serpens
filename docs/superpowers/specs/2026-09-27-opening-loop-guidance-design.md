@@ -198,12 +198,13 @@ It stays true across:
 - ordinary game mutations;
 - day advancement.
 
-Reset it only when the player enters a different game session:
+Reset it only when the sandbox game itself is successfully replaced:
 
 - successful new sandbox founding;
 - successful autosave load;
-- successful manual save load;
-- scenario/play-mode or scenario-run lifecycle reset through the existing transient reset path.
+- successful manual save load.
+
+Entering a scenario and later returning to the same sandbox does not replace that sandbox session, so it must not clear the dismissal.
 
 Do not write dismissal into GameState, autosave, manual saves, localStorage, or scenario persistence.
 
