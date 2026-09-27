@@ -257,7 +257,7 @@ Set sandboxOpeningGuidanceDismissed = false after a successful:
 - loadManualSlot;
 - founding-store commit for a new sandbox game.
 
-Also reset it inside the existing transient lifecycle reset so entering/leaving scenario runs starts the next game context cleanly.
+Do not reset it merely because play mode or scenario-run lifecycle changes. Entering a scenario and returning to the same sandbox must preserve that sandbox session's dismissal.
 
 Do not reset it on:
 
