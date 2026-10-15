@@ -6,398 +6,255 @@
 
 ## Goal
 
-Teach the existing early-game loop without creating a tutorial system:
+Teach one small opening loop without creating a tutorial system:
 
-1. read the latest completed result;
-2. notice the most important current problem;
-3. navigate to the existing control that can address it;
-4. change one permitted setting;
-5. inspect a later result.
+1. find the first useful evidence;
+2. notice one concrete current problem when one exists;
+3. navigate to the existing screen that explains or addresses it;
+4. inspect the next result.
 
-First Profit gets this guidance for the whole active run. Sandbox gets the same compact guidance only during the opening window and may dismiss it for the current loaded/new-game session.
+First Profit gets the card for its active run. Sandbox gets the same compact card only while the company has one store and at most seven completed reports, and may dismiss it for the current loaded sandbox session.
 
-Everything ships in one HPA-284 PR: planning, UI/copy, implementation, localization, and tests.
-
-## Why HPA-284 is next
-
-The Serpens backlog currently contains HPA-284 and HPA-295 only. HPA-284 is Medium priority and its two blockers are now complete:
-
-- HPA-293 owns truthful stock-recovery diagnosis and the store/product handoff;
-- HPA-282 owns the completed-day result and profit-vs-cash explanation.
-
-HPA-295 is explicitly the final, lower-priority map-polish slice. HPA-284 can therefore consume the two finished prerequisite surfaces instead of rebuilding them.
+Everything stays in one HPA-284 PR: design, implementation, copy, localization, and tests.
 
 ## Product boundaries
 
-Keep these owners unchanged:
+Keep existing owners unchanged:
 
-- scenario definitions and objective evaluation remain under `src/lib/scenarios`;
-- active scenario evaluation remains the only source of objective/failure progress;
-- `src/lib/game/alerts.ts` remains the source of current actionable alerts;
-- `src/routes/alertNavigation.ts` and the existing route alert handler remain the navigation authority for alert destinations;
-- HPA-293 stock recovery remains in Store Detail / `StoreStockTable`;
-- HPA-282 completed-day explanation remains `DailyResultSummary` on Dashboard;
-- the route remains the composition root for presentation-only session state.
+- scenario objectives/failures/scoring remain under `src/lib/scenarios`;
+- `collectGameAlerts` remains the source of current alerts;
+- `handleSelectAlert` plus `src/routes/alertNavigation.ts` remain the navigation authority;
+- HPA-293 remains the stock-recovery diagnosis and live store/product handoff;
+- HPA-282 `DailyResultSummary` on Dashboard remains the completed-day evidence surface;
+- `src/routes/+page.svelte` owns session-only dismissal.
 
-Do not add:
+Do not add a tutorial FSM, persisted onboarding state, objective reimplementation, alert severity model, action history, coaching store, backend/AI advisor, save/schema migration, art, or SFX.
 
-- a tutorial or quest state machine;
-- persisted onboarding progress;
-- a second objective evaluator;
-- a new alert severity system;
-- an action history;
-- a global coaching store;
-- a backend or AI advisor;
-- scenario schema/version changes;
-- save schema changes or migrations;
-- new art or SFX.
+## Verified code facts
 
-## Current code facts
+### First Profit is much shorter than its 14-day limit
 
-### First Profit already contains the right game rules
+The catalog still defines the same official rules: seed `280001`, 14-day limit, one convenience store, cumulative income above zero, three consecutive positive-income reports, and failure when cash drops below zero.
 
-`src/lib/scenarios/catalog.ts` currently defines First Profit with:
+The existing runtime calibration also proves something the guidance design must respect: the official First Profit **no-action** trace completes on Day 4 with score 862 and a gold medal. The documented reference trace also completes on Day 4.
 
-- scenario id `first-profit`, version 1;
-- official seed `280001`;
-- 14-day limit;
-- one convenience store and one allowed product;
-- required cumulative-net-income > 0;
-- required three-report positive-income streak;
-- negative cash as the failure condition;
-- the standard retail command set only.
+Therefore HPA-284 must not imply that changing a setting is required to win, and browser coverage cannot depend on reaching Day 5 inside First Profit. The card teaches how to read evidence and reach existing controls; it is not a claim that the player must intervene.
 
-The guidance must not change any of those values or allowed commands.
+### `covenantRisk` and `upcomingLoanPayment` are not First Profit cash-failure signals
 
-### Objective progress is already presentation-ready
+`covenantRisk` compares trailing seven-day operating cash flow with scheduled debt service. Before the first report, trailing operating cash is zero while every founding loan already has a payment in the next seven days, so the covenant alert is structural at the opening.
 
-`buildScenarioProgressView` in `src/lib/i18n/scenarioCopy.ts` consumes the existing `ScenarioRun` evaluation and exposes required objectives, failure evidence, deadline, day, score, and medal copy.
+`upcomingLoanPayment` is a calendar reminder: it appears whenever an active loan payment falls inside the existing three-day look-ahead window, regardless of current cash strength.
 
-`ScenarioStatusStrip` and `ScenarioObjectivePanel` already render that evidence. HPA-284 should improve First Profit wording and place the contextual hint beside this existing evidence rather than extending the evaluator.
+Using either as opening-loop `cash-risk` would crowd out the useful first-result and stock-recovery hints and could tell a well-funded sandbox company that cash is at risk when it is not.
 
-### Stock recovery already has an exact route handoff
+For HPA-284, `cash-risk` is intentionally narrower than “all Finance alerts.” It means only:
 
-`resolveStockAlertDestination` derives the live city, store, tile, and currently affected product from a `store-stock` alert.
+- `missedLoanPayment`;
+- `lowCashRunway`.
 
-The current route handler then:
+Those two are the existing Finance alerts that actually describe an immediate cash-pressure condition relevant to First Profit's negative-cash failure.
 
-1. switches city when needed;
-2. returns to the retail map;
-3. selects the store tile;
-4. opens Store Detail focused on the affected product.
+Existing TopBar behavior for `covenantRisk` is out of scope.
 
-Opening guidance must reuse that alert path. It must not recreate stock diagnosis or product selection.
+### Stock recovery and result evidence already have correct destinations
 
-### Daily result already has the correct evidence surface
+`resolveStockAlertDestination` resolves a `store-stock` alert against the live `GameState`, including the currently affected product. Opening guidance should pass that alert to the existing `handleSelectAlert` path rather than recreate the handoff.
 
-`DailyResultSummary` on Dashboard now owns:
+`DailyResultSummary` already owns the latest completed-day evidence on Dashboard. Both report-oriented hints navigate there.
 
-- the latest completed day;
-- revenue;
-- operating income;
-- net cash change;
-- current cash;
-- the operating/financing cash bridge;
-- recorded cash contributors;
-- Reports and Finance handoffs.
+### The route alert list is already the right selector input
 
-Both the first-result hint and the normal completed-result hint should navigate to Dashboard instead of introducing another result card.
+`+page.svelte` derives one localized `alerts` array from the current `game`. `LocalizedGameAlert` extends `GameAlert`, so the selector can consume that exact array; it must not call `collectGameAlerts` a second time.
 
-### Route-local transient state is already the right lifetime
+The selector can carry the selected `GameAlert` object directly. `TopBar` already passes alert objects directly to `handleSelectAlert`, and stock navigation re-resolves the live store/product from the current game. An alert-id action descriptor plus click-time lookup adds no useful state boundary.
 
-`src/routes/+page.svelte` already owns transient map/panel/focus state and has explicit successful sandbox load/new-game boundaries.
+### Page-local dismissal has only two meaningful reset hooks
 
-Sandbox save loads have successful `resumeAutoSave` and `loadManualSlot` paths. New sandbox games commit through `gameRouteController.foundStore`.
+`GameRouteController` starts with `sandboxGame: null`; founding only occurs while the page has no game. At that point the new route-local dismissal boolean is necessarily still false, so an explicit “founding reset” and a new awaited `foundStore` result are dead work.
 
-This is enough to keep dismissal session-only. No controller field or persisted flag is needed.
+The meaningful replacement boundaries are the two existing successful load branches:
 
-### Page-local state does not have a direct unit-test seam
+- `resumeAutoSave` returning `loaded`;
+- `loadManualSlot` returning `loaded`.
 
-`src/routes/page.svelte.spec.ts` exercises extracted route modules such as `GameRouteController`, supply-planner route helpers, and store-detail focus. It does not mount `+page.svelte`.
-
-Therefore the small sandbox eligibility rule should live with the pure selector rather than remain trapped in page-local `$state` derivation. Session reset wiring stays in the page and is browser-tested.
+A brand-new page/new founding session starts with dismissal false by construction.
 
 ## Design
 
-### 1. Add one pure bounded selector plus one pure sandbox-eligibility helper
+### 1. One selector module, no action descriptor
 
-Create `src/lib/game/openingGuidance.ts` with one closed hint union, one selector, and one tiny eligibility helper.
-
-Conceptually the four hint kinds are:
-
-- `cash-risk`;
-- `stock-recovery`;
-- `first-result`;
-- `result-evidence`.
-
-Each selected hint contains only:
-
-- its kind;
-- one action descriptor.
-
-The action descriptor has only two shapes:
-
-- existing alert id;
-- Dashboard.
-
-The module also exports:
+Create `src/lib/game/openingGuidance.ts` with this closed shape:
 
 ```ts
-export function isSandboxOpeningGuidanceEligible(
+export type OpeningGuidance =
+  | { kind: 'cash-risk'; alert: GameAlert }
+  | { kind: 'stock-recovery'; alert: GameAlert }
+  | { kind: 'first-result' }
+  | { kind: 'result-evidence' };
+
+export function selectOpeningGuidance(
   game: GameState | null,
-  dismissed: boolean
-): boolean;
+  alerts: readonly GameAlert[]
+): OpeningGuidance | null;
+
+export function isSandboxOpeningWindow(game: GameState | null): boolean;
 ```
 
-That helper returns true only when:
+`isSandboxOpeningWindow` owns only stable game-state eligibility:
 
-- a sandbox game exists;
-- exactly one store exists;
-- there are at most seven completed `DailyReport`s;
-- the current sandbox session has not dismissed guidance.
+- game exists;
+- exactly one store;
+- `reports.length <= 7`.
 
-Do not put localized copy, callbacks, mutation, play-mode state, or route state in this module.
+It does not take play mode or dismissal. Those are route/session concerns.
 
-### 2. Use deterministic precedence, not a coaching framework
+No localized copy, callbacks, mutations, route state, or configuration framework belongs here.
 
-Given an eligible game, return at most one hint using this fixed precedence:
+### 2. Deterministic precedence uses only actionable cash pressure
 
-1. first current finance-risk alert;
-2. first current `store-stock` alert;
-3. no completed report;
-4. latest completed result exists;
-5. otherwise null.
+For an eligible game, return at most one hint in this order:
 
-Finance-risk means one of the existing finance alert kinds:
+1. first `missedLoanPayment` or `lowCashRunway` alert, preserving existing alert order;
+2. first `store-stock` alert;
+3. `first-result` when `reports.length === 0`;
+4. `result-evidence` when at least one report exists;
+5. otherwise `null`.
 
-- `missedLoanPayment`;
-- `upcomingLoanPayment`;
-- `covenantRisk`;
-- `lowCashRunway`.
+Do not include `upcomingLoanPayment` or `covenantRisk` in the opening-loop cash allowlist. Do not invent a severity score.
 
-Do not invent a new urgency score. Preserve the order already produced by `collectGameAlerts` when more than one matching finance alert exists.
+The selector returns the selected alert object itself for cash/stock hints. The route therefore has no alert-id lookup helper and no “id missing” branch.
 
-Cash risk intentionally outranks stock pressure because the ticket calls out the cash-failure condition first. Stock recovery remains the next actionable operating problem.
+### 3. Lock the selector against real game sequences, not fixtures alone
 
-The final `result-evidence` row is a standing pointer to existing evidence, not a fabricated task. Alert hints disappear naturally when their underlying alert disappears; `first-result` becomes `result-evidence` after the first completed report.
+Hand-built precedence fixtures are still useful, but they are insufficient because they can miss structural alerts.
 
-### 3. Keep one alert derivation authoritative for selection and action
+Add two integration-style unit walks in `openingGuidance.spec.ts` using real game/scenario construction:
 
-The route already derives the current localized alert list from the active `game`; `LocalizedGameAlert` structurally extends `GameAlert`.
+- convenience sandbox opening: the selector should produce the real opening sequence expected under the existing simulation — Day 1 `first-result`, stock recovery when the real `store-stock` alert appears during the first week, and `result-evidence` once stock pressure clears while the opening window remains eligible;
+- First Profit official seed: Day 1 `first-result`, then `result-evidence` after a completed day, with the run naturally terminating on Day 4 under the existing no-action calibration.
 
-Use that same current `alerts` derivation for both:
+These tests should call the real `collectGameAlerts` and `simulateDay` / scenario runtime path so a future structural alert cannot silently dominate the guidance again.
 
-1. `selectOpeningGuidance(game, alerts)`;
-2. click-time lookup of `hint.action.alertId` before calling `handleSelectAlert`.
+### 4. Eligibility stays small
 
-Do not derive a second alert array for guidance, and do not resolve an alert id against a different game/evidence snapshot. This keeps selection and navigation on one live source and preserves HPA-293's live store/product handoff.
+Scenario mode renders guidance only when the active scenario id is `first-profit`. Other authored scenarios remain unchanged. First Profit guidance is not dismissible.
 
-### 4. Keep First Profit eligibility explicit
+Sandbox mode renders guidance only when:
 
-Show opening guidance in scenario mode only when:
+```ts
+playMode === 'sandbox' &&
+isSandboxOpeningWindow(game) &&
+!sandboxOpeningGuidanceDismissed
+```
 
-- there is an active scenario run;
-- its scenario id is `first-profit`.
+Use completed report count, not `game.day`.
 
-Other authored scenarios get no new guidance.
+### 5. Dismissal is one route-local boolean
 
-Do not add a generic field to `ScenarioDefinition`. HPA-284 owns one scenario-specific polish rule, so a reusable scenario coaching schema would be premature.
+Add `sandboxOpeningGuidanceDismissed` in `+page.svelte`.
 
-First Profit guidance is not dismissible. The scenario already has an explicit authored objective and a finite 14-day lifecycle.
+It remains true across ordinary mutations, day advancement, panels, maps, and scenario detours because no code writes it during those actions.
 
-### 5. Keep sandbox eligibility derived and unit-testable
+Reset it to false only after successful sandbox replacement through:
 
-In sandbox mode, call `isSandboxOpeningGuidanceEligible(game, sandboxOpeningGuidanceDismissed)`.
+- `resumeAutoSave`;
+- `loadManualSlot`.
 
-This makes the opening window cover the pre-first-report state plus the first seven completed-day results. It stops after the eighth completed report or immediately after expansion.
+Do not add a founding reset, do not await `foundStore` just for guidance, and do not persist dismissal anywhere.
 
-Do not use `GameState.day` as the counter; completed reports are the evidence this feature teaches and remain correct if day numbering or setup changes.
+### 6. One compact presentation component
 
-Do not duplicate these eligibility conditions in `+page.svelte`; the helper is the single rule.
-
-### 6. Dismissal is route-local only
-
-Add one route-local boolean for sandbox dismissal.
-
-It stays true across:
-
-- opening/closing panels;
-- map navigation;
-- ordinary game mutations;
-- day advancement;
-- entering a scenario and returning to the same sandbox.
-
-Reset it only when the sandbox game itself is successfully replaced:
-
-- successful new sandbox founding;
-- successful autosave load;
-- successful manual save load.
-
-Do not write dismissal into `GameState`, autosave, manual saves, localStorage, or scenario persistence.
-
-A failed load/founding attempt must not reset dismissal.
-
-### 7. Add one compact presentation component
-
-Create `src/lib/components/game/OpeningGuidance.svelte`.
-
-Props stay presentation-only:
+Create `src/lib/components/game/OpeningGuidance.svelte` with presentation-only props:
 
 - selected hint;
 - `I18nBundle`;
-- action callback;
-- optional dismiss callback.
+- `onAction`;
+- optional `onDismiss`.
 
-The component renders:
+Render only a small heading, one reason, one action button, and optional Dismiss. No checklist, step counter, modal, popover tour, coach marks, or focus manager.
 
-- a small heading;
-- one short reason;
-- one action button;
-- Dismiss only when the sandbox callback is supplied.
+Mount it near `ScenarioStatusStrip` / before `ControlDesk`. It never hides controls, changes time, or mutates gameplay.
 
-It never receives mutation commands and never advances or pauses time.
+### 7. Navigation delegates directly to existing owners
 
-Mount it in the page-level game chrome near `ScenarioStatusStrip` / before `ControlDesk` so it is visible without opening a management panel and remains reachable on narrow layouts.
+For `cash-risk` or `stock-recovery`, the action passes `hint.alert` directly to `handleSelectAlert`.
 
-Do not merge this into `ScenarioStatusStrip`: sandbox also uses it, and the scenario strip already has objective/error responsibilities.
+For `first-result` or `result-evidence`, the action calls `openManagementPanel('dashboard')`.
 
-### 8. Reuse existing navigation for every action
+No named `followOpeningGuidance` helper is required unless implementation readability genuinely improves; there is no second navigation algorithm to abstract.
 
-For an alert action:
+### 8. Copy must describe evidence, not prescribe unnecessary intervention
 
-- resolve the alert id from the same current `alerts` array that produced the hint;
-- call the existing `handleSelectAlert` path.
+Keep `catalog.ts` structurally unchanged and do not bump the scenario version.
 
-For a Dashboard action:
-
-- call `openManagementPanel('dashboard')`.
-
-No hint action may:
-
-- update policy or stock values;
-- advance a day;
-- start construction;
-- change simulation speed;
-- pause/resume time;
-- synthesize a scenario command.
-
-This also guarantees First Profit never suggests industry construction or expansion, which its command/content rules do not permit.
-
-### 9. Improve First Profit copy without changing the definition
-
-Keep `catalog.ts` structurally unchanged.
-
-Update only the existing localized First Profit summary/briefing/strategy hint in English, Japanese, and Traditional Chinese so the text explicitly communicates:
+Update the existing First Profit summary/briefing/strategy copy in EN / JA / zh-Hant to state:
 
 - cumulative income must finish above zero;
 - three consecutive positive-income reports are required;
-- cash below zero fails the run;
-- after a completed day, inspect the result and respond to the current problem.
+- cash below zero fails;
+- inspect completed results and current warnings to understand the run.
 
-The exact objective labels/evidence continue to come from the evaluator-backed scenario progress view.
-
-Add opening-guidance copy under one localized namespace and rely on the existing whole-catalog locale parity test.
-
-## Suggested copy intent
-
-The copy should be concise rather than tutorial-like.
-
-First Profit briefing intent:
-
-> Finish with cumulative income above zero and record three straight positive-income days. The run fails if cash drops below zero.
-
-Strategy intent:
-
-> After each completed day, read the result. If cash risk or a stock shortage appears, follow the linked control and change one permitted setting before checking the next result.
+Do **not** say that the player must change a setting after every result. The calibrated no-action run already wins.
 
 Hint intent:
 
-- `cash-risk`: explain that an active finance warning can threaten the cash condition; action opens its existing destination;
-- `stock-recovery`: explain that a current shelf shortage is the next concrete operating problem; action opens the exact affected store/product;
-- `first-result`: explain that one completed day creates the first evidence to inspect; action opens Dashboard;
-- `result-evidence`: explain that the latest dated result is the evidence for the next decision; action opens Dashboard.
+- `cash-risk`: a missed payment or short cash runway deserves attention; open its existing Finance destination;
+- `stock-recovery`: a current shelf shortage is the next concrete operating issue; open the affected store/product;
+- `first-result`: complete a day to create the first evidence, with Dashboard as the evidence home;
+- `result-evidence`: inspect the latest dated result on Dashboard.
 
-Do not claim a specific action will improve profit, guarantee success, or identify a cause not recorded by the simulation.
+Do not promise that a hinted action improves profit or guarantees success.
 
-## Testing boundaries
+## Test boundaries
 
-### Pure selector and sandbox eligibility
+### Selector/window unit tests
 
-Controlled fixtures cover:
+Cover hand-built cases for:
 
-- cash warning + stock warning => cash wins;
-- stock warning without cash warning => stock wins;
+- `missedLoanPayment` / `lowCashRunway` outrank stock;
+- `covenantRisk` / `upcomingLoanPayment` do **not** become `cash-risk`;
+- stock outranks report guidance;
 - no reports => `first-result`;
-- completed report => `result-evidence`;
-- no usable input => null;
-- deterministic choice among multiple finance alerts;
-- input arrays/state are not mutated;
-- sandbox one store + 0–7 reports + not dismissed => eligible;
-- sandbox 8 reports => ineligible;
-- sandbox two stores => ineligible;
-- dismissed sandbox => ineligible;
-- null game => ineligible.
+- reports => `result-evidence`;
+- deterministic first matching alert;
+- no mutation of inputs;
+- sandbox window: one store + 0–7 reports true, 8 reports/two stores/null false.
 
-### Component
+Also include the real sandbox and First Profit walks described above.
 
-Cover:
+### Component tests
 
-- one reason and one action only;
-- sandbox Dismiss visibility;
-- no Dismiss in First Profit;
-- keyboard-accessible buttons;
-- no autofocus/focus stealing;
-- narrow layout remains readable.
+Cover one reason/action, optional Dismiss, non-dismissible First Profit usage, callback behavior, keyboard-reachable buttons, no autofocus, and narrow layout.
 
-### Route/session integration
+### Browser proof
 
-Browser/integration coverage proves:
+Keep browser work focused because the destinations already have independent E2E coverage.
 
-- alert action reuses the current alert handler;
-- selection and action resolution use the same current `alerts` derivation;
-- stock hint preserves city/store/product focus;
-- Dashboard hint opens the existing Dashboard;
-- dismissal survives panel navigation and day ticks;
-- successful autosave/manual load resets dismissal;
-- successful new-game founding resets dismissal;
-- failed load/founding does not reset dismissal;
-- entering a scenario and returning to the same sandbox preserves dismissal;
-- other scenarios never render First Profit guidance.
+First Profit:
 
-The pure eligibility helper, not `page.svelte.spec.ts`, owns the one-store / report-count / dismissed truth table.
+1. start First Profit from an installed challenge snapshot;
+2. verify the tightened objective/failure copy;
+3. verify Day 1 `first-result` and open Dashboard;
+4. advance one day;
+5. verify `result-evidence` and a dated `DailyResultSummary`.
+
+Do not plan a Day-5 Finance path or a mandatory setting change; the scenario terminates on Day 4 under the no-action calibration.
+
+Sandbox:
+
+1. use the existing deterministic convenience-store setup;
+2. advance to the real Day-2 stock shortage;
+3. follow `stock-recovery` and verify the existing Store Detail/product handoff;
+4. dismiss guidance;
+5. advance a day and verify it stays hidden;
+6. load the autosave successfully and verify eligible guidance can appear again.
+
+Existing dedicated E2E already proves Finance focus and stock deep-link destination behavior; HPA-284 only needs to prove its new button reaches the reused path.
 
 ### Scenario regression
 
-Retain existing First Profit definition/golden/solvability tests unchanged except for localized text expectations.
-
-The same official-seed action sequence must produce identical:
-
-- objective evaluation;
-- score;
-- medal;
-- terminal outcome.
-
-### E2E
-
-Add one focused First Profit browser journey with deterministic finance coverage:
-
-1. start First Profit;
-2. observe the objective/failure wording;
-3. complete the first day and follow result guidance to Dashboard;
-4. continue to Day 5 without altering the founding loan schedule;
-5. assert the existing `upcomingLoanPayment` alert for the Founding loan due on Day 8 becomes the selected cash-risk hint;
-6. follow that hint and assert the existing Finance panel / Founding loan destination opens;
-7. change one already-permitted setting;
-8. inspect a later completed result.
-
-The trigger is stable because the founding loan starts on Day 1, the loan payment frequency is seven days, and `collectGameAlerts` exposes `upcomingLoanPayment` when `nextPaymentDay <= game.day + 3`. Finance risk outranks any simultaneous stock hint.
-
-Add one sandbox smoke case proving:
-
-- opening guidance is optional;
-- dismiss persists through panel navigation/day advancement;
-- normal controls remain available;
-- a newly loaded/new sandbox session can show guidance again.
+Existing scenario catalog/evaluator/calibration/solvability outputs stay unchanged. HPA-284 changes presentation only.
 
 ## Verification
 
@@ -406,7 +263,8 @@ Before marking HPA-284 ready:
 - `bun run check`
 - `bun run lint`
 - `bun run test:unit -- --run`
-- affected `retail-sim` / `time-flow` Playwright coverage
+- affected Playwright coverage
+- `bun run test`
 - `bun run build`
 
-No separate implementation PR is planned. This design, the implementation plan, production code, localization, and tests stay in the same HPA-284 draft PR.
+No separate implementation PR is planned.
