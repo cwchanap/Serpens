@@ -2436,16 +2436,15 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	// The card never steals focus when it appears.
 	expect(await guidance.evaluate((card) => card.contains(document.activeElement))).toBe(false);
 
-	// The action is keyboard reachable: walk the tab order to it and press
-	// Enter. (In ranked mode the fixed scenario strip paints over the card's
-	// action row, so mouse clicks are unreliable there — see task report.)
+	// The action is keyboard reachable (Tab walk) and, with the card floating
+	// clear of the fixed chrome, activatable by a plain center mouse click.
 	const dayOneAction = guidance.getByTestId('opening-guidance-action');
 	for (let attempt = 0; attempt < 40; attempt++) {
 		if (await dayOneAction.evaluate((el) => el === document.activeElement)) break;
 		await page.keyboard.press('Tab');
 	}
 	await expect(dayOneAction).toBeFocused();
-	await page.keyboard.press('Enter');
+	await dayOneAction.click();
 
 	// The day-1 action opens the existing Dashboard, which has no completed
 	// result yet, so it shows its empty state instead of a dated summary.
@@ -2461,13 +2460,15 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 		'Inspect the latest result and its warnings on the Dashboard.'
 	);
 	await expect(guidance.getByTestId('opening-guidance-dismiss')).toHaveCount(0);
+	// Keyboard reachable again on the evidence card; the action opens via a
+	// plain mouse click with the objective panel still expanded.
 	const evidenceAction = guidance.getByTestId('opening-guidance-action');
 	for (let attempt = 0; attempt < 40; attempt++) {
 		if (await evidenceAction.evaluate((el) => el === document.activeElement)) break;
 		await page.keyboard.press('Tab');
 	}
 	await expect(evidenceAction).toBeFocused();
-	await page.keyboard.press('Enter');
+	await evidenceAction.click();
 	const evidenceDashboard = page.getByRole('dialog', { name: /dashboard/i });
 	await expect(evidenceDashboard.getByTestId('daily-result-day')).toHaveText(
 		'Day 1 completed result'
@@ -2500,9 +2501,9 @@ test('sandbox opening guidance picks stock recovery over finance noise and re-ar
 	).toBeVisible();
 	await page.keyboard.press('Escape');
 
-	// Both buttons are keyboard reachable; the action is keyboard-activated
-	// because the fixed control-desk dock paints over the full-bleed card's
-	// button center at this width (see task report).
+	// Both buttons are keyboard reachable (Tab walk); the action is activated
+	// by a real mouse click — the card floats clear of the control-desk dock,
+	// so the click lands on the button itself.
 	const action = guidance.getByTestId('opening-guidance-action');
 	const dismiss = guidance.getByTestId('opening-guidance-dismiss');
 	for (const button of [action, dismiss]) {
@@ -2518,7 +2519,7 @@ test('sandbox opening guidance picks stock recovery over finance noise and re-ar
 		await page.keyboard.press('Tab');
 	}
 	await expect(action).toBeFocused();
-	await page.keyboard.press('Enter');
+	await action.click();
 
 	// The action reuses the HPA-293 live destination: store detail straight to
 	// the stock tab with the affected product row focused.
