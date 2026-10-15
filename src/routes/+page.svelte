@@ -2917,31 +2917,33 @@
 	onpointerdown={unlockAudio}
 >
 	<section class="map-layout" aria-label={i18n.t('route.cityPlanning')}>
-		<MapSurfaceHost
-			{activeMapView}
-			{visitedMapViews}
-			{isMapPaused}
-			{i18n}
-			{worldCityStatuses}
-			{selectedWorldCityId}
-			onSelectWorldCity={selectWorldCityNode}
-			onOpenWorldCity={openSelectedWorldCity}
-			onFinanceWorldCity={reviewSelectedWorldCityFinancing}
-			onCloseWorldInspector={closeWorldInspector}
-			canOpenWorldCity={mutationAvailability.openWorldCity}
-			canFinanceWorldCity={mutationAvailability.financeWorldCity}
-			{allowedWorldCityIds}
-			{mutationDisabledReason}
-			{logisticsRouteSummaries}
-			{selectedLogisticsRouteId}
-			onSelectLogisticsRoute={selectLogisticsRoute}
-			{mapSnapshot}
-			onSelectRetailTile={selectTile}
-			{industryMapSnapshot}
-			onSelectIndustryTile={selectIndustryTile}
-			onCancelRailBuild={cancelRailBuildStep}
-			{railKeyboardEnabled}
-		/>
+		<div class="map-surface-area">
+			<MapSurfaceHost
+				{activeMapView}
+				{visitedMapViews}
+				{isMapPaused}
+				{i18n}
+				{worldCityStatuses}
+				{selectedWorldCityId}
+				onSelectWorldCity={selectWorldCityNode}
+				onOpenWorldCity={openSelectedWorldCity}
+				onFinanceWorldCity={reviewSelectedWorldCityFinancing}
+				onCloseWorldInspector={closeWorldInspector}
+				canOpenWorldCity={mutationAvailability.openWorldCity}
+				canFinanceWorldCity={mutationAvailability.financeWorldCity}
+				{allowedWorldCityIds}
+				{mutationDisabledReason}
+				{logisticsRouteSummaries}
+				{selectedLogisticsRouteId}
+				onSelectLogisticsRoute={selectLogisticsRoute}
+				{mapSnapshot}
+				onSelectRetailTile={selectTile}
+				{industryMapSnapshot}
+				onSelectIndustryTile={selectIndustryTile}
+				onCancelRailBuild={cancelRailBuildStep}
+				{railKeyboardEnabled}
+			/>
+		</div>
 		<TopBar
 			eyebrow={mapEyebrow}
 			title={mapTitle}
@@ -3314,6 +3316,19 @@
 		height: 100%;
 		min-height: 100vh;
 		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* The map surfaces fill everything above the guidance strip reserved at
+	   the bottom (see .opening-guidance), so the canvas physically ends above
+	   the card and tile clicks can never land underneath it. */
+	.map-surface-area {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 9rem;
+		left: 0;
 	}
 
 	.scenario-progress {
@@ -3326,25 +3341,31 @@
 		overflow: auto;
 	}
 
-	/* The guidance card floats as a plaque so its whole body — including the
-	   action row — stays clear of the fixed chrome bands (top bar, scenario
-	   strip, control-desk dock column). It stacks below every chrome layer
-	   (dock z-25, strip z-29, top bar z-30) and never intercepts them. The
-	   bottom band is safe because the strip caps at calc(100vh - 10rem), so
-	   even an expanded objective panel ends above the card's action row. */
+	/* The guidance card is in flow at the bottom of the layout (the only
+	   in-flow child; margin-top auto bottom-anchors it in the flex column).
+	   Because the canvas reserves this band and the card owns no z-index, it
+	   can never intercept map/inspector clicks, while its action row sits
+	   below every fixed chrome band: the scenario strip caps at
+	   calc(100vh - 10rem) and the action row starts below that, clear of the
+	   top bar, dock column, and the centered time cluster (which paints above
+	   the card regardless). */
 	.opening-guidance {
-		position: fixed;
-		right: 0.75rem;
-		bottom: 0.75rem;
-		left: 6.75rem;
-		z-index: 24;
+		margin: auto 0.75rem 0.75rem 6.75rem;
 	}
 
 	@media (max-width: 600px) {
+		.map-surface-area {
+			bottom: 0;
+		}
+
 		.opening-guidance {
+			position: fixed;
 			top: 8.5rem;
+			right: 0.75rem;
 			bottom: auto;
 			left: 0.75rem;
+			margin: 0;
+			z-index: 24;
 		}
 	}
 
