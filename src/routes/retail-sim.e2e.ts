@@ -2485,6 +2485,60 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	);
 });
 
+test('opening guidance stays mouse-usable on a phone-sized viewport', async ({ page }) => {
+	// HPA-284 mobile proof at 390×844: the card anchors in flow above the
+	// bottom-bar control desk (the fixed plaque is gone), so with the scenario
+	// strip collapsed the action button receives the hit at its own center and
+	// a plain click opens the Dashboard, and the reserved canvas band keeps
+	// map tiles selectable beside the card.
+	await page.setViewportSize({ width: 390, height: 844 });
+
+	// Sandbox leg first: the reserved canvas band ends above the card, so a
+	// tile click beside the card still selects the tile instead of landing on
+	// guidance chrome.
+	await installSandboxAutoSave(page, createNewGame('convenience', 1));
+	const sandboxGuidance = page.getByTestId('opening-guidance');
+	await expect(sandboxGuidance).toContainText('Complete a day to create your first evidence.');
+	const canvas = activeMapCanvas(page);
+	const canvasBox = await canvas.boundingBox();
+	const cardBox = await sandboxGuidance.boundingBox();
+	if (!canvasBox || !cardBox) throw new Error('Map canvas or guidance card has no bounding box');
+	expect(canvasBox.y + canvasBox.height).toBeLessThanOrEqual(cardBox.y);
+	await clickMapTile(page, 1, 6);
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+
+	// Ranked First Profit: with the scenario strip collapsed it ends below the
+	// action row's top edge, so the button — not the strip — owns the click.
+	await page.goto('/');
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'First Profit')
+		.getByRole('button', { name: 'Start First Profit', exact: true })
+		.click();
+	await pauseActiveSimulation(page);
+	await expectChallengeReady(page, { day: 1, eligibility: 'Ranked' });
+
+	const guidance = page.getByTestId('opening-guidance');
+	await expect(guidance).toContainText('Complete a day to create your first evidence.');
+	// Regression: the fixed mobile plaque sat under the collapsed scenario
+	// strip, so elementFromPoint at the action button's center returned the
+	// strip's DIV.
+	const action = guidance.getByTestId('opening-guidance-action');
+	const stripBox = await page.locator('.scenario-progress').boundingBox();
+	const actionBox = await action.boundingBox();
+	if (!stripBox || !actionBox) throw new Error('Scenario strip or action button has no box');
+	expect(stripBox.y + stripBox.height).toBeLessThan(actionBox.y);
+	expect(
+		await action.evaluate((el) => {
+			const box = el.getBoundingClientRect();
+			const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+			return el === hit || (hit !== null && el.contains(hit));
+		})
+	).toBe(true);
+	await action.click();
+	const dashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(dashboard.getByTestId('daily-result-empty')).toBeVisible();
+});
+
 test('sandbox opening guidance picks stock recovery over finance noise and re-arms on load', async ({
 	page
 }) => {

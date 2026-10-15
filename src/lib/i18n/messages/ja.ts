@@ -1887,7 +1887,7 @@ export const ja = {
 		firstProfit: {
 			title: '最初の利益',
 			summary:
-				'小さな店を黒字化します。累計収益をプラスで終え、黒字のレポートを3日連続で揃えましょう。',
+				'小さな店を黒字化します。累計純利益をプラスで終え、黒字のレポートを3日連続で揃えましょう。',
 			briefing:
 				'累計収益をプラスで終え、直近3つのレポートが連続して黒字である必要があります。現金がマイナスになると失敗です。',
 			strategyHint:
@@ -2081,6 +2081,7 @@ export const ja = {
 		financeAction: '財務を開く',
 		stockAction: '店舗を開く',
 		dashboardAction: 'ダッシュボードを開く',
-		dismiss: '閉じる'
+		// Session-hide semantics (the card re-arms on reload), not a dialog close.
+		dismiss: '非表示'
 	}
 } as const satisfies Messages;

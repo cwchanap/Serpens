@@ -3354,18 +3354,18 @@
 	}
 
 	@media (max-width: 600px) {
+		/* Mobile mirror of the desktop band: the canvas ends above the card so
+		   tile clicks can never land underneath it. The control desk becomes a
+		   bottom bar (top edge at 4.5rem + 3.65rem = 8.15rem), so the card
+		   anchors in flow above it with plain side margins and no z-index. The
+		   band is capped so short viewports keep the renderer's 520px minimum
+		   canvas height instead of a nondeterministic clamped canvas. */
 		.map-surface-area {
-			bottom: 0;
+			bottom: min(17.5rem, calc(100dvh - 32.5rem));
 		}
 
 		.opening-guidance {
-			position: fixed;
-			top: 8.5rem;
-			right: 0.75rem;
-			bottom: auto;
-			left: 0.75rem;
-			margin: 0;
-			z-index: 24;
+			margin: auto 0.5rem 8.6rem 0.5rem;
 		}
 	}
 
