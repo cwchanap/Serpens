@@ -3027,17 +3027,19 @@
 		{/if}
 
 		{#if showOpeningGuidance && openingGuidanceHint}
-			<OpeningGuidance
-				hint={openingGuidanceHint}
-				{i18n}
-				onAction={(hint) =>
-					hint.kind === 'cash-risk' || hint.kind === 'stock-recovery'
-						? handleSelectAlert(hint.alert)
-						: openManagementPanel('dashboard')}
-				onDismiss={playMode === 'sandbox'
-					? () => (sandboxOpeningGuidanceDismissed = true)
-					: undefined}
-			/>
+			<div class="opening-guidance">
+				<OpeningGuidance
+					hint={openingGuidanceHint}
+					{i18n}
+					onAction={(hint) =>
+						hint.kind === 'cash-risk' || hint.kind === 'stock-recovery'
+							? handleSelectAlert(hint.alert)
+							: openManagementPanel('dashboard')}
+					onDismiss={playMode === 'sandbox'
+						? () => (sandboxOpeningGuidanceDismissed = true)
+						: undefined}
+				/>
+			</div>
 		{/if}
 
 		<ControlDesk
@@ -3322,6 +3324,28 @@
 		z-index: 29;
 		max-height: calc(100vh - 10rem);
 		overflow: auto;
+	}
+
+	/* The guidance card floats as a plaque so its whole body — including the
+	   action row — stays clear of the fixed chrome bands (top bar, scenario
+	   strip, control-desk dock column). It stacks below every chrome layer
+	   (dock z-25, strip z-29, top bar z-30) and never intercepts them. The
+	   bottom band is safe because the strip caps at calc(100vh - 10rem), so
+	   even an expanded objective panel ends above the card's action row. */
+	.opening-guidance {
+		position: fixed;
+		right: 0.75rem;
+		bottom: 0.75rem;
+		left: 6.75rem;
+		z-index: 24;
+	}
+
+	@media (max-width: 600px) {
+		.opening-guidance {
+			top: 8.5rem;
+			bottom: auto;
+			left: 0.75rem;
+		}
 	}
 
 	.placement-status {
