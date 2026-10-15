@@ -1864,9 +1864,9 @@ export const zhHant = {
 	scenarioDefinitions: {
 		firstProfit: {
 			title: '首次獲利',
-			summary: '將小商店發展成獲利事業。',
-			briefing: '在期限前達成正收益。',
-			strategyHint: '控制成本並建立穩定客群。',
+			summary: '將小商店轉為獲利：累計收益高於零，並連續三份正收益報告。',
+			briefing: '累計收益必須以正數作結，且最近三份報告連續為正收益。現金低於零即失敗。',
+			strategyHint: '以已完成結果與目前警告作為證據檢視，無需更改設定。',
 			objectives: { cumulativeNetIncome: '賺取累計淨收入', positiveIncomeStreak: '維持連續正收益' },
 			failures: { negativeCash: '避免現金為負' }
 		},
@@ -2038,5 +2038,18 @@ export const zhHant = {
 			interestPayment: '利息支付',
 			loanProceeds: '借款所得'
 		}
+	},
+	openingGuidance: {
+		heading: '開店指引',
+		reason: {
+			cashRisk: '有款項逾期或現金餘裕不足，請當日處理。',
+			stockRecovery: '有貨架缺貨，請補貨以維持銷售。',
+			firstResult: '完成一天，建立第一份證據。',
+			resultEvidence: '在儀表板檢視最新結果與其警告。'
+		},
+		financeAction: '開啟財務',
+		stockAction: '開啟商店',
+		dashboardAction: '開啟儀表板',
+		dismiss: '關閉'
 	}
 } as const satisfies Messages;

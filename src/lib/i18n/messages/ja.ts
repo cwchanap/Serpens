@@ -1886,9 +1886,12 @@ export const ja = {
 	scenarioDefinitions: {
 		firstProfit: {
 			title: '最初の利益',
-			summary: '小さな店を収益事業へ育てます。',
-			briefing: '期限までに黒字化してください。',
-			strategyHint: 'コストを抑え、安定した顧客基盤を築きましょう。',
+			summary:
+				'小さな店を黒字化します。累計収益をプラスで終え、黒字のレポートを3日連続で揃えましょう。',
+			briefing:
+				'累計収益をプラスで終え、直近3つのレポートが連続して黒字である必要があります。現金がマイナスになると失敗です。',
+			strategyHint:
+				'完了した結果と現在の警告を証拠として確認しましょう。設定の変更は必要ありません。',
 			objectives: {
 				cumulativeNetIncome: '累積純利益を得る',
 				positiveIncomeStreak: '黒字を連続して維持する'
@@ -2066,5 +2069,18 @@ export const ja = {
 			interestPayment: '利息支払',
 			loanProceeds: '借入金受取'
 		}
+	},
+	openingGuidance: {
+		heading: '開店ガイダンス',
+		reason: {
+			cashRisk: '支払いの遅延か現金の余力不足が発生しています。今日中に対処しましょう。',
+			stockRecovery: '棚が欠品しています。補充して販売を続けましょう。',
+			firstResult: '1日を完了して、最初の証拠を作りましょう。',
+			resultEvidence: 'ダッシュボードで最新の結果と警告を確認しましょう。'
+		},
+		financeAction: '財務を開く',
+		stockAction: '店舗を開く',
+		dashboardAction: 'ダッシュボードを開く',
+		dismiss: '閉じる'
 	}
 } as const satisfies Messages;
