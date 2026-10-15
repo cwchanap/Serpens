@@ -3,6 +3,7 @@
 	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
+	import OpeningGuidance from '$lib/components/game/OpeningGuidance.svelte';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
 	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
@@ -99,6 +100,7 @@
 		getExpansionFinanceOffer,
 		type FinanceFailureCode
 	} from '$lib/game/finance';
+	import { isSandboxOpeningWindow, selectOpeningGuidance } from '$lib/game/openingGuidance';
 	import { forecastOpening } from '$lib/game/placement';
 	import type {
 		ManualTransferInput,
@@ -343,6 +345,7 @@
 	let scenarioOperationError = $state<ScenarioOperationError | null>(null);
 	let retryScenarioOperation = $state<(() => Promise<void>) | null>(null);
 	let playMode = $state<'sandbox' | 'scenario'>('sandbox');
+	let sandboxOpeningGuidanceDismissed = $state(false);
 	let simulationPaused = $state(false);
 	let simulationSpeed = $state<SimulationSpeed>(1);
 	let simulationTickPending = $state(false);
@@ -676,6 +679,14 @@
 			? collectGameAlerts(currentGame).map((alert) => localizeGameAlert(currentGame, alert, i18n))
 			: [];
 	});
+	let openingGuidanceHint = $derived(selectOpeningGuidance(game, alerts));
+	let showOpeningGuidance = $derived(
+		openingGuidanceHint !== null &&
+			((playMode === 'scenario' && activeScenarioRun?.definition.scenarioId === 'first-profit') ||
+				(playMode === 'sandbox' &&
+					isSandboxOpeningWindow(game) &&
+					!sandboxOpeningGuidanceDismissed))
+	);
 	let mapEyebrow = $derived(
 		activeMapView === 'world'
 			? i18n.t('route.mapEyebrow.world')
@@ -1934,6 +1945,8 @@
 			selectedWorldCityId = null;
 			clearLogisticsRouteSelection();
 			cancelPlacement();
+			// Only a successful load re-arms the sandbox opening guidance.
+			sandboxOpeningGuidanceDismissed = false;
 			// Pause the auto-tick so the player can review the loaded state
 			// before time resumes.
 			simulationPaused = true;
@@ -1986,6 +1999,8 @@
 			selectedWorldCityId = null;
 			clearLogisticsRouteSelection();
 			cancelPlacement();
+			// Only a successful load re-arms the sandbox opening guidance.
+			sandboxOpeningGuidanceDismissed = false;
 			// Pause the auto-tick so the player can review the loaded state
 			// before time resumes.
 			simulationPaused = true;
@@ -3009,6 +3024,20 @@
 					<ScenarioObjectivePanel view={scenarioProgressView} {i18n} />
 				{/if}
 			</div>
+		{/if}
+
+		{#if showOpeningGuidance && openingGuidanceHint}
+			<OpeningGuidance
+				hint={openingGuidanceHint}
+				{i18n}
+				onAction={(hint) =>
+					hint.kind === 'cash-risk' || hint.kind === 'stock-recovery'
+						? handleSelectAlert(hint.alert)
+						: openManagementPanel('dashboard')}
+				onDismiss={playMode === 'sandbox'
+					? () => (sandboxOpeningGuidanceDismissed = true)
+					: undefined}
+			/>
 		{/if}
 
 		<ControlDesk
