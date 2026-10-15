@@ -2403,6 +2403,183 @@ test('challenge advance updates objective progress and deadline state', async ({
 	});
 });
 
+test('First Profit opening guidance walks first-result into dated result evidence', async ({
+	page
+}) => {
+	// HPA-284 browser proof for the ranked opening loop: truthful briefing
+	// wording, the day-1 first-result card, and the report-backed card after the
+	// first advance. Stops there — no Day-5 path, no gameplay change.
+	await page.goto('/');
+	await openChallengeCatalog(page);
+	const firstProfitCard = challengeCard(page, 'First Profit');
+	await expect(firstProfitCard).toContainText(
+		'Finish with cumulative income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.'
+	);
+	await expect(firstProfitCard).toContainText(
+		'Inspect completed results and current warnings for evidence — no setting change is required.'
+	);
+	await expect(firstProfitCard).toContainText('Earn cumulative net income');
+	await expect(firstProfitCard).toContainText('Maintain a positive income streak');
+
+	await firstProfitCard.getByRole('button', { name: 'Start First Profit', exact: true }).click();
+	await pauseActiveSimulation(page);
+	await expectChallengeReady(page, { day: 1, eligibility: 'Ranked' });
+
+	await challengeStatus(page).getByRole('button', { name: 'Show objective details' }).click();
+	const objectiveDetails = page.locator('#scenario-objective-panel');
+	await expect(objectiveDetails).toContainText('Avoid negative cash');
+
+	const guidance = page.getByTestId('opening-guidance');
+	await expect(guidance).toContainText('Complete a day to create your first evidence.');
+	// Ranked First Profit offers no dismiss.
+	await expect(guidance.getByTestId('opening-guidance-dismiss')).toHaveCount(0);
+	// The card never steals focus when it appears.
+	expect(await guidance.evaluate((card) => card.contains(document.activeElement))).toBe(false);
+
+	// The action is keyboard reachable: walk the tab order to it and press
+	// Enter. (In ranked mode the fixed scenario strip paints over the card's
+	// action row, so mouse clicks are unreliable there — see task report.)
+	const dayOneAction = guidance.getByTestId('opening-guidance-action');
+	for (let attempt = 0; attempt < 40; attempt++) {
+		if (await dayOneAction.evaluate((el) => el === document.activeElement)) break;
+		await page.keyboard.press('Tab');
+	}
+	await expect(dayOneAction).toBeFocused();
+	await page.keyboard.press('Enter');
+
+	// The day-1 action opens the existing Dashboard, which has no completed
+	// result yet, so it shows its empty state instead of a dated summary.
+	const dayOneDashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(dayOneDashboard.getByTestId('daily-result-empty')).toBeVisible();
+	await dayOneDashboard.getByRole('button', { name: /close dashboard/i }).click();
+
+	await advanceChallengeDay(page);
+
+	// The first advance creates a real report, so the card switches to the
+	// evidence lane even though the structural covenantRisk alert persists.
+	await expect(guidance).toContainText(
+		'Inspect the latest result and its warnings on the Dashboard.'
+	);
+	await expect(guidance.getByTestId('opening-guidance-dismiss')).toHaveCount(0);
+	const evidenceAction = guidance.getByTestId('opening-guidance-action');
+	for (let attempt = 0; attempt < 40; attempt++) {
+		if (await evidenceAction.evaluate((el) => el === document.activeElement)) break;
+		await page.keyboard.press('Tab');
+	}
+	await expect(evidenceAction).toBeFocused();
+	await page.keyboard.press('Enter');
+	const evidenceDashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(evidenceDashboard.getByTestId('daily-result-day')).toHaveText(
+		'Day 1 completed result'
+	);
+});
+
+test('sandbox opening guidance picks stock recovery over finance noise and re-arms on load', async ({
+	page
+}) => {
+	// Convenience seed 1 mirrors the openingGuidance.spec.ts walk: day 2 opens
+	// the real stock-recovery period while the structural covenantRisk alert is
+	// simultaneously active.
+	await installSandboxAutoSave(page, createNewGame('convenience', 1));
+	const guidance = page.getByTestId('opening-guidance');
+	await expect(guidance).toContainText('Complete a day to create your first evidence.');
+
+	await advanceSimulationDay(page);
+	await waitForAutoSaveDay(page, 2);
+
+	// The card selects stock-recovery even though Finance raises the structural
+	// covenant alert at the same time; only missed-payment/low-runway alerts
+	// may hijack the opening loop.
+	await expect(guidance).toContainText('A shelf is short on stock — restock it to keep selling.');
+	expect(await guidance.evaluate((card) => card.contains(document.activeElement))).toBe(false);
+	await page.getByRole('button', { name: /alerts?$/i }).click();
+	await expect(
+		page
+			.getByRole('group', { name: /alerts list/i })
+			.getByRole('button', { name: /Debt-service coverage is/i })
+	).toBeVisible();
+	await page.keyboard.press('Escape');
+
+	// Both buttons are keyboard reachable; the action is keyboard-activated
+	// because the fixed control-desk dock paints over the full-bleed card's
+	// button center at this width (see task report).
+	const action = guidance.getByTestId('opening-guidance-action');
+	const dismiss = guidance.getByTestId('opening-guidance-dismiss');
+	for (const button of [action, dismiss]) {
+		await button.scrollIntoViewIfNeeded();
+		for (let attempt = 0; attempt < 40; attempt++) {
+			if (await button.evaluate((el) => el === document.activeElement)) break;
+			await page.keyboard.press('Tab');
+		}
+		await expect(button).toBeFocused();
+	}
+	for (let attempt = 0; attempt < 40; attempt++) {
+		if (await action.evaluate((el) => el === document.activeElement)) break;
+		await page.keyboard.press('Tab');
+	}
+	await expect(action).toBeFocused();
+	await page.keyboard.press('Enter');
+
+	// The action reuses the HPA-293 live destination: store detail straight to
+	// the stock tab with the affected product row focused.
+	const storeModal = page.locator('[role="dialog"][aria-modal="true"]');
+	await expect(storeModal).toBeVisible();
+	await expect(storeModal.getByRole('tab', { name: /stock/i })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	const primaryRow = storeModal.getByTestId('store-product-row-bottled-water');
+	await expect(primaryRow).toBeFocused();
+	await expect(storeModal.getByRole('table', { name: /store #1 stock/i })).toBeVisible();
+	await storeModal.getByRole('button', { name: /close store details/i }).click();
+	// The deep link also selects the store's tile, so close the tile inspector
+	// it leaves open before interacting with the card again.
+	await page.getByRole('button', { name: /close tile inspector/i }).click();
+
+	// The card does not overlay or intercept normal controls: every control-desk
+	// button still owns its hit target, and a dock launch works while the card
+	// is visible.
+	const dockButtons = page.locator('.control-desk .dock button:visible');
+	const dockButtonCount = await dockButtons.count();
+	expect(dockButtonCount).toBeGreaterThan(0);
+	for (let index = 0; index < dockButtonCount; index++) {
+		const ownsHitTarget = await dockButtons.nth(index).evaluate((el) => {
+			const box = el.getBoundingClientRect();
+			const topElement = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+			return el.contains(topElement);
+		});
+		expect(ownsHitTarget).toBe(true);
+	}
+	await openManagementPanel(page, /dashboard/i);
+	await page
+		.getByRole('dialog', { name: /dashboard/i })
+		.getByRole('button', { name: /close dashboard/i })
+		.click();
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+
+	// Dismissal is session-only: the card hides and stays hidden through the
+	// next advance, even though day 3 is still inside the stock window.
+	await dismiss.click();
+	await expect(page.getByTestId('opening-guidance')).toHaveCount(0);
+	await advanceSimulationDay(page);
+	await waitForAutoSaveDay(page, 3);
+	await expect(page.getByTestId('opening-guidance')).toHaveCount(0);
+
+	// A successful autosave load re-arms the guidance for the still-open window.
+	await openSaves(page);
+	const savesDialog = page.getByRole('dialog', { name: /saves/i });
+	await savesDialog.getByRole('button', { name: /^resume$/i }).click();
+	await savesDialog.getByRole('button', { name: /^close$/i }).click();
+	const rearmed = page.getByTestId('opening-guidance');
+	await expect(rearmed).toBeVisible();
+	await expect(rearmed).toContainText('A shelf is short on stock — restock it to keep selling.');
+
+	// The card copy wraps at the existing narrow viewport instead of clipping.
+	await page.setViewportSize({ width: 390, height: 844 });
+	await expect(rearmed).toBeVisible();
+	expect(await rearmed.evaluate((card) => card.scrollWidth <= card.clientWidth + 1)).toBe(true);
+});
+
 test('challenge returns to sandbox and resumes its isolated run from the catalog', async ({
 	page
 }) => {
