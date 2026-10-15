@@ -3354,17 +3354,20 @@
 	}
 
 	@media (max-width: 600px) {
-		/* Mobile mirror of the desktop band: the canvas ends above the card so
-		   tile clicks can never land underneath it. The control desk becomes a
-		   bottom bar (top edge at 4.5rem + 3.65rem = 8.15rem), so the card
-		   anchors in flow above it with plain side margins and no z-index. The
-		   band is capped so short viewports keep the renderer's 520px minimum
-		   canvas height instead of a nondeterministic clamped canvas. */
+		/* Mobile mirror of the desktop band. The cap keeps short viewports on
+		   the renderer's 520px minimum canvas height (a smaller band would be
+		   clamped anyway, spilling the canvas over whatever sits below), so
+		   below ~800px the canvas reaches across the card band and the card
+		   must out-stack it: position:relative keeps the card above the
+		   z-auto canvas even if .paper's positioning changes, while staying
+		   under the tile inspector (z 10) that opens over the card band, the
+		   dock (25), and the top chrome (29/30). */
 		.map-surface-area {
 			bottom: min(17.5rem, calc(100dvh - 32.5rem));
 		}
 
 		.opening-guidance {
+			position: relative;
 			margin: auto 0.5rem 8.6rem 0.5rem;
 		}
 	}
