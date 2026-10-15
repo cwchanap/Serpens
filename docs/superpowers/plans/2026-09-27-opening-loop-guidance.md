@@ -2,9 +2,9 @@
 
 > Implement this plan in the same HPA-284 PR. Do not split planning, First Profit copy, sandbox guidance, route integration, localization, or tests into separate PRs.
 
-**Goal:** Teach the read-result → identify-problem → change-one-thing → inspect-next-result loop by pointing at existing Serpens evidence and controls.
+**Goal:** Teach the opening read-result → notice-current-problem → follow-existing-evidence loop without adding a tutorial system.
 
-**Architecture:** Add one pure hint selector plus one pure sandbox-eligibility helper, one compact presentation component, and route-local sandbox dismissal. Reuse `collectGameAlerts`, the existing alert navigation handler, HPA-293 stock recovery, HPA-282 `DailyResultSummary`, and existing scenario evaluation. No new tutorial state machine, save data, scenario schema, analytics framework, art, or SFX.
+**Architecture:** One pure selector module, one compact Svelte card, and one route-local dismissal boolean. Reuse the route's existing `alerts` derivation, `handleSelectAlert`, HPA-293 stock recovery, HPA-282 `DailyResultSummary`, and existing scenario evaluation.
 
 **Tech:** TypeScript, Svelte 5 / SvelteKit, Vitest, Playwright, Bun.
 
@@ -13,130 +13,106 @@
 ## Global constraints
 
 - One ticket / one PR.
-- HPA-284 is the only scope of this PR.
-- First Profit seed, setup, command/content permissions, objectives, failures, scoring, medals, and terminal behavior stay unchanged.
+- No simulation, scenario-definition, scoring, save-schema, or catalog-structure changes.
 - Other scenarios stay unchanged.
-- Objective progress is read from the existing `ScenarioRun` evaluation.
-- Alerts remain derived by `collectGameAlerts`.
-- Hint selection and click-time alert resolution use the same current route `alerts` derivation.
-- Stock navigation reuses `resolveStockAlertDestination` through the existing alert handler.
-- Completed-day explanation remains `DailyResultSummary` on Dashboard.
-- Guidance navigates only; it never mutates gameplay.
-- Sandbox dismissal is presentation-only and never persisted.
-- No new alert priority/severity model.
-- No new global store/controller field for coaching.
-- No save schema or migration.
+- Guidance navigates only; it never mutates gameplay or time.
+- Use the existing current route `alerts` array; do not call `collectGameAlerts` again in the page.
+- Finance guidance only treats `missedLoanPayment` and `lowCashRunway` as `cash-risk`.
+- `upcomingLoanPayment` and `covenantRisk` remain normal TopBar alerts but do not dominate opening guidance.
+- Stock navigation continues through `handleSelectAlert` / `resolveStockAlertDestination`.
+- Result guidance continues through Dashboard / `DailyResultSummary`.
+- Sandbox dismissal is route-local and never persisted.
 - No new art or SFX.
-- Use EN / JA / zh-Hant localization and existing locale parity coverage.
-- Keep browser coverage focused; do not create a second simulation harness.
+- EN / JA / zh-Hant localization with existing `translate.spec.ts` key parity.
 
-## Delivery shape
+## Important calibration fact
 
-```text
-GameState + current route alerts
-        |
-        +--> isSandboxOpeningGuidanceEligible (pure eligibility only)
-        |
-        v
-selectOpeningGuidance (pure)
-        |
-        v
-OpeningGuidance (presentation only)
-        |
-        +--> same current alerts[] lookup --> existing handleSelectAlert
-        |                                      --> Finance or exact stock-recovery destination
-        |
-        +--> openManagementPanel('dashboard') --> existing DailyResultSummary
-```
+Do not design tests or copy around a 14-day First Profit playthrough. The existing runtime calibration pins the no-action official-seed run as completed on **Day 4**, score **862**, gold.
 
-Scenario-mode eligibility and the dismissal boolean stay in `src/routes/+page.svelte`. The sandbox eligibility truth table lives in the pure helper so it can be unit-tested without mounting the page.
+That means:
+
+- the new card is only visible during the short active run;
+- a Day-5 First Profit finance test is impossible;
+- copy must not imply the player has to change a setting to succeed.
 
 ---
 
-## Task 1 — Add the pure bounded hint selector and sandbox eligibility helper
+## Task 1 — Build the selector around real alerts
 
 **Create**
 
 - `src/lib/game/openingGuidance.ts`
 - `src/lib/game/openingGuidance.spec.ts`
 
-### 1.1 Define the smallest closed contract
+### 1.1 Define the closed contract
 
-Use a discriminated union with four hint kinds:
-
-- `cash-risk`;
-- `stock-recovery`;
-- `first-result`;
-- `result-evidence`.
-
-Use only two action shapes:
-
-- alert action carrying `alertId`;
-- Dashboard action.
-
-Do not include localized strings, callbacks, route state, or `GameState` mutations.
-
-The selector accepts the current `GameState` and current readonly `GameAlert[]`.
-
-Also export:
+Use:
 
 ```ts
-export function isSandboxOpeningGuidanceEligible(
+export type OpeningGuidance =
+  | { kind: 'cash-risk'; alert: GameAlert }
+  | { kind: 'stock-recovery'; alert: GameAlert }
+  | { kind: 'first-result' }
+  | { kind: 'result-evidence' };
+
+export function selectOpeningGuidance(
   game: GameState | null,
-  dismissed: boolean
-): boolean;
+  alerts: readonly GameAlert[]
+): OpeningGuidance | null;
+
+export function isSandboxOpeningWindow(game: GameState | null): boolean;
 ```
 
-This helper owns only the pure sandbox rule:
+Do not add an action descriptor or alert id. The selector returns the existing `GameAlert` object for alert-backed hints.
+
+`isSandboxOpeningWindow` owns only:
 
 - game exists;
 - exactly one store;
-- `reports.length <= 7`;
-- not dismissed.
+- `reports.length <= 7`.
 
-Play mode remains route state and is intentionally not part of this helper.
+Play mode and dismissal remain in the page.
 
-### 1.2 Lock deterministic precedence and eligibility with tests first
+### 1.2 Test precedence first
 
-Add controlled unit cases proving:
+Hand-built cases:
 
-1. finance risk outranks store stock;
-2. store stock outranks report guidance;
-3. zero reports selects `first-result`;
-4. one or more reports selects `result-evidence`;
-5. missing/unsupported input returns null;
-6. multiple finance alerts preserve their existing array order;
-7. selector does not mutate alerts or `GameState`;
-8. sandbox one store + 0 reports + not dismissed is eligible;
-9. sandbox one store + 7 reports + not dismissed is eligible;
-10. sandbox one store + 8 reports is ineligible;
-11. sandbox two stores is ineligible;
-12. dismissed sandbox is ineligible;
-13. null game is ineligible.
+1. `missedLoanPayment` + stock => `cash-risk`;
+2. `lowCashRunway` + stock => `cash-risk`;
+3. `covenantRisk` + stock => `stock-recovery`;
+4. `upcomingLoanPayment` + stock => `stock-recovery`;
+5. stock + report guidance => stock;
+6. zero reports => `first-result`;
+7. one or more reports => `result-evidence`;
+8. matching alerts preserve existing array order;
+9. inputs are not mutated;
+10. sandbox window is true for one store / 0–7 reports and false for 8 reports, two stores, or null.
 
-The finance-risk allowlist is exactly:
+The cash allowlist is exactly:
 
 - `missedLoanPayment`;
-- `upcomingLoanPayment`;
-- `covenantRisk`;
 - `lowCashRunway`.
 
-Do not sort them again. `collectGameAlerts` already gives stable deterministic order.
+### 1.3 Add real-game guard tests
 
-### 1.3 Implement as straight-line logic
+Fixtures alone missed the structural Finance alerts, so add two real walks:
 
-Selector pseudo-shape:
+**Sandbox walk**
 
-- find first matching finance alert;
-- else find first `store-stock` alert;
-- else inspect `reports.length`;
-- return one hint.
+- found/create the deterministic convenience sandbox used by existing tests;
+- derive alerts with real `collectGameAlerts`;
+- advance with real `simulateDay`;
+- assert the opening sequence does not get hijacked by `covenantRisk` / `upcomingLoanPayment`;
+- pin Day 1 `first-result`, the real stock-recovery period, and the later `result-evidence` state inside the opening window.
 
-Eligibility helper pseudo-shape:
+**First Profit walk**
 
-- return `game !== null && !dismissed && game.stores.length === 1 && game.reports.length <= 7`.
+- start `first-profit` with its official seed via `startScenario`;
+- derive real alerts at each active day;
+- assert Day 1 `first-result` and report-backed guidance after the first advance;
+- continue the no-action trace and confirm the scenario naturally terminates on Day 4 rather than planning guidance beyond it.
 
-No registry, rules engine, or second module.
+Keep these in `openingGuidance.spec.ts`; do not add another simulation harness.
 
 Run:
 
@@ -146,7 +122,7 @@ bun run test:unit -- --run src/lib/game/openingGuidance.spec.ts
 
 ---
 
-## Task 2 — Add compact guidance UI and truthful copy
+## Task 2 — Add the compact card and copy
 
 **Create**
 
@@ -158,185 +134,162 @@ bun run test:unit -- --run src/lib/game/openingGuidance.spec.ts
 - `src/lib/i18n/messages/en.ts`
 - `src/lib/i18n/messages/ja.ts`
 - `src/lib/i18n/messages/zh-Hant.ts`
-- existing locale tests only if a new assertion is genuinely required
 
 ### 2.1 Keep the component presentation-only
 
-Props should contain:
+Props:
 
-- hint;
+- `hint`;
 - `I18nBundle`;
-- `onAction` callback;
-- optional `onDismiss` callback.
+- `onAction`;
+- optional `onDismiss`.
 
-The component renders one compact card with:
+Render:
 
 - heading;
-- short reason;
+- one short reason;
 - one action button;
 - optional Dismiss button.
 
-Do not add a checklist, progress dots, step counter, modal, popover tour, or animated coach mark.
+Stable test ids may be `opening-guidance`, `opening-guidance-action`, and `opening-guidance-dismiss`.
 
-Pin a small stable test surface:
+No checklist, tour, modal, progress dots, animation framework, or focus manager.
 
-- `opening-guidance`;
-- `opening-guidance-action`;
-- `opening-guidance-dismiss`.
-
-### 2.2 Add localized hint copy
+### 2.2 Localize concise hint copy
 
 Add one `openingGuidance` namespace in all three locales for:
 
 - heading;
-- four reason strings;
-- action to review the current finance warning;
-- action to inspect the stock issue;
-- action to open Dashboard;
+- four reasons;
+- Finance action;
+- stock action;
+- Dashboard action;
 - Dismiss.
 
-Do not duplicate detailed finance, stock-recovery, or daily-result explanation text. The card only explains why the existing destination is relevant.
+Do not duplicate detailed Finance, stock-recovery, or daily-result explanations.
 
-### 2.3 Tighten existing First Profit copy
+### 2.3 Tighten First Profit copy truthfully
 
-Update the existing `scenarioDefinitions.firstProfit` summary, briefing, and strategyHint keys in EN / JA / zh-Hant.
+Update only `scenarioDefinitions.firstProfit.summary`, `briefing`, and `strategyHint` in EN / JA / zh-Hant.
 
-Required content:
+State the actual rules:
 
 - cumulative income above zero;
 - three consecutive positive-income reports;
 - cash below zero fails;
-- inspect completed results and respond to current evidence.
+- completed results and current warnings are the evidence to inspect.
 
-Do not modify `src/lib/scenarios/catalog.ts` unless a test proves a structural change is required. No scenario version bump.
+Do not say a setting change is required. The calibrated no-action trace already wins.
+
+No `catalog.ts` change and no scenario version bump.
 
 ### 2.4 Component tests
 
 Cover:
 
-- each hint kind maps to the expected concise copy/action;
-- action callback fires once;
-- Dismiss appears only when callback supplied;
-- Dismiss callback fires once;
+- correct reason/action per hint kind;
+- action callback once;
+- Dismiss only when supplied;
+- Dismiss callback once;
 - buttons are normal keyboard-reachable controls;
-- component never autofocuses;
-- no second action appears.
+- no autofocus/focus stealing;
+- one primary action only.
 
 Run:
 
 ```bash
-bun run test:unit -- --run src/lib/components/game/OpeningGuidance.svelte.spec.ts src/lib/i18n/scenarioCopy.spec.ts
+bun run test:unit -- --run src/lib/components/game/OpeningGuidance.svelte.spec.ts src/lib/i18n/translate.spec.ts src/lib/i18n/scenarioCopy.spec.ts
 ```
 
 ---
 
-## Task 3 — Integrate route eligibility, dismissal, and existing navigation
+## Task 3 — Wire the page without new route abstractions
 
 **Modify**
 
 - `src/routes/+page.svelte`
 
-Do not plan new eligibility assertions in `src/routes/page.svelte.spec.ts`: that file does not mount `+page.svelte` and cannot observe a page-local `$state` boolean or `$derived` value.
+Do not add eligibility cases to `page.svelte.spec.ts`; it does not mount `+page.svelte`.
 
-### 3.1 Derive context; do not persist it
-
-Add one route-local boolean:
+### 3.1 Add one dismissal boolean
 
 ```ts
-sandboxOpeningGuidanceDismissed
+let sandboxOpeningGuidanceDismissed = $state(false);
 ```
 
-Scenario eligibility remains three route-state checks:
+Scenario eligibility:
 
-- `playMode === 'scenario'`;
-- active scenario run exists;
-- scenario id is `first-profit`.
+```ts
+playMode === 'scenario' &&
+activeScenarioRun?.definition.scenarioId === 'first-profit'
+```
 
-Sandbox eligibility is:
+Sandbox eligibility:
 
 ```ts
 playMode === 'sandbox' &&
-isSandboxOpeningGuidanceEligible(game, sandboxOpeningGuidanceDismissed)
+isSandboxOpeningWindow(game) &&
+!sandboxOpeningGuidanceDismissed
 ```
 
-Do not duplicate the one-store/report-count/dismissed conditions in the page.
+Do not put dismissal into the pure helper.
 
-### 3.2 Pin one alert derivation for selection and action resolution
+### 3.2 Select from the existing route alerts
 
-Use the existing current route `alerts` derivation for both:
+Derive the hint from the existing current `game` and current localized `alerts` array:
 
-1. `selectOpeningGuidance(game, alerts)`;
-2. click-time `alertId` lookup.
+```ts
+selectOpeningGuidance(game, alerts)
+```
 
-`LocalizedGameAlert` extends `GameAlert`, so the existing localized array is a valid selector input.
+Do not call `collectGameAlerts` a second time.
 
-Do not call `collectGameAlerts` again for guidance, and do not resolve the selected id against `scenarioEvidenceGame` or another snapshot. Selection and navigation must describe the same live game.
+Because the selector carries the matched alert object, there is no click-time id lookup and no `followOpeningGuidance` helper required.
 
-### 3.3 Reuse the current alert action path
+### 3.3 Delegate action directly
 
-Add a tiny `followOpeningGuidance` helper.
+For `cash-risk` / `stock-recovery`:
 
-For an alert action:
+- pass `hint.alert` to existing `handleSelectAlert`.
 
-1. find the current alert by id in that same `alerts` array;
-2. if absent, no-op;
-3. call `handleSelectAlert(alert)`.
+For `first-result` / `result-evidence`:
 
-Do not copy `resolveAlertNavigation`, city switching, store selection, or product focus logic.
+- call `openManagementPanel('dashboard')`.
 
-For Dashboard:
+Do not copy Finance routing, city switching, store focus, or product selection.
 
-- `openManagementPanel('dashboard')`.
+### 3.4 Reset dismissal only on successful loads
 
-Nothing else.
+After `gameRouteController.resumeAutoSave()` returns `loaded`:
 
-### 3.4 Reset sandbox dismissal only at real session boundaries
+```ts
+sandboxOpeningGuidanceDismissed = false;
+```
 
-Set `sandboxOpeningGuidanceDismissed = false` after a successful:
+After `gameRouteController.loadManualSave(slotId)` returns `loaded`:
 
-- `resumeAutoSave`;
-- `loadManualSlot`;
-- founding-store commit for a new sandbox game.
+```ts
+sandboxOpeningGuidanceDismissed = false;
+```
 
-Do not reset it merely because play mode or scenario-run lifecycle changes. Entering a scenario and returning to the same sandbox must preserve that sandbox session's dismissal.
+Nothing else resets it.
 
-Do not reset it on:
+Specifically, do **not**:
 
-- `advanceDay`;
-- policy/product/staff changes;
-- panel open/close;
-- map changes;
-- ordinary autosave writes.
+- await/change `gameRouteController.foundStore` for this feature;
+- add a founding reset;
+- reset on day ticks, panel/map changes, autosave writes, or scenario mode changes.
 
-Change the new-game founding call to await the existing `GameRouteCommitResult` only as much as needed to distinguish success from rejection. Do not move game creation into the page.
+A brand-new page/founding session starts false by construction. Failed loads return before the reset line.
 
-### 3.5 Mount one card in the existing game chrome
+### 3.5 Mount one card
 
-Render `OpeningGuidance` near the scenario progress block and before `ControlDesk`.
+Place `OpeningGuidance` near scenario progress / before `ControlDesk`.
 
-For First Profit:
+- First Profit: no dismiss callback.
+- Sandbox: dismiss callback sets the route-local boolean true.
 
-- no dismiss callback.
-
-For sandbox:
-
-- pass the dismiss callback.
-
-Do not hide or disable `ControlDesk`, `TopBar`, scenario objectives, or time controls.
-
-### 3.6 Route/session behavior belongs in browser coverage
-
-The browser tests own the page-local wiring that cannot be reached through `page.svelte.spec.ts`:
-
-- alert action reaches the existing handler/destination;
-- Dashboard action opens Dashboard;
-- dismissal survives panel navigation and day advancement;
-- successful load/new-game resets dismissal;
-- failed load/new-game does not reset dismissal where the existing harness can make that case deterministic;
-- entering a scenario and returning to the same sandbox preserves dismissal;
-- other scenarios never render First Profit guidance.
-
-The pure helper owns the one-store / 0–7 reports / expansion / dismissed eligibility truth table.
+Do not hide or disable existing controls.
 
 Run:
 
@@ -346,67 +299,56 @@ bun run check
 
 ---
 
-## Task 4 — Browser proof and regression gates
+## Task 4 — Focus browser proof on new wiring
 
 **Modify**
 
 - `src/routes/retail-sim.e2e.ts`
-- `src/routes/time-flow.e2e.ts` only where its existing scenario/time helpers make the test smaller
+- `src/routes/time-flow.e2e.ts` only if an existing helper makes the case smaller
 
-### 4.1 First Profit focused journey with a named finance trigger
+Reuse existing challenge/snapshot helpers rather than creating a new harness.
 
-Extend the existing First Profit browser coverage rather than adding another scenario harness.
+### 4.1 First Profit result path
 
-The test should prove:
+Use the existing challenge snapshot helpers.
 
-1. the briefing/status exposes the real income/streak/cash condition;
-2. opening guidance is visible and non-blocking;
-3. after the first completed day, the hint opens Dashboard;
-4. the dated `DailyResultSummary` is visible;
-5. advance through four completed days so the current game reaches Day 5 without altering the founding loan schedule;
-6. assert `upcomingLoanPayment` for the Founding loan due on Day 8 is now the selected `cash-risk` hint;
-7. follow it and assert the existing Finance panel opens with the Founding loan destination focused/visible;
-8. change one already-permitted setting;
-9. inspect a later completed result.
+Prove:
 
-Why Day 5 is deterministic:
+1. First Profit briefing/status contains the tightened income/streak/cash wording;
+2. Day 1 shows `first-result` and its action opens Dashboard;
+3. advance one day;
+4. guidance becomes `result-evidence`;
+5. its Dashboard action exposes the dated `DailyResultSummary`.
 
-- First Profit starts on Day 1 with founding debt;
-- `LOAN_PAYMENT_FREQUENCY_DAYS` is 7, so the first payment is Day 8;
-- `collectGameAlerts` emits `upcomingLoanPayment` when the payment is between `game.day` and `game.day + 3`;
-- therefore Day 5 enters the existing upcoming-payment window;
-- finance risk outranks any simultaneous store-stock hint.
+Stop there. Do not try to reach Day 5 and do not require a gameplay change.
 
-Do not assert that the hinted setting change guarantees profit. Assert navigation and evidence only.
+### 4.2 Sandbox stock/action path and dismissal lifetime
 
-### 4.2 Sandbox smoke
+Using the deterministic convenience sandbox:
 
-Using an existing deterministic sandbox setup, prove:
+1. reach the real Day-2 stock shortage;
+2. assert the new card selects `stock-recovery` despite simultaneous structural Finance alerts;
+3. click it and verify the existing Store Detail / affected-product handoff;
+4. dismiss the card;
+5. advance a day and verify it remains hidden;
+6. successfully load the autosave and verify eligible guidance can appear again.
 
-- opening guidance appears within the one-store/first-seven-report window;
-- Dismiss removes it;
-- opening/closing panels and advancing a day do not bring it back;
-- the usual controls remain usable;
-- loading/starting a different game session makes it eligible again when the new state qualifies.
+This single flow proves the new alert-button wiring plus the meaningful session reset.
 
-Keep this case short; the eligibility matrix already belongs to `openingGuidance.spec.ts`.
+Do not add separate HPA-284 browser cases for:
 
-### 4.3 Accessibility / layout
+- Finance focus — existing E2E already covers the destination;
+- failed founding/reset — no reset exists there;
+- failed load reset — the reset sits after the existing `result !== 'loaded'` early return;
+- scenario detour persistence — no code writes the boolean on a mode change.
 
-Reuse existing narrow-screen and keyboard conventions.
+### 4.3 Accessibility/layout
 
-Verify:
-
-- no autofocus or focus stealing;
-- action and Dismiss are keyboard reachable;
-- no card overlay intercepts map/control interactions;
-- copy wraps at the existing narrow viewport breakpoint.
-
-No bespoke focus manager is required.
+Reuse existing conventions. Verify the card does not autofocus, both buttons are keyboard reachable, it does not overlay/intercept normal controls, and copy wraps at the existing narrow viewport.
 
 ### 4.4 Scenario regression
 
-Run the existing scenario catalog/evaluator/golden/solvability coverage. Do not update expected economic outputs because HPA-284 has no simulation changes.
+Run existing scenario catalog/runtime/calibration/solvability coverage unchanged. Economic outputs must not change.
 
 ---
 
@@ -422,25 +364,22 @@ bun run test
 bun run build
 ```
 
-If the full `bun run test` already includes the unit + affected Playwright suite in this repository, do not duplicate CI-only work locally beyond what is useful for diagnosis.
-
 ## Definition of done
 
 HPA-284 is complete when:
 
-- First Profit states its actual objectives/failure clearly;
-- exactly one deterministic contextual hint is shown when applicable;
-- finance hints reuse the existing Finance alert destination;
-- stock hints preserve the exact HPA-293 city/store/product context;
+- First Profit states its real objectives/failure without implying intervention is mandatory;
+- exactly one deterministic contextual hint appears when applicable;
+- only missed-payment / low-runway alerts count as opening-loop cash risk;
+- structural covenant/calendar alerts cannot starve first-result or stock guidance;
+- stock hints reuse the exact HPA-293 live destination;
 - result hints reuse HPA-282 Dashboard evidence;
-- sandbox guidance is derived, optional, and session-only;
-- sandbox eligibility is directly unit-tested without mounting the page;
-- hint selection and click-time alert resolution use one current alert source;
-- the Day-5 founding-loan warning proves the finance path in browser coverage;
-- guidance never mutates gameplay or time;
-- other scenarios are unchanged;
-- the same First Profit action sequence still yields the same simulation outcome;
+- sandbox window is derived from one store + first seven reports;
+- dismissal is session-only and resets only on successful sandbox loads;
+- First Profit and sandbox real-game selector walks pin the actual alert sequence;
+- focused browser proof covers First Profit result guidance and sandbox stock/dismiss/load wiring;
+- other scenarios and simulation outputs are unchanged;
 - EN / JA / zh-Hant copy is complete;
-- focused browser proof and full repository gates pass.
+- repository verification passes.
 
-No second PR is needed for implementation.
+No second PR is needed.
