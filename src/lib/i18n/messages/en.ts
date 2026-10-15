@@ -1914,9 +1914,12 @@ export const en = {
 	scenarioDefinitions: {
 		firstProfit: {
 			title: 'First Profit',
-			summary: 'Turn a small shop into a profitable business.',
-			briefing: 'Reach positive income before the deadline.',
-			strategyHint: 'Control costs while building a dependable customer base.',
+			summary:
+				'Turn a small shop profitable: cumulative income above zero, with three consecutive positive-income reports.',
+			briefing:
+				'Finish with cumulative income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.',
+			strategyHint:
+				'Inspect completed results and current warnings for evidence — no setting change is required.',
 			objectives: {
 				cumulativeNetIncome: 'Earn cumulative net income',
 				positiveIncomeStreak: 'Maintain a positive income streak'
@@ -2103,6 +2106,19 @@ export const en = {
 			interestPayment: 'Interest payment',
 			loanProceeds: 'Loan proceeds'
 		}
+	},
+	openingGuidance: {
+		heading: 'Opening guidance',
+		reason: {
+			cashRisk: 'A payment was missed or cash runway is short — handle it today.',
+			stockRecovery: 'A shelf is short on stock — restock it to keep selling.',
+			firstResult: 'Complete a day to create your first evidence.',
+			resultEvidence: 'Inspect the latest result and its warnings on the Dashboard.'
+		},
+		financeAction: 'Open Finance',
+		stockAction: 'Open store',
+		dashboardAction: 'Open Dashboard',
+		dismiss: 'Dismiss'
 	}
 } as const;
 
