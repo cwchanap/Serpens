@@ -2485,12 +2485,29 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	);
 });
 
-test('opening guidance stays mouse-usable on a phone-sized viewport', async ({ page }) => {
-	// HPA-284 mobile proof at 390×844: the card anchors in flow above the
-	// bottom-bar control desk (the fixed plaque is gone), so with the scenario
-	// strip collapsed the action button receives the hit at its own center and
-	// a plain click opens the Dashboard, and the reserved canvas band keeps
-	// map tiles selectable beside the card.
+async function expectGuidanceControlOwned(
+	guidance: Locator,
+	testId: 'opening-guidance-action' | 'opening-guidance-dismiss'
+): Promise<void> {
+	const control = guidance.getByTestId(testId);
+	expect(
+		await control.evaluate((el) => {
+			const box = el.getBoundingClientRect();
+			const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+			return el === hit || (hit !== null && el.contains(hit));
+		})
+	).toBe(true);
+}
+
+test('opening guidance stays mouse-usable on phone-sized viewports', async ({ page }) => {
+	// HPA-284 mobile proof: the card anchors in flow above the bottom-bar
+	// control desk, so with the scenario strip collapsed the action button
+	// receives the hit at its own center and a plain click opens the
+	// Dashboard, and the reserved canvas band keeps map tiles selectable
+	// beside the card. At 390×844 the reserved band fully clears the card;
+	// below ~800px of height the renderer's 520px canvas clamp spans the
+	// card band instead, so the short legs (375×667, 320×568) pin that the
+	// card's stacking — not the band — keeps it visible and mouse-reachable.
 	await page.setViewportSize({ width: 390, height: 844 });
 
 	// Sandbox leg first: the reserved canvas band ends above the card, so a
@@ -2506,6 +2523,31 @@ test('opening guidance stays mouse-usable on a phone-sized viewport', async ({ p
 	expect(canvasBox.y + canvasBox.height).toBeLessThanOrEqual(cardBox.y);
 	await clickMapTile(page, 1, 6);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+
+	// Short phones, sandbox legs: the canvas clamp pins the canvas at 520px
+	// across the card's band, so the card stays visible and its controls own
+	// their hit points by stacking, and a tile above the card still selects
+	// through the map. (These run before the challenge legs below because a
+	// persisted scenario run would otherwise resume instead of the sandbox.)
+	await page.setViewportSize({ width: 375, height: 667 });
+	await installSandboxAutoSave(page, createNewGame('convenience', 1));
+	const shortGuidance = page.getByTestId('opening-guidance');
+	await expect(shortGuidance).toBeVisible();
+	const shortCanvasBox = await activeMapCanvas(page).boundingBox();
+	if (!shortCanvasBox) throw new Error('Map canvas has no bounding box');
+	expect(shortCanvasBox.y + shortCanvasBox.height).toBe(520);
+	await expectGuidanceControlOwned(shortGuidance, 'opening-guidance-action');
+	await expectGuidanceControlOwned(shortGuidance, 'opening-guidance-dismiss');
+	await clickMapTile(page, 1, 6);
+	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
+
+	// Smallest common phone: same stacking guarantee at 320×568.
+	await page.setViewportSize({ width: 320, height: 568 });
+	await installSandboxAutoSave(page, createNewGame('convenience', 1));
+	const smallestGuidance = page.getByTestId('opening-guidance');
+	await expect(smallestGuidance).toBeVisible();
+	await expectGuidanceControlOwned(smallestGuidance, 'opening-guidance-action');
+	await expectGuidanceControlOwned(smallestGuidance, 'opening-guidance-dismiss');
 
 	// Ranked First Profit: with the scenario strip collapsed it ends below the
 	// action row's top edge, so the button — not the strip — owns the click.
@@ -2537,6 +2579,36 @@ test('opening guidance stays mouse-usable on a phone-sized viewport', async ({ p
 	await action.click();
 	const dashboard = page.getByRole('dialog', { name: /dashboard/i });
 	await expect(dashboard.getByTestId('daily-result-empty')).toBeVisible();
+
+	// Short phone, challenge leg: the collapsed strip stays clear of the
+	// action row, the action owns its hit point, and a plain click opens the
+	// Dashboard at 375×667. Drop the run persisted by the 844 leg so the
+	// catalog offers a fresh First Profit start.
+	await page.setViewportSize({ width: 375, height: 667 });
+	await page.evaluate((key) => window.localStorage.removeItem(key), BROWSER_SCENARIO_STORAGE_KEY);
+	await page.goto('/');
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'First Profit')
+		.getByRole('button', { name: 'Start First Profit', exact: true })
+		.click();
+	await pauseActiveSimulation(page);
+	await expectChallengeReady(page, { day: 1, eligibility: 'Ranked' });
+
+	const shortChallengeGuidance = page.getByTestId('opening-guidance');
+	await expect(shortChallengeGuidance).toContainText(
+		'Complete a day to create your first evidence.'
+	);
+	const shortStripBox = await page.locator('.scenario-progress').boundingBox();
+	const shortActionBox = await shortChallengeGuidance
+		.getByTestId('opening-guidance-action')
+		.boundingBox();
+	if (!shortStripBox || !shortActionBox)
+		throw new Error('Scenario strip or action button has no box');
+	expect(shortStripBox.y + shortStripBox.height).toBeLessThan(shortActionBox.y);
+	await expectGuidanceControlOwned(shortChallengeGuidance, 'opening-guidance-action');
+	await shortChallengeGuidance.getByTestId('opening-guidance-action').click();
+	const shortDashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(shortDashboard.getByTestId('daily-result-empty')).toBeVisible();
 });
 
 test('sandbox opening guidance picks stock recovery over finance noise and re-arms on load', async ({
