@@ -1864,7 +1864,7 @@ export const zhHant = {
 	scenarioDefinitions: {
 		firstProfit: {
 			title: '首次獲利',
-			summary: '將小商店轉為獲利：累計收益高於零，並連續三份正收益報告。',
+			summary: '將小商店轉為獲利：累計淨收入高於零，並連續三份正收益報告。',
 			briefing: '累計收益必須以正數作結，且最近三份報告連續為正收益。現金低於零即失敗。',
 			strategyHint: '以已完成結果與目前警告作為證據檢視，無需更改設定。',
 			objectives: { cumulativeNetIncome: '賺取累計淨收入', positiveIncomeStreak: '維持連續正收益' },
@@ -2050,6 +2050,7 @@ export const zhHant = {
 		financeAction: '開啟財務',
 		stockAction: '開啟商店',
 		dashboardAction: '開啟儀表板',
-		dismiss: '關閉'
+		// Session-hide semantics (the card re-arms on reload), not a dialog close.
+		dismiss: '隱藏'
 	}
 } as const satisfies Messages;
