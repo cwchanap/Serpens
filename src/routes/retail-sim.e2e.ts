@@ -248,8 +248,11 @@ test('UI comparison restores the existing autosave paused', async ({ page }) => 
 	for (const map of [/retail city map/i, /industry city map/i]) {
 		await openMapMenuItem(page, map);
 		const canvas = page.locator('.map-canvas canvas:visible');
+		// Heights stay above the map components' 520px minimum canvas height:
+		// below it the canvas settles nondeterministically between the reserved
+		// band height and the clamp.
 		for (const size of [
-			{ width: 1280, height: 606 },
+			{ width: 1280, height: 720 },
 			{ width: 1920, height: 1080 }
 		]) {
 			await page.setViewportSize(size);
@@ -260,7 +263,9 @@ test('UI comparison restores the existing autosave paused', async ({ page }) => 
 						height: element.height
 					}))
 				)
-				.toEqual({ width: size.width - 96, height: size.height });
+				// The canvas fills the viewport minus the 9rem bottom band the
+				// opening-guidance strip reserves (.map-surface-area).
+				.toEqual({ width: size.width - 96, height: size.height - 144 });
 		}
 	}
 	await expect.poll(() => readAutoSaveGame(page)).toEqual(saved);
@@ -1458,7 +1463,10 @@ async function expectMapToFillViewport(page: Page) {
 }
 
 async function openManagementPanel(page: Page, panelName: string | RegExp): Promise<Locator> {
-	await page.getByRole('button', { name: panelName }).click();
+	// Scoped to the control desk: while the opening-guidance card is visible its
+	// action button carries a colliding accessible name (e.g. "Open Dashboard"),
+	// so an unscoped role query would be ambiguous.
+	await page.locator('.control-desk').getByRole('button', { name: panelName }).click();
 	const panel = page.getByRole('dialog', { name: panelName });
 	await expect(panel).toBeVisible();
 	return panel;
@@ -2436,8 +2444,9 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	// The card never steals focus when it appears.
 	expect(await guidance.evaluate((card) => card.contains(document.activeElement))).toBe(false);
 
-	// The action is keyboard reachable (Tab walk) and, with the card floating
-	// clear of the fixed chrome, activatable by a plain center mouse click.
+	// The action is keyboard reachable (Tab walk) and, with the card rendered
+	// in flow clear of every fixed chrome band, activatable by a plain center
+	// mouse click.
 	const dayOneAction = guidance.getByTestId('opening-guidance-action');
 	for (let attempt = 0; attempt < 40; attempt++) {
 		if (await dayOneAction.evaluate((el) => el === document.activeElement)) break;
@@ -2461,7 +2470,8 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	);
 	await expect(guidance.getByTestId('opening-guidance-dismiss')).toHaveCount(0);
 	// Keyboard reachable again on the evidence card; the action opens via a
-	// plain mouse click with the objective panel still expanded.
+	// plain mouse click with the objective panel still expanded (the panel can
+	// only cover the card's copy area — the action row stays below it).
 	const evidenceAction = guidance.getByTestId('opening-guidance-action');
 	for (let attempt = 0; attempt < 40; attempt++) {
 		if (await evidenceAction.evaluate((el) => el === document.activeElement)) break;
@@ -2502,8 +2512,8 @@ test('sandbox opening guidance picks stock recovery over finance noise and re-ar
 	await page.keyboard.press('Escape');
 
 	// Both buttons are keyboard reachable (Tab walk); the action is activated
-	// by a real mouse click — the card floats clear of the control-desk dock,
-	// so the click lands on the button itself.
+	// by a real mouse click — the card is an in-flow strip the map canvas does
+	// not overlay, so the click lands on the button itself.
 	const action = guidance.getByTestId('opening-guidance-action');
 	const dismiss = guidance.getByTestId('opening-guidance-dismiss');
 	for (const button of [action, dismiss]) {
