@@ -2421,7 +2421,7 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	await openChallengeCatalog(page);
 	const firstProfitCard = challengeCard(page, 'First Profit');
 	await expect(firstProfitCard).toContainText(
-		'Finish with cumulative income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.'
+		'Finish with cumulative net income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.'
 	);
 	await expect(firstProfitCard).toContainText(
 		'Inspect completed results and current warnings for evidence — on the official seed, no setting change is required.'
@@ -2615,10 +2615,51 @@ test('opening guidance stays mouse-usable on phone-sized viewports', async ({ pa
 	if (!shortStripBox || !shortActionBox)
 		throw new Error('Scenario strip or action button has no box');
 	expect(shortStripBox.y + shortStripBox.height).toBeLessThan(shortActionBox.y);
+
+	// Expanded objectives at 375×667: the capped panel must end above the
+	// card — the action keeps owning its hit point while the objective list
+	// stays scrollable inside the reduced max-height.
+	await challengeStatus(page).getByRole('button', { name: 'Show objective details' }).click();
+	await expect(page.locator('#scenario-objective-panel')).toContainText('Avoid negative cash');
+	const expandedStripBox = await page.locator('.scenario-progress').boundingBox();
+	const expandedActionBox = await shortChallengeGuidance
+		.getByTestId('opening-guidance-action')
+		.boundingBox();
+	if (!expandedStripBox || !expandedActionBox)
+		throw new Error('Expanded panel or action button has no box');
+	expect(expandedStripBox.y + expandedStripBox.height).toBeLessThan(expandedActionBox.y);
 	await expectGuidanceControlOwned(shortChallengeGuidance, 'opening-guidance-action');
 	await shortChallengeGuidance.getByTestId('opening-guidance-action').click();
 	const shortDashboard = page.getByRole('dialog', { name: /dashboard/i });
 	await expect(shortDashboard.getByTestId('daily-result-empty')).toBeVisible();
+	await shortDashboard.getByRole('button', { name: /close dashboard/i }).click();
+
+	// Same expanded-objective guarantee at 320×568. Drop the persisted run so
+	// the catalog offers a fresh First Profit start on the smaller phone.
+	await page.setViewportSize({ width: 320, height: 568 });
+	await page.evaluate((key) => window.localStorage.removeItem(key), BROWSER_SCENARIO_STORAGE_KEY);
+	await page.goto('/');
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'First Profit')
+		.getByRole('button', { name: 'Start First Profit', exact: true })
+		.click();
+	await pauseActiveSimulation(page);
+	await expectChallengeReady(page, { day: 1, eligibility: 'Ranked' });
+
+	const smallestChallengeGuidance = page.getByTestId('opening-guidance');
+	await expect(smallestChallengeGuidance).toContainText(
+		'Complete a day to create your first evidence.'
+	);
+	await challengeStatus(page).getByRole('button', { name: 'Show objective details' }).click();
+	await expect(page.locator('#scenario-objective-panel')).toContainText('Avoid negative cash');
+	const smallestStripBox = await page.locator('.scenario-progress').boundingBox();
+	const smallestActionBox = await smallestChallengeGuidance
+		.getByTestId('opening-guidance-action')
+		.boundingBox();
+	if (!smallestStripBox || !smallestActionBox)
+		throw new Error('Expanded panel or action button has no box');
+	expect(smallestStripBox.y + smallestStripBox.height).toBeLessThan(smallestActionBox.y);
+	await expectGuidanceControlOwned(smallestChallengeGuidance, 'opening-guidance-action');
 });
 
 test('sandbox opening guidance picks stock recovery over finance noise and re-arms on load', async ({

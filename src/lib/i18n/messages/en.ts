@@ -1915,9 +1915,9 @@ export const en = {
 		firstProfit: {
 			title: 'First Profit',
 			summary:
-				'Turn a small shop profitable: cumulative income above zero, with three consecutive positive-income reports.',
+				'Turn a small shop profitable: cumulative net income above zero, with three consecutive positive-income reports.',
 			briefing:
-				'Finish with cumulative income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.',
+				'Finish with cumulative net income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.',
 			strategyHint:
 				'Inspect completed results and current warnings for evidence — on the official seed, no setting change is required.',
 			objectives: {
