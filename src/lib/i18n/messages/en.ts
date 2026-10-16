@@ -1919,7 +1919,7 @@ export const en = {
 			briefing:
 				'Finish with cumulative income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.',
 			strategyHint:
-				'Inspect completed results and current warnings for evidence — no setting change is required.',
+				'Inspect completed results and current warnings for evidence — on the official seed, no setting change is required.',
 			objectives: {
 				cumulativeNetIncome: 'Earn cumulative net income',
 				positiveIncomeStreak: 'Maintain a positive income streak'
