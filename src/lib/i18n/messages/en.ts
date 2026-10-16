@@ -2113,7 +2113,7 @@ export const en = {
 			cashRisk: 'A payment was missed or cash runway is short — handle it today.',
 			stockRecovery: 'A shelf is short on stock — restock it to keep selling.',
 			firstResult: 'Complete a day to create your first evidence.',
-			resultEvidence: 'Inspect the latest result and its warnings on the Dashboard.'
+			resultEvidence: 'Inspect the latest completed result on the Dashboard.'
 		},
 		financeAction: 'Open Finance',
 		stockAction: 'Open store',

@@ -2076,7 +2076,7 @@ export const ja = {
 			cashRisk: '支払いの遅延か現金の余力不足が発生しています。今日中に対処しましょう。',
 			stockRecovery: '棚が欠品しています。補充して販売を続けましょう。',
 			firstResult: '1日を完了して、最初の証拠を作りましょう。',
-			resultEvidence: 'ダッシュボードで最新の結果と警告を確認しましょう。'
+			resultEvidence: 'ダッシュボードで最新の完了結果を確認しましょう。'
 		},
 		financeAction: '財務を開く',
 		stockAction: '店舗を開く',

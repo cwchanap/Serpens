@@ -346,9 +346,10 @@
 	let retryScenarioOperation = $state<(() => Promise<void>) | null>(null);
 	let playMode = $state<'sandbox' | 'scenario'>('sandbox');
 	let sandboxOpeningGuidanceDismissed = $state(false);
-	// Measured height of the rendered guidance card — feeds --og-card-h so the
-	// expanded scenario-progress panel caps above the card regardless of copy
-	// length (see the .scenario-progress.opening-guidance-visible rule).
+	// Measured height of the rendered guidance card — feeds --og-card-h on
+	// .map-layout so the expanded scenario-progress panel caps above the card
+	// and the placement plaque slots over it regardless of copy length (see
+	// the *.opening-guidance-visible rules).
 	let openingGuidanceCardHeight = $state(0);
 	let simulationPaused = $state(false);
 	let simulationSpeed = $state<SimulationSpeed>(1);
@@ -2920,7 +2921,11 @@
 	data-scenario-retry-available={retryScenarioOperation !== null}
 	onpointerdown={unlockAudio}
 >
-	<section class="map-layout" aria-label={i18n.t('route.cityPlanning')}>
+	<section
+		class="map-layout"
+		aria-label={i18n.t('route.cityPlanning')}
+		style:--og-card-h="{openingGuidanceCardHeight}px"
+	>
 		<div class="map-surface-area" class:opening-guidance-visible={showOpeningGuidance}>
 			<MapSurfaceHost
 				{activeMapView}
@@ -3015,11 +3020,7 @@
 		</TopBar>
 
 		{#if playMode === 'scenario' && activeScenarioRun && scenarioProgressView}
-			<div
-				class="scenario-progress"
-				class:opening-guidance-visible={showOpeningGuidance}
-				style:--og-card-h="{openingGuidanceCardHeight}px"
-			>
+			<div class="scenario-progress" class:opening-guidance-visible={showOpeningGuidance}>
 				<ScenarioStatusStrip
 					view={scenarioProgressView}
 					{i18n}
@@ -3078,6 +3079,7 @@
 		{#if isPlacementModeActive}
 			<div
 				class="placement-status plaque z-[26]"
+				class:opening-guidance-visible={showOpeningGuidance}
 				role="status"
 				aria-label={i18n.t('route.placement.status')}
 			>
@@ -3415,6 +3417,14 @@
 		padding: 0.65rem 0.8rem;
 	}
 
+	/* While the guidance card owns the bottom strip, the plaque takes the
+	   non-overlapping slot directly above the measured card — the default
+	   4.5rem bottom edge sits inside the card's band, so the opaque plaque
+	   would otherwise paint over the card's reason text. */
+	.placement-status.opening-guidance-visible {
+		bottom: calc(0.75rem + var(--og-card-h, 0px) + 0.5rem);
+	}
+
 	.placement-status span {
 		min-width: 0;
 		color: var(--ink-700);
@@ -3467,6 +3477,13 @@
 		.placement-status {
 			left: 0.5rem;
 			bottom: 8.6rem;
+		}
+
+		/* Mobile mirror of the desktop slot: the card holds 8.6rem off the
+		   bottom, so the plaque clears the measured card top instead of
+		   landing on its bottom edge. */
+		.placement-status.opening-guidance-visible {
+			bottom: calc(8.6rem + var(--og-card-h, 0px) + 0.5rem);
 		}
 	}
 </style>

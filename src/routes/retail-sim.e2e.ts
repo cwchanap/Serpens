@@ -2465,9 +2465,7 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 
 	// The first advance creates a real report, so the card switches to the
 	// evidence lane even though the structural covenantRisk alert persists.
-	await expect(guidance).toContainText(
-		'Inspect the latest result and its warnings on the Dashboard.'
-	);
+	await expect(guidance).toContainText('Inspect the latest completed result on the Dashboard.');
 	await expect(guidance.getByTestId('opening-guidance-dismiss')).toHaveCount(0);
 	// Keyboard reachable again on the evidence card; the action opens via a
 	// plain mouse click with the objective panel still expanded (the panel can
@@ -2744,6 +2742,22 @@ test('sandbox opening guidance picks stock recovery over finance noise and re-ar
 		.getByRole('button', { name: /close dashboard/i })
 		.click();
 	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+
+	// Placement regression: arming a build while the card is visible moves the
+	// status plaque into the slot above the measured card instead of painting
+	// its opaque plaque over the card's reason text.
+	await chooseRetailBuildTool(page, /build boutique goods/i);
+	const placementStatus = page.getByRole('status', { name: /placement status/i });
+	await expect(placementStatus).toBeVisible();
+	const cardBox = await guidance.boundingBox();
+	const plaqueBox = await placementStatus.boundingBox();
+	if (!cardBox || !plaqueBox)
+		throw new Error('Guidance card or placement plaque has no bounding box');
+	expect(plaqueBox.y + plaqueBox.height).toBeLessThanOrEqual(cardBox.y);
+	await expectGuidanceControlOwned(guidance, 'opening-guidance-action');
+	await placementStatus.getByRole('button', { name: /^cancel$/i }).click();
+	await expect(placementStatus).toHaveCount(0);
+	await expect(activeMapCanvas(page)).toHaveAttribute('data-placement-preview-mode', 'inactive');
 
 	// Dismissal is session-only: the card hides and stays hidden through the
 	// next advance, even though day 3 is still inside the stock window.

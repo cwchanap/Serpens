@@ -32,7 +32,7 @@ const expectedCopy: Record<OpeningGuidance['kind'], { reason: string; action: st
 		action: 'Open Dashboard'
 	},
 	'result-evidence': {
-		reason: 'Inspect the latest result and its warnings on the Dashboard.',
+		reason: 'Inspect the latest completed result on the Dashboard.',
 		action: 'Open Dashboard'
 	}
 };
