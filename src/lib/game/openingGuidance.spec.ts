@@ -132,14 +132,18 @@ describe('opening guidance selector — hand-built cases', () => {
 		expect(isSandboxOpeningWindow({ ...game, stores: [...game.stores, secondStore] })).toBe(false);
 	});
 
-	it('returns null outside the opening window', () => {
+	it('returns null only when there is no game — the caller owns eligibility', () => {
 		expect(selectOpeningGuidance(null, [])).toBeNull();
-		expect(selectOpeningGuidance(gameWithReports(8), [])).toBeNull();
+		// The selector does not own the opening window: games outside the
+		// sandbox window still get a truthful hint, and the route decides which
+		// mode may render it (sandbox window vs. an active First Profit run,
+		// which legitimately reaches reports 8+ inside its 14-day limit).
+		expect(selectOpeningGuidance(gameWithReports(8), [])).toEqual({ kind: 'result-evidence' });
 		const game = sandboxGame();
 		const secondStore = { ...game.stores[0]!, id: 'store-2' };
-		expect(
-			selectOpeningGuidance({ ...game, stores: [...game.stores, secondStore] }, [])
-		).toBeNull();
+		expect(selectOpeningGuidance({ ...game, stores: [...game.stores, secondStore] }, [])).toEqual({
+			kind: 'first-result'
+		});
 	});
 });
 
@@ -192,9 +196,13 @@ describe('opening guidance — real sandbox walk', { timeout: 30_000 }, () => {
 		// The allowlisted cash lanes never fire in this walk.
 		expect(walk.every((entry) => entry.guidance?.kind !== 'cash-risk')).toBe(true);
 
-		// One report later the window is closed and the selector stays quiet.
+		// One report later the opening window is closed — a caller-side fact.
+		// The selector itself still answers for the live game (the route hides
+		// the card for sandbox via isSandboxOpeningWindow), so nothing here can
+		// silently clip guidance from a longer-running First Profit run.
 		expect(game.reports.length).toBe(8);
-		expect(selectOpeningGuidance(game, collectGameAlerts(game))).toBeNull();
+		expect(isSandboxOpeningWindow(game)).toBe(false);
+		expect(selectOpeningGuidance(game, collectGameAlerts(game))).not.toBeNull();
 	});
 });
 

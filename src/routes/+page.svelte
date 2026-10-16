@@ -346,6 +346,10 @@
 	let retryScenarioOperation = $state<(() => Promise<void>) | null>(null);
 	let playMode = $state<'sandbox' | 'scenario'>('sandbox');
 	let sandboxOpeningGuidanceDismissed = $state(false);
+	// Measured height of the rendered guidance card — feeds --og-card-h so the
+	// expanded scenario-progress panel caps above the card regardless of copy
+	// length (see the .scenario-progress.opening-guidance-visible rule).
+	let openingGuidanceCardHeight = $state(0);
 	let simulationPaused = $state(false);
 	let simulationSpeed = $state<SimulationSpeed>(1);
 	let simulationTickPending = $state(false);
@@ -3011,7 +3015,11 @@
 		</TopBar>
 
 		{#if playMode === 'scenario' && activeScenarioRun && scenarioProgressView}
-			<div class="scenario-progress">
+			<div
+				class="scenario-progress"
+				class:opening-guidance-visible={showOpeningGuidance}
+				style:--og-card-h="{openingGuidanceCardHeight}px"
+			>
 				<ScenarioStatusStrip
 					view={scenarioProgressView}
 					{i18n}
@@ -3029,7 +3037,7 @@
 		{/if}
 
 		{#if showOpeningGuidance && openingGuidanceHint}
-			<div class="opening-guidance">
+			<div class="opening-guidance" bind:clientHeight={openingGuidanceCardHeight}>
 				<OpeningGuidance
 					hint={openingGuidanceHint}
 					{i18n}
@@ -3347,6 +3355,15 @@
 		overflow: auto;
 	}
 
+	/* While the guidance card is rendered, the expanded panel caps above it:
+	   the card band is bottom margin (0.75rem) + the measured card height
+	   (--og-card-h, bound to the card's clientHeight), so the strip's bottom
+	   edge holds a gutter above the card top instead of covering its action
+	   row at z 29. */
+	.scenario-progress.opening-guidance-visible {
+		max-height: calc(100vh - 5rem - 0.75rem - var(--og-card-h, 0px) - 0.5rem);
+	}
+
 	/* The guidance card is in flow at the bottom of the layout (the only
 	   in-flow child; margin-top auto bottom-anchors it in the flex column).
 	   Because the canvas reserves this band and the card owns no z-index, it
@@ -3377,6 +3394,13 @@
 			position: relative;
 			z-index: 5;
 			margin: auto 0.5rem 8.6rem 0.5rem;
+		}
+
+		/* Same cap as the desktop rule but against the mobile band: the card
+		   holds 8.6rem off the bottom, so the expanded panel ends above the
+		   measured card top plus the gutter. */
+		.scenario-progress.opening-guidance-visible {
+			max-height: calc(100dvh - 5rem - 8.6rem - var(--og-card-h, 0px) - 0.5rem);
 		}
 	}
 

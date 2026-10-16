@@ -7,6 +7,11 @@ import type { GameState } from './types';
  * allowlisted to the two alerts that demand same-day money action — structural
  * finance alerts (`covenantRisk`, `upcomingLoanPayment`) must never hijack the
  * opening loop.
+ *
+ * The selector only decides WHICH hint a live game should show. Eligibility —
+ * which play modes may render the card and for how long — is the caller's job:
+ * First Profit holds it for the entire active run, while sandbox applies
+ * `isSandboxOpeningWindow` (one store, at most seven completed reports).
  */
 export type OpeningGuidance =
 	| { kind: 'cash-risk'; alert: GameAlert }
@@ -25,7 +30,7 @@ export function selectOpeningGuidance(
 	game: GameState | null,
 	alerts: readonly GameAlert[]
 ): OpeningGuidance | null {
-	if (game === null || !isSandboxOpeningWindow(game)) return null;
+	if (game === null) return null;
 
 	const cashAlert = alerts.find((alert) => CASH_RISK_ALERT_KINDS.includes(alert.kind));
 	if (cashAlert) return { kind: 'cash-risk', alert: cashAlert };
