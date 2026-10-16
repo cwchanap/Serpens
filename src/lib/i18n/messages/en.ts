@@ -2110,7 +2110,7 @@ export const en = {
 	openingGuidance: {
 		heading: 'Opening guidance',
 		reason: {
-			cashRisk: 'A payment was missed or cash runway is short — handle it today.',
+			cashRisk: 'A payment was missed or cash runway is short.',
 			stockRecovery: 'A shelf is short on stock — restock it to keep selling.',
 			firstResult: 'Complete a day to create your first evidence.',
 			resultEvidence: 'Inspect the latest completed result on the Dashboard.'

@@ -2923,10 +2923,11 @@
 >
 	<section
 		class="map-layout"
+		class:opening-guidance-visible={showOpeningGuidance}
 		aria-label={i18n.t('route.cityPlanning')}
 		style:--og-card-h="{openingGuidanceCardHeight}px"
 	>
-		<div class="map-surface-area" class:opening-guidance-visible={showOpeningGuidance}>
+		<div class="map-surface-area">
 			<MapSurfaceHost
 				{activeMapView}
 				{visitedMapViews}
@@ -3020,7 +3021,7 @@
 		</TopBar>
 
 		{#if playMode === 'scenario' && activeScenarioRun && scenarioProgressView}
-			<div class="scenario-progress" class:opening-guidance-visible={showOpeningGuidance}>
+			<div class="scenario-progress">
 				<ScenarioStatusStrip
 					view={scenarioProgressView}
 					{i18n}
@@ -3079,7 +3080,6 @@
 		{#if isPlacementModeActive}
 			<div
 				class="placement-status plaque z-[26]"
-				class:opening-guidance-visible={showOpeningGuidance}
 				role="status"
 				aria-label={i18n.t('route.placement.status')}
 			>
@@ -3315,7 +3315,10 @@
 	.app {
 		width: 100vw;
 		height: 100dvh;
-		min-height: 100vh;
+		/* dvh, not vh: on real phones the layout must anchor to the visible
+		   viewport, or bottom-of-flow content (the guidance card) sits behind
+		   fixed chrome while the browser's address bar is showing. */
+		min-height: 100dvh;
 		overflow: hidden;
 		display: block;
 	}
@@ -3324,17 +3327,22 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
-		min-height: 100vh;
+		min-height: 100dvh;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 	}
 
-	/* While the guidance card is shown, the map surfaces fill everything
-	   above the strip reserved at the bottom (see .opening-guidance), so the
-	   canvas physically ends above the card and tile clicks can never land
-	   underneath it. When the card is absent the band is released so the
-	   canvas reclaims the full layout height. */
+	/* While the guidance card is shown, the map surfaces end above the card's
+	   strip (see .opening-guidance) so the canvas physically stops short of it
+	   and tile clicks can never land underneath it. The band is measured from
+	   the card itself — its bottom margin plus the bound --og-card-h — instead
+	   of a hardcoded guess, so longer copy can never outgrow the reserved
+	   space. The cap keeps the renderer's 520px minimum canvas height: on
+	   windows too short for band + 520px the cap binds and the card instead
+	   stacks over the canvas (position/z-index on .opening-guidance). When the
+	   card is absent the band is released so the canvas reclaims the full
+	   layout height. */
 	.map-surface-area {
 		position: absolute;
 		top: 0;
@@ -3343,8 +3351,8 @@
 		left: 0;
 	}
 
-	.map-surface-area.opening-guidance-visible {
-		bottom: 9rem;
+	.map-layout.opening-guidance-visible .map-surface-area {
+		bottom: min(calc(5.75rem + var(--og-card-h, 0px)), calc(100% - 32.5rem));
 	}
 
 	.scenario-progress {
@@ -3353,55 +3361,60 @@
 		right: 0.75rem;
 		left: 0.75rem;
 		z-index: 29;
-		max-height: calc(100vh - 10rem);
+		max-height: calc(100dvh - 10rem);
 		overflow: auto;
 	}
 
 	/* While the guidance card is rendered, the expanded panel caps above it:
-	   the card band is bottom margin (0.75rem) + the measured card height
-	   (--og-card-h, bound to the card's clientHeight), so the strip's bottom
-	   edge holds a gutter above the card top instead of covering its action
-	   row at z 29. */
-	.scenario-progress.opening-guidance-visible {
-		max-height: calc(100vh - 5rem - 0.75rem - var(--og-card-h, 0px) - 0.5rem);
+	   the band is the card's bottom margin (5.75rem) plus the measured card
+	   height (--og-card-h, bound to the card's clientHeight), so the strip's
+	   bottom edge holds a gutter above the card top instead of covering its
+	   action row at z 29. */
+	.map-layout.opening-guidance-visible .scenario-progress {
+		max-height: calc(100dvh - 5rem - 5.75rem - var(--og-card-h, 0px) - 0.5rem);
 	}
 
 	/* The guidance card is in flow at the bottom of the layout (the only
 	   in-flow child; margin-top auto bottom-anchors it in the flex column).
-	   Because the canvas reserves this band and the card owns no z-index, it
-	   can never intercept map/inspector clicks, while its action row sits
-	   below every fixed chrome band: the scenario strip caps at
-	   calc(100vh - 10rem) and the action row starts below that, clear of the
-	   top bar, dock column, and the centered time cluster (which paints above
-	   the card regardless). */
+	   Its 5.75rem bottom margin lifts the whole card clear of the centered
+	   play/speed time cluster (fixed, bottom 1.25rem, ~4rem tall), so no fixed
+	   chrome covers the card's copy or action row at any window width. The
+	   position/z-index 5 matters only when the 520px canvas cap binds on short
+	   windows, where the card stacks over the canvas like it already does on
+	   short phones — above map content and the world node list (3) / inspector
+	   (4), under the tile inspector (10), dock (25), and top chrome (29/30). */
 	.opening-guidance {
-		margin: auto 0.75rem 0.75rem 6.75rem;
+		position: relative;
+		z-index: 5;
+		margin: auto 0.75rem 5.75rem 6.75rem;
+	}
+
+	/* On the world map the dock column is hidden (ControlDesk world-view), so
+	   the card drops its left gap. Horizontal only: the bottom margin must
+	   stay stable across map views or switching views mid-opening would
+	   resize the reserved canvas band. */
+	.app[data-active-map-view='world'] .opening-guidance {
+		margin-left: 0.75rem;
 	}
 
 	@media (max-width: 600px) {
-		/* Mobile mirror of the desktop band. The cap keeps short viewports on
-		   the renderer's 520px minimum canvas height (a smaller band would be
-		   clamped anyway, spilling the canvas over whatever sits below), so
-		   below ~800px the canvas reaches across the card band and the card
-		   must out-stack it: position:relative + z-index 5 keeps the card
-		   above the canvas and positioned map content such as the world node
-		   list (3) and world inspector (4), while staying under the tile
-		   inspector (z 10) that opens over the card band, the dock (25), and
-		   the top chrome (29/30). */
-		.map-surface-area.opening-guidance-visible {
-			bottom: min(17.5rem, calc(100dvh - 32.5rem));
+		/* Mobile mirror of the desktop band: the card holds 8.6rem off the
+		   bottom (above the bottom-bar dock and the time cluster), the space is
+		   measured from the card, and the cap keeps the renderer's 520px minimum
+		   canvas height (below ~800px the cap binds and the card out-stacks the
+		   canvas per .opening-guidance's z-index). */
+		.map-layout.opening-guidance-visible .map-surface-area {
+			bottom: min(calc(8.6rem + var(--og-card-h, 0px)), calc(100dvh - 32.5rem));
 		}
 
 		.opening-guidance {
-			position: relative;
-			z-index: 5;
 			margin: auto 0.5rem 8.6rem 0.5rem;
 		}
 
 		/* Same cap as the desktop rule but against the mobile band: the card
 		   holds 8.6rem off the bottom, so the expanded panel ends above the
 		   measured card top plus the gutter. */
-		.scenario-progress.opening-guidance-visible {
+		.map-layout.opening-guidance-visible .scenario-progress {
 			max-height: calc(100dvh - 5rem - 8.6rem - var(--og-card-h, 0px) - 0.5rem);
 		}
 	}
@@ -3421,8 +3434,8 @@
 	   non-overlapping slot directly above the measured card — the default
 	   4.5rem bottom edge sits inside the card's band, so the opaque plaque
 	   would otherwise paint over the card's reason text. */
-	.placement-status.opening-guidance-visible {
-		bottom: calc(0.75rem + var(--og-card-h, 0px) + 0.5rem);
+	.map-layout.opening-guidance-visible .placement-status {
+		bottom: calc(5.75rem + var(--og-card-h, 0px) + 0.5rem);
 	}
 
 	.placement-status span {
@@ -3482,7 +3495,7 @@
 		/* Mobile mirror of the desktop slot: the card holds 8.6rem off the
 		   bottom, so the plaque clears the measured card top instead of
 		   landing on its bottom edge. */
-		.placement-status.opening-guidance-visible {
+		.map-layout.opening-guidance-visible .placement-status {
 			bottom: calc(8.6rem + var(--og-card-h, 0px) + 0.5rem);
 		}
 	}
