@@ -2424,7 +2424,7 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 		'Finish with cumulative income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.'
 	);
 	await expect(firstProfitCard).toContainText(
-		'Inspect completed results and current warnings for evidence — no setting change is required.'
+		'Inspect completed results and current warnings for evidence — on the official seed, no setting change is required.'
 	);
 	await expect(firstProfitCard).toContainText('Earn cumulative net income');
 	await expect(firstProfitCard).toContainText('Maintain a positive income streak');
@@ -2538,6 +2538,16 @@ test('opening guidance stays mouse-usable on phone-sized viewports', async ({ pa
 	expect(shortCanvasBox.y + shortCanvasBox.height).toBe(520);
 	await expectGuidanceControlOwned(shortGuidance, 'opening-guidance-action');
 	await expectGuidanceControlOwned(shortGuidance, 'opening-guidance-dismiss');
+
+	// World view on the same short phone: the node list spans the card band,
+	// so only the card's own stacking keeps its controls hit-testable.
+	await openMapMenuItem(page, /world map/i);
+	await expect(page.getByRole('region', { name: 'World map' })).toBeVisible();
+	await expect(shortGuidance).toBeVisible();
+	await expectGuidanceControlOwned(shortGuidance, 'opening-guidance-action');
+	await expectGuidanceControlOwned(shortGuidance, 'opening-guidance-dismiss');
+	await openMapMenuItem(page, /retail city map/i);
+
 	await clickMapTile(page, 1, 6);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 
@@ -2698,6 +2708,19 @@ test('sandbox opening guidance picks stock recovery over finance noise and re-ar
 	// next advance, even though day 3 is still inside the stock window.
 	await dismiss.click();
 	await expect(page.getByTestId('opening-guidance')).toHaveCount(0);
+
+	// With the card gone the reserved band is released: the map canvas
+	// reclaims the full viewport height instead of staying clipped above the
+	// empty strip.
+	await expect
+		.poll(() =>
+			activeMapCanvas(page).evaluate((element: HTMLCanvasElement) => ({
+				width: element.width,
+				height: element.height
+			}))
+		)
+		.toEqual({ width: 1280 - 96, height: 720 });
+
 	await advanceSimulationDay(page);
 	await waitForAutoSaveDay(page, 3);
 	await expect(page.getByTestId('opening-guidance')).toHaveCount(0);

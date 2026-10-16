@@ -2917,7 +2917,7 @@
 	onpointerdown={unlockAudio}
 >
 	<section class="map-layout" aria-label={i18n.t('route.cityPlanning')}>
-		<div class="map-surface-area">
+		<div class="map-surface-area" class:opening-guidance-visible={showOpeningGuidance}>
 			<MapSurfaceHost
 				{activeMapView}
 				{visitedMapViews}
@@ -3320,15 +3320,21 @@
 		flex-direction: column;
 	}
 
-	/* The map surfaces fill everything above the guidance strip reserved at
-	   the bottom (see .opening-guidance), so the canvas physically ends above
-	   the card and tile clicks can never land underneath it. */
+	/* While the guidance card is shown, the map surfaces fill everything
+	   above the strip reserved at the bottom (see .opening-guidance), so the
+	   canvas physically ends above the card and tile clicks can never land
+	   underneath it. When the card is absent the band is released so the
+	   canvas reclaims the full layout height. */
 	.map-surface-area {
 		position: absolute;
 		top: 0;
 		right: 0;
-		bottom: 9rem;
+		bottom: 0;
 		left: 0;
+	}
+
+	.map-surface-area.opening-guidance-visible {
+		bottom: 9rem;
 	}
 
 	.scenario-progress {
@@ -3358,16 +3364,18 @@
 		   the renderer's 520px minimum canvas height (a smaller band would be
 		   clamped anyway, spilling the canvas over whatever sits below), so
 		   below ~800px the canvas reaches across the card band and the card
-		   must out-stack it: position:relative keeps the card above the
-		   z-auto canvas even if .paper's positioning changes, while staying
-		   under the tile inspector (z 10) that opens over the card band, the
-		   dock (25), and the top chrome (29/30). */
-		.map-surface-area {
+		   must out-stack it: position:relative + z-index 5 keeps the card
+		   above the canvas and positioned map content such as the world node
+		   list (3) and world inspector (4), while staying under the tile
+		   inspector (z 10) that opens over the card band, the dock (25), and
+		   the top chrome (29/30). */
+		.map-surface-area.opening-guidance-visible {
 			bottom: min(17.5rem, calc(100dvh - 32.5rem));
 		}
 
 		.opening-guidance {
 			position: relative;
+			z-index: 5;
 			margin: auto 0.5rem 8.6rem 0.5rem;
 		}
 	}

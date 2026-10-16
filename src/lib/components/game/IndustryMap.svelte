@@ -97,10 +97,7 @@
 		}
 
 		// RESIZE mode reads parentSize during refresh; resize() alone restores stale dimensions.
-		currentGame.scale?.setParentSize?.(
-			Math.max(containerWidth, 640),
-			Math.max(containerHeight, 520)
-		);
+		currentGame.scale?.setParentSize?.(containerWidth, Math.max(containerHeight, 520));
 	});
 
 	async function startPhaser() {
