@@ -256,6 +256,17 @@ test('UI comparison restores the existing autosave paused', async ({ page }) => 
 			{ width: 1920, height: 1080 }
 		]) {
 			await page.setViewportSize(size);
+			// The canvas fills the viewport minus the bottom band reserved for
+			// the opening-guidance card: the card's bottom margin + its measured
+			// height, capped so the canvas never drops below the renderer's
+			// 520px minimum (short windows keep a 520px canvas and stack the
+			// card over it instead). The band's top edge is the card's top
+			// edge, so the expected height is that edge's y — floor 520. (Read
+			// geometry, not computed margins: Chromium reports an auto-margin
+			// flex item's margins as 0px.)
+			const cardBox = await page.getByTestId('opening-guidance').boundingBox();
+			if (!cardBox) throw new Error('Guidance card has no bounding box');
+			const expectedHeight = Math.max(520, Math.round(cardBox.y));
 			await expect
 				.poll(() =>
 					canvas.evaluate((element: HTMLCanvasElement) => ({
@@ -263,9 +274,7 @@ test('UI comparison restores the existing autosave paused', async ({ page }) => 
 						height: element.height
 					}))
 				)
-				// The canvas fills the viewport minus the 9rem bottom band the
-				// opening-guidance strip reserves (.map-surface-area).
-				.toEqual({ width: size.width - 96, height: size.height - 144 });
+				.toEqual({ width: size.width - 96, height: expectedHeight });
 		}
 	}
 	await expect.poll(() => readAutoSaveGame(page)).toEqual(saved);
@@ -2448,11 +2457,7 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	// in flow clear of every fixed chrome band, activatable by a plain center
 	// mouse click.
 	const dayOneAction = guidance.getByTestId('opening-guidance-action');
-	for (let attempt = 0; attempt < 40; attempt++) {
-		if (await dayOneAction.evaluate((el) => el === document.activeElement)) break;
-		await page.keyboard.press('Tab');
-	}
-	await expect(dayOneAction).toBeFocused();
+	await tabWalkToFocused(page, dayOneAction, 'backward');
 	await dayOneAction.click();
 
 	// The day-1 action opens the existing Dashboard, which has no completed
@@ -2471,11 +2476,7 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	// plain mouse click with the objective panel still expanded (the panel can
 	// only cover the card's copy area — the action row stays below it).
 	const evidenceAction = guidance.getByTestId('opening-guidance-action');
-	for (let attempt = 0; attempt < 40; attempt++) {
-		if (await evidenceAction.evaluate((el) => el === document.activeElement)) break;
-		await page.keyboard.press('Tab');
-	}
-	await expect(evidenceAction).toBeFocused();
+	await tabWalkToFocused(page, evidenceAction, 'backward');
 	await evidenceAction.click();
 	const evidenceDashboard = page.getByRole('dialog', { name: /dashboard/i });
 	await expect(evidenceDashboard.getByTestId('daily-result-day')).toHaveText(
@@ -2483,11 +2484,7 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 	);
 });
 
-async function expectGuidanceControlOwned(
-	guidance: Locator,
-	testId: 'opening-guidance-action' | 'opening-guidance-dismiss'
-): Promise<void> {
-	const control = guidance.getByTestId(testId);
+async function expectOwnsHitTarget(control: Locator): Promise<void> {
 	expect(
 		await control.evaluate((el) => {
 			const box = el.getBoundingClientRect();
@@ -2495,6 +2492,31 @@ async function expectGuidanceControlOwned(
 			return el === hit || (hit !== null && el.contains(hit));
 		})
 	).toBe(true);
+}
+
+async function expectGuidanceControlOwned(
+	guidance: Locator,
+	testId: 'opening-guidance-action' | 'opening-guidance-dismiss'
+): Promise<void> {
+	await expectOwnsHitTarget(guidance.getByTestId(testId));
+}
+
+// Keyboard-walk focus onto `control` via Tab (or Shift+Tab backward) — proves
+// the control sits in the tab order without pinning how many focusable
+// elements precede it. Backward walks reach late-DOM controls (the guidance
+// card, which only the control desk follows) in a handful of presses and stay
+// robust as earlier buttons are added.
+async function tabWalkToFocused(
+	page: Page,
+	control: Locator,
+	direction: 'forward' | 'backward' = 'forward'
+): Promise<void> {
+	await control.scrollIntoViewIfNeeded();
+	for (let attempt = 0; attempt < 80; attempt++) {
+		if (await control.evaluate((el) => el === document.activeElement)) return;
+		await page.keyboard.press(direction === 'backward' ? 'Shift+Tab' : 'Tab');
+	}
+	await expect(control).toBeFocused();
 }
 
 test('opening guidance stays mouse-usable on phone-sized viewports', async ({ page }) => {
@@ -2518,7 +2540,9 @@ test('opening guidance stays mouse-usable on phone-sized viewports', async ({ pa
 	const canvasBox = await canvas.boundingBox();
 	const cardBox = await sandboxGuidance.boundingBox();
 	if (!canvasBox || !cardBox) throw new Error('Map canvas or guidance card has no bounding box');
-	expect(canvasBox.y + canvasBox.height).toBeLessThanOrEqual(cardBox.y);
+	// The band is measured from the card itself, so the canvas bottom and the
+	// card top are the same edge; allow a pixel of sub-pixel rounding.
+	expect(canvasBox.y + canvasBox.height).toBeLessThanOrEqual(cardBox.y + 1);
 	await clickMapTile(page, 1, 6);
 	await expect(page.getByRole('dialog', { name: /tile details/i })).toBeVisible();
 
@@ -2577,13 +2601,7 @@ test('opening guidance stays mouse-usable on phone-sized viewports', async ({ pa
 	const actionBox = await action.boundingBox();
 	if (!stripBox || !actionBox) throw new Error('Scenario strip or action button has no box');
 	expect(stripBox.y + stripBox.height).toBeLessThan(actionBox.y);
-	expect(
-		await action.evaluate((el) => {
-			const box = el.getBoundingClientRect();
-			const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-			return el === hit || (hit !== null && el.contains(hit));
-		})
-	).toBe(true);
+	await expectGuidanceControlOwned(guidance, 'opening-guidance-action');
 	await action.click();
 	const dashboard = page.getByRole('dialog', { name: /dashboard/i });
 	await expect(dashboard.getByTestId('daily-result-empty')).toBeVisible();
@@ -2660,6 +2678,52 @@ test('opening guidance stays mouse-usable on phone-sized viewports', async ({ pa
 	await expectGuidanceControlOwned(smallestChallengeGuidance, 'opening-guidance-action');
 });
 
+test('opening guidance stays clear of the time cluster on narrow desktop windows', async ({
+	page
+}) => {
+	// HPA-284 review: at half-laptop width (683px) the centered play/speed
+	// cluster overlapped the in-flow card — clicking the action resumed the
+	// simulation instead — and at ≤1024px it hid the bottom line of the card's
+	// copy. Short desktop windows (the Tauri shell's 640px minimum) also
+	// clipped the canvas under the renderer's 520px floor because the old
+	// hardcoded band had no minimum. The card now sits above the cluster, and
+	// the measured band keeps a 520px canvas floor with the card stacking
+	// over it when the floor binds.
+	await installSandboxAutoSave(page, createNewGame('convenience', 1));
+	const guidance = page.getByTestId('opening-guidance');
+	await expect(guidance).toContainText('Complete a day to create your first evidence.');
+
+	await page.setViewportSize({ width: 683, height: 720 });
+	await expectGuidanceControlOwned(guidance, 'opening-guidance-action');
+	await expectGuidanceControlOwned(guidance, 'opening-guidance-dismiss');
+	// The card ends above the time cluster's top edge, so no cluster pixels
+	// paint over the card's copy or action row.
+	const clusterBox = await page.locator('.control-desk .time').boundingBox();
+	const cardBox = await guidance.boundingBox();
+	if (!clusterBox || !cardBox) throw new Error('Time cluster or guidance card has no box');
+	expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(clusterBox.y);
+	// The reproduced bug: the click opened the Dashboard, not pause/resume.
+	await guidance.getByTestId('opening-guidance-action').click();
+	const dashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(dashboard.getByTestId('daily-result-empty')).toBeVisible();
+	await dashboard.getByRole('button', { name: /close dashboard/i }).click();
+
+	// Tauri's 640px minimum window: the canvas keeps its 520px floor (nothing
+	// clipped) and the card stacks above the canvas while staying clickable.
+	await page.setViewportSize({ width: 683, height: 640 });
+	const shortCanvasBox = await activeMapCanvas(page).boundingBox();
+	if (!shortCanvasBox) throw new Error('Map canvas has no bounding box');
+	expect(Math.round(shortCanvasBox.height)).toBe(520);
+	expect(
+		await guidance.evaluate(
+			(card) =>
+				card.scrollHeight <= card.clientHeight + 1 && card.scrollWidth <= card.clientWidth + 1
+		)
+	).toBe(true);
+	await expectGuidanceControlOwned(guidance, 'opening-guidance-action');
+	await expectGuidanceControlOwned(guidance, 'opening-guidance-dismiss');
+});
+
 test('sandbox opening guidance picks stock recovery over finance noise and re-arms on load', async ({
 	page
 }) => {
@@ -2691,19 +2755,8 @@ test('sandbox opening guidance picks stock recovery over finance noise and re-ar
 	// not overlay, so the click lands on the button itself.
 	const action = guidance.getByTestId('opening-guidance-action');
 	const dismiss = guidance.getByTestId('opening-guidance-dismiss');
-	for (const button of [action, dismiss]) {
-		await button.scrollIntoViewIfNeeded();
-		for (let attempt = 0; attempt < 40; attempt++) {
-			if (await button.evaluate((el) => el === document.activeElement)) break;
-			await page.keyboard.press('Tab');
-		}
-		await expect(button).toBeFocused();
-	}
-	for (let attempt = 0; attempt < 40; attempt++) {
-		if (await action.evaluate((el) => el === document.activeElement)) break;
-		await page.keyboard.press('Tab');
-	}
-	await expect(action).toBeFocused();
+	await tabWalkToFocused(page, dismiss, 'backward');
+	await tabWalkToFocused(page, action, 'backward');
 	await action.click();
 
 	// The action reuses the HPA-293 live destination: store detail straight to
@@ -2729,12 +2782,7 @@ test('sandbox opening guidance picks stock recovery over finance noise and re-ar
 	const dockButtonCount = await dockButtons.count();
 	expect(dockButtonCount).toBeGreaterThan(0);
 	for (let index = 0; index < dockButtonCount; index++) {
-		const ownsHitTarget = await dockButtons.nth(index).evaluate((el) => {
-			const box = el.getBoundingClientRect();
-			const topElement = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-			return el.contains(topElement);
-		});
-		expect(ownsHitTarget).toBe(true);
+		await expectOwnsHitTarget(dockButtons.nth(index));
 	}
 	await openManagementPanel(page, /dashboard/i);
 	await page
@@ -3264,12 +3312,7 @@ test('daily result dashboard stacks and stays keyboard reachable at 600px', asyn
 	// Walk the tab order into the card's supporting-detail action and activate
 	// it with Enter alone.
 	const reportsAction = card.getByRole('button', { name: /reports/i });
-	await reportsAction.scrollIntoViewIfNeeded();
-	for (let attempt = 0; attempt < 40; attempt++) {
-		if (await reportsAction.evaluate((el) => el === document.activeElement)) break;
-		await page.keyboard.press('Tab');
-	}
-	await expect(reportsAction).toBeFocused();
+	await tabWalkToFocused(page, reportsAction);
 	await page.keyboard.press('Enter');
 
 	const reports = page.getByRole('dialog', { name: /reports/i });

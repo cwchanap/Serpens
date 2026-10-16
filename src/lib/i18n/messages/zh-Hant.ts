@@ -2042,7 +2042,7 @@ export const zhHant = {
 	openingGuidance: {
 		heading: '開店指引',
 		reason: {
-			cashRisk: '有款項逾期或現金餘裕不足，請當日處理。',
+			cashRisk: '有款項逾期或現金餘裕不足。',
 			stockRecovery: '有貨架缺貨，請補貨以維持銷售。',
 			firstResult: '完成一天，建立第一份證據。',
 			resultEvidence: '在儀表板檢視最新完成結果。'

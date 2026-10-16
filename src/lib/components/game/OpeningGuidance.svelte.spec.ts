@@ -20,7 +20,7 @@ const hints: Record<OpeningGuidance['kind'], OpeningGuidance> = {
 
 const expectedCopy: Record<OpeningGuidance['kind'], { reason: string; action: string }> = {
 	'cash-risk': {
-		reason: 'A payment was missed or cash runway is short — handle it today.',
+		reason: 'A payment was missed or cash runway is short.',
 		action: 'Open Finance'
 	},
 	'stock-recovery': {

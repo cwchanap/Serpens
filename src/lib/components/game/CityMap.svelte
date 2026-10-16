@@ -113,7 +113,11 @@
 			game = new Phaser.Game({
 				type: Phaser.AUTO,
 				parent: container,
-				width: Math.max(container.clientWidth, 640),
+				// Match the resize path (below): the real container width from the
+				// first frame — no 640px floor, which pinned the canvas wider than
+				// a phone viewport and left edge tiles untappable until the first
+				// resize settled. Only the 520px height floor is load-bearing.
+				width: Math.max(container.clientWidth, 1),
 				height: Math.max(container.clientHeight, 520),
 				backgroundColor: '#14100A',
 				scene: nextScene,
