@@ -44,11 +44,12 @@ describe('CashRecoveryGuidance card', () => {
 	});
 
 	it('uses singular and payroll copy for the smaller plan', async () => {
-		expect.assertions(2);
+		expect.assertions(3);
 		render(CashRecoveryGuidance, {
 			plan: {
 				alert: runwayAlert,
 				steps: [
+					{ kind: 'assign-idle-staff', count: 1 },
 					{ kind: 'finance', alert: runwayAlert },
 					{ kind: 'release-idle-staff', count: 1 }
 				]
@@ -57,6 +58,11 @@ describe('CashRecoveryGuidance card', () => {
 			onStep: vi.fn()
 		});
 
+		await expect
+			.element(
+				page.getByRole('button', { name: 'Assign 1 idle staff member to a short-staffed store' })
+			)
+			.toBeVisible();
 		await expect
 			.element(page.getByRole('button', { name: 'Release 1 idle staff member' }))
 			.toBeVisible();

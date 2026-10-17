@@ -2150,6 +2150,10 @@ export const en = {
 		reason: 'Cash is running out. These steps can stop the slide:',
 		steps: {
 			restock: 'Restock empty shelves',
+			assignIdleStaff: {
+				one: 'Assign {count} idle staff member to a short-staffed store',
+				other: 'Assign {count} idle staff members to short-staffed stores'
+			},
 			finance: 'Borrow or refinance in Finance',
 			releaseIdleStaff: {
 				one: 'Release {count} idle staff member',

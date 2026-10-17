@@ -8,11 +8,15 @@ function alertOf(kind: GameAlertKind, id: string): GameAlert {
 	return { id, kind };
 }
 
-function staffMember(id: string, assignedStoreId: string | null): StaffMember {
+function staffMember(
+	id: string,
+	assignedStoreId: string | null,
+	role: StaffMember['role'] = 'general'
+): StaffMember {
 	return {
 		id,
 		name: id,
-		role: 'general',
+		role,
 		monthlySalary: 3000,
 		skill: 50,
 		morale: 50,
@@ -65,6 +69,7 @@ describe('selectCashRecovery', () => {
 	});
 
 	it('orders steps as restock, finance, staff cost, then routes', () => {
+		// store-1 is short a manager, which idle general hands cannot fill.
 		const plan = selectCashRecovery(
 			gameWith(
 				[staffMember('a', 'store-1'), staffMember('b', null), staffMember('c', null)],
@@ -89,6 +94,36 @@ describe('selectCashRecovery', () => {
 
 		expect(plan?.alert).toBe(missed);
 		expect(plan?.steps).toEqual([{ kind: 'finance', alert: missed }]);
+	});
+
+	it('assigns idle staff who can fill a store shortage and releases only the surplus', () => {
+		// The fixture's store-1 needs one manager and one general hand.
+		const plan = selectCashRecovery(
+			gameWith([
+				staffMember('a', 'store-1'),
+				staffMember('m', null, 'manager'),
+				staffMember('b', null)
+			]),
+			[runway]
+		);
+
+		expect(plan?.steps).toEqual([
+			{ kind: 'assign-idle-staff', count: 1 },
+			{ kind: 'finance', alert: runway },
+			{ kind: 'release-idle-staff', count: 1 }
+		]);
+	});
+
+	it('does not suggest cutting staff when every idle member fills a shortage', () => {
+		const plan = selectCashRecovery(
+			gameWith([staffMember('m', null, 'manager'), staffMember('g', null)]),
+			[runway]
+		);
+
+		expect(plan?.steps).toEqual([
+			{ kind: 'assign-idle-staff', count: 2 },
+			{ kind: 'finance', alert: runway }
+		]);
 	});
 
 	it('points at payroll when every staff member is assigned', () => {

@@ -2081,6 +2081,10 @@ export const zhHant = {
 		reason: '現金即將用盡。以下步驟可以止住下滑：',
 		steps: {
 			restock: '補滿空貨架',
+			assignIdleStaff: {
+				one: '將 {count} 名閒置員工指派到人手不足的店鋪',
+				other: '將 {count} 名閒置員工指派到人手不足的店鋪'
+			},
 			finance: '在財務借款或再融資',
 			releaseIdleStaff: {
 				one: '解僱 {count} 名閒置員工',
