@@ -35,7 +35,8 @@ export const zhHant = {
 		pause: '暫停',
 		resume: '繼續',
 		simulationSpeed: '模擬速度',
-		advanceDay: '推進一天'
+		advanceDay: '推進一天',
+		timeLockedHint: '開設一家店鋪後時間才會開始流動。'
 	},
 	audioSettings: {
 		group: '音效設定',
@@ -97,6 +98,7 @@ export const zhHant = {
 			moreProducers: '{producer} +{count}',
 			needsProducer: '需要 {producer}',
 			needsResource: '需要 {resource} 資源地塊',
+			railHint: '物料只能經由鐵路運送：請把每座生產建築連到下一座建築或倉庫。',
 			noOptions: '沒有可建設的工業建築'
 		}
 	},
@@ -197,6 +199,12 @@ export const zhHant = {
 		used: '已使用',
 		overflowUnits: '溢出單位',
 		overflowCost: '溢出成本',
+		linkIssue: {
+			noWarehouse: '此城市沒有倉庫：建造倉庫前，產出無處可去。',
+			railDisconnected: '未以鐵路連接：產出無法送達倉庫或下一座建築。',
+			buildWarehouse: '建造倉庫',
+			buildRail: '從這裡鋪設鐵路'
+		},
 		unknownBuildingType: '未知的工業建築類型',
 		status: {
 			idle: '閒置',
@@ -595,6 +603,8 @@ export const zhHant = {
 		assignButton: '分派',
 		unassignButton: '解除分派',
 		promoteButton: '升級 {name}（{cost}）',
+		releaseButton: '解僱 {name}',
+		confirmRelease: '要解僱 {name} 嗎？每月 {salary} 的薪資將停止支付，且無法復原。',
 		emptyCandidates: '沒有可用候選人',
 		emptyUnassigned: '沒有未分派員工',
 		emptyAssigned: '沒有已分派員工',
@@ -608,7 +618,8 @@ export const zhHant = {
 			assign: '分派 {name}，{role}員工 {id}，{context}',
 			assignToStore: '分派 {name}，{role}員工 {id} 至 {storeName}',
 			unassign: '將 {name}，{role}員工 {id} 從 {storeName} 解除分派',
-			promote: '花費 {cost} 將 {name}，{role}員工 {id} 升至等級 {level}'
+			promote: '花費 {cost} 將 {name}，{role}員工 {id} 升至等級 {level}',
+			release: '解僱 {name}，{role}員工 {id}，每月節省 {salary}'
 		},
 		levelProgress: {
 			max: '最高等級',
@@ -1662,6 +1673,11 @@ export const zhHant = {
 			decision: '決策: {title}',
 			eventModifier: '生效中的修正效果: {title}',
 			factoryBlocked: '{buildingName} 缺少投入原料',
+			industryWarehouseMissing: '{cityName} 沒有倉庫，{buildingName} 的產出無處可去。',
+			industryRailDisconnected: {
+				one: '{buildingName} 沒有鐵路連到倉庫或使用其產出的建築。',
+				other: '{count} 座建築沒有鐵路連接，請先從 {buildingName} 開始。'
+			},
 			logisticsOriginStock: '{origin} 的 {material} 庫存低於此航線所需數量。',
 			logisticsRouteCapacity:
 				'{origin} 至 {destination} 的 {material} 航線已達容量，仍有需求未滿足。',
@@ -1669,7 +1685,11 @@ export const zhHant = {
 			missedLoanPayment: '{purpose}有 {amount} 的逾期付款。',
 			covenantRisk: '債務償付覆蓋率為 {coverage}，低於 {threshold}。',
 			lowCashRunway: '現金續航只剩 {days} 天。',
-			managerException: '{managerName} 有一項委任動作需要檢查。'
+			managerException: '{managerName} 有一項委任動作需要檢查。',
+			storeUnderstaffed: {
+				one: '{storeName} 缺少 {count} 名員工，請到員工面板招聘或指派。',
+				other: '{storeName} 缺少 {count} 名員工，請到員工面板招聘或指派。'
+			}
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} 有庫存壓力',
@@ -2004,6 +2024,7 @@ export const zhHant = {
 	scenarioModifiers: { importCostMultiplier: '進口成本 ×{multiplier}' },
 	placement: {
 		chooseHighlightedTile: '請選擇已高亮的地塊來建設。',
+		chooseResourceTile: '請選擇已高亮的 {resource} 地塊來建設。',
 		retail: {
 			unknownCityTile: '未知的城市地塊',
 			storeLimitReached: '已達商店上限',
@@ -2017,7 +2038,9 @@ export const zhHant = {
 		industry: {
 			lockedUntilRetail: '先開設零售店才能解鎖建設。',
 			unknownBuildingType: '未知的工業建築類型',
-			requiresCash: '{buildingName} 需要 {amount} 現金。'
+			requiresCash: '{buildingName} 需要 {amount} 現金。',
+			noValidTiles: '此城市已沒有適合這座建築的空地塊。',
+			noValidResourceTiles: '此城市已沒有空的 {resource} 地塊。'
 		}
 	},
 	dailyResult: {
@@ -2051,6 +2074,28 @@ export const zhHant = {
 		stockAction: '開啟商店',
 		dashboardAction: '開啟儀表板',
 		// Session-hide semantics (the card re-arms on reload), not a dialog close.
+		dismiss: '隱藏'
+	},
+	cashRecovery: {
+		heading: '現金周轉',
+		reason: '現金即將用盡。以下步驟可以止住下滑：',
+		steps: {
+			restock: '補滿空貨架',
+			assignIdleStaff: {
+				one: '將 {count} 名閒置員工指派到人手不足的店鋪',
+				other: '將 {count} 名閒置員工指派到人手不足的店鋪'
+			},
+			finance: '在財務借款或再融資',
+			releaseIdleStaff: {
+				one: '解僱 {count} 名閒置員工',
+				other: '解僱 {count} 名閒置員工'
+			},
+			reviewPayroll: '在員工頁削減薪資支出',
+			pauseRoutes: {
+				one: '暫停 {count} 條運作中的路線',
+				other: '暫停 {count} 條運作中的路線'
+			}
+		},
 		dismiss: '隱藏'
 	}
 } as const satisfies Messages;

@@ -7,6 +7,7 @@ import { createInitialEventRuntime } from './eventSelection';
 import { decisionContextLocationGeneric } from './decisionContext';
 import { createRouteDispatchAttempt } from './logisticsReport.testUtils';
 import { simulateDay } from './simulateDay';
+import { getStaffingRequirement } from './staffing';
 import { createNewGame } from './state';
 import type {
 	DailyReport,
@@ -21,6 +22,8 @@ import type {
 	LoanInstrument,
 	ActiveEventModifier,
 	MaterialId,
+	IndustryCity,
+	RailCell,
 	RecurringRoute
 } from './types';
 
@@ -168,7 +171,26 @@ function managerStaff(id: string): StaffMember {
 	};
 }
 
+/** Exactly the staff each store requires, so staffing alerts stay opt-in. */
+function fullStaffFor(stores: readonly Store[]): StaffMember[] {
+	return stores.flatMap((candidate) => {
+		const requirement = getStaffingRequirement(candidate.archetypeId, candidate.level);
+		return (['manager', 'general'] as const).flatMap((role) =>
+			Array.from({ length: requirement[role] }, (_, index) => ({
+				...managerStaff(`staff-${candidate.id}-${role}-${index + 1}`),
+				role,
+				assignedStoreId: candidate.id
+			}))
+		);
+	});
+}
+
 function baseGame(overrides: Partial<GameState> = {}): GameState {
+	const game = baseGameWithoutStaffing(overrides);
+	return overrides.staff ? game : { ...game, staff: fullStaffFor(game.stores) };
+}
+
+function baseGameWithoutStaffing(overrides: Partial<GameState>): GameState {
 	return {
 		seed: 1,
 		rngState: 0,
@@ -1433,5 +1455,131 @@ describe('collectGameAlerts', () => {
 			'event-modifier-a',
 			'event-modifier-b'
 		]);
+	});
+});
+
+describe('industry link alerts', () => {
+	function industryCity(rails: RailCell[] = [], id = 'industry-city'): IndustryCity {
+		return { id, name: 'Industry City', width: 30, height: 30, tiles: [], rails };
+	}
+
+	function railLine(y: number, fromX: number, toX: number): RailCell[] {
+		const cells: RailCell[] = [];
+		for (let x = fromX; x <= toX; x += 1) cells.push({ x, y, level: 1 });
+		return cells;
+	}
+
+	const pump = building({
+		id: 'bld-pump',
+		typeId: 'water-pump',
+		tileId: 'itile-pump',
+		mapX: 2,
+		mapY: 2
+	});
+	const bottler = building({
+		id: 'bld-bottler',
+		typeId: 'water-bottler',
+		tileId: 'itile-bottler',
+		mapX: 6,
+		mapY: 2
+	});
+	const warehouse = building({
+		id: 'bld-warehouse',
+		typeId: 'warehouse',
+		tileId: 'itile-warehouse',
+		mapX: 10,
+		mapY: 2
+	});
+
+	it('raises a warehouse-missing alert anchored on the first unlinked producer', () => {
+		const alerts = collectGameAlerts(
+			baseGame({ industryCities: [industryCity()], industrialBuildings: [pump] })
+		);
+
+		expect(alerts).toEqual([
+			{
+				id: 'industry-warehouse-missing:industry-city',
+				kind: 'industry-warehouse-missing',
+				cityId: 'industry-city',
+				buildingId: 'bld-pump',
+				tileId: 'itile-pump'
+			}
+		]);
+	});
+
+	it('raises one rail-disconnected alert per city however many buildings are unlinked', () => {
+		const alerts = collectGameAlerts(
+			baseGame({
+				industryCities: [industryCity()],
+				industrialBuildings: [pump, bottler, warehouse]
+			})
+		);
+
+		expect(alerts).toEqual([
+			{
+				id: 'industry-rail-disconnected:industry-city',
+				kind: 'industry-rail-disconnected',
+				cityId: 'industry-city',
+				buildingId: 'bld-bottler',
+				tileId: 'itile-bottler'
+			}
+		]);
+	});
+
+	it('raises both kinds when a chain has a stranded producer and no warehouse', () => {
+		const alerts = collectGameAlerts(
+			baseGame({ industryCities: [industryCity()], industrialBuildings: [pump, bottler] })
+		);
+
+		expect(alerts.map((alert) => alert.id)).toEqual([
+			'industry-warehouse-missing:industry-city',
+			'industry-rail-disconnected:industry-city'
+		]);
+	});
+
+	it('stays quiet once rail links the chain to a warehouse', () => {
+		const alerts = collectGameAlerts(
+			baseGame({
+				industryCities: [industryCity(railLine(4, 2, 11))],
+				industrialBuildings: [pump, bottler, warehouse]
+			})
+		);
+
+		expect(alerts).toEqual([]);
+	});
+});
+
+describe('store staffing alerts', () => {
+	it('flags a store below its staffing requirement and opens Staff', () => {
+		const alerts = collectGameAlerts(baseGame({ stores: [store()], staff: [] }));
+
+		expect(alerts).toEqual([
+			{
+				id: 'store-understaffed:store-1',
+				kind: 'store-understaffed',
+				cityId: 'harbor-city',
+				storeId: 'store-1',
+				managementPanelId: 'staff'
+			}
+		]);
+	});
+
+	it('ignores staff assigned elsewhere or left unassigned', () => {
+		const stores = [store(), store({ id: 'store-2', tileId: 'tile-2' })];
+		const staff = fullStaffFor([stores[0]!]).concat(
+			fullStaffFor([stores[0]!]).map((member) => ({
+				...member,
+				id: `${member.id}-idle`,
+				assignedStoreId: null
+			}))
+		);
+
+		expect(collectGameAlerts(baseGame({ stores, staff })).map((alert) => alert.id)).toEqual([
+			'store-understaffed:store-2'
+		]);
+	});
+
+	it('stays quiet when every store meets its requirement', () => {
+		expect(collectGameAlerts(baseGame({ stores: [store()] }))).toEqual([]);
 	});
 });

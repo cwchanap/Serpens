@@ -35,6 +35,16 @@ function sandboxSave(): string {
 	return JSON.stringify(snapshot);
 }
 
+test('first paint boot mark clears and the time controls explain why they wait', async ({
+	page
+}) => {
+	await page.goto('/');
+
+	await expect(page.locator('#app-boot')).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeDisabled();
+	await expect(page.locator('.control-desk')).toContainText('Found a store to start time.');
+});
+
 test('simulation advances automatically at the selected speed and stops while paused', async ({
 	page
 }) => {

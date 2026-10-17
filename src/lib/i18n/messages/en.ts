@@ -35,7 +35,8 @@ export const en = {
 		pause: 'Pause',
 		resume: 'Resume',
 		simulationSpeed: 'Simulation speed',
-		advanceDay: 'Advance day'
+		advanceDay: 'Advance day',
+		timeLockedHint: 'Found a store to start time.'
 	},
 	audioSettings: {
 		group: 'Audio settings',
@@ -97,6 +98,8 @@ export const en = {
 			moreProducers: '{producer} +{count}',
 			needsProducer: 'Needs {producer}',
 			needsResource: 'Needs a {resource} resource tile',
+			railHint:
+				'Materials move only over rail: link each producer to the next building or a Warehouse.',
 			noOptions: 'No industrial buildings available'
 		}
 	},
@@ -200,6 +203,12 @@ export const en = {
 		used: 'Used',
 		overflowUnits: 'Overflow units',
 		overflowCost: 'Overflow cost',
+		linkIssue: {
+			noWarehouse: 'No warehouse in this city: output has nowhere to go until you build one.',
+			railDisconnected: 'Not linked by rail: output cannot reach a warehouse or the next building.',
+			buildWarehouse: 'Build warehouse',
+			buildRail: 'Build rail from here'
+		},
 		unknownBuildingType: 'Unknown building type',
 		status: {
 			idle: 'Idle',
@@ -599,6 +608,8 @@ export const en = {
 		assignButton: 'Assign',
 		unassignButton: 'Unassign',
 		promoteButton: 'Promote {name} ({cost})',
+		releaseButton: 'Release {name}',
+		confirmRelease: 'Release {name}? Their {salary}/mo salary stops. This cannot be undone.',
 		emptyCandidates: 'No candidates available',
 		emptyUnassigned: 'No unassigned staff',
 		emptyAssigned: 'No assigned staff',
@@ -612,7 +623,8 @@ export const en = {
 			assign: 'Assign {name}, {role} staff {id}, {context}',
 			assignToStore: 'Assign {name}, {role} staff {id} to {storeName}',
 			unassign: 'Unassign {name}, {role} staff {id} from {storeName}',
-			promote: 'Promote {name}, {role} staff {id} to level {level} for {cost}'
+			promote: 'Promote {name}, {role} staff {id} to level {level} for {cost}',
+			release: 'Release {name}, {role} staff {id}, saving {salary}/mo'
 		},
 		levelProgress: {
 			max: 'Max level',
@@ -1710,6 +1722,12 @@ export const en = {
 			decision: 'Decision: {title}',
 			eventModifier: 'Active modifier: {title}',
 			factoryBlocked: '{buildingName} starved of inputs',
+			industryWarehouseMissing:
+				'{cityName} has no warehouse, so {buildingName} output has nowhere to go.',
+			industryRailDisconnected: {
+				one: '{buildingName} has no rail link to a warehouse or the building that uses its output.',
+				other: '{count} buildings have no rail link; start with {buildingName}.'
+			},
 			logisticsOriginStock: '{origin} has less {material} stock than this route needs.',
 			logisticsRouteCapacity:
 				'{origin} to {destination} is at route capacity while {material} demand remains.',
@@ -1717,7 +1735,11 @@ export const en = {
 			missedLoanPayment: '{purpose} has a missed payment of {amount}.',
 			covenantRisk: 'Debt-service coverage is {coverage}, below {threshold}.',
 			lowCashRunway: 'Cash runway is {days} days.',
-			managerException: '{managerName} has a delegated action that needs review.'
+			managerException: '{managerName} has a delegated action that needs review.',
+			storeUnderstaffed: {
+				one: '{storeName} is short {count} staff member. Hire or assign in Staff.',
+				other: '{storeName} is short {count} staff members. Hire or assign in Staff.'
+			}
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} has stock pressure',
@@ -2068,6 +2090,7 @@ export const en = {
 	},
 	placement: {
 		chooseHighlightedTile: 'Choose a highlighted tile to build.',
+		chooseResourceTile: 'Choose a highlighted {resource} tile to build.',
 		retail: {
 			unknownCityTile: 'Unknown city tile',
 			storeLimitReached: 'Store limit reached',
@@ -2081,7 +2104,9 @@ export const en = {
 		industry: {
 			lockedUntilRetail: 'Open a retail store to unlock construction.',
 			unknownBuildingType: 'Unknown industrial building type',
-			requiresCash: '{buildingName} requires {amount} cash.'
+			requiresCash: '{buildingName} requires {amount} cash.',
+			noValidTiles: 'No free tile in this city fits this building.',
+			noValidResourceTiles: 'No free {resource} tile left in this city.'
 		}
 	},
 	dailyResult: {
@@ -2118,6 +2143,28 @@ export const en = {
 		financeAction: 'Open Finance',
 		stockAction: 'Open store',
 		dashboardAction: 'Open Dashboard',
+		dismiss: 'Dismiss'
+	},
+	cashRecovery: {
+		heading: 'Cash recovery',
+		reason: 'Cash is running out. These steps can stop the slide:',
+		steps: {
+			restock: 'Restock empty shelves',
+			assignIdleStaff: {
+				one: 'Assign {count} idle staff member to a short-staffed store',
+				other: 'Assign {count} idle staff members to short-staffed stores'
+			},
+			finance: 'Borrow or refinance in Finance',
+			releaseIdleStaff: {
+				one: 'Release {count} idle staff member',
+				other: 'Release {count} idle staff members'
+			},
+			reviewPayroll: 'Cut payroll in Staff',
+			pauseRoutes: {
+				one: 'Pause {count} active route',
+				other: 'Pause {count} active routes'
+			}
+		},
 		dismiss: 'Dismiss'
 	}
 } as const;

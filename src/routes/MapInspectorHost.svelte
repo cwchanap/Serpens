@@ -45,6 +45,8 @@
 		onUpgradeIndustryBuilding: (buildingId: string) => void;
 		onAddIndustryRoute?: (preset: RecurringRouteInput) => void;
 		onDemolishIndustryBuilding?: (buildingId: string) => void;
+		onBuildIndustryWarehouse?: () => void;
+		onBuildRailFromBuilding?: (buildingId: string) => void;
 		canDemolishIndustryBuilding?: boolean;
 		onUpgradeRailSegment: (segmentId: string) => void;
 		onDemolishRailSegment: (segmentId: string) => void;
@@ -81,6 +83,8 @@
 		onUpgradeIndustryBuilding,
 		onAddIndustryRoute,
 		onDemolishIndustryBuilding,
+		onBuildIndustryWarehouse,
+		onBuildRailFromBuilding,
 		canDemolishIndustryBuilding = false,
 		onUpgradeRailSegment,
 		onDemolishRailSegment,
@@ -165,6 +169,8 @@
 			onUpgradeBuilding={onUpgradeIndustryBuilding}
 			onAddRoute={onAddIndustryRoute}
 			onDemolishBuilding={onDemolishIndustryBuilding}
+			onBuildWarehouse={onBuildIndustryWarehouse}
+			onBuildRailFrom={onBuildRailFromBuilding}
 			canDemolishBuilding={canDemolishIndustryBuilding}
 			canUpgradeBuilding={canUpgradeIndustryBuilding}
 			{disabledReason}

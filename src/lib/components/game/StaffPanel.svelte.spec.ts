@@ -82,10 +82,12 @@ function renderStaffPanel(
 		onHire: (candidateId: string) => void;
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
+		onRelease: (staffId: string) => void;
 		onPromote: (staffId: string) => void;
 		canHire: boolean;
 		canAssign: boolean;
 		canUnassign: boolean;
+		canRelease: boolean;
 		canPromote: boolean;
 		disabledReason: string;
 	}> = {}
@@ -146,6 +148,40 @@ describe('StaffPanel', () => {
 			.selectOptions('store-1');
 
 		expect(onAssign).toHaveBeenCalledWith('staff-blair', 'store-1');
+	});
+
+	it('releases an idle staff member after confirmation', async () => {
+		expect.assertions(3);
+		const onRelease = vi.fn();
+		const confirmSpy = vi
+			.spyOn(window, 'confirm')
+			.mockReturnValueOnce(false)
+			.mockReturnValueOnce(true);
+
+		renderStaffPanel({ onRelease });
+
+		const release = page.getByRole('button', {
+			name: 'Release Blair Kim, General staff staff-blair, saving $3,000/mo'
+		});
+		await release.click();
+		expect(onRelease).not.toHaveBeenCalled();
+		await release.click();
+		expect(onRelease).toHaveBeenCalledWith('staff-blair');
+		// Only idle (unassigned) staff offer Release; assigned staff are unassigned first.
+		await expect
+			.element(page.getByRole('button', { name: /^Release Alex Chen/ }))
+			.not.toBeInTheDocument();
+		confirmSpy.mockRestore();
+	});
+
+	it('hides Release when releasing staff is unavailable', async () => {
+		expect.assertions(1);
+
+		renderStaffPanel({ onRelease: vi.fn(), canRelease: false });
+
+		await expect
+			.element(page.getByRole('button', { name: /^Release Blair Kim/ }))
+			.not.toBeInTheDocument();
 	});
 
 	it('calls onUnassign with staff id when clicking an assigned staff unassign button', async () => {

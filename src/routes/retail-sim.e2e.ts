@@ -4907,7 +4907,9 @@ test('supply advisor recommends and arms a starter build', async ({ page }) => {
 		.first()
 		.click();
 	await expect(advisor).toHaveCount(0);
-	await expect(page.getByText(/choose a highlighted tile to build/i)).toBeVisible();
+	// Starter recommendations are raw producers, so the plaque names the
+	// resource tile they need ("Choose a highlighted Water Source tile…").
+	await expect(page.getByText(/choose a highlighted .*tile to build/i)).toBeVisible();
 });
 
 test('supply planner warehouse', async ({ page }) => {

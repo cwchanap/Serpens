@@ -143,6 +143,7 @@ function setupScene() {
 	const cameraMock = {
 		setZoom: vi.fn(),
 		setScroll: vi.fn(),
+		centerOn: vi.fn(),
 		setBounds: vi.fn(),
 		scrollX: 0,
 		scrollY: 0,
@@ -958,6 +959,73 @@ describe('IndustryMapScene', () => {
 			scene.create();
 			scene.updateSnapshot(makeSnapshot());
 			expect(canvas.dataset.placementPreviewMode).toBe('inactive');
+		});
+
+		test('emphasizes resource-anchored previews with a brighter valid fill', () => {
+			expect.assertions(3);
+			const { scene, canvas, graphicsInstances } = setupScene();
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t-0-0'],
+						invalidTileIds: ['t-1-0'],
+						requiredResource: 'water-source'
+					}
+				})
+			);
+			expect(canvas.dataset.placementPreviewEmphasis).toBe('resource');
+			expect(graphicsInstances[2].mock.fillStyle).toHaveBeenCalledWith(0xf2c14e, 0.55);
+			expect(graphicsInstances[2].mock.fillStyle).toHaveBeenCalledWith(0x8e2a1f, 0.1);
+		});
+
+		test('keeps the standard preview for buildings without a required resource', () => {
+			expect.assertions(2);
+			const { scene, canvas, cameraMock } = setupScene();
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({ placementPreview: { validTileIds: ['t-0-0'], invalidTileIds: [] } })
+			);
+			expect(canvas.dataset.placementPreviewEmphasis).toBe('none');
+			expect(cameraMock.centerOn).not.toHaveBeenCalled();
+		});
+
+		test('pans once to the nearest resource anchor when none is on screen', () => {
+			expect.assertions(3);
+			const { scene, cameraMock } = setupScene();
+			scene.create();
+			cameraMock.worldView = { x: 2000, y: 2000, width: 400, height: 300 };
+			const resourceSnapshot = makeSnapshot({
+				placementPreview: {
+					validTileIds: ['t-0-0', 't-1-0'],
+					invalidTileIds: [],
+					requiredResource: 'water-source'
+				}
+			});
+			scene.updateSnapshot(resourceSnapshot);
+			// Nearest anchor to the (2200, 2150) view center is t-1-0 at (1, 0).
+			expect(cameraMock.centerOn).toHaveBeenCalledWith(64, 32);
+			scene.updateSnapshot(resourceSnapshot);
+			expect(cameraMock.centerOn).toHaveBeenCalledTimes(1);
+			scene.updateSnapshot(makeSnapshot({ placementPreview: null }));
+			scene.updateSnapshot(resourceSnapshot);
+			expect(cameraMock.centerOn).toHaveBeenCalledTimes(2);
+		});
+
+		test('does not pan when a resource anchor is already visible', () => {
+			expect.assertions(1);
+			const { scene, cameraMock } = setupScene();
+			scene.create();
+			scene.updateSnapshot(
+				makeSnapshot({
+					placementPreview: {
+						validTileIds: ['t-0-0'],
+						invalidTileIds: [],
+						requiredResource: 'water-source'
+					}
+				})
+			);
+			expect(cameraMock.centerOn).not.toHaveBeenCalled();
 		});
 	});
 

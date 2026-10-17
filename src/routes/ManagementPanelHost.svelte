@@ -68,6 +68,7 @@
 		onHireStaff: (candidateId: string) => void;
 		onAssignStaff: (staffId: string, storeId: string) => void;
 		onUnassignStaff: (staffId: string) => void;
+		onReleaseStaff?: (staffId: string) => void;
 		onPromoteStaff: (staffId: string) => void;
 		onSetRetailSupplySource: (retailCityId: string, supplyCityId: string | null) => void;
 		onChooseDecision: (decisionId: string, optionId: string) => void;
@@ -122,6 +123,7 @@
 		onHireStaff,
 		onAssignStaff,
 		onUnassignStaff,
+		onReleaseStaff,
 		onPromoteStaff,
 		onSetRetailSupplySource,
 		onChooseDecision,
@@ -321,10 +323,12 @@
 							onHire={onHireStaff}
 							onAssign={onAssignStaff}
 							onUnassign={onUnassignStaff}
+							onRelease={onReleaseStaff}
 							onPromote={onPromoteStaff}
 							canHire={mutations.hireStaff}
 							canAssign={mutations.assignStaff}
 							canUnassign={mutations.unassignStaff}
+							canRelease={mutations.releaseStaff}
 							canPromote={mutations.promoteStaff}
 							{disabledReason}
 						/>

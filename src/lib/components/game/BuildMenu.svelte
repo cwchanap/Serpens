@@ -441,6 +441,10 @@
 
 			{#if industryLockedReason}
 				<p class="disabled-copy">{formatPlacementReason(industryLockedReason)}</p>
+			{:else}
+				<p class="muted rail-hint" data-testid="build-menu-rail-hint">
+					{i18n.t('buildMenu.industry.railHint')}
+				</p>
 			{/if}
 
 			{#if productFilterOpen}
@@ -732,6 +736,10 @@
 	.muted {
 		font-family: var(--font-body);
 		font-size: 0.86rem;
+	}
+
+	.rail-hint {
+		margin: 0;
 	}
 
 	.option-list,

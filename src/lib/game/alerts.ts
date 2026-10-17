@@ -1,11 +1,13 @@
 import { hasLoanArrears, isOutstandingLoan } from './finance';
 import { getAlertFinanceSnapshot } from './financeMetrics';
+import { getIndustrialLinkIssues, type IndustrialLinkIssue } from './industryLinks';
 import {
 	attemptMatchesRoute,
 	selectRecentRouteDispatchAttempts,
 	selectRouteOperations,
 	type RouteOperationalSummary
 } from './logisticsReadModels';
+import { summarizeStoreStaffing } from './staffing';
 import { getAffectedStockProductIds } from './stock';
 import type { ManagementPanelId } from './keyboardShortcuts';
 import type { GameState, LoanInstrument, ManagerActionRecord } from './types';
@@ -22,13 +24,16 @@ export type GameAlertKind =
 	| 'decision'
 	| 'event-modifier'
 	| 'factory-blocked'
+	| 'industry-warehouse-missing'
+	| 'industry-rail-disconnected'
 	| 'upcomingLoanPayment'
 	| 'missedLoanPayment'
 	| 'covenantRisk'
 	| 'lowCashRunway'
 	| 'logistics-origin-stock'
 	| 'logistics-route-capacity'
-	| 'manager-exception';
+	| 'manager-exception'
+	| 'store-understaffed';
 
 export interface GameAlert {
 	id: string;
@@ -95,6 +100,26 @@ function collectManagerExceptionAlerts(game: GameState): GameAlert[] {
 		managerId,
 		managementPanelId: 'staff' as const
 	}));
+}
+
+/**
+ * Stores below their staffing requirement. Only the founding store starts
+ * staffed, so every later store (and any store whose level raises its
+ * requirement) needs hiring or assignment before it runs at full strength.
+ */
+function collectStaffingAlerts(game: GameState): GameAlert[] {
+	return game.stores
+		.filter((store) => {
+			const { shortage } = summarizeStoreStaffing(game, store);
+			return shortage.manager + shortage.general > 0;
+		})
+		.map((store) => ({
+			id: `store-understaffed:${store.id}`,
+			kind: 'store-understaffed' as const,
+			cityId: store.cityId,
+			storeId: store.id,
+			managementPanelId: 'staff' as const
+		}));
 }
 
 function collectFinanceAlerts(game: GameState): GameAlert[] {
@@ -164,6 +189,45 @@ function collectFinanceAlerts(game: GameState): GameAlert[] {
 			kind: 'lowCashRunway',
 			managementPanelId: 'finance'
 		});
+	}
+
+	return alerts;
+}
+
+const INDUSTRY_LINK_ALERT_KINDS: Record<IndustrialLinkIssue, GameAlertKind> = {
+	'no-warehouse': 'industry-warehouse-missing',
+	'rail-disconnected': 'industry-rail-disconnected'
+};
+
+/**
+ * One alert per industry city and issue, anchored on the lowest-id affected
+ * building, so a city with several unlinked producers does not flood the list.
+ * These are structural (placed buildings and rails), so they fire as soon as a
+ * chain is placed instead of after days of empty shelves.
+ */
+function collectIndustryLinkAlerts(game: GameState): GameAlert[] {
+	const issues = getIndustrialLinkIssues(game);
+	const alerts: GameAlert[] = [];
+	const seen = new Set<string>();
+	const buildings = [...game.industrialBuildings].sort((left, right) =>
+		left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+	);
+
+	for (const issue of ['no-warehouse', 'rail-disconnected'] as const) {
+		for (const building of buildings) {
+			if (issues.get(building.id) !== issue) continue;
+			const kind = INDUSTRY_LINK_ALERT_KINDS[issue];
+			const id = `${kind}:${building.cityId}`;
+			if (seen.has(id)) continue;
+			seen.add(id);
+			alerts.push({
+				id,
+				kind,
+				cityId: building.cityId,
+				buildingId: building.id,
+				tileId: building.tileId
+			});
+		}
 	}
 
 	return alerts;
@@ -308,9 +372,11 @@ export function collectGameAlerts(game: GameState): GameAlert[] {
 		});
 	}
 
+	alerts.push(...collectIndustryLinkAlerts(game));
 	alerts.push(...collectLogisticsAlerts(game));
 	alerts.push(...collectFinanceAlerts(game));
 	alerts.push(...collectManagerExceptionAlerts(game));
+	alerts.push(...collectStaffingAlerts(game));
 
 	return alerts;
 }

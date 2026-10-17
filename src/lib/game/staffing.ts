@@ -187,6 +187,29 @@ export function unassignStaff(game: GameState, staffId: string): GameState {
 	};
 }
 
+/**
+ * Lets an idle (unassigned) staff member go. Payroll charges every hired
+ * member, assigned or not, so this is the only way to stop an idle salary.
+ * Assigned staff must be unassigned first, so releasing never silently opens
+ * a staffing gap. Any manager delegation they held is dropped with them;
+ * historical manager-action rows are kept as evidence (orphaned rows are
+ * already tolerated).
+ */
+export function releaseStaff(game: GameState, staffId: string): GameState {
+	const member = game.staff.find((candidate) => candidate.id === staffId);
+	if (!member || member.assignedStoreId !== null) {
+		return game;
+	}
+
+	return {
+		...game,
+		staff: game.staff.filter((member) => member.id !== staffId),
+		managerDelegations: game.managerDelegations.filter(
+			(delegation) => delegation.managerId !== staffId
+		)
+	};
+}
+
 export function getAssignedStaff(staff: StaffMember[], storeId: string): StaffMember[] {
 	return staff.filter((member) => member.assignedStoreId === storeId);
 }

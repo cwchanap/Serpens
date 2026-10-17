@@ -351,6 +351,28 @@ describe('supply planner actions', () => {
 		expect(plan.recommendation.comparison.requiresAdditionalProducerBuilds).toBe(true);
 	});
 
+	it('recommends the finished-goods producer before any warehouse exists', () => {
+		// Pump placed, Bottler and Warehouse still missing: the Bottler has no
+		// sink yet, so its ROI is unknown rather than a zero-delivery loss and
+		// the advisor must still name it as the next build.
+		const game = {
+			...baseGame('bottled-water'),
+			industrialBuildings: [building('water-pump', 'water-pump-1', 1, 2, 6)]
+		};
+		const plan = readyPlan(game);
+
+		expect(plan.baseline.bottleneck).toMatchObject({
+			kind: 'missing-producer',
+			materialId: 'bottled-water'
+		});
+		expect(plan.recommendation.action).toMatchObject({
+			kind: 'build-producer',
+			buildingTypeId: 'water-bottler'
+		});
+		expect(plan.recommendation.comparison.requiresRailConnection).toBe(true);
+		expect(plan.recommendation.comparison.preRailNetCashBenefit30).toBeNull();
+	});
+
 	it('does not recommend a scenario-disallowed building type', () => {
 		const plan = readyPlan(
 			baseGame('bottled-water'),
