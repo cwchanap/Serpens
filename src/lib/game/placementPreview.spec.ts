@@ -7,6 +7,7 @@ import {
 } from './decisionContext';
 import * as financeModule from './finance';
 import { getIndustryTilesByResource } from './industry';
+import { getIndustrialPlacementBlockReason } from './industryPlacement';
 import {
 	createIndustryPlacementPreview,
 	createRetailPlacementPreview,
@@ -1035,6 +1036,60 @@ describe('industry placement preview', () => {
 			code: 'industry.noValidTiles',
 			resource: null
 		});
+	});
+
+	test('checks only scenario-listed tiles when a scenario restricts industrial placement', () => {
+		expect.assertions(4);
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+		const city = game.industryCities.find((c) => c.id === game.activeIndustryCityId)!;
+		const blockReasonFor = (tileId: string) =>
+			getIndustrialPlacementBlockReason(game, tileId, 'warehouse');
+		const openTile = city.tiles.find((tile) => blockReasonFor(tile.id) === null)!;
+		const blockedTile = city.tiles.find((tile) => blockReasonFor(tile.id) !== null)!;
+		const optionFor = (
+			buildingTypeId: string,
+			allowedIndustrialPlacements: {
+				cityId: string;
+				tileId: string;
+				buildingTypeId: 'warehouse';
+			}[]
+		) =>
+			getIndustrialBuildMenuOptions({
+				game,
+				cashCommandAvailable: true,
+				financeCommandAvailable: false,
+				allowedIndustrialPlacements
+			}).find((option) => option.buildingTypeId === buildingTypeId)!;
+		const noValidTiles = { code: 'industry.noValidTiles', resource: null };
+		const requiresCash = {
+			code: 'industry.requiresCash',
+			buildingTypeId: 'warehouse',
+			amount: 1000
+		};
+
+		// The only listed tile is blocked, even though other warehouse tiles are free.
+		expect(
+			optionFor('warehouse', [
+				{ cityId: city.id, tileId: blockedTile.id, buildingTypeId: 'warehouse' }
+			]).disabledReason
+		).toEqual(noValidTiles);
+		// A listed tile in another city does not help the active one.
+		expect(
+			optionFor('warehouse', [
+				{ cityId: 'harbor-city', tileId: openTile.id, buildingTypeId: 'warehouse' }
+			]).disabledReason
+		).toEqual(noValidTiles);
+		expect(
+			optionFor('warehouse', [
+				{ cityId: city.id, tileId: openTile.id, buildingTypeId: 'warehouse' }
+			]).disabledReason
+		).toEqual(requiresCash);
+		// Types the scenario lists nowhere are gated by its building allowlist, not here.
+		expect(
+			optionFor('grain-farm', [
+				{ cityId: city.id, tileId: openTile.id, buildingTypeId: 'warehouse' }
+			]).disabledReason?.code
+		).toBe('industry.requiresCash');
 	});
 
 	test('tags resource-bound placement previews with the resource they need', () => {

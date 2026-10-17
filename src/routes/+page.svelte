@@ -882,7 +882,11 @@
 		getIndustrialBuildMenuOptions({
 			game,
 			cashCommandAvailable: mutationAvailability.buildIndustrialBuilding,
-			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding
+			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding,
+			allowedIndustrialPlacements:
+				playMode === 'sandbox' || !activeScenarioDefinition
+					? null
+					: activeScenarioDefinition.content.industrialPlacements
 		})
 	);
 	let retailPlacementPreview = $derived.by(() => {
