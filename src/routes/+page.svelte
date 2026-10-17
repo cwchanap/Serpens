@@ -694,10 +694,13 @@
 					isSandboxOpeningWindow(game) &&
 					!sandboxOpeningGuidanceDismissed))
 	);
-	// Cash recovery picks up where Opening Guidance stops: sandbox only, and
-	// never alongside the opening card (which already covers cash risk).
+	// Cash recovery picks up where Opening Guidance stops: sandbox only, after
+	// the opening window (whose card already covers cash risk, so dismissing it
+	// must not swap in a second card for the same alert).
 	let cashRecoveryPlan = $derived(
-		playMode === 'sandbox' && !showOpeningGuidance ? selectCashRecovery(game, alerts) : null
+		playMode === 'sandbox' && !showOpeningGuidance && !isSandboxOpeningWindow(game)
+			? selectCashRecovery(game, alerts)
+			: null
 	);
 	let cashRecoveryCrisisKind = $derived(cashRecoveryPlan?.alert.kind ?? null);
 	// Writable derived: dismissing hides the card for the current crisis only.

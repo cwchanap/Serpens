@@ -327,8 +327,19 @@
 		.desk-shortcuts {
 			margin-top: 0;
 		}
+		/* Compact slot in the scrolling mobile dock so reasons (e.g. the
+		   pre-founding time lock) stay visible next to Build. */
 		.disabled-copy {
-			display: none;
+			display: -webkit-box;
+			flex: 0 0 7.5rem;
+			align-self: center;
+			margin: 0;
+			overflow: hidden;
+			font-size: 0.6rem;
+			line-height: 1.2;
+			-webkit-box-orient: vertical;
+			-webkit-line-clamp: 3;
+			line-clamp: 3;
 		}
 	}
 	.world-view {

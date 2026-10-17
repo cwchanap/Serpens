@@ -198,8 +198,8 @@ describe('staffing rules', () => {
 		expect(assigned.stores).toBe(game.stores);
 	});
 
-	test('releases staff so their salary leaves payroll and drops their delegation', () => {
-		expect.assertions(6);
+	test('releases idle staff so their salary leaves payroll and drops their delegation', () => {
+		expect.assertions(7);
 		const game = createGame({
 			stores: [createStore({ id: 'store-1', archetypeId: 'convenience' })],
 			staff: [
@@ -225,6 +225,8 @@ describe('staffing rules', () => {
 		expect(game.staff).toHaveLength(2);
 		expect(game.managerDelegations).toHaveLength(1);
 		expect(releaseStaff(game, 'missing')).toBe(game);
+		// Assigned staff must be unassigned before they can be released.
+		expect(releaseStaff(game, 'staff-2')).toBe(game);
 	});
 
 	test('calculates payroll schedule and monthly salaries', () => {
