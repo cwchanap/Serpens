@@ -165,6 +165,14 @@ interface IndustrialBuildMenuInput {
 	game: GameState | null;
 	cashCommandAvailable: boolean;
 	financeCommandAvailable: boolean;
+	/** Scenario placement allowlist; null or omitted means any valid tile (sandbox). */
+	allowedIndustrialPlacements?:
+		| readonly {
+				cityId: string;
+				tileId: string;
+				buildingTypeId: IndustrialBuildingTypeId;
+		  }[]
+		| null;
 }
 
 export function createRetailPlacementPreview(input: RetailPreviewInput): PlacementPreview {
@@ -389,21 +397,42 @@ export function getIndustrialBuildMenuOptions(
 
 		// Map rules come before cash: a building with no free tile it can sit on
 		// must not look ready in the menu while the map rejects every click.
-		// Tile validity depends only on the resource/industrial-tile requirement
-		// (footprints are shared), so one scan per requirement class suffices.
+		// Without a scenario allowlist, tile validity depends only on the
+		// resource/industrial-tile requirement (footprints are shared), so one
+		// scan per requirement class suffices. A scenario only permits its listed
+		// tiles, so check those; types it lists nowhere are gated by the
+		// scenario's building allowlist instead.
 		if (placementContext) {
-			const requirementKey = `${buildingType.requiredResource ?? ''}|${buildingType.requiresIndustrialTile}`;
-			let hasValidTile = hasValidTileByRequirement.get(requirementKey);
-			if (hasValidTile === undefined) {
-				hasValidTile = placementContext.city.tiles.some(
-					(tile) =>
-						getIndustrialPlacementBlockReasonWithContext(
-							placementContext,
-							tile.id,
-							buildingType.id
-						) === null
+			let hasValidTile: boolean | undefined;
+			if (input.allowedIndustrialPlacements) {
+				const scenarioPlacements = input.allowedIndustrialPlacements.filter(
+					(placement) => placement.buildingTypeId === buildingType.id
 				);
-				hasValidTileByRequirement.set(requirementKey, hasValidTile);
+				hasValidTile =
+					scenarioPlacements.length === 0 ||
+					scenarioPlacements.some(
+						(placement) =>
+							placement.cityId === placementContext.city.id &&
+							getIndustrialPlacementBlockReasonWithContext(
+								placementContext,
+								placement.tileId,
+								buildingType.id
+							) === null
+					);
+			} else {
+				const requirementKey = `${buildingType.requiredResource ?? ''}|${buildingType.requiresIndustrialTile}`;
+				hasValidTile = hasValidTileByRequirement.get(requirementKey);
+				if (hasValidTile === undefined) {
+					hasValidTile = placementContext.city.tiles.some(
+						(tile) =>
+							getIndustrialPlacementBlockReasonWithContext(
+								placementContext,
+								tile.id,
+								buildingType.id
+							) === null
+					);
+					hasValidTileByRequirement.set(requirementKey, hasValidTile);
+				}
 			}
 			if (!hasValidTile) {
 				return {
