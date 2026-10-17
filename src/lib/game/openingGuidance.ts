@@ -19,7 +19,10 @@ export type OpeningGuidance =
 	| { kind: 'first-result' }
 	| { kind: 'result-evidence' };
 
-const CASH_RISK_ALERT_KINDS: readonly GameAlertKind[] = ['missedLoanPayment', 'lowCashRunway'];
+export const CASH_RISK_ALERT_KINDS: readonly GameAlertKind[] = [
+	'missedLoanPayment',
+	'lowCashRunway'
+];
 
 /** The opening window: the game exists, has exactly one store, and is at most 7 reports in. */
 export function isSandboxOpeningWindow(game: GameState | null): boolean {

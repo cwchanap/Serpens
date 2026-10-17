@@ -419,6 +419,23 @@ describe('game copy builders', () => {
 		).toBe('Locked industrial tile');
 	});
 
+	it('formats the industry no-valid-tiles reason with and without a required resource', () => {
+		expect.assertions(3);
+		const i18n = createI18n('en');
+		expect(
+			formatPlacementBlockReason({ code: 'industry.noValidTiles', resource: 'water-source' }, i18n)
+		).toBe('No free Water Source tile left in this city.');
+		expect(
+			formatPlacementBlockReason({ code: 'industry.noValidTiles', resource: null }, i18n)
+		).toBe('No free tile in this city fits this building.');
+		expect(
+			formatPlacementBlockReason(
+				{ code: 'industry.noValidTiles', resource: 'water-source' },
+				createI18n('ja')
+			)
+		).toContain(createI18n('ja').labels.industryResource('water-source'));
+	});
+
 	it('formats placement block reasons in non-English locales', () => {
 		expect.assertions(2);
 		const japanese = createI18n('ja');
@@ -2169,6 +2186,102 @@ describe('game copy builders', () => {
 
 		// Factory-blocked alert for a missing building falls back to the raw message.
 		expect(localizeAlert({ ...factoryAlert, buildingId: 'missing' }, gameWithBuilding, en)).toBe(
+			'stale'
+		);
+	});
+
+	it('localizes understaffed store alerts with the live shortage', () => {
+		expect.assertions(3);
+		const en = createI18n('en');
+		const game = createNewGame('convenience', 1);
+		const store = game.stores[0]!;
+		const alert: GameAlert = {
+			id: `store-understaffed:${store.id}`,
+			kind: 'store-understaffed',
+			message: 'stale',
+			storeId: store.id
+		};
+		const storeName = storeDisplayName(store, 1, en);
+		const assigned = game.staff.filter((member) => member.assignedStoreId === store.id);
+
+		expect(localizeAlert(alert, { ...game, staff: assigned.slice(1) }, en)).toBe(
+			`${storeName} is short 1 staff member. Hire or assign in Staff.`
+		);
+		expect(localizeAlert(alert, { ...game, staff: [] }, en)).toBe(
+			`${storeName} is short ${assigned.length} staff members. Hire or assign in Staff.`
+		);
+		expect(localizeAlert({ ...alert, storeId: 'missing' }, game, en)).toBe('stale');
+	});
+
+	it('localizes industry link alerts', () => {
+		expect.assertions(4);
+		const en = createI18n('en');
+		const game = createNewGame('convenience', 1);
+		const industryBuilding = (
+			id: string,
+			typeId: 'water-pump' | 'water-bottler' | 'warehouse',
+			mapX: number
+		) => ({
+			id,
+			level: 1,
+			typeId,
+			cityId: game.activeIndustryCityId,
+			tileId: `tile-${id}`,
+			mapX,
+			mapY: 2,
+			status: 'idle' as const,
+			inventory: {},
+			lastProduction: [],
+			producedTotal: 0,
+			importedInputTotal: 0,
+			blockedDays: 0
+		});
+		const cityName = en.labels.worldCity(game.activeIndustryCityId).name;
+
+		const pumpOnly = { ...game, industrialBuildings: [industryBuilding('pump', 'water-pump', 2)] };
+		expect(
+			localizeAlert(
+				{
+					id: 'industry-warehouse-missing:x',
+					kind: 'industry-warehouse-missing',
+					message: 'stale',
+					buildingId: 'pump'
+				},
+				pumpOnly,
+				en
+			)
+		).toBe(`${cityName} has no warehouse, so Water Pump output has nowhere to go.`);
+
+		const railAlert: GameAlert = {
+			id: 'industry-rail-disconnected:x',
+			kind: 'industry-rail-disconnected',
+			message: 'stale',
+			buildingId: 'pump'
+		};
+		const oneDisconnected = {
+			...game,
+			industrialBuildings: [
+				industryBuilding('pump', 'water-pump', 2),
+				industryBuilding('warehouse', 'warehouse', 10)
+			]
+		};
+		expect(localizeAlert(railAlert, oneDisconnected, en)).toBe(
+			'Water Pump has no rail link to a warehouse or the building that uses its output.'
+		);
+
+		const twoDisconnected = {
+			...game,
+			industrialBuildings: [
+				industryBuilding('pump', 'water-pump', 2),
+				industryBuilding('bottler', 'water-bottler', 6),
+				industryBuilding('warehouse', 'warehouse', 10)
+			]
+		};
+		expect(localizeAlert(railAlert, twoDisconnected, en)).toBe(
+			'2 buildings have no rail link; start with Water Pump.'
+		);
+
+		expect(localizeAlert({ ...railAlert, buildingId: 'missing' }, twoDisconnected, en)).toBe(
 			'stale'
 		);
 	});

@@ -35,7 +35,8 @@ export const ja = {
 		pause: '一時停止',
 		resume: '再開',
 		simulationSpeed: 'シミュレーション速度',
-		advanceDay: '次の日へ'
+		advanceDay: '次の日へ',
+		timeLockedHint: '店舗を開業すると時間が進み始めます。'
 	},
 	audioSettings: {
 		group: '音声設定',
@@ -97,6 +98,7 @@ export const ja = {
 			moreProducers: '{producer} +{count}',
 			needsProducer: '{producer} が必要です',
 			needsResource: '{resource} の資源タイルが必要です',
+			railHint: '資材は鉄道でのみ運ばれます。各生産施設を次の建物か倉庫と鉄道でつないでください。',
 			noOptions: '建設可能な工業施設がありません'
 		}
 	},
@@ -199,6 +201,12 @@ export const ja = {
 		used: '使用量',
 		overflowUnits: 'あふれた数量',
 		overflowCost: 'あふれコスト',
+		linkIssue: {
+			noWarehouse: 'この都市には倉庫がありません。建設するまで生産物の行き先がありません。',
+			railDisconnected: '鉄道未接続：生産物が倉庫や次の建物に届きません。',
+			buildWarehouse: '倉庫を建設',
+			buildRail: 'ここから鉄道を敷く'
+		},
 		unknownBuildingType: '不明な工業施設タイプ',
 		status: {
 			idle: '待機中',
@@ -597,6 +605,8 @@ export const ja = {
 		assignButton: '割当',
 		unassignButton: '割当解除',
 		promoteButton: '{name}を昇進 ({cost})',
+		releaseButton: '{name}を解雇',
+		confirmRelease: '{name}を解雇しますか？月給 {salary} の支払いが止まります。元に戻せません。',
 		emptyCandidates: '利用可能な候補者はいません',
 		emptyUnassigned: '未割当スタッフはいません',
 		emptyAssigned: '割当済みスタッフはいません',
@@ -610,7 +620,8 @@ export const ja = {
 			assign: '{name}、{role}スタッフ {id} を割当、{context}',
 			assignToStore: '{name}、{role}スタッフ {id} を {storeName} に割当',
 			unassign: '{name}、{role}スタッフ {id} を {storeName} から解除',
-			promote: '{name}、{role}スタッフ {id} をレベル {level} へ {cost} で昇進'
+			promote: '{name}、{role}スタッフ {id} をレベル {level} へ {cost} で昇進',
+			release: '{name}、{role}スタッフ {id} を解雇（月 {salary} 削減）'
 		},
 		levelProgress: {
 			max: '最大レベル',
@@ -1683,6 +1694,12 @@ export const ja = {
 			decision: '決定事項: {title}',
 			eventModifier: '有効な修正効果: {title}',
 			factoryBlocked: '{buildingName} は原料不足です',
+			industryWarehouseMissing:
+				'{cityName} に倉庫がないため、{buildingName} の生産物の行き先がありません。',
+			industryRailDisconnected: {
+				one: '{buildingName} は倉庫や生産物を使う建物と鉄道でつながっていません。',
+				other: '{count} 棟が鉄道でつながっていません。まず {buildingName} から接続しましょう。'
+			},
 			logisticsOriginStock: '{origin} の {material} 在庫はこのルートの必要量を下回っています。',
 			logisticsRouteCapacity:
 				'{origin} から {destination} への {material} ルートは容量上限で、需要が残っています。',
@@ -1690,7 +1707,12 @@ export const ja = {
 			missedLoanPayment: '{purpose}に未払い {amount} があります。',
 			covenantRisk: '債務返済カバレッジは {coverage} で、{threshold}を下回っています。',
 			lowCashRunway: '資金余力はあと{days}日です。',
-			managerException: '{managerName} の委任アクションを確認してください。'
+			managerException: '{managerName} の委任アクションを確認してください。',
+			storeUnderstaffed: {
+				one: '{storeName} はスタッフが {count} 人不足しています。スタッフで雇用または配置してください。',
+				other:
+					'{storeName} はスタッフが {count} 人不足しています。スタッフで雇用または配置してください。'
+			}
 		},
 		reportWarnings: {
 			stockPressure: '{storeName} に在庫圧力があります',
@@ -2035,6 +2057,7 @@ export const ja = {
 	scenarioModifiers: { importCostMultiplier: '輸入コスト ×{multiplier}' },
 	placement: {
 		chooseHighlightedTile: 'ハイライトされたタイルを選んで建設してください。',
+		chooseResourceTile: 'ハイライトされた {resource} タイルを選んで建設してください。',
 		retail: {
 			unknownCityTile: '不明な都市タイル',
 			storeLimitReached: '出店上限に達しています',
@@ -2048,7 +2071,9 @@ export const ja = {
 		industry: {
 			lockedUntilRetail: '建設を解放するには小売店舗を開業してください。',
 			unknownBuildingType: '不明な工業施設タイプ',
-			requiresCash: '{buildingName} の建設には {amount} の現金が必要です。'
+			requiresCash: '{buildingName} の建設には {amount} の現金が必要です。',
+			noValidTiles: 'この都市にはこの施設を置ける空きタイルがありません。',
+			noValidResourceTiles: 'この都市には空いている {resource} タイルがありません。'
 		}
 	},
 	dailyResult: {
@@ -2082,6 +2107,24 @@ export const ja = {
 		stockAction: '店舗を開く',
 		dashboardAction: 'ダッシュボードを開く',
 		// Session-hide semantics (the card re-arms on reload), not a dialog close.
+		dismiss: '非表示'
+	},
+	cashRecovery: {
+		heading: '資金繰りの立て直し',
+		reason: '現金が尽きかけています。次の手順で悪化を止めましょう：',
+		steps: {
+			restock: '空の棚を補充する',
+			finance: '財務で借入・借り換えを行う',
+			releaseIdleStaff: {
+				one: '待機中のスタッフ {count} 人を解雇する',
+				other: '待機中のスタッフ {count} 人を解雇する'
+			},
+			reviewPayroll: 'スタッフ画面で人件費を削る',
+			pauseRoutes: {
+				one: '稼働中のルート {count} 件を一時停止する',
+				other: '稼働中のルート {count} 件を一時停止する'
+			}
+		},
 		dismiss: '非表示'
 	}
 } as const satisfies Messages;

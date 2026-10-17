@@ -66,6 +66,97 @@ function withCityInventory(
 }
 
 describe('IndustryTileInspector', () => {
+	// These use renderComponent directly: the file's render() helper opens the
+	// production-log popover, which sits over the notice's button.
+	describe('rail and warehouse link notice', () => {
+		function pumpSetup(withWarehouse: boolean) {
+			const baseGame = createNewGame('convenience', 20260512);
+			const city = baseGame.industryCities[0]!;
+			const waterTile = getIndustryTilesByResource(city, 'water-source')[0]!;
+			const pump: IndustrialBuilding = {
+				...warehouseBuilding(waterTile, 'industry-building-pump'),
+				typeId: 'water-pump'
+			};
+			const warehouseTile = city.tiles.find(
+				(candidate) =>
+					candidate.terrain === 'industrial' &&
+					!candidate.locked &&
+					Math.abs(candidate.x - waterTile.x) > 4
+			)!;
+			const game: GameState = {
+				...baseGame,
+				industrialBuildings: withWarehouse ? [pump, warehouseBuilding(warehouseTile)] : [pump]
+			};
+			return { game, pump, waterTile };
+		}
+
+		it('offers a warehouse when the city has nowhere to send output', async () => {
+			expect.assertions(2);
+			const { game, pump, waterTile } = pumpSetup(false);
+			const onBuildWarehouse = vi.fn();
+
+			renderComponent(IndustryTileInspector, {
+				game,
+				tile: waterTile,
+				building: pump,
+				i18n: createI18n('en'),
+				onClose: vi.fn(),
+				onBuildWarehouse,
+				onBuildRailFrom: vi.fn()
+			});
+
+			await expect
+				.element(page.getByTestId('industry-link-issue'))
+				.toHaveTextContent(
+					'No warehouse in this city: output has nowhere to go until you build one.'
+				);
+			await page.getByRole('button', { name: 'Build warehouse' }).click();
+			expect(onBuildWarehouse).toHaveBeenCalledTimes(1);
+		});
+
+		it('starts rail from the building when a warehouse exists but is not linked', async () => {
+			expect.assertions(2);
+			const { game, pump, waterTile } = pumpSetup(true);
+			const onBuildRailFrom = vi.fn();
+
+			renderComponent(IndustryTileInspector, {
+				game,
+				tile: waterTile,
+				building: pump,
+				i18n: createI18n('en'),
+				onClose: vi.fn(),
+				onBuildWarehouse: vi.fn(),
+				onBuildRailFrom
+			});
+
+			await expect
+				.element(page.getByTestId('industry-link-issue'))
+				.toHaveTextContent(
+					'Not linked by rail: output cannot reach a warehouse or the next building.'
+				);
+			await page.getByRole('button', { name: 'Build rail from here' }).click();
+			expect(onBuildRailFrom).toHaveBeenCalledWith('industry-building-pump');
+		});
+
+		it('shows the notice without a button when the fix is unavailable', async () => {
+			expect.assertions(2);
+			const { game, pump, waterTile } = pumpSetup(true);
+
+			renderComponent(IndustryTileInspector, {
+				game,
+				tile: waterTile,
+				building: pump,
+				i18n: createI18n('en'),
+				onClose: vi.fn()
+			});
+
+			await expect.element(page.getByTestId('industry-link-issue')).toBeVisible();
+			expect(
+				page.getByTestId('industry-link-issue').element().querySelectorAll('button')
+			).toHaveLength(0);
+		});
+	});
+
 	it('shows actual capacity use and opens a quoted output route', async () => {
 		const game = openCity(createNewGame('convenience', 20260512), 'breadbasket-basin');
 		const tile = getIndustryTilesByResource(game.industryCities[0]!, 'grain-field')[0]!;

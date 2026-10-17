@@ -116,7 +116,8 @@ function clonePlacementPreview(preview: PlacementPreview | null): PlacementPrevi
 
 	return {
 		validTileIds: [...preview.validTileIds],
-		invalidTileIds: [...preview.invalidTileIds]
+		invalidTileIds: [...preview.invalidTileIds],
+		...(preview.requiredResource ? { requiredResource: preview.requiredResource } : {})
 	};
 }
 

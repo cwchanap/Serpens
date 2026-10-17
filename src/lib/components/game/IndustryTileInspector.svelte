@@ -5,6 +5,7 @@
 	import { getIndustrialBuildingArt, getIndustryMaterialArt } from '$lib/assets/gameArt';
 	import { getCityInventoryStats } from '$lib/game/cityInventory';
 	import { INDUSTRIAL_BUILDING_TYPES, PRODUCTION_RECIPES } from '$lib/game/industry';
+	import { getIndustrialLinkIssues } from '$lib/game/industryLinks';
 	import {
 		MAX_BUILDING_LEVEL,
 		canUpgradeBuilding,
@@ -33,6 +34,8 @@
 		onUpgradeBuilding?: (buildingId: string) => void;
 		onAddRoute?: (preset: RecurringRouteInput) => void;
 		onDemolishBuilding?: (buildingId: string) => void;
+		onBuildWarehouse?: () => void;
+		onBuildRailFrom?: (buildingId: string) => void;
 		canDemolishBuilding?: boolean;
 		canUpgradeBuilding?: boolean;
 		disabledReason?: string | null;
@@ -53,6 +56,8 @@
 		onUpgradeBuilding = () => {},
 		onAddRoute,
 		onDemolishBuilding,
+		onBuildWarehouse,
+		onBuildRailFrom,
 		canDemolishBuilding = false,
 		canUpgradeBuilding: upgradeAllowed = true,
 		disabledReason = null
@@ -69,6 +74,9 @@
 		tile?.resource
 			? i18n.labels.industryResource(tile.resource)
 			: i18n.t('industryTileInspector.none')
+	);
+	const linkIssue = $derived(
+		building ? (getIndustrialLinkIssues(game).get(building.id) ?? null) : null
 	);
 	const cityInventoryStats = $derived(
 		building?.typeId === 'warehouse' ? getCityInventoryStats(game, building.cityId) : null
@@ -299,6 +307,29 @@
 						})}
 					></span>
 				</div>
+
+				{#if linkIssue}
+					<div class="link-issue" role="status" data-testid="industry-link-issue">
+						<p>
+							{linkIssue === 'no-warehouse'
+								? i18n.t('industryTileInspector.linkIssue.noWarehouse')
+								: i18n.t('industryTileInspector.linkIssue.railDisconnected')}
+						</p>
+						{#if linkIssue === 'no-warehouse' && onBuildWarehouse}
+							<button type="button" class="btn-primary" onclick={onBuildWarehouse}>
+								{i18n.t('industryTileInspector.linkIssue.buildWarehouse')}
+							</button>
+						{:else if linkIssue === 'rail-disconnected' && onBuildRailFrom}
+							<button
+								type="button"
+								class="btn-primary"
+								onclick={() => onBuildRailFrom(building.id)}
+							>
+								{i18n.t('industryTileInspector.linkIssue.buildRail')}
+							</button>
+						{/if}
+					</div>
+				{/if}
 
 				{#if recipe}<div class="recipe-strip">
 						{#each recipe.inputs as input (input.materialId)}<div>
@@ -834,6 +865,25 @@
 		font-size: 0.82rem;
 		color: var(--ink-500);
 		margin: 0;
+	}
+
+	.link-issue {
+		display: grid;
+		gap: 0.4rem;
+		margin: 0.5rem 0;
+		padding: 0.5rem 0.6rem;
+		border-left: 3px solid var(--wax-red);
+		background: color-mix(in srgb, var(--wax-red) 8%, transparent);
+	}
+
+	.link-issue p {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--ink-700);
+	}
+
+	.link-issue button {
+		justify-self: start;
 	}
 
 	.level-hint {

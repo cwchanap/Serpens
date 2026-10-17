@@ -1156,7 +1156,13 @@ function producerCandidates(
 				buildingTypeId: buildingType.id,
 				cost: buildingType.buildCost
 			};
-			const preRailRoiUnknown = requiresRailConnection && !isFinished;
+			// A finished-goods producer with no warehouse to sink into yet is a
+			// structural prerequisite: its pre-rail ROI cannot be estimated until
+			// the sink exists, so leave it unknown instead of scoring it as a
+			// zero-delivery loss (which made the advisor recommend nothing).
+			const preRailRoiUnknown =
+				requiresRailConnection &&
+				(!isFinished || (structuralChainIncomplete && !placementTile.canFutureConnectToSink));
 			const comparison = compareCandidate(
 				snapshot,
 				baseline,

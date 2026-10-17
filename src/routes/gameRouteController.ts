@@ -46,7 +46,13 @@ import {
 	setManagerDelegation as setManagerDelegationTransition
 } from '$lib/game/managerDelegation';
 import { simulateDay } from '$lib/game/simulateDay';
-import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
+import {
+	assignStaffToStore,
+	hireCandidate,
+	promoteStaff,
+	releaseStaff,
+	unassignStaff
+} from '$lib/game/staffing';
 import {
 	resolveDecision,
 	updatePolicy,
@@ -156,6 +162,7 @@ export interface MutationAvailability {
 	hireStaff: boolean;
 	assignStaff: boolean;
 	unassignStaff: boolean;
+	releaseStaff: boolean;
 	promoteStaff: boolean;
 	updateStoreSellingPrice: boolean;
 	updateStoreInventoryTargets: boolean;
@@ -199,6 +206,9 @@ export function createMutationAvailability(input: {
 		hireStaff: available('hireStaff'),
 		assignStaff: available('assignStaff'),
 		unassignStaff: available('unassignStaff'),
+		// Like demolition, releasing staff is sandbox-only until a scenario
+		// explicitly supports it.
+		releaseStaff: input.playMode === 'sandbox',
 		promoteStaff: available('promoteStaff'),
 		updateStoreSellingPrice: available('updateStoreSellingPrice'),
 		updateStoreInventoryTargets: available('updateStoreInventoryTargets'),
@@ -1242,6 +1252,13 @@ export class GameRouteController {
 		return this.commitMutation({
 			transition: (game) => unassignStaff(game!, staffId),
 			scenarioCommand: { kind: 'unassignStaff', staffId },
+			cueId: 'sfx.staff.unassign'
+		});
+	}
+
+	releaseStaff(staffId: string): Promise<GameRouteCommitResult> {
+		return this.commitMutation({
+			transition: (game) => releaseStaff(game!, staffId),
 			cueId: 'sfx.staff.unassign'
 		});
 	}

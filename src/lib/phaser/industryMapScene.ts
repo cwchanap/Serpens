@@ -92,6 +92,12 @@ const OUTLINE_DEPTH = 20;
 const PLACEMENT_PREVIEW_VALID_COLOR = 0x6b7e3a;
 const PLACEMENT_PREVIEW_INVALID_COLOR = 0x8e2a1f;
 const PLACEMENT_PREVIEW_ALPHA = 0.28;
+// Resource-anchored buildings (Water Pump, farms, …) have only a handful of
+// valid anchors, so they get a brighter fill/outline over a fainter invalid
+// wash instead of the standard olive-on-red preview.
+const PLACEMENT_PREVIEW_RESOURCE_COLOR = 0xf2c14e;
+const PLACEMENT_PREVIEW_RESOURCE_ALPHA = 0.55;
+const PLACEMENT_PREVIEW_RESOURCE_INVALID_ALPHA = 0.1;
 
 const STATUS_COLORS: Record<IndustryMapBuildingRender['status'], number> = {
 	idle: 0xb8a271,
@@ -152,6 +158,9 @@ export class IndustryMapScene extends Phaser.Scene {
 	private dragStartPoint: { x: number; y: number } | null = null;
 	private lastDragPoint: { x: number; y: number } | null = null;
 	private hasUserAdjustedCamera = false;
+	// Valid-anchor set the camera last auto-panned for, so a resource preview
+	// pans at most once per armed placement instead of on every snapshot.
+	private lastPlacementPanKey: string | null = null;
 	private panKeys: CameraPanKeys | null = null;
 	// When false, the always-on keydown-ESC listener is suppressed so Escape
 	// presses that close a page-level overlay (save panel, build menu, etc.)
@@ -521,6 +530,7 @@ export class IndustryMapScene extends Phaser.Scene {
 		if (!this.placementPreviewGraphics || !this.snapshot?.placementPreview) {
 			this.placementPreviewGraphics?.clear();
 			this.updateCanvasPlacementPreviewAttributes(0, 0);
+			this.lastPlacementPanKey = null;
 			return;
 		}
 
@@ -528,18 +538,96 @@ export class IndustryMapScene extends Phaser.Scene {
 		graphics.clear();
 		const validTileIds = new Set(this.snapshot.placementPreview.validTileIds);
 		const invalidTileIds = new Set(this.snapshot.placementPreview.invalidTileIds);
+		const emphasizeResource = Boolean(this.snapshot.placementPreview.requiredResource);
 
 		// Draw invalid spans first so a valid 2x2 industrial footprint that
 		// abuts an invalid anchor paints over the shared cells. The click
 		// resolver maps any cell inside a valid footprint back to that valid
 		// anchor, so the topmost color must match the click outcome.
-		this.drawPlacementPreviewSpans(invalidTileIds, PLACEMENT_PREVIEW_INVALID_COLOR);
-		this.drawPlacementPreviewSpans(validTileIds, PLACEMENT_PREVIEW_VALID_COLOR);
+		this.drawPlacementPreviewSpans(
+			invalidTileIds,
+			PLACEMENT_PREVIEW_INVALID_COLOR,
+			emphasizeResource ? PLACEMENT_PREVIEW_RESOURCE_INVALID_ALPHA : PLACEMENT_PREVIEW_ALPHA
+		);
+		if (emphasizeResource) {
+			this.drawPlacementPreviewSpans(
+				validTileIds,
+				PLACEMENT_PREVIEW_RESOURCE_COLOR,
+				PLACEMENT_PREVIEW_RESOURCE_ALPHA,
+				3
+			);
+			this.panToPlacementTargets(validTileIds);
+		} else {
+			this.drawPlacementPreviewSpans(validTileIds, PLACEMENT_PREVIEW_VALID_COLOR);
+			this.lastPlacementPanKey = null;
+		}
 
-		this.updateCanvasPlacementPreviewAttributes(validTileIds.size, invalidTileIds.size);
+		this.updateCanvasPlacementPreviewAttributes(
+			validTileIds.size,
+			invalidTileIds.size,
+			emphasizeResource
+		);
 	}
 
-	private drawPlacementPreviewSpans(tileIds: ReadonlySet<string>, color: number): void {
+	/**
+	 * When a resource-anchored building is armed and none of its valid anchors
+	 * is on screen, center the camera on the anchor nearest the current view.
+	 * Runs once per distinct anchor set so later snapshots never fight the
+	 * player's own panning.
+	 */
+	private panToPlacementTargets(validTileIds: ReadonlySet<string>): void {
+		const key = [...validTileIds].join('|');
+		if (key === this.lastPlacementPanKey) {
+			return;
+		}
+		this.lastPlacementPanKey = key;
+
+		const targets = [...validTileIds]
+			.map((tileId) => this.tileById.get(tileId))
+			.filter((tile): tile is IndustryMapTileRender => tile !== undefined);
+		if (targets.length === 0) {
+			return;
+		}
+
+		const camera = this.cameras.main;
+		const view = camera.worldView;
+		const footprintWidth = INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH * TILE_SIZE;
+		const footprintHeight = INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT * TILE_SIZE;
+		const visible = targets.some(
+			(tile) =>
+				tile.x * TILE_SIZE + footprintWidth > view.x &&
+				tile.x * TILE_SIZE < view.x + view.width &&
+				tile.y * TILE_SIZE + footprintHeight > view.y &&
+				tile.y * TILE_SIZE < view.y + view.height
+		);
+		if (visible) {
+			return;
+		}
+
+		const viewCenterX = view.x + view.width / 2;
+		const viewCenterY = view.y + view.height / 2;
+		const nearest = targets.reduce((best, tile) => {
+			const distance = (tile: IndustryMapTileRender) =>
+				Math.hypot(
+					tile.x * TILE_SIZE + footprintWidth / 2 - viewCenterX,
+					tile.y * TILE_SIZE + footprintHeight / 2 - viewCenterY
+				);
+			return distance(tile) < distance(best) ? tile : best;
+		});
+		camera.centerOn(
+			nearest.x * TILE_SIZE + footprintWidth / 2,
+			nearest.y * TILE_SIZE + footprintHeight / 2
+		);
+		this.hasUserAdjustedCamera = true;
+		this.updateCanvasCameraAttributes();
+	}
+
+	private drawPlacementPreviewSpans(
+		tileIds: ReadonlySet<string>,
+		color: number,
+		alpha = PLACEMENT_PREVIEW_ALPHA,
+		lineWidth = 2
+	): void {
 		if (!this.placementPreviewGraphics || tileIds.size === 0) {
 			return;
 		}
@@ -553,8 +641,8 @@ export class IndustryMapScene extends Phaser.Scene {
 			return;
 		}
 
-		this.placementPreviewGraphics.fillStyle(color, PLACEMENT_PREVIEW_ALPHA);
-		this.placementPreviewGraphics.lineStyle(2, color, 0.55);
+		this.placementPreviewGraphics.fillStyle(color, alpha);
+		this.placementPreviewGraphics.lineStyle(lineWidth, color, lineWidth > 2 ? 0.95 : 0.55);
 
 		let runStart = tiles[0]!;
 		let previous = runStart;
@@ -965,7 +1053,11 @@ export class IndustryMapScene extends Phaser.Scene {
 		canvas.dataset.industryBuildingSpriteCount = String(this.buildingSprites.length);
 	}
 
-	private updateCanvasPlacementPreviewAttributes(validCount: number, invalidCount: number): void {
+	private updateCanvasPlacementPreviewAttributes(
+		validCount: number,
+		invalidCount: number,
+		emphasizeResource = false
+	): void {
 		const canvas = this.game?.canvas;
 
 		if (!canvas) {
@@ -973,6 +1065,7 @@ export class IndustryMapScene extends Phaser.Scene {
 		}
 
 		canvas.dataset.placementPreviewMode = validCount + invalidCount > 0 ? 'active' : 'inactive';
+		canvas.dataset.placementPreviewEmphasis = emphasizeResource ? 'resource' : 'none';
 		canvas.dataset.placementValidTileCount = String(validCount);
 		canvas.dataset.placementInvalidTileCount = String(invalidCount);
 	}

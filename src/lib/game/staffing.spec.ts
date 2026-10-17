@@ -14,6 +14,7 @@ import {
 	hireCandidate,
 	isPayrollDay,
 	promoteStaff,
+	releaseStaff,
 	summarizeStoreStaffing,
 	unassignStaff
 } from './staffing';
@@ -195,6 +196,35 @@ describe('staffing rules', () => {
 		expect(unassignStaff(game, 'missing')).toBe(game);
 		expect(assigned.staff).not.toBe(game.staff);
 		expect(assigned.stores).toBe(game.stores);
+	});
+
+	test('releases staff so their salary leaves payroll and drops their delegation', () => {
+		expect.assertions(6);
+		const game = createGame({
+			stores: [createStore({ id: 'store-1', archetypeId: 'convenience' })],
+			staff: [
+				createStaff({ id: 'staff-1', assignedStoreId: null, monthlySalary: 2_000 }),
+				createStaff({ id: 'staff-2', assignedStoreId: 'store-1', monthlySalary: 3_000 })
+			],
+			managerDelegations: [
+				{
+					managerId: 'staff-1',
+					scope: { kind: 'store', storeId: 'store-1' },
+					playbook: 'protect-margin',
+					authority: { pricing: true, inventory: false, staffing: false, supply: false },
+					enabled: true
+				}
+			]
+		});
+
+		const released = releaseStaff(game, 'staff-1');
+
+		expect(released.staff.map((member) => member.id)).toEqual(['staff-2']);
+		expect(calculateMonthlyPayroll(released.staff)).toBe(3_000);
+		expect(released.managerDelegations).toEqual([]);
+		expect(game.staff).toHaveLength(2);
+		expect(game.managerDelegations).toHaveLength(1);
+		expect(releaseStaff(game, 'missing')).toBe(game);
 	});
 
 	test('calculates payroll schedule and monthly salaries', () => {

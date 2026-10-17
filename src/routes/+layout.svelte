@@ -1,8 +1,15 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
+
+	// app.html paints a static boot mark for the first frame; drop it once the
+	// app has mounted.
+	onMount(() => {
+		document.getElementById('app-boot')?.remove();
+	});
 </script>
 
 <svelte:head>
