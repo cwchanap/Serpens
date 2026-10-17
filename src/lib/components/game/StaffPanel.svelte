@@ -22,10 +22,12 @@
 		onHire: (candidateId: string) => void;
 		onAssign: (staffId: string, storeId: string) => void;
 		onUnassign: (staffId: string) => void;
+		onRelease?: (staffId: string) => void;
 		onPromote: (staffId: string) => void;
 		canHire?: boolean;
 		canAssign?: boolean;
 		canUnassign?: boolean;
+		canRelease?: boolean;
 		canPromote?: boolean;
 		disabledReason?: string | null;
 	}
@@ -40,10 +42,12 @@
 		onHire,
 		onAssign,
 		onUnassign,
+		onRelease,
 		onPromote,
 		canHire = true,
 		canAssign = true,
 		canUnassign = true,
+		canRelease = true,
 		canPromote = true,
 		disabledReason = null
 	}: Props = $props();
@@ -114,6 +118,26 @@
 			(hasAssignment && canUnassign) ||
 			(canAssign && stores.some((candidateStore) => candidateStore.id !== member.assignedStoreId))
 		);
+	}
+
+	function releaseActionLabel(member: StaffMember): string {
+		return i18n.t('staffPanel.actionLabels.release', {
+			name: member.name,
+			role: roleLabel(member.role),
+			id: member.id,
+			salary: i18n.format.currency(member.monthlySalary)
+		});
+	}
+
+	function confirmRelease(member: StaffMember): void {
+		if (!canRelease || !onRelease) return;
+		const confirmed = window.confirm(
+			i18n.t('staffPanel.confirmRelease', {
+				name: member.name,
+				salary: i18n.format.currency(member.monthlySalary)
+			})
+		);
+		if (confirmed) onRelease(member.id);
 	}
 
 	function canAffordPromotion(member: StaffMember): boolean {
@@ -295,6 +319,16 @@
 									cost: i18n.format.currency(getStaffTrainingFee(member.level))
 								})}
 							</button>
+						{/if}
+						{#if onRelease && canRelease}
+							<button
+								type="button"
+								class="secondary"
+								aria-label={releaseActionLabel(member)}
+								data-testid={`release-staff-${member.id}`}
+								onclick={() => confirmRelease(member)}
+								>{i18n.t('staffPanel.releaseButton', { name: member.name })}</button
+							>
 						{/if}
 					</article>
 				{:else}
@@ -858,7 +892,7 @@
 		width: 1rem;
 		height: 1rem;
 	}
-	.compact .person-card > button {
+	.compact .person-card > button:not(.secondary) {
 		background: var(--moss);
 		color: var(--paper-50);
 	}

@@ -4,6 +4,7 @@
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
 	import OpeningGuidance from '$lib/components/game/OpeningGuidance.svelte';
+	import CashRecoveryGuidance from '$lib/components/game/CashRecoveryGuidance.svelte';
 	import SavePanel from '$lib/components/game/SavePanel.svelte';
 	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
 	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
@@ -101,6 +102,7 @@
 		type FinanceFailureCode
 	} from '$lib/game/finance';
 	import { isSandboxOpeningWindow, selectOpeningGuidance } from '$lib/game/openingGuidance';
+	import { selectCashRecovery, type CashRecoveryStep } from '$lib/game/cashRecovery';
 	import { forecastOpening } from '$lib/game/placement';
 	import type {
 		ManualTransferInput,
@@ -692,6 +694,19 @@
 					isSandboxOpeningWindow(game) &&
 					!sandboxOpeningGuidanceDismissed))
 	);
+	// Cash recovery picks up where Opening Guidance stops: sandbox only, and
+	// never alongside the opening card (which already covers cash risk).
+	let cashRecoveryPlan = $derived(
+		playMode === 'sandbox' && !showOpeningGuidance ? selectCashRecovery(game, alerts) : null
+	);
+	let cashRecoveryCrisisKind = $derived(cashRecoveryPlan?.alert.kind ?? null);
+	// Writable derived: dismissing hides the card for the current crisis only.
+	// It re-arms whenever the crisis clears or escalates to another alert kind.
+	let cashRecoveryDismissed = $derived.by(() => {
+		void cashRecoveryCrisisKind;
+		return false;
+	});
+	let showCashRecovery = $derived(cashRecoveryPlan !== null && !cashRecoveryDismissed);
 	let mapEyebrow = $derived(
 		activeMapView === 'world'
 			? i18n.t('route.mapEyebrow.world')
@@ -1812,6 +1827,22 @@
 		activeManagementPanelId = panelId;
 	}
 
+	function handleCashRecoveryStep(step: CashRecoveryStep): void {
+		switch (step.kind) {
+			case 'restock':
+			case 'finance':
+				void handleSelectAlert(step.alert);
+				return;
+			case 'release-idle-staff':
+			case 'review-payroll':
+				openManagementPanel('staff');
+				return;
+			case 'pause-routes':
+				openLogisticsManagement();
+				return;
+		}
+	}
+
 	function openLogisticsManagement(
 		routeId: string | null = null,
 		preset: RecurringRouteInput | null = null
@@ -1950,8 +1981,9 @@
 			selectedWorldCityId = null;
 			clearLogisticsRouteSelection();
 			cancelPlacement();
-			// Only a successful load re-arms the sandbox opening guidance.
+			// Only a successful load re-arms the sandbox opening and cash guidance.
 			sandboxOpeningGuidanceDismissed = false;
+			cashRecoveryDismissed = false;
 			// Pause the auto-tick so the player can review the loaded state
 			// before time resumes.
 			simulationPaused = true;
@@ -2004,8 +2036,9 @@
 			selectedWorldCityId = null;
 			clearLogisticsRouteSelection();
 			cancelPlacement();
-			// Only a successful load re-arms the sandbox opening guidance.
+			// Only a successful load re-arms the sandbox opening and cash guidance.
 			sandboxOpeningGuidanceDismissed = false;
+			cashRecoveryDismissed = false;
 			// Pause the auto-tick so the player can review the loaded state
 			// before time resumes.
 			simulationPaused = true;
@@ -2380,6 +2413,12 @@
 		}
 	}
 
+	function releaseStaffMember(staffId: string) {
+		if (game && mutationAvailability.releaseStaff) {
+			void gameRouteController.releaseStaff(staffId);
+		}
+	}
+
 	function promoteStaffMember(staffId: string) {
 		if (game && mutationAvailability.promoteStaff) {
 			void gameRouteController.promoteStaff(staffId);
@@ -2747,7 +2786,12 @@
 			storeDetailFocus.openDirect(destination.productId);
 			return;
 		}
-		if (alert.kind === 'factory-blocked' && alert.tileId) {
+		if (
+			(alert.kind === 'factory-blocked' ||
+				alert.kind === 'industry-warehouse-missing' ||
+				alert.kind === 'industry-rail-disconnected') &&
+			alert.tileId
+		) {
 			if (game && alert.cityId && alert.cityId !== game.activeIndustryCityId) {
 				if (
 					!isWorldCityId(alert.cityId) ||
@@ -2762,8 +2806,41 @@
 				}
 			}
 			showIndustryMap();
+			// Link alerts go straight to the fix when it is available: arm a
+			// Warehouse placement, or start rail routing from the unlinked
+			// building. Otherwise fall back to inspecting the building.
+			if (alert.kind === 'industry-warehouse-missing' && startWarehousePlacement()) return;
+			if (
+				alert.kind === 'industry-rail-disconnected' &&
+				alert.buildingId &&
+				startRailFromBuilding(alert.buildingId)
+			) {
+				return;
+			}
 			selectedIndustryTileId = alert.tileId;
 		}
+	}
+
+	function startWarehousePlacement(): boolean {
+		if (!canStartIndustryExpansion || !allowedIndustryBuildingTypeIds.includes('warehouse')) {
+			return false;
+		}
+		armIndustryPlacement('warehouse');
+		return true;
+	}
+
+	function startRailFromBuilding(buildingId: string): boolean {
+		if (!game || !mutationAvailability.buildRail) return false;
+		if (!game.industrialBuildings.some((building) => building.id === buildingId)) return false;
+		isBuildMenuOpen = false;
+		isSupplyAdvisorOpen = false;
+		retailPlacementArchetypeId = null;
+		industryPlacementBuildingTypeId = null;
+		selectedIndustryTileId = null;
+		placementFeedback = null;
+		railPreviewTargetBuildingId = null;
+		railBuildMode = { step: 'routing', originBuildingId: buildingId, waypoints: [] };
+		return true;
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -2923,7 +3000,7 @@
 >
 	<section
 		class="map-layout"
-		class:opening-guidance-visible={showOpeningGuidance}
+		class:opening-guidance-visible={showOpeningGuidance || showCashRecovery}
 		aria-label={i18n.t('route.cityPlanning')}
 		style:--og-card-h="{openingGuidanceCardHeight}px"
 	>
@@ -3052,6 +3129,15 @@
 						: undefined}
 				/>
 			</div>
+		{:else if showCashRecovery && cashRecoveryPlan}
+			<div class="opening-guidance" bind:clientHeight={openingGuidanceCardHeight}>
+				<CashRecoveryGuidance
+					plan={cashRecoveryPlan}
+					{i18n}
+					onStep={handleCashRecoveryStep}
+					onDismiss={() => (cashRecoveryDismissed = true)}
+				/>
+			</div>
 		{/if}
 
 		<ControlDesk
@@ -3063,7 +3149,7 @@
 			advanceDisabled={game === null || !mutationAvailability.advanceDay}
 			pauseDisabled={game === null}
 			railBuildDisabled={!mutationAvailability.buildRail}
-			disabledReason={mutationDisabledReason}
+			disabledReason={game === null ? i18n.t('controlDesk.timeLockedHint') : mutationDisabledReason}
 			{i18n}
 			onBuild={openBuildMenu}
 			onOpenManagement={(id) =>
@@ -3087,7 +3173,13 @@
 					>{railBuildMode.step !== 'idle'
 						? railBuildStatusText()
 						: (formatPlacementFeedback(placementFeedback) ??
-							i18n.t('placement.chooseHighlightedTile'))}</span
+							(industryPlacementPreview?.requiredResource
+								? i18n.t('placement.chooseResourceTile', {
+										resource: i18n.labels.industryResource(
+											industryPlacementPreview.requiredResource
+										)
+									})
+								: i18n.t('placement.chooseHighlightedTile')))}</span
 				>
 				<button type="button" class="btn-danger" onclick={cancelPlacement}>
 					{i18n.t('route.placement.cancel')}
@@ -3164,6 +3256,13 @@
 			onDemolishIndustryBuilding={(id) => {
 				void gameRouteController.demolishIndustrialBuilding(id);
 			}}
+			onBuildIndustryWarehouse={canStartIndustryExpansion &&
+			allowedIndustryBuildingTypeIds.includes('warehouse')
+				? () => void startWarehousePlacement()
+				: undefined}
+			onBuildRailFromBuilding={mutationAvailability.buildRail
+				? (id) => void startRailFromBuilding(id)
+				: undefined}
 			onUpgradeRailSegment={upgradeRailSegmentHandler}
 			onDemolishRailSegment={demolishRailSegmentHandler}
 			onCloseIndustryInspector={closeIndustryInspector}
@@ -3238,6 +3337,7 @@
 			onHireStaff={hireStaff}
 			onAssignStaff={assignStaff}
 			onUnassignStaff={unassignStoreStaff}
+			onReleaseStaff={releaseStaffMember}
 			onPromoteStaff={promoteStaffMember}
 			onSetRetailSupplySource={setRetailSupplySource}
 			onChooseDecision={chooseDecision}

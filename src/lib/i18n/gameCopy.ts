@@ -3,6 +3,8 @@ import { getBrandDefinition } from '$lib/game/brands';
 import { PRODUCTION_EVENT_CATALOG } from '$lib/game/eventCatalog';
 import { estimateNextLoanPayment, getLoanArrearsAmount, hasLoanArrears } from '$lib/game/finance';
 import { getFinanceMetrics } from '$lib/game/financeMetrics';
+import { getIndustrialLinkIssues } from '$lib/game/industryLinks';
+import { summarizeStoreStaffing } from '$lib/game/staffing';
 import { PRODUCTS } from '$lib/game/products';
 import type { PlacementBlockReason } from '$lib/game/placementPreview';
 import type {
@@ -130,6 +132,12 @@ export function formatPlacementBlockReason(
 			});
 		case 'industry.rawPlacementBlocked':
 			return localizeDecisionContextValue(reason.context, i18n);
+		case 'industry.noValidTiles':
+			return reason.resource
+				? i18n.t('placement.industry.noValidResourceTiles', {
+						resource: i18n.labels.industryResource(reason.resource)
+					})
+				: i18n.t('placement.industry.noValidTiles');
 	}
 }
 
@@ -675,6 +683,46 @@ export function localizeAlert(alert: GameAlert, game: GameState, i18n: I18nBundl
 		if (building) {
 			return i18n.t('copy.alerts.factoryBlocked', {
 				buildingName: i18n.labels.industrialBuilding(building.typeId)
+			});
+		}
+	}
+
+	if (
+		(alert.kind === 'industry-warehouse-missing' || alert.kind === 'industry-rail-disconnected') &&
+		alert.buildingId
+	) {
+		const building = game.industrialBuildings.find(
+			(candidate) => candidate.id === alert.buildingId
+		);
+		if (building) {
+			const buildingName = i18n.labels.industrialBuilding(building.typeId);
+			if (alert.kind === 'industry-warehouse-missing') {
+				return i18n.t('copy.alerts.industryWarehouseMissing', {
+					cityName: i18n.labels.worldCity(building.cityId).name,
+					buildingName
+				});
+			}
+			const issues = getIndustrialLinkIssues(game);
+			const count = game.industrialBuildings.filter(
+				(candidate) =>
+					candidate.cityId === building.cityId && issues.get(candidate.id) === 'rail-disconnected'
+			).length;
+			return tScoped(i18n, 'copy.alerts.industryRailDisconnected', count === 1 ? 'one' : 'other', {
+				count,
+				buildingName
+			});
+		}
+	}
+
+	if (alert.kind === 'store-understaffed' && alert.storeId) {
+		const storeIndex = game.stores.findIndex((candidate) => candidate.id === alert.storeId);
+		const store = game.stores[storeIndex];
+		if (store) {
+			const { shortage } = summarizeStoreStaffing(game, store);
+			const count = shortage.manager + shortage.general;
+			return tScoped(i18n, 'copy.alerts.storeUnderstaffed', count === 1 ? 'one' : 'other', {
+				count,
+				storeName: storeDisplayName(store, storeIndex + 1, i18n)
 			});
 		}
 	}

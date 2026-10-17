@@ -270,6 +270,7 @@ describe('createMutationAvailability', () => {
 			hireStaff: true,
 			assignStaff: true,
 			unassignStaff: true,
+			releaseStaff: true,
 			promoteStaff: true,
 			updateStoreSellingPrice: true,
 			updateStoreInventoryTargets: true,
@@ -299,6 +300,7 @@ describe('createMutationAvailability', () => {
 		expect(availability.scopedPolicy).toBe(false);
 		expect(availability.delegation).toBe(false);
 		expect(availability.manageLogistics).toBe(false);
+		expect(availability.releaseStaff).toBe(false);
 		expect(availability.openStore).toBe(false);
 		expect(availability.financeRetailStore).toBe(false);
 		expect(availability.financeIndustrialBuilding).toBe(false);

@@ -34,12 +34,19 @@ import type {
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
 	IndustryCity,
+	IndustryResourceId,
 	Store
 } from './types';
 
 export interface PlacementPreview {
 	validTileIds: string[];
 	invalidTileIds: string[];
+	/**
+	 * Set when the armed industrial building must sit on a specific resource
+	 * tile. The map renders such previews with a stronger highlight because the
+	 * handful of valid anchors is otherwise lost in the invalid-tile wash.
+	 */
+	requiredResource?: IndustryResourceId;
 }
 
 export interface NumberRange {
@@ -68,10 +75,11 @@ export type PlacementBlockReason =
 	| { code: 'industry.lockedUntilRetail' }
 	| { code: 'industry.unknownBuildingType' }
 	| { code: 'industry.requiresCash'; buildingTypeId: IndustrialBuildingTypeId; amount: number }
-	| { code: 'industry.rawPlacementBlocked'; context: DecisionContext };
+	| { code: 'industry.rawPlacementBlocked'; context: DecisionContext }
+	| { code: 'industry.noValidTiles'; resource: IndustryResourceId | null };
 
 export type IndustrialBuildMenuDisabledReason =
-	| Extract<PlacementBlockReason, { code: 'industry.requiresCash' }>
+	| Extract<PlacementBlockReason, { code: 'industry.requiresCash' | 'industry.noValidTiles' }>
 	| { code: 'industry.commandUnavailable' };
 
 export interface IndustrialBuildMenuOption {
@@ -367,6 +375,9 @@ export function getIndustrialBuildMenuOptions(
 	// type re-ran assessCredit's principal scan through getExpansionFinanceOffer.
 	const getAssessment = createLazyCreditAssessment(input.game, input.financeCommandAvailable);
 
+	const placementContext = input.game ? createIndustrialPlacementContext(input.game) : null;
+	const hasValidTileByRequirement = new Map<string, boolean>();
+
 	return Object.values(INDUSTRIAL_BUILDING_TYPES).map((buildingType) => {
 		if (!input.game) {
 			return {
@@ -374,6 +385,36 @@ export function getIndustrialBuildMenuOptions(
 				disabledReason: null,
 				financeOffer: null
 			};
+		}
+
+		// Map rules come before cash: a building with no free tile it can sit on
+		// must not look ready in the menu while the map rejects every click.
+		// Tile validity depends only on the resource/industrial-tile requirement
+		// (footprints are shared), so one scan per requirement class suffices.
+		if (placementContext) {
+			const requirementKey = `${buildingType.requiredResource ?? ''}|${buildingType.requiresIndustrialTile}`;
+			let hasValidTile = hasValidTileByRequirement.get(requirementKey);
+			if (hasValidTile === undefined) {
+				hasValidTile = placementContext.city.tiles.some(
+					(tile) =>
+						getIndustrialPlacementBlockReasonWithContext(
+							placementContext,
+							tile.id,
+							buildingType.id
+						) === null
+				);
+				hasValidTileByRequirement.set(requirementKey, hasValidTile);
+			}
+			if (!hasValidTile) {
+				return {
+					buildingTypeId: buildingType.id,
+					disabledReason: {
+						code: 'industry.noValidTiles' as const,
+						resource: buildingType.requiredResource ?? null
+					},
+					financeOffer: null
+				};
+			}
 		}
 
 		if (input.game.cash >= buildingType.buildCost) {
@@ -531,7 +572,9 @@ export function createIndustryPlacementPreview(input: IndustryPreviewInput): Pla
 		}
 	}
 
-	return { validTileIds, invalidTileIds };
+	return buildingType?.requiredResource
+		? { validTileIds, invalidTileIds, requiredResource: buildingType.requiredResource }
+		: { validTileIds, invalidTileIds };
 }
 
 export function getIndustryBuildPlacementBlockReason(

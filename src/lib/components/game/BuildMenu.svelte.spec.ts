@@ -163,6 +163,23 @@ describe('BuildMenu', () => {
 		expect(labels).toContain('Build Water Bottler');
 	});
 
+	it('reminds players that industry output moves by rail once construction is open', async () => {
+		expect.assertions(2);
+
+		const { unmount } = render(BuildMenu, buildMenuProps({ activeMapView: 'industry' }));
+		await expect.element(page.getByTestId('build-menu-rail-hint')).toHaveTextContent(/rail/i);
+		await unmount();
+
+		render(
+			BuildMenu,
+			buildMenuProps({
+				activeMapView: 'industry',
+				industryLockedReason: { code: 'industry.lockedUntilRetail' }
+			})
+		);
+		expect(page.getByTestId('build-menu-rail-hint').elements()).toHaveLength(0);
+	});
+
 	it('explains locked industry construction before a store exists', async () => {
 		expect.assertions(2);
 

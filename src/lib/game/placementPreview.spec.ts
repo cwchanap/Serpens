@@ -990,6 +990,73 @@ describe('industry placement preview', () => {
 		}
 	});
 
+	test('disables industrial buildings that have no free tile before checking cash', () => {
+		expect.assertions(3);
+		const game = { ...createNewGame('convenience', 20260512), cash: 0 };
+		const city = game.industryCities[0]!;
+		const withoutGrain = {
+			...game,
+			industryCities: [
+				{
+					...city,
+					tiles: city.tiles.map((tile) =>
+						tile.resource === 'grain-field' ? { ...tile, resource: null } : tile
+					)
+				},
+				...game.industryCities.slice(1)
+			]
+		};
+		const optionFor = (inputGame: typeof game, buildingTypeId: string) =>
+			getIndustrialBuildMenuOptions({
+				game: inputGame,
+				cashCommandAvailable: true,
+				financeCommandAvailable: false
+			}).find((option) => option.buildingTypeId === buildingTypeId)!;
+
+		expect(optionFor(withoutGrain, 'grain-farm').disabledReason).toEqual({
+			code: 'industry.noValidTiles',
+			resource: 'grain-field'
+		});
+		// A building whose tiles still exist falls through to the cash check.
+		expect(optionFor(withoutGrain, 'warehouse').disabledReason).toEqual({
+			code: 'industry.requiresCash',
+			buildingTypeId: 'warehouse',
+			amount: 1000
+		});
+
+		const allLocked = {
+			...game,
+			industryCities: [
+				{ ...city, tiles: city.tiles.map((tile) => ({ ...tile, locked: true })) },
+				...game.industryCities.slice(1)
+			]
+		};
+		expect(optionFor(allLocked, 'warehouse').disabledReason).toEqual({
+			code: 'industry.noValidTiles',
+			resource: null
+		});
+	});
+
+	test('tags resource-bound placement previews with the resource they need', () => {
+		expect.assertions(2);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+
+		expect(
+			createIndustryPlacementPreview({
+				game,
+				buildingTypeId: 'water-pump',
+				financeCommandAvailable: true
+			}).requiredResource
+		).toBe('water-source');
+		expect(
+			createIndustryPlacementPreview({
+				game,
+				buildingTypeId: 'warehouse',
+				financeCommandAvailable: true
+			})
+		).not.toHaveProperty('requiredResource');
+	});
+
 	test('marks matching resource tiles valid for raw producers', () => {
 		expect.assertions(5);
 		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
