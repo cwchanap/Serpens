@@ -15,6 +15,13 @@
 		switch (step.kind) {
 			case 'restock':
 				return i18n.t('cashRecovery.steps.restock');
+			case 'assign-idle-staff':
+				return i18n.t(
+					(step.count === 1
+						? 'cashRecovery.steps.assignIdleStaff.one'
+						: 'cashRecovery.steps.assignIdleStaff.other') as never,
+					{ count: i18n.format.integer(step.count) }
+				);
 			case 'finance':
 				return i18n.t('cashRecovery.steps.finance');
 			case 'release-idle-staff':

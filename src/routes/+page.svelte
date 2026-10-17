@@ -889,6 +889,16 @@
 					: activeScenarioDefinition.content.industrialPlacements
 		})
 	);
+	// Shortcuts to a Warehouse placement (link alert, inspector notice) use the
+	// same availability as the Build menu option, so they never arm a
+	// placement with no legal or affordable tile.
+	let canStartWarehousePlacement = $derived(
+		canStartIndustryExpansion &&
+			allowedIndustryBuildingTypeIds.includes('warehouse') &&
+			industrialBuildOptions.some(
+				(option) => option.buildingTypeId === 'warehouse' && option.disabledReason === null
+			)
+	);
 	let retailPlacementPreview = $derived.by(() => {
 		const archetypeId = retailPlacementArchetypeId;
 		if (!archetypeId) return null;
@@ -1840,6 +1850,7 @@
 			case 'finance':
 				void handleSelectAlert(step.alert);
 				return;
+			case 'assign-idle-staff':
 			case 'release-idle-staff':
 			case 'review-payroll':
 				openManagementPanel('staff');
@@ -2829,9 +2840,7 @@
 	}
 
 	function startWarehousePlacement(): boolean {
-		if (!canStartIndustryExpansion || !allowedIndustryBuildingTypeIds.includes('warehouse')) {
-			return false;
-		}
+		if (!canStartWarehousePlacement) return false;
 		armIndustryPlacement('warehouse');
 		return true;
 	}
@@ -3263,8 +3272,7 @@
 			onDemolishIndustryBuilding={(id) => {
 				void gameRouteController.demolishIndustrialBuilding(id);
 			}}
-			onBuildIndustryWarehouse={canStartIndustryExpansion &&
-			allowedIndustryBuildingTypeIds.includes('warehouse')
+			onBuildIndustryWarehouse={canStartWarehousePlacement
 				? () => void startWarehousePlacement()
 				: undefined}
 			onBuildRailFromBuilding={mutationAvailability.buildRail

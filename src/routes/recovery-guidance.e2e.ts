@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { getOccupiedIndustryTileIds } from '../lib/game/industryFootprint';
 import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
@@ -78,6 +79,42 @@ test('a rail-less water chain raises a rail alert that starts routing from the s
 	await expect(page.getByRole('status', { name: /placement status/i })).toContainText(
 		'Select waypoints, then the destination building'
 	);
+});
+
+test('a warehouse alert with no legal warehouse tile inspects the building instead of arming placement', async ({
+	page
+}) => {
+	let game: GameState = { ...createNewGame('convenience', 20260917), cash: 100_000 };
+	for (const typeId of ['water-pump', 'water-bottler'] as const) {
+		game = buildOnFirstValidTile(game, typeId);
+	}
+	// Lock every free tile so no Warehouse can be placed; the Build menu
+	// disables it. Saves require building footprints to stay unlocked.
+	const { industrialBuildings } = game;
+	game = {
+		...game,
+		decisions: [],
+		industryCities: game.industryCities.map((city) => {
+			if (city.id !== game.activeIndustryCityId) return city;
+			const occupied = getOccupiedIndustryTileIds(city, industrialBuildings);
+			return {
+				...city,
+				tiles: city.tiles.map((tile) => (occupied.has(tile.id) ? tile : { ...tile, locked: true }))
+			};
+		})
+	};
+	await resumeSandboxSave(page, game);
+
+	await page.locator('button.alerts-bell').click();
+	await page
+		.getByRole('group', { name: 'Alerts list' })
+		.getByRole('button', { name: /has no warehouse, so .+ output has nowhere to go\.$/ })
+		.click();
+
+	const notice = page.getByTestId('industry-link-issue');
+	await expect(notice).toBeVisible();
+	await expect(notice.getByRole('button', { name: 'Build warehouse' })).toHaveCount(0);
+	await expect(page.getByRole('status', { name: /placement status/i })).toHaveCount(0);
 });
 
 test('water pump placement names the resource and emphasises its tiles', async ({ page }) => {

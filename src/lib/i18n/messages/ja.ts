@@ -2114,6 +2114,10 @@ export const ja = {
 		reason: '現金が尽きかけています。次の手順で悪化を止めましょう：',
 		steps: {
 			restock: '空の棚を補充する',
+			assignIdleStaff: {
+				one: '待機中のスタッフ {count} 人を人手不足の店舗に配置する',
+				other: '待機中のスタッフ {count} 人を人手不足の店舗に配置する'
+			},
 			finance: '財務で借入・借り換えを行う',
 			releaseIdleStaff: {
 				one: '待機中のスタッフ {count} 人を解雇する',
