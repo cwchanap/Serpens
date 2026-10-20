@@ -18,11 +18,8 @@ vi.mock('phaser', () => ({
 		Game: class {
 			destroy(): void {}
 		},
-		Scene: class {
-			events = { once: (): void => {} };
-		},
-		Scale: { RESIZE: 0, CENTER_BOTH: 0 },
-		Scenes: { Events: { CREATE: 'create' } }
+		Scene: class {},
+		Scale: { RESIZE: 0, CENTER_BOTH: 0 }
 	}
 }));
 

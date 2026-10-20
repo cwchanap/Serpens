@@ -25,7 +25,8 @@ import {
 
 export type IndustryMapEvent =
 	| { type: 'tileSelected'; tileId: string }
-	| { type: 'buildCancelled' };
+	| { type: 'buildCancelled' }
+	| { type: 'sceneReady' };
 export type IndustryMapEventHandler = (event: IndustryMapEvent) => void;
 
 /**
@@ -202,6 +203,8 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.input.keyboard?.on('keydown-ESC', this.handleBuildCancelKey, this);
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroySceneObjects, this);
 		this.renderSnapshot();
+		// Last step of create(): the wrapper treats this as "scene ready" for activity delivery.
+		this.eventHandler?.({ type: 'sceneReady' });
 	}
 
 	update(time: number, delta = 0): void {

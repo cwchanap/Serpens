@@ -25,7 +25,7 @@ import {
 	RETAIL_STORE_FOOTPRINT_WIDTH
 } from '../game/storeFootprint';
 
-export type CityMapEvent = { type: 'tileSelected'; tileId: string };
+export type CityMapEvent = { type: 'tileSelected'; tileId: string } | { type: 'sceneReady' };
 export type CityMapEventHandler = (event: CityMapEvent) => void;
 
 const TILE_SIZE = 32;
@@ -124,6 +124,8 @@ export class CityMapScene extends Phaser.Scene {
 		this.input.on('wheel', this.handleWheel, this);
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroySceneObjects, this);
 		this.renderSnapshot();
+		// Last step of create(): the wrapper treats this as "scene ready" for activity delivery.
+		this.eventHandler?.({ type: 'sceneReady' });
 	}
 
 	update(time: number, delta = 0): void {

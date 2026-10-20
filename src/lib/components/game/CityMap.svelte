@@ -40,6 +40,7 @@
 	let scene: import('$lib/phaser/cityMapScene').CityMapScene | undefined = $state();
 	let game: import('phaser').Game | undefined = $state();
 	let destroyed = false;
+	// Set when the scene reports sceneReady from the end of create(), i.e. it can draw.
 	let sceneReady = $state(false);
 	// Consume-once bookkeeping, deliberately not reactive: a new seq counts as consumed on arrival.
 	let lastActivitySeq = untrack(() => activity.seq);
@@ -134,11 +135,9 @@
 			nextScene.setEventHandler((event) => {
 				if (event.type === 'tileSelected') {
 					onTileSelected(event.tileId);
+				} else if (event.type === 'sceneReady') {
+					sceneReady = true;
 				}
-			});
-
-			nextScene.events.once(Phaser.Scenes.Events.CREATE, () => {
-				sceneReady = true;
 			});
 			scene = nextScene;
 			game = new Phaser.Game({
