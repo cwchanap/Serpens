@@ -2335,6 +2335,16 @@ describe('CityMapScene', () => {
 			expect(s(scene).activityPulses.size).toBe(0);
 		});
 
+		it('expires a pulse accepted before a pause instead of replaying it on resume', () => {
+			expect.assertions(2);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.update(1000);
+			scene.showMapActivity(openedBatch(1, 's1'));
+			// A paused game runs no frames; the resume frame's clock has jumped past the lifetime.
+			expect(drawFrame(62_000).rings).toHaveLength(0);
+			expect(s(scene).activityPulses.size).toBe(0);
+		});
+
 		it('does not re-arm an expired pulse on later renders or draws', () => {
 			expect.assertions(2);
 			startWithStores([storeAt('s1', 0, 0)]);
