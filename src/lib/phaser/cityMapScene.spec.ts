@@ -194,6 +194,13 @@ function getHandler(mockFn: Mock, event: string): (...args: any[]) => void {
 
 const s = (scene: CityMapScene) => scene as any;
 
+// create() reports sceneReady through the handler; interaction assertions ignore that event.
+function interactionEvents(handler: ReturnType<typeof vi.fn>): unknown[] {
+	return handler.mock.calls
+		.map(([event]) => event as { type: string })
+		.filter((event) => event.type !== 'sceneReady');
+}
+
 describe('CityMapScene', () => {
 	let scene: CityMapScene;
 
@@ -285,6 +292,27 @@ describe('CityMapScene', () => {
 			expect(ds.placementValidTileCount).toBe('0');
 			expect(ds.placementInvalidTileCount).toBe('0');
 			expect(ds.competitorMarkerCount).toBe('0');
+		});
+	});
+
+	describe('sceneReady', () => {
+		it('emits sceneReady once from create() and still emits tileSelected on a tap', () => {
+			expect.assertions(1);
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot({ tiles: [makeTile({ id: 'zone-tile', x: 0, y: 0 })] }));
+			const zone = s(scene).tileZones[0];
+			const onCalls = (zone.on as Mock).mock.calls;
+			const downHandler = onCalls.find((c: any[]) => c[0] === 'pointerdown')?.[1];
+			const upHandler = onCalls.find((c: any[]) => c[0] === 'pointerup')?.[1];
+			const pointer = makePointer(s(scene).game.canvas, { x: 10, y: 10, worldX: 10, worldY: 10 });
+			downHandler(pointer);
+			upHandler(pointer);
+			expect(handler.mock.calls.map(([event]) => event)).toEqual([
+				{ type: 'sceneReady' },
+				{ type: 'tileSelected', tileId: 'zone-tile' }
+			]);
 		});
 	});
 
@@ -709,7 +737,7 @@ describe('CityMapScene', () => {
 			const upHandler = onCalls.find((c: any[]) => c[0] === 'pointerup')?.[1];
 			const pointer = makePointer({}, { worldX: 10, worldY: 10 });
 			upHandler(pointer);
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 
 		it('pointerup does not fire when pointer was dragged beyond click slop', () => {
@@ -731,7 +759,7 @@ describe('CityMapScene', () => {
 			downHandler(downPointer);
 			const upPointer = makePointer(canvas, { x: 30, y: 30, worldX: 30, worldY: 30 });
 			upHandler(upPointer);
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 	});
 
@@ -1964,7 +1992,7 @@ describe('CityMapScene', () => {
 			downHandler(downPointer);
 			const upPointer = makePointer(canvas, { x: 5, y: 5, worldX: 9999, worldY: 9999 });
 			upHandler(upPointer);
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 
 		it('pointerout does nothing when hoverTileId is already null', () => {

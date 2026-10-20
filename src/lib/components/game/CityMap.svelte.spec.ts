@@ -16,7 +16,6 @@ const mockSetParentSize = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
 const mockShowMapActivity = vi.fn();
-const mockSceneEventsOnce = vi.fn();
 const mockCanvas = { dataset: {} as Record<string, string> };
 const MockGame = vi.fn().mockImplementation(function () {
 	if (shouldFail) throw new Error('Phaser unavailable');
@@ -36,8 +35,7 @@ vi.mock('phaser', () => {
 		default: {
 			AUTO: 0,
 			Game: MockGame,
-			Scale: { RESIZE: 0, CENTER_BOTH: 0 },
-			Scenes: { Events: { CREATE: 'create' } }
+			Scale: { RESIZE: 0, CENTER_BOTH: 0 }
 		}
 	};
 });
@@ -49,8 +47,7 @@ vi.mock('$lib/phaser/cityMapScene', () => {
 				setEventHandler: mockSetEventHandler,
 				setKeyboardEnabled: mockSetKeyboardEnabled,
 				updateSnapshot: mockUpdateSnapshot,
-				showMapActivity: mockShowMapActivity,
-				events: { once: mockSceneEventsOnce }
+				showMapActivity: mockShowMapActivity
 			};
 		})
 	};
@@ -208,16 +205,19 @@ function storeOpened(entityId: string, cityId = 'city-1'): MapActivity {
 	return { kind: 'store-opened', cityId, entityId };
 }
 
-function createdSceneListeners(): Array<() => void> {
-	return mockSceneEventsOnce.mock.calls
-		.filter(([event]) => event === 'create')
-		.map(([, listener]) => listener as () => void);
+type SceneEventHandler = (event: { type: string; tileId?: string }) => void;
+
+// Each mount hands its scene one handler through setEventHandler; onDestroy passes null, which is skipped.
+function sceneHandlers(): SceneEventHandler[] {
+	return mockSetEventHandler.mock.calls
+		.map(([handler]) => handler as SceneEventHandler | null)
+		.filter((handler): handler is SceneEventHandler => handler !== null);
 }
 
-// Scene N is ready once the Phaser `create` listener that startPhaser registered for it fires.
+// The scene reports readiness from create() through its event handler.
 async function markSceneReady(sceneNumber = 1): Promise<void> {
-	await expect.poll(() => createdSceneListeners().length, { timeout: 5000 }).toBe(sceneNumber);
-	createdSceneListeners()[sceneNumber - 1]!();
+	await expect.poll(() => sceneHandlers().length, { timeout: 5000 }).toBe(sceneNumber);
+	sceneHandlers()[sceneNumber - 1]!({ type: 'sceneReady' });
 	flushSync();
 }
 
@@ -308,7 +308,7 @@ describe('CityMap map activity delivery', () => {
 
 	it('consumes a batch that arrives before the scene is ready and does not replay it once ready', async () => {
 		const view = await render(CityMap, mapProps());
-		await expect.poll(() => createdSceneListeners().length, { timeout: 5000 }).toBe(1);
+		await expect.poll(() => sceneHandlers().length, { timeout: 5000 }).toBe(1);
 		await view.rerender(mapProps({ activity: { seq: 1, activities: [storeOpened('store-1')] } }));
 		flushSync();
 		expect(mockShowMapActivity).not.toHaveBeenCalled();

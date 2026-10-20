@@ -407,6 +407,13 @@ function makeSnapshot(overrides: Partial<IndustryMapSnapshot> = {}): IndustryMap
 	};
 }
 
+// create() reports sceneReady through the handler; interaction assertions ignore that event.
+function interactionEvents(handler: ReturnType<typeof vi.fn>): unknown[] {
+	return handler.mock.calls
+		.map(([event]) => event as { type: string })
+		.filter((event) => event.type !== 'sceneReady');
+}
+
 describe('IndustryMapScene', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -724,6 +731,26 @@ describe('IndustryMapScene', () => {
 		});
 	});
 
+	describe('sceneReady', () => {
+		test('emits sceneReady once from create() and still emits tileSelected on a tap', () => {
+			expect.assertions(1);
+			const { scene, zoneInstances, makePointer } = setupScene();
+			const handler = vi.fn();
+			scene.setEventHandler(handler);
+			scene.create();
+			const snapshot = makeSnapshot();
+			scene.updateSnapshot(snapshot);
+			const zone = zoneInstances[0];
+			const pointer = makePointer({ x: 5, y: 5, worldX: 5, worldY: 5, isDown: true });
+			zone.fire('pointerdown', pointer);
+			zone.fire('pointerup', pointer);
+			expect(handler.mock.calls.map(([event]) => event)).toEqual([
+				{ type: 'sceneReady' },
+				{ type: 'tileSelected', tileId: snapshot.tiles[0].id }
+			]);
+		});
+	});
+
 	describe('tile zones', () => {
 		test('creates a single map interaction zone', () => {
 			expect.assertions(1);
@@ -841,7 +868,7 @@ describe('IndustryMapScene', () => {
 			inputListeners['pointermove'][0].call(scene, movePointer);
 			const upPointer = makePointer({ x: 200, y: 200, worldX: 200, worldY: 200 });
 			zoneInstances[0].fire('pointerup', upPointer);
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 	});
 
@@ -1573,7 +1600,7 @@ describe('IndustryMapScene', () => {
 			nonCanvasPointer.leftButtonDown = vi.fn(() => false);
 			zoneInstances[0].fire('pointerdown', nonCanvasPointer);
 			zoneInstances[0].fire('pointerup', nonCanvasPointer);
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 
 		test('ignores pointerup when pointer did not start on canvas', () => {
@@ -1585,7 +1612,7 @@ describe('IndustryMapScene', () => {
 			scene.updateSnapshot(makeSnapshot());
 			const nonCanvasPointer = makePointer({ downElement: 'not-canvas' });
 			zoneInstances[0].fire('pointerup', nonCanvasPointer);
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 	});
 
@@ -1711,7 +1738,7 @@ describe('IndustryMapScene', () => {
 			zone.fire('pointerdown', pointer);
 			const upPointer = makePointer({ x: 5, y: 5, worldX: 9999, worldY: 9999 });
 			zone.fire('pointerup', upPointer);
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 
 		test('pointerout does nothing when hoverTileId is already null', () => {
@@ -2106,7 +2133,7 @@ describe('IndustryMapScene', () => {
 			scene.create();
 			scene.setKeyboardEnabled(false);
 			fireKeydownEscape();
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 
 		test('emits buildCancelled on right-click within the canvas', () => {
@@ -2167,7 +2194,7 @@ describe('IndustryMapScene', () => {
 				event: { target: 'not-canvas' }
 			});
 			zoneInstances[0].fire('pointerdown', pointer);
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 
 		test('unregisters the Escape keydown handler on shutdown', () => {
@@ -2178,7 +2205,7 @@ describe('IndustryMapScene', () => {
 			scene.create();
 			fireSceneShutdown();
 			fireKeydownEscape();
-			expect(handler).not.toHaveBeenCalled();
+			expect(interactionEvents(handler)).toEqual([]);
 		});
 	});
 });
