@@ -110,6 +110,7 @@
 		RecurringRouteUpdateInput
 	} from '$lib/game/interCityLogistics';
 	import {
+		selectRecentDeliveredTransfers,
 		selectRouteOperations,
 		type RouteOperationalSummary
 	} from '$lib/game/logisticsReadModels';
@@ -159,6 +160,7 @@
 		PolicyOverrideScope,
 		ProductId,
 		StoreProductPatch,
+		TransferOrder,
 		WorldCityId
 	} from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
@@ -751,6 +753,10 @@
 	let logisticsRouteSummaries = $derived.by<RouteOperationalSummary[]>(() =>
 		game ? selectRouteOperations(game) : []
 	);
+	let latestDeliveredTransfer = $derived.by<TransferOrder | null>(() => {
+		if (!game || !selectedWorldCityId || !isWorldCityId(selectedWorldCityId)) return null;
+		return selectRecentDeliveredTransfers(game, selectedWorldCityId)[0] ?? null;
+	});
 	let selectedLogisticsRoute = $derived.by<RouteOperationalSummary | null>(() =>
 		selectedLogisticsRouteId
 			? (logisticsRouteSummaries.find((summary) => summary.route.id === selectedLogisticsRouteId) ??
@@ -3054,6 +3060,7 @@
 				{logisticsRouteSummaries}
 				{selectedLogisticsRouteId}
 				onSelectLogisticsRoute={selectLogisticsRoute}
+				{latestDeliveredTransfer}
 				{mapSnapshot}
 				{retailMapActivity}
 				onSelectRetailTile={selectTile}

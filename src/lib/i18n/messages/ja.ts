@@ -297,7 +297,9 @@ export const ja = {
 		},
 		selectionPending: '現在のチャレンジ操作が完了するまで都市を変更できません。',
 		selectionUnavailable: 'このチャレンジでは都市を変更できません。',
-		openForCash: '{cash} の資金で開放'
+		openForCash: '{cash} の資金で開放',
+		latestDeliveryTitle: '最近の工業都市間輸送',
+		latestDeliveryRow: '到着 {day}日目 · {material} {quantity} ユニット · {origin} → {destination}'
 	},
 	savePanel: {
 		dismiss: 'セーブを閉じる',

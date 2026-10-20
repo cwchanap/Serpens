@@ -3,6 +3,7 @@ import {
 	attemptMatchesRoute,
 	selectInTransitInventory,
 	selectLogisticsTotals,
+	selectRecentDeliveredTransfers,
 	selectRecentRouteDispatchAttempts,
 	selectRecentTransfers,
 	selectRouteOperations
@@ -243,6 +244,87 @@ describe('logistics read models', () => {
 			'transfer-10'
 		]);
 		expect(recent.some((order) => order.id === 'archived-0')).toBe(false);
+	});
+
+	test('selects only delivered orders into the requested receiving city, never a scheduled arrival', () => {
+		const game = gameWithLogistics({
+			day: 12,
+			transferOrders: [
+				transferOrder({ id: 'transfer-pending-due', arrivalOnDay: 11 }),
+				transferOrder({ id: 'transfer-pending-later', arrivalOnDay: 13 }),
+				transferOrder({ id: 'transfer-delivered', status: 'delivered', arrivalOnDay: 10 }),
+				transferOrder({
+					id: 'transfer-other-city',
+					status: 'delivered',
+					destinationCityId: 'quarry-works',
+					arrivalOnDay: 11
+				})
+			]
+		});
+
+		expect(
+			selectRecentDeliveredTransfers(game, 'breadbasket-basin', 5).map((order) => order.id)
+		).toEqual(['transfer-delivered']);
+		expect(
+			selectRecentDeliveredTransfers(game, 'quarry-works', 5).map((order) => order.id)
+		).toEqual(['transfer-other-city']);
+		expect(selectRecentDeliveredTransfers(game, 'industry-city', 5)).toEqual([]);
+	});
+
+	test('includes manual and recurring-route deliveries alike', () => {
+		const game = gameWithLogistics({
+			transferOrders: [
+				transferOrder({ id: 'transfer-manual', status: 'delivered', arrivalOnDay: 9 }),
+				transferOrder({
+					id: 'transfer-route',
+					status: 'delivered',
+					source: { kind: 'recurring-route', routeId: 'route-1' },
+					arrivalOnDay: 10
+				})
+			]
+		});
+
+		expect(
+			selectRecentDeliveredTransfers(game, 'breadbasket-basin', 2).map((order) => [
+				order.id,
+				order.source.kind
+			])
+		).toEqual([
+			['transfer-route', 'recurring-route'],
+			['transfer-manual', 'manual']
+		]);
+	});
+
+	test('orders deliveries by arrival day descending, breaks same-day ties by descending raw ID, and honors the limit', () => {
+		const game = gameWithLogistics({
+			transferOrders: [
+				transferOrder({ id: 'transfer-2', status: 'delivered', arrivalOnDay: 9 }),
+				transferOrder({ id: 'transfer-10', status: 'delivered', arrivalOnDay: 9 }),
+				transferOrder({ id: 'transfer-8', status: 'delivered', arrivalOnDay: 8 }),
+				transferOrder({ id: 'transfer-newest', status: 'delivered', arrivalOnDay: 10 })
+			]
+		});
+
+		expect(
+			selectRecentDeliveredTransfers(game, 'breadbasket-basin', 4).map((order) => order.id)
+		).toEqual(['transfer-newest', 'transfer-2', 'transfer-10', 'transfer-8']);
+		expect(
+			selectRecentDeliveredTransfers(game, 'breadbasket-basin').map((order) => order.id)
+		).toEqual(['transfer-newest']);
+	});
+
+	test('does not mutate the game when selecting deliveries', () => {
+		const game = gameWithLogistics({
+			transferOrders: [
+				transferOrder({ id: 'transfer-a', status: 'delivered', arrivalOnDay: 8 }),
+				transferOrder({ id: 'transfer-b', status: 'delivered', arrivalOnDay: 9 })
+			]
+		});
+		const before = structuredClone(game);
+
+		selectRecentDeliveredTransfers(game, 'breadbasket-basin', 2);
+
+		expect(game).toEqual(before);
 	});
 
 	test('derives current route operations from route orders and the latest recorded attempt capacity', () => {

@@ -300,7 +300,7 @@ function localizeInTransit(
 	};
 }
 
-function localizeTransfer(order: TransferOrder, i18n: I18nBundle): LogisticsTransferView {
+export function localizeTransfer(order: TransferOrder, i18n: I18nBundle): LogisticsTransferView {
 	return {
 		...order,
 		originLabel: cityLabel(order.originCityId, i18n),

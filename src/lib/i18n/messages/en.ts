@@ -299,7 +299,10 @@ export const en = {
 		},
 		selectionPending: 'Finishing the current challenge action before changing cities.',
 		selectionUnavailable: 'Changing cities is unavailable in this challenge.',
-		openForCash: 'Open for {cash} cash'
+		openForCash: 'Open for {cash} cash',
+		latestDeliveryTitle: 'Latest industry-to-industry transfer',
+		latestDeliveryRow:
+			'Arrived day {day} · {quantity} units of {material} · {origin} → {destination}'
 	},
 	savePanel: {
 		dismiss: 'Dismiss saves',

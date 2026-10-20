@@ -295,7 +295,9 @@ export const zhHant = {
 		},
 		selectionPending: '目前的挑戰操作完成前無法切換城市。',
 		selectionUnavailable: '此挑戰無法切換城市。',
-		openForCash: '花費 {cash} 開啟'
+		openForCash: '花費 {cash} 開啟',
+		latestDeliveryTitle: '最近的工業城市間運輸',
+		latestDeliveryRow: '第 {day} 天抵達 · {material} {quantity} 單位 · {origin} → {destination}'
 	},
 	savePanel: {
 		dismiss: '關閉存檔',

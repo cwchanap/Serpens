@@ -5,7 +5,7 @@ import type { CityMapSnapshot } from '$lib/game/mapRender';
 import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
-import type { RecurringRoute } from '$lib/game/types';
+import type { RecurringRoute, TransferOrder } from '$lib/game/types';
 import type { MapViewId, VisitedMapViews } from '$lib/game/mapViewKeepAlive';
 import type { MapActivityBatch } from '$lib/game/mapActivityFeedback';
 import { WORLD_CITY_CATALOG, type WorldCityStatus } from '$lib/game/world';
@@ -42,6 +42,7 @@ interface SurfaceProps {
 	logisticsRouteSummaries: readonly RouteOperationalSummary[];
 	selectedLogisticsRouteId: string | null;
 	onSelectLogisticsRoute: (routeId: string) => void;
+	latestDeliveredTransfer: TransferOrder | null;
 
 	mapSnapshot: CityMapSnapshot;
 	retailMapActivity: MapActivityBatch;
@@ -131,6 +132,7 @@ function surfaceProps(overrides: Partial<SurfaceProps> = {}): SurfaceProps {
 		],
 		selectedLogisticsRouteId: null,
 		onSelectLogisticsRoute: vi.fn(),
+		latestDeliveredTransfer: null,
 		retailMapActivity: { seq: 0, activities: [] },
 		mapSnapshot: {
 			cityId: 'retail-city',
@@ -213,5 +215,37 @@ describe('MapSurfaceHost', () => {
 		await expect.element(routeButton).toBeVisible();
 		await routeButton.click();
 		expect(onSelectLogisticsRoute).toHaveBeenCalledWith('route-1');
+	});
+
+	it('forwards the latest delivered transfer to the selected world inspector', async () => {
+		expect.assertions(2);
+		render(
+			MapSurfaceHost,
+			surfaceProps({
+				selectedWorldCityId: 'industry-city',
+				latestDeliveredTransfer: {
+					id: 'transfer-7',
+					source: { kind: 'manual' },
+					originCityId: 'breadbasket-basin',
+					destinationCityId: 'industry-city',
+					materialId: 'water',
+					quantity: 12,
+					createdOnDay: 5,
+					dispatchedOnDay: 6,
+					arrivalOnDay: 9,
+					transportCost: 24,
+					status: 'delivered'
+				}
+			})
+		);
+
+		await expect
+			.element(page.getByRole('region', { name: 'Latest industry-to-industry transfer' }))
+			.toBeVisible();
+		await expect
+			.element(
+				page.getByText('Arrived day 9 · 12 units of Water · Breadbasket Basin → Industry City')
+			)
+			.toBeVisible();
 	});
 });

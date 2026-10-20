@@ -8,11 +8,12 @@
 	} from '$lib/assets/gameArt';
 	import HudIcon from './HudIcon.svelte';
 	import WorldLogisticsRoutes from '$lib/components/game/WorldLogisticsRoutes.svelte';
+	import { localizeTransfer } from '$lib/components/game/logisticsPanel';
 	import { localizeWorldCityStatus } from '$lib/i18n/gameCopy';
 	import type { LocalizedWorldCityStatus } from '$lib/i18n/localizedTypes';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
-	import type { ProductId } from '$lib/game/types';
+	import type { ProductId, TransferOrder } from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
 
 	interface Props {
@@ -32,6 +33,7 @@
 		logisticsRouteSummaries?: readonly RouteOperationalSummary[];
 		selectedLogisticsRouteId?: string | null;
 		onSelectLogisticsRoute?: (routeId: string) => void;
+		latestDeliveredTransfer?: TransferOrder | null;
 	}
 
 	let {
@@ -50,7 +52,8 @@
 		disabledReason = null,
 		logisticsRouteSummaries = [],
 		selectedLogisticsRouteId = null,
-		onSelectLogisticsRoute = () => {}
+		onSelectLogisticsRoute = () => {},
+		latestDeliveredTransfer = null
 	}: Props = $props();
 	const allowedCitySet = $derived(new Set(allowedCityIds));
 
@@ -76,6 +79,13 @@
 			({ route }) =>
 				route.originCityId === selectedCityId || route.destinationCityId === selectedCityId
 		).length
+	);
+	const latestDelivery = $derived(
+		selectedStatus?.city.kind === 'industry' &&
+			latestDeliveredTransfer?.status === 'delivered' &&
+			latestDeliveredTransfer.destinationCityId === selectedStatus.city.id
+			? localizeTransfer(latestDeliveredTransfer, i18n)
+			: null
 	);
 	function markerPath(status: LocalizedWorldCityStatus): string {
 		if (status.state === 'locked') {
@@ -111,6 +121,10 @@
 
 	function inspectorId(status: LocalizedWorldCityStatus): string {
 		return `world-city-${status.city.id}-inspector`;
+	}
+
+	function deliveryTitleId(status: LocalizedWorldCityStatus): string {
+		return `world-city-${status.city.id}-delivery-title`;
 	}
 
 	function routeCityName(cityId: string): string {
@@ -350,6 +364,22 @@
 							height="32"
 						/>{/each}
 				</div>{/if}
+			{#if latestDelivery}
+				<section class="latest-delivery" aria-labelledby={deliveryTitleId(selectedStatus)}>
+					<p class="eyebrow" id={deliveryTitleId(selectedStatus)}>
+						{i18n.t('worldMap.latestDeliveryTitle')}
+					</p>
+					<p>
+						{i18n.t('worldMap.latestDeliveryRow', {
+							day: i18n.format.integer(latestDelivery.arrivalOnDay),
+							quantity: i18n.format.integer(latestDelivery.quantity),
+							material: latestDelivery.materialLabel,
+							origin: latestDelivery.originLabel,
+							destination: latestDelivery.destinationLabel
+						})}
+					</p>
+				</section>
+			{/if}
 			<div class="city-actions">
 				{#if selectedStatus.state === 'revealed' && allowedCitySet.has(selectedStatus.city.id)}
 					{#if canOpenWorldCity}
@@ -789,6 +819,13 @@
 	}
 	.specialties img {
 		object-fit: contain;
+	}
+	.latest-delivery {
+		display: grid;
+		gap: 4px;
+		background: var(--paper-50);
+		padding: 8px;
+		border: 1px solid var(--paper-edge);
 	}
 	.city-hero .eyebrow {
 		color: var(--brass-300);

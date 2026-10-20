@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
 import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
 import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
-import type { RecurringRoute } from '$lib/game/types';
+import type { RecurringRoute, TransferOrder } from '$lib/game/types';
 import { WORLD_CITY_CATALOG, type WorldCityStatus } from '$lib/game/world';
 import {
 	decisionContextWorldCityNotAvailableYet,
@@ -51,6 +51,23 @@ function routeSummary(overrides: Partial<RecurringRoute> = {}): RouteOperational
 		deliveredUnits: 12,
 		transportCost: 24,
 		condition: 'normal'
+	};
+}
+
+function deliveredTransfer(overrides: Partial<TransferOrder> = {}): TransferOrder {
+	return {
+		id: 'transfer-7',
+		source: { kind: 'recurring-route', routeId: 'route-1' },
+		originCityId: 'breadbasket-basin',
+		destinationCityId: 'industry-city',
+		materialId: 'water',
+		quantity: 12,
+		createdOnDay: 5,
+		dispatchedOnDay: 6,
+		arrivalOnDay: 9,
+		transportCost: 24,
+		status: 'delivered',
+		...overrides
 	};
 }
 
@@ -470,4 +487,107 @@ describe('WorldMap', () => {
 		await expect.element(financeButton).toBeVisible();
 		await financeButton.click();
 	});
+
+	it('shows the latest delivered transfer with its arrival day and industry-to-industry scope', async () => {
+		expect.assertions(4);
+		render(WorldMap, {
+			statuses: [status('industry-city', 'opened'), status('breadbasket-basin', 'opened')],
+			i18n: createI18n('en'),
+			selectedCityId: 'industry-city',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			latestDeliveredTransfer: deliveredTransfer()
+		});
+
+		const delivery = page.getByRole('region', { name: 'Latest industry-to-industry transfer' });
+		await expect.element(delivery).toBeVisible();
+		await expect
+			.element(
+				delivery.getByText('Arrived day 9 · 12 units of Water · Breadbasket Basin → Industry City')
+			)
+			.toBeVisible();
+		expect(delivery.element().textContent).not.toMatch(/retail|shelf|store/i);
+		expect(delivery.element().getAnimations()).toHaveLength(0);
+	});
+
+	it('hides the delivery section for a retail city even when a transfer targets it', async () => {
+		expect.assertions(2);
+		render(WorldMap, {
+			statuses: [status('harbor-city', 'opened')],
+			i18n: createI18n('en'),
+			selectedCityId: 'harbor-city',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			latestDeliveredTransfer: deliveredTransfer({ destinationCityId: 'harbor-city' })
+		});
+
+		await expect.element(page.getByRole('dialog', { name: /city details/i })).toBeVisible();
+		await expect
+			.element(page.getByRole('region', { name: /latest industry-to-industry transfer/i }))
+			.not.toBeInTheDocument();
+	});
+
+	it('hides the delivery section without a delivered order', async () => {
+		expect.assertions(2);
+		render(WorldMap, {
+			statuses: [status('industry-city', 'opened')],
+			i18n: createI18n('en'),
+			selectedCityId: 'industry-city',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			latestDeliveredTransfer: null
+		});
+
+		await expect.element(page.getByRole('dialog', { name: /city details/i })).toBeVisible();
+		await expect
+			.element(page.getByRole('region', { name: /latest industry-to-industry transfer/i }))
+			.not.toBeInTheDocument();
+	});
+
+	it('never presents an in-transit order as an actual arrival', async () => {
+		expect.assertions(2);
+		render(WorldMap, {
+			statuses: [status('industry-city', 'opened')],
+			i18n: createI18n('en'),
+			selectedCityId: 'industry-city',
+			onSelectCity: vi.fn(),
+			onOpenCity: vi.fn(),
+			onCloseInspector: vi.fn(),
+			latestDeliveredTransfer: deliveredTransfer({ status: 'in-transit' })
+		});
+
+		await expect.element(page.getByRole('dialog', { name: /city details/i })).toBeVisible();
+		await expect
+			.element(page.getByRole('region', { name: /latest industry-to-industry transfer/i }))
+			.not.toBeInTheDocument();
+	});
+
+	it.each([
+		{ locale: 'ja', day: '9日目' },
+		{ locale: 'zh-Hant', day: '第 9 天' }
+	] as const)(
+		'localizes the latest delivery title, arrival day, and material for $locale',
+		async ({ locale, day }) => {
+			expect.assertions(3);
+			const i18n = createI18n(locale);
+			render(WorldMap, {
+				statuses: [status('industry-city', 'opened'), status('breadbasket-basin', 'opened')],
+				i18n,
+				selectedCityId: 'industry-city',
+				onSelectCity: vi.fn(),
+				onOpenCity: vi.fn(),
+				onCloseInspector: vi.fn(),
+				latestDeliveredTransfer: deliveredTransfer()
+			});
+
+			const delivery = page.getByRole('region', { name: i18n.t('worldMap.latestDeliveryTitle') });
+			await expect.element(delivery).toBeVisible();
+			const text = delivery.element().textContent ?? '';
+			expect(text).toContain(day);
+			expect(text).toContain(i18n.labels.material('water'));
+		}
+	);
 });
