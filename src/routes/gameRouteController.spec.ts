@@ -155,6 +155,7 @@ interface ControllerHarness {
 	onAutoSave: ReturnType<typeof vi.fn>;
 	onAutoSaveError: ReturnType<typeof vi.fn>;
 	onReadOnlySelection: ReturnType<typeof vi.fn>;
+	onAcceptedGameChange: ReturnType<typeof vi.fn>;
 }
 
 function createHarness(options?: {
@@ -171,6 +172,7 @@ function createHarness(options?: {
 	const onAutoSave = vi.fn();
 	const onAutoSaveError = vi.fn();
 	const onReadOnlySelection = vi.fn();
+	const onAcceptedGameChange = vi.fn();
 	const onStateChange = vi.fn((state: Readonly<GameRouteControllerState>) => {
 		states.push({ ...state });
 	});
@@ -195,7 +197,8 @@ function createHarness(options?: {
 		onScenarioTerminalRun,
 		onAutoSave,
 		onAutoSaveError,
-		onReadOnlySelection
+		onReadOnlySelection,
+		onAcceptedGameChange
 	};
 
 	const controller = new GameRouteController(controllerOptions);
@@ -212,7 +215,8 @@ function createHarness(options?: {
 		onScenarioTerminalRun,
 		onAutoSave,
 		onAutoSaveError,
-		onReadOnlySelection
+		onReadOnlySelection,
+		onAcceptedGameChange
 	};
 }
 
@@ -542,6 +546,17 @@ describe('GameRouteController', () => {
 			expect(harness.controller.state.sandboxGame).not.toBeNull();
 		});
 
+		it('does not notify the accepted-change observer on sandbox load or autosave resume', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			await harness.saveRepository.saveAuto(createNewGame('convenience', 9));
+
+			expect(await harness.controller.resumeAutoSave()).toBe('loaded');
+			harness.controller.loadSandboxGame(createNewGame('convenience', 5));
+
+			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
+		});
+
 		it('loadManualSave returns unavailable, missing, and loaded appropriately', async () => {
 			const harness = createHarness();
 			expect(await harness.controller.loadManualSave('slot-1')).toBe('unavailable');
@@ -836,6 +851,27 @@ describe('GameRouteController', () => {
 			const result = await harness.controller.resumeScenarioRun('first-profit');
 			expect(result).toEqual({ status: 'committed' });
 			expect(harness.controller.state.activeScenarioRun).toBe(before);
+		});
+
+		it('does not notify the accepted-change observer on resume or external snapshot adoption', async () => {
+			const scenarioRepository = createScenarioMemoryRepository();
+			const harness = createHarness({ scenarioRepository });
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller);
+			// Another tab advances the same run; this tab then resumes the newer snapshot.
+			const other = createHarness({ scenarioRepository });
+			await other.controller.initializeScenarios();
+			await other.controller.advanceDay();
+			harness.controller.returnToSandbox();
+			const epochBefore = harness.controller.state.scenarioRunSyncEpoch;
+			harness.onAcceptedGameChange.mockClear();
+
+			expect(await harness.controller.resumeScenarioRun('first-profit')).toEqual({
+				status: 'committed'
+			});
+			expect(harness.controller.state.activeScenarioRun?.runId).toBe(run.runId);
+			expect(harness.controller.state.scenarioRunSyncEpoch).toBe(epochBefore + 1);
+			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
 		});
 
 		it('returns failed and arms a retry when loadActiveRun throws', async () => {
@@ -2034,6 +2070,90 @@ describe('GameRouteController', () => {
 			expect(harness.onAutoSave).toHaveBeenCalledTimes(6);
 		});
 
+		it('notifies the accepted-change observer once with the prior and published sandbox game for a cued command', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 3);
+			harness.controller.loadSandboxGame(game);
+			harness.onAcceptedGameChange.mockClear();
+			harness.sfx.mockClear();
+
+			expect(await harness.controller.advanceDay()).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+
+			expect(harness.sfx).toHaveBeenCalledWith('sfx.time.advance-day');
+			expect(harness.onAcceptedGameChange).toHaveBeenCalledTimes(1);
+			const [previous, next] = harness.onAcceptedGameChange.mock.calls[0]!;
+			expect(previous).toBe(game);
+			expect(next).toBe(harness.controller.state.sandboxGame);
+			expect(next.day).toBe(game.day + 1);
+			// The success cue plays before the observer, preserving the existing order.
+			expect(harness.sfx.mock.invocationCallOrder[0]!).toBeLessThan(
+				harness.onAcceptedGameChange.mock.invocationCallOrder[0]!
+			);
+		});
+
+		it('notifies the accepted-change observer once for a changed sandbox command without a cue', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 3);
+			harness.controller.loadSandboxGame(game);
+			harness.onAcceptedGameChange.mockClear();
+			harness.sfx.mockClear();
+
+			expect(await harness.controller.setRetailSupplySource('harbor-city', null)).toEqual({
+				status: 'sandbox-committed',
+				changed: true
+			});
+
+			expect(harness.sfx).not.toHaveBeenCalled();
+			expect(harness.onAcceptedGameChange).toHaveBeenCalledTimes(1);
+			const [previous, next] = harness.onAcceptedGameChange.mock.calls[0]!;
+			expect(previous).toBe(game);
+			expect(next).toBe(harness.controller.state.sandboxGame);
+			expect(next).not.toBe(game);
+		});
+
+		it('does not notify the accepted-change observer for unchanged or rejected sandbox commands', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 3);
+			harness.controller.loadSandboxGame(game);
+			harness.onAcceptedGameChange.mockClear();
+
+			// upgradeStore returns the same reference when the store id does not exist.
+			expect(await harness.controller.upgradeStore('nonexistent-store')).toEqual({
+				status: 'sandbox-committed',
+				changed: false
+			});
+			expect(await harness.controller.repayFinanceLoan('missing-loan', 100)).toMatchObject({
+				status: 'domain-rejected',
+				code: 'loanNotFound'
+			});
+			expect(harness.controller.state.sandboxGame).toBe(game);
+			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
+		});
+
+		it('notifies the accepted-change observer with a null prior game when founding without a sandbox game', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 1);
+
+			await harness.controller.foundStore({
+				archetypeId: 'convenience',
+				city: game.cities[0]!,
+				tileId: 'harbor-city-1-1',
+				seed: 123
+			});
+
+			expect(harness.onAcceptedGameChange).toHaveBeenCalledTimes(1);
+			const [previous, next] = harness.onAcceptedGameChange.mock.calls[0]!;
+			expect(previous).toBeNull();
+			expect(next).toBe(harness.controller.state.sandboxGame);
+		});
+
 		it('foundStore allows a missing sandbox game', async () => {
 			const harness = createHarness();
 			const game = createNewGame('convenience', 1);
@@ -2208,6 +2328,100 @@ describe('GameRouteController', () => {
 			});
 			expect(saveSpy).toHaveBeenCalledTimes(2);
 		});
+		it('notifies the accepted-change observer once with the attempted and persisted scenario games for a cued command', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const before = harness.controller.state.activeScenarioRun!;
+			harness.onAcceptedGameChange.mockClear();
+			harness.sfx.mockClear();
+
+			expect(await harness.controller.advanceDay()).toEqual({ status: 'committed' });
+
+			expect(harness.sfx).toHaveBeenCalledWith('sfx.time.advance-day');
+			expect(harness.onAcceptedGameChange).toHaveBeenCalledTimes(1);
+			const [previous, next] = harness.onAcceptedGameChange.mock.calls[0]!;
+			expect(previous).toBe(before.game);
+			expect(next).toEqual(harness.controller.state.activeScenarioRun?.game);
+			expect(next.day).toBe(before.game.day + 1);
+			expect(harness.sfx.mock.invocationCallOrder[0]!).toBeLessThan(
+				harness.onAcceptedGameChange.mock.invocationCallOrder[0]!
+			);
+		});
+
+		it('notifies the accepted-change observer once for a persisted scenario command without a cue', async () => {
+			const base = firstProfitDefinition();
+			const definition = { ...base, allowedCommands: ['setRetailSupplySource'] as const };
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller, definition);
+			harness.onAcceptedGameChange.mockClear();
+			harness.sfx.mockClear();
+
+			expect(await harness.controller.setRetailSupplySource('harbor-city', null)).toEqual({
+				status: 'committed'
+			});
+
+			expect(harness.sfx).not.toHaveBeenCalled();
+			expect(harness.onAcceptedGameChange).toHaveBeenCalledTimes(1);
+			const [previous, next] = harness.onAcceptedGameChange.mock.calls[0]!;
+			expect(previous).toBe(run.game);
+			expect(next).toEqual(harness.controller.state.activeScenarioRun?.game);
+			expect(next.retailSupplyAssignments).toEqual([
+				{ retailCityId: 'harbor-city', supplyCityId: null }
+			]);
+		});
+
+		it('does not notify the accepted-change observer for unchanged or rejected scenario commands', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller);
+			harness.onAcceptedGameChange.mockClear();
+
+			expect(await harness.controller.updatePolicy(run.game.policy)).toEqual({
+				status: 'unchanged'
+			});
+			// openStore is not in STANDARD_RETAIL_COMMANDS.
+			expect(await harness.controller.openStore('harbor-city-2-2', 'convenience')).toEqual({
+				status: 'rejected'
+			});
+			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
+		});
+
+		it('does not notify the accepted-change observer when the scenario persistence write fails', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			harness.onAcceptedGameChange.mockClear();
+			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockRejectedValueOnce(
+				new Error('write failed')
+			);
+
+			expect(await harness.controller.advanceDay()).toEqual({ status: 'failed' });
+			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
+		});
+
+		it('does not notify the accepted-change observer when a save conflict refuses the scenario command', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const definition = firstProfitDefinition();
+			const started = await import('$lib/scenarios/runtime').then((m) =>
+				m.startScenario(definition, definition.officialSeed + 5)
+			);
+			if (!started.ok) throw new Error('replacement start failed');
+			const conflictOutcome: ScenarioSaveOutcome = {
+				status: 'conflict',
+				activeRun: started.value,
+				revision: 0
+			};
+			vi.spyOn(harness.scenarioRepository, 'saveActiveRun').mockResolvedValue(conflictOutcome);
+			harness.onAcceptedGameChange.mockClear();
+
+			expect(await harness.controller.advanceDay()).toEqual({ status: 'confirmation-required' });
+			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
+		});
+
 		it('commits an allowed scenario command and persists the run', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
@@ -2632,6 +2846,38 @@ describe('GameRouteController', () => {
 			if (ref.scenarioId === 'first-profit' && ref.version === 1) return failingDefinition();
 			return resolveScenarioDefinition(ref);
 		}
+
+		it('notifies the accepted-change observer with the pre-terminal and terminal games after the active run clears', async () => {
+			const harness = createHarness({ resolveDefinition: completingResolver });
+			await harness.controller.initializeScenarios();
+			const before = await startScenario(harness.controller, completingDefinition());
+			harness.onAcceptedGameChange.mockClear();
+
+			expect(await harness.controller.advanceDay()).toEqual({ status: 'committed' });
+
+			// The terminal publish clears the active run, so the observer must not read controller.game.
+			expect(harness.controller.game).toBeNull();
+			expect(harness.onAcceptedGameChange).toHaveBeenCalledTimes(1);
+			const [previous, next] = harness.onAcceptedGameChange.mock.calls[0]!;
+			const terminalRun = harness.onScenarioTerminalRun.mock.calls[0]![0] as ScenarioRun;
+			expect(previous).toBe(before.game);
+			expect(next).toBe(terminalRun.game);
+		});
+
+		it('does not notify the accepted-change observer when the terminal commit loses the compare-and-swap', async () => {
+			const harness = createHarness({ resolveDefinition: completingResolver });
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller, completingDefinition());
+			const commitSpy = vi
+				.spyOn(harness.scenarioRepository, 'commitTerminalRun')
+				.mockResolvedValue({ status: 'conflict', activeRun: run, revision: 0 });
+			harness.onAcceptedGameChange.mockClear();
+
+			expect(await harness.controller.advanceDay()).toEqual({ status: 'confirmation-required' });
+			expect(commitSpy).toHaveBeenCalledTimes(1);
+			expect(harness.onScenarioTerminalRun).not.toHaveBeenCalled();
+			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
+		});
 
 		it('publishes a completed result, notifies the terminal-run callback, and refreshes the summary', async () => {
 			const harness = createHarness({ resolveDefinition: completingResolver });

@@ -246,6 +246,8 @@ export interface GameRouteControllerOptions {
 	onAutoSave?(metadata: SaveSlotMetadata): void;
 	onAutoSaveError?(error: unknown): void;
 	onReadOnlySelection?(kind: 'retail' | 'industry', tileId: string): void;
+	/** Called after a command publishes a changed game. Synchronous; must not throw. */
+	onAcceptedGameChange?(previous: GameState | null, next: GameState): void;
 }
 
 type RouteTransitionResult<TReceipt = undefined> =
@@ -1617,9 +1619,8 @@ export class GameRouteController {
 			if (!this.currentState.sandboxGame && !request.allowMissingSandboxGame) {
 				return { status: 'unavailable' };
 			}
-			const transition = normalizeRouteTransition(
-				request.transition(this.currentState.sandboxGame)
-			);
+			const previousSandboxGame = this.currentState.sandboxGame;
+			const transition = normalizeRouteTransition(request.transition(previousSandboxGame));
 			if (!transition.ok) {
 				if ('logisticsFailure' in transition) {
 					return {
@@ -1650,7 +1651,10 @@ export class GameRouteController {
 				autosave: (game) => {
 					void this.saveAuto(game);
 				},
-				afterPublish: request.cueId ? () => this.options.playSfx(request.cueId!) : undefined
+				afterPublish: () => {
+					if (request.cueId) this.options.playSfx(request.cueId);
+					this.options.onAcceptedGameChange?.(previousSandboxGame, transition.game);
+				}
 			});
 			return { status: 'sandbox-committed', changed: result.changed };
 		}
@@ -1906,13 +1910,13 @@ export class GameRouteController {
 					// calls afterPublish unconditionally (it treats the synthetic
 					// conflict outcome as committed), so without this guard a
 					// rejected command would play its success cue — misleading the
-					// user into thinking the command landed.
-					afterPublish: request.cueId
-						? () => {
-								if (conflictOutcome) return;
-								this.options.playSfx(request.cueId!);
-							}
-						: undefined,
+					// user into thinking the command landed. The same guard keeps the
+					// accepted-change observer from firing for a refused command.
+					afterPublish: () => {
+						if (conflictOutcome) return;
+						if (request.cueId) this.options.playSfx(request.cueId);
+						this.options.onAcceptedGameChange?.(attemptedRun!.game, preparedRun!.game);
+					},
 					onPendingChange: (scenarioCommandPending) => this.patchState({ scenarioCommandPending })
 				}
 			);
