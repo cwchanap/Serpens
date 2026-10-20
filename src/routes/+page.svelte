@@ -114,6 +114,7 @@
 		type RouteOperationalSummary
 	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
+	import { nextMapActivityBatch, type MapActivityBatch } from '$lib/game/mapActivityFeedback';
 	import { DEFAULT_POLICY } from '$lib/game/state';
 	import { getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
@@ -364,12 +365,18 @@
 	let simulationTickRearm = $state(0);
 	let scenarioCommandPending = $state(false);
 	let scenariosReady = $state(false);
+	// The latest accepted-change batch for map feedback. Only the route's accepted-change
+	// observer replaces it; loads and adoptions never do.
+	let mapActivity = $state<MapActivityBatch>({ seq: 0, activities: [] });
 	const gameRouteController = new GameRouteController({
 		createSaveRepository,
 		createScenarioRepository,
 		resolveScenarioDefinition,
 		playSfx,
 		onStateChange: synchronizeControllerState,
+		onAcceptedGameChange: (previous, next) => {
+			mapActivity = nextMapActivityBatch(mapActivity, previous, next);
+		},
 		onSaveRepositoryReady: (repository) => {
 			saveRepository = repository;
 		},
@@ -1050,6 +1057,14 @@
 			? getAvailableMaterialIds(game ?? starterMapState)
 			: []
 	);
+	const retailMapActivity = $derived({
+		seq: mapActivity.seq,
+		activities: mapActivity.activities.filter((activity) => activity.kind !== 'production')
+	});
+	const industryMapActivity = $derived({
+		seq: mapActivity.seq,
+		activities: mapActivity.activities.filter((activity) => activity.kind === 'production')
+	});
 	let mapSnapshot = $derived(
 		createCityMapSnapshot(game ?? starterMapState, selectedTileId, retailPlacementPreview)
 	);
@@ -3040,8 +3055,10 @@
 				{selectedLogisticsRouteId}
 				onSelectLogisticsRoute={selectLogisticsRoute}
 				{mapSnapshot}
+				{retailMapActivity}
 				onSelectRetailTile={selectTile}
 				{industryMapSnapshot}
+				{industryMapActivity}
 				onSelectIndustryTile={selectIndustryTile}
 				onCancelRailBuild={cancelRailBuildStep}
 				{railKeyboardEnabled}

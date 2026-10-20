@@ -1,6 +1,8 @@
 import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { flushSync, type ComponentProps } from 'svelte';
+import type { MapActivity } from '$lib/game/mapActivityFeedback';
 import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 
@@ -12,6 +14,8 @@ const mockSetKeyboardEnabled = vi.fn();
 const mockSetParentSize = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
+const mockShowMapActivity = vi.fn();
+const mockSceneEventsOnce = vi.fn();
 let shouldFail = false;
 
 vi.mock('phaser', () => {
@@ -30,7 +34,8 @@ vi.mock('phaser', () => {
 		default: {
 			Game: FakeGame,
 			AUTO: 0,
-			Scale: { RESIZE: 0, CENTER_BOTH: 0 }
+			Scale: { RESIZE: 0, CENTER_BOTH: 0 },
+			Scenes: { Events: { CREATE: 'create' } }
 		}
 	};
 });
@@ -40,7 +45,9 @@ vi.mock('$lib/phaser/industryMapScene', () => {
 		return {
 			setEventHandler: mockSetEventHandler,
 			setKeyboardEnabled: mockSetKeyboardEnabled,
-			updateSnapshot: mockUpdateSnapshot
+			updateSnapshot: mockUpdateSnapshot,
+			showMapActivity: mockShowMapActivity,
+			events: { once: mockSceneEventsOnce }
 		};
 	}
 	return { IndustryMapScene: FakeIndustryMapScene };
@@ -197,5 +204,168 @@ describe('IndustryMap', () => {
 		}) => void;
 
 		expect(() => handler({ type: 'buildCancelled' })).not.toThrow();
+	});
+});
+
+type IndustryMapProps = ComponentProps<typeof IndustryMap>;
+
+const onTileSelected = vi.fn();
+
+function mapProps(overrides: Partial<IndustryMapProps> = {}): IndustryMapProps {
+	return { snapshot: emptySnapshot, onTileSelected, i18n, ...overrides };
+}
+
+function production(entityId: string, cityId = 'city-1'): MapActivity {
+	return { kind: 'production', cityId, entityId, materialId: 'bottled-water' };
+}
+
+function createdSceneListeners(): Array<() => void> {
+	return mockSceneEventsOnce.mock.calls
+		.filter(([event]) => event === 'create')
+		.map(([, listener]) => listener as () => void);
+}
+
+// Scene N is ready once the Phaser `create` listener that startPhaser registered for it fires.
+async function markSceneReady(sceneNumber = 1): Promise<void> {
+	await expect.poll(() => createdSceneListeners().length, { timeout: 5000 }).toBe(sceneNumber);
+	createdSceneListeners()[sceneNumber - 1]!();
+	flushSync();
+}
+
+describe('IndustryMap map activity delivery', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('forwards a new batch once when the view is active, unpaused and the scene is ready', async () => {
+		const view = await render(IndustryMap, mapProps());
+		await markSceneReady();
+
+		await view.rerender(mapProps({ activity: { seq: 1, activities: [production('bldg-1')] } }));
+		flushSync();
+
+		expect(mockShowMapActivity).toHaveBeenCalledTimes(1);
+		expect(mockShowMapActivity).toHaveBeenCalledWith({
+			seq: 1,
+			activities: [production('bldg-1')]
+		});
+	});
+
+	it('consumes a batch while hidden and does not replay it once the view is shown', async () => {
+		const view = await render(IndustryMap, mapProps({ active: false }));
+		await markSceneReady();
+		const batch = { seq: 1, activities: [production('bldg-1')] };
+
+		await view.rerender(mapProps({ active: false, activity: batch }));
+		await view.rerender(mapProps({ active: true, activity: batch }));
+		flushSync();
+
+		expect(mockShowMapActivity).not.toHaveBeenCalled();
+	});
+
+	it('consumes a batch while paused and does not replay it after resuming', async () => {
+		const view = await render(IndustryMap, mapProps({ paused: true }));
+		await markSceneReady();
+		const batch = { seq: 1, activities: [production('bldg-1')] };
+
+		await view.rerender(mapProps({ paused: true, activity: batch }));
+		await view.rerender(mapProps({ paused: false, activity: batch }));
+		flushSync();
+
+		expect(mockShowMapActivity).not.toHaveBeenCalled();
+	});
+
+	it('drops activity for another city and does not re-forward it after a city switch', async () => {
+		const view = await render(IndustryMap, mapProps());
+		await markSceneReady();
+		const batch = { seq: 1, activities: [production('bldg-2', 'city-2')] };
+
+		await view.rerender(mapProps({ activity: batch }));
+		await view.rerender(
+			mapProps({ snapshot: { ...emptySnapshot, cityId: 'city-2' }, activity: batch })
+		);
+		flushSync();
+
+		expect(mockShowMapActivity).not.toHaveBeenCalled();
+	});
+
+	it('forwards only the same-city activities of a mixed batch', async () => {
+		const view = await render(IndustryMap, mapProps());
+		await markSceneReady();
+
+		await view.rerender(
+			mapProps({
+				activity: { seq: 1, activities: [production('bldg-2', 'city-2'), production('bldg-1')] }
+			})
+		);
+		flushSync();
+
+		expect(mockShowMapActivity).toHaveBeenCalledTimes(1);
+		expect(mockShowMapActivity).toHaveBeenCalledWith({
+			seq: 1,
+			activities: [production('bldg-1')]
+		});
+	});
+
+	it('does not forward the batch that was already current when the view mounted lazily', async () => {
+		await render(
+			IndustryMap,
+			mapProps({ activity: { seq: 4, activities: [production('bldg-1')] } })
+		);
+		await markSceneReady();
+
+		expect(mockShowMapActivity).not.toHaveBeenCalled();
+	});
+
+	it('consumes a batch that arrives before the scene is ready and does not replay it once ready', async () => {
+		const view = await render(IndustryMap, mapProps());
+		await expect.poll(() => createdSceneListeners().length, { timeout: 5000 }).toBe(1);
+		await view.rerender(mapProps({ activity: { seq: 1, activities: [production('bldg-1')] } }));
+		flushSync();
+		expect(mockShowMapActivity).not.toHaveBeenCalled();
+
+		await markSceneReady();
+
+		expect(mockShowMapActivity).not.toHaveBeenCalled();
+	});
+
+	it('forwards a batch whose building is not in the current snapshot yet, matching by city only', async () => {
+		const view = await render(IndustryMap, mapProps());
+		await markSceneReady();
+
+		await view.rerender(mapProps({ activity: { seq: 1, activities: [production('bldg-new')] } }));
+		flushSync();
+
+		expect(mockShowMapActivity).toHaveBeenCalledWith({
+			seq: 1,
+			activities: [production('bldg-new')]
+		});
+	});
+
+	it('forwards nothing more when the same batch rerenders with a newer snapshot', async () => {
+		const view = await render(IndustryMap, mapProps());
+		await markSceneReady();
+		const batch = { seq: 1, activities: [production('bldg-1')] };
+
+		await view.rerender(mapProps({ activity: batch }));
+		await view.rerender(mapProps({ snapshot: { ...emptySnapshot }, activity: batch }));
+		flushSync();
+
+		expect(mockShowMapActivity).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not replay a delivered batch after the view is destroyed and recreated', async () => {
+		const batch = { seq: 1, activities: [production('bldg-1')] };
+		const first = await render(IndustryMap, mapProps());
+		await markSceneReady(1);
+		await first.rerender(mapProps({ activity: batch }));
+		flushSync();
+		expect(mockShowMapActivity).toHaveBeenCalledTimes(1);
+
+		await first.unmount();
+		await render(IndustryMap, mapProps({ activity: batch }));
+		await markSceneReady(2);
+
+		expect(mockShowMapActivity).toHaveBeenCalledTimes(1);
 	});
 });
