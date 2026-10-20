@@ -843,9 +843,11 @@
 	// interactions stay responsive (and stops e2e actionability timeouts).
 	// Placement mode is excluded because the scene must keep rendering the
 	// placement preview over the map.
+	// A confirming finance review stays open until its commit settles. The map keeps
+	// running for that window so the commit's activity batch is not dropped.
 	let isMapPaused = $derived(
 		!isPlacementModeActive &&
-			(financePurchaseReview.purchase !== null ||
+			((financePurchaseReview.purchase !== null && !financePurchaseReview.confirmationPending) ||
 				isSupplyAdvisorOpen ||
 				storeDetailFocus.isOpen ||
 				isCheatSheetOpen ||

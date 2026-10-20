@@ -2361,16 +2361,18 @@ describe('IndustryMapScene', () => {
 		});
 
 		test('does not re-arm an expired pulse on later renders or draws', () => {
-			expect.assertions(2);
-			const { scene, graphicsInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			expect.assertions(3);
+			const { scene, graphicsInstances, imageInstances } = startScene([buildingAt('b-1', 0, 0)]);
 			const marker = graphicsInstances[3]!.mock;
 			scene.showMapActivity(producedBatch(1, 'b-1'));
 			scene.update(1000);
+			const materialImage = imageInstances.at(-1)!;
 			scene.update(1600);
 			marker.strokeRect.mockClear();
 			scene.updateSnapshot(makeSnapshot({ buildings: [buildingAt('b-1', 0, 0)] }));
 			expect(marker.strokeRect).not.toHaveBeenCalled();
 			expect(drawFrame(scene, marker, 1700).rings).toHaveLength(0);
+			expect(materialImage.mock.destroy).toHaveBeenCalled();
 		});
 
 		test('coalesces repeated shows for an in-flight producer and keeps its original start time', () => {
