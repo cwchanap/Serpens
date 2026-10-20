@@ -1,107 +1,94 @@
 # HPA-295 — Map Activity Feedback: Design
 
-**Status:** Planning checkpoint — implementation and verification belong in this same delivery PR.
+**Status:** Planning checkpoint — runtime implementation and verification remain in this same delivery PR.
 **Ticket:** https://linear.app/cwchanap/issue/HPA-295/gameplay-polish-make-maps-respond-to-real-openings-upgrades-production
 **Baseline:** `main` at `200bc7bc479b0459c3827a8c47128cbad1918364` (October 19, 2026).
 **Implementation plan:** `docs/superpowers/plans/2026-10-19-map-activity-feedback.md`.
 
 ## Goal
 
-Make actual store openings/upgrades and industrial production perceptible on a map, and make genuinely delivered inter-city materials inspectable at their receiving city. Preserve deterministic game transitions, accessibility, fast time progression, and existing map interactions.
+Make accepted store openings/upgrades and actual industrial production visible on the active map, make completed industry-to-industry transfers inspectable with their arrival day, and improve blocked/stalled readability. Preserve deterministic simulation, reduced motion, and existing controls.
 
-The feature is entirely presentation/read-model work: no economy rules, new assets, sound, persistence schema, generic events infrastructure, or simulation scheduling.
+This is presentation/read-model work only: no save-schema, simulation, economy, new assets/SFX, event bus, queue, or separate implementation PR.
 
-## Ground truth on current main
+## Verified baseline
 
-- `src/lib/game/mapRender.ts` builds retail snapshots with store identity and footprint. `src/lib/game/industryMapRender.ts` builds industry snapshots with building identity, footprint, and authoritative status. Neither renderer reads `GameState`.
-- `src/lib/phaser/cityMapScene.ts` destroys/recreates storefront sprites on a snapshot refresh; therefore a tween attached to a store sprite is fragile. Both scenes have draw/update paths and non-interactive graphics layers.
-- `src/lib/phaser/industryMapScene.ts` already draws a status dot for idle/produced/imported-inputs/stalled/blocked. The marker currently distinguishes states primarily by color.
-- `src/lib/components/game/CityMap.svelte` and `IndustryMap.svelte` own lazy Phaser scene startup. `src/routes/MapSurfaceHost.svelte` keeps visited views mounted but inactive views are hidden and their game loops paused.
-- `src/routes/gameRouteController.ts` owns accepted sandbox mutations and scenario persistence/CAS. The existing `onStateChange` fires for both mutations and externally adopted/loaded states and cannot by itself prove an event occurred.
-- A completed `DailyReport` has `productionReport.produced`, while each `IndustrialBuilding.lastProduction` contains its own actual material movements. The aggregate production report does *not* carry building IDs. A positive output may have status `stalled` (partial throughput) or `imported-inputs`, not only `produced`.
-- `DailyReport.logistics.arrivals` stores actual arrival entries; each entry identifies the transfer order, sending city, receiving city, material and quantity. Its enclosing `report.day` supplies the actual day. A transfer order's `arrivalOnDay` is scheduled timing, not sufficient proof of delivery.
-- Existing world-map city and route inspectors show operational data, but not a dated per-arrival confirmation. Existing industry inspectors show localized status and link issues such as missing warehouse or disconnected rail.
+- `gameRouteController.ts` funnels game mutations through `commitMutation`; sandbox `runImmediateSandboxOperation` calls `afterPublish` only for a changed state, while scenario `runPersistenceGatedOperation` calls it only after changed preparation, persistence and publication. Scenario CAS conflicts are converted to synthetic committed outcomes, so `afterPublish` must still check `conflictOutcome`. Both callbacks are currently conditional on `request.cueId`; some successful commands have no cue.
+- Scenario terminal commits can clear `activeScenarioRun`; `controller.game` may then be null despite a successful committed game transition. `attemptedRun.game` and `preparedRun.game` are the reliable before/after pair. Broad `onStateChange` also fires on loads/adoptions, so it is not an accepted-commit signal.
+- `simulateDay` appends a daily report and advances `game.day`. `simulateIndustryProduction` replaces every building's `lastProduction` on each tick, including resetting idle/stalled/blocked buildings to empty. Positive entries are the actual movements also placed into the aggregate report. Existing production recipes have a single output each.
+- `processTransferArrivals` moves due orders to `status: 'delivered'`. The save codec requires a delivered order's `arrivalOnDay` to precede the current day and an in-transit order not to be overdue. With the present day-by-day simulation, a *delivered* order's `arrivalOnDay` is its recorded delivery day; an in-transit order's date is only a schedule. Orders already carry both city IDs, material, quantity and recurring-route source.
+- `MapSurfaceHost` passes `active`/`paused` into kept-alive map wrappers. Both Phaser scenes have an existing per-frame `markerGraphics` layer and footprint drawing helper; retail snapshots recreate store sprites, so do not tween sprite instances. Both scenes already bob buildings; industry's status dots currently inherit the bob. Industry material art exists but is not preloaded by `IndustryMapScene`.
+- `IndustryTileInspector` already provides localized building status, link issues/actions where grounded, and blocked-day counts. `stalled` already has the specific “Stalled (buffer full)” label. `ReportsPanel` has existing arrival copy.
 
 ## Decisions
 
-### 1. Derive effects only at the accepted commit boundary
+### 1. Successful publishes produce a pure, lightweight map diff
 
-Add one optional presentation callback to `GameRouteControllerOptions`:
+Extend `GameRouteControllerOptions` with:
 
 ~~~ts
 onAcceptedGameChange?(previous: GameState | null, next: GameState): void;
 ~~~
 
-Call it only when a **changed sandbox operation has actually published** or a **changed scenario operation has successfully persisted and published**. Do not call it for read-only selection, unchanged commands, rejected operations, failed/competing CAS, externally adopted scenario snapshots, save loads, scenario lifecycle resets or no-op resume. The callback receives states, not a controller-specific event bus or domain mutation type. Invoke it in the same successful publish path as the current success cue; do not create an asynchronous handler or let it affect persistence.
+Wire it to the **two existing `commitMutation` `afterPublish` closures**, unconditionally (not conditioned on SFX cue presence). A cue, when present, still plays as before. In sandbox, use the pre-mutation game and newly published sandbox game; no callback for an unchanged state. In scenario, use `attemptedRun?.game` and `preparedRun?.game` after successful publication, including terminal changes even if `controller.game` is now null; explicitly suppress synthetic CAS conflicts. The callback is synchronous and must not throw or change game state. Do not attach it to `onStateChange`, load/resume, externally adopted state or lifecycle transitions.
 
-Use a small pure projector at `src/lib/game/mapActivityFeedback.ts` to compare accepted before/after states:
+Add `src/lib/game/mapActivityFeedback.ts` with a single closed union and projector:
 
 ~~~ts
 type MapActivity =
-  | { kind: 'store-opened' | 'store-upgraded'; view: 'retail'; cityId: string; entityId: string }
-  | { kind: 'production'; view: 'industry'; cityId: string; entityId: string; materialId: MaterialId };
+  | { kind: 'store-opened' | 'store-upgraded'; cityId: string; entityId: string }
+  | { kind: 'production'; cityId: string; entityId: string; materialId: MaterialId };
 
 selectMapActivity(previous: GameState | null, next: GameState): MapActivity[];
 ~~~
 
-Opening = newly added store ID; upgrade = existing store whose `level` increased. Do not use changed appearance, selected tile, or any transition that merely inspects a store. A founding store is a legitimate opening only after the founding operation commits.
+The `kind` determines retail versus industry without an extra `view` tag. `cityId` remains a small safeguard against wrong-city delivery while a newly opened store is not yet present in the scene's old snapshot. Entity IDs alone cannot solve the publish-before-snapshot versus city-switch ordering race.
 
-For production, require the just-accepted game to have a **new completed report day** and that report to record positive produced material in the same city. Then match the after-state building's positive `lastProduction` with the report by city/material. This pairing is needed because the daily aggregate report has no building ID. Do not infer production from `status`, input imports, production totals alone, or city inventory deltas. A building with positive output and a partial/`imported-inputs` status still qualifies; a building with no output does not. If a producer has multiple positive output materials, select the lowest material ID as its single representative pulse: the pulse acknowledges the building's production, not every individual material. Current recipes each have one output, so pin this forward-looking behavior with a synthetic two-output fixture, without changing production content.
+A new store ID signals opening; an existing store with a higher level signals upgrading. Positive industrial production requires an **existing previous state**, a newly appended `DailyReport` (report array grows; new report day advances) and a positive `lastProduction` movement on that building in the after-state. Pick the first positive movement in its stored recipe-output order as a representative material, not a per-material pulse. The production code writes `lastProduction` and the aggregate report from the same movement, so a second city/material report cross-match would be redundant. A status, inventory increase, transport arrival, old report, or old production value alone is never sufficient.
 
-Return deterministic, bounded events (stable entity ID ordering, one pulse per entity per accepted commit, maximum eight visual targets per view). The route assigns a local, monotonically increasing delivery sequence to the single latest batch. No persistent IDs or generic domain event interface are introduced.
+Sort deterministically and generate **one pulse per changed entity**, without the eight-item cap: repeatedly selecting the same eight low-ID producers would permanently starve higher-ID producers. Only the actual active city's entities are rendered; drawing a cheap ring per producer in the already-redrawn marker pass needs no arbitrary selection policy.
 
-### 2. Presentation delivery is one-shot, visible-only and non-blocking
+### 2. One-shot delivery through existing visibility and scene boundaries
 
-Keep the latest one-shot batch in `src/routes/+page.svelte` as route-local volatile data. When the controller invokes the callback, filter immediately by the **currently visible** map view and active city, and drop any off-screen candidates. A change received during an overlay that pauses the map should not be queued for later. Pass the current batch via `MapSurfaceHost` and the matching `CityMap` / `IndustryMap` component to its scene, alongside the usual immutable snapshot.
+The route holds one volatile `{ seq, activities }` batch, replaced synchronously in the accepted-change callback. Pass matching `kind` activities to retail/industry wrappers through `MapSurfaceHost`; the route does not maintain a second visibility filter or a list of manual resets.
 
-A component must consume each sequence **at most once**, and only when the Phaser scene is ready, active and not paused. If the event arrives before scene creation or while paused/inactive, discard it rather than replay on mount or resume. Initialize a recreated component/scene against the current sequence, not as a fresh event. The scene clears visual state on city changes and shutdown; the route clears it on view/city switches, sandbox loads, scenario resets/resume/import, new games and externally adopted scenario states. Ordinary subsequent snapshots do not replay the batch.
+Each wrapper initializes `lastSeq` to the sequence on mount (including late lazy mounts), and on a **new** sequence advances `lastSeq` whether it forwards or drops it. Forward only if `active && !paused` and the Phaser scene is ready. Also discard entries whose `cityId` differs from that wrapper's current snapshot city: otherwise an off-screen event could appear if the city is selected during the 600 ms effect. Do not require a new store/building ID to exist in the *old* snapshot before forwarding — snapshot publication can follow the callback. The scene resolves eligible IDs against its current snapshot at draw time and clears in-flight pulses when the snapshot switches city/terrain identity or the scene shuts down.
 
-Use only lightweight, non-interactive graphics (a restrained outline/ring at a footprint) updated with the already existing scene frame loop; avoid tweens on storefront sprites because they are rebuilt on snapshots. Duration should be short (around 550–700 ms, independent of in-game days). Replace/coalesce an entity's active pulse when a newer accepted event arrives and expire/drop pulses rather than backing up ticks. Do not touch hit areas, placement highlighting, selection geometry, camera pan/zoom, save/RNG, or speed settings.
+`Map<entityId, startTime>` per scene gives coalescing automatically. Draw a subtle footprint outline/ring using the **existing `markerGraphics` pass** for ~600 ms of wall time, dropping on expiry. Never create sprite tweens, input zones, new graphics systems, another timer, or a backlog. A newly created/loaded component initializes as having consumed the current sequence; loads and external adoptions do not produce new sequences. A load need not explicitly reset the route batch or fabricate an accepted change; an already-running ring is not restarted.
 
-The industry production pulse may show the existing material sprite when the texture is available via `INDUSTRY_MATERIAL_ART`, otherwise show the same restrained neutral halo; do not generate new artwork or block on texture loading. Use Phaser's existing graphics/material registration patterns. Suppress animation under `prefers-reduced-motion: reduce`, leaving a brief static highlight and existing accessible detail/status text rather than an animated flash. A simple boolean passed into the scene is enough; no motion manager.
+Reduced motion applies to **existing** perpetual store/building bobbing as well as new pulses: pass a `prefers-reduced-motion` boolean to each scene, set bob amplitude to zero, and use a brief static (unfaded/unchanging) outline rather than a moving/flashing one. All industrial status dots use a fixed un-bobbed center irrespective of the motion preference, so the blocked/stalled glyphs are genuinely static.
 
-**Arrival animation decision:** The receiving city's **world-map presentation** and simulation tick do not normally coexist, because world view blocks auto-ticking. Do not add a fake truck, route travel animation, pulse on reopening the city, or a time-control exception. Dated inspection is the required delivery affordance. A one-shot receiving-city pulse can be added only if an existing, truly visible, same-transition presentation supports it without a second pipeline; omit it for this baseline.
+For the production effect, preload existing `INDUSTRY_MATERIAL_ART_LIST` alongside the industry scene's existing art and draw the selected material image beside/within the footprint ring. No new art assets; the representation is consistently available from the scene's normal preload.
 
-### 3. Dated arrivals are a read model, not live animations
+For deterministic tests, put the **last consumed** sequence and target IDs in existing canvas `data-*` attributes. They persist after the ~600 ms effect expires, and clear with scene destruction, so Playwright does not race a live pulse. An attribute reports consumption, not whether an effect is currently on-screen.
 
-Add a pure selector to `src/lib/game/logisticsReadModels.ts` (or alongside its current selectors):
+**Arrival animation:** World view blocks automatic time progression, so do not replay an arrival pulse, spawn a truck, or make time controls behave differently. Delivery is a dated inspector detail.
+
+### 3. Actual arrival evidence without another record type
+
+Add a small read-only selector beside `selectRecentTransfers` in `src/lib/game/logisticsReadModels.ts`:
 
 ~~~ts
-selectRecentArrivalConfirmations(game: GameState, limit?: number): ArrivalConfirmation[];
+selectRecentDeliveredTransfers(game: GameState, destinationCityId: WorldCityId, limit = 1): TransferOrder[];
 ~~~
 
-Each confirmation includes `day`, `transferOrderId`, `originCityId`, `destinationCityId`, `materialId`, positive `quantity`, and optional `routeId` if the matched order's source is a recurring route. Read only `game.reports[].logistics.arrivals` (newest report first), join by order ID when necessary, and sort deterministically. Do not treat an in-transit order or a scheduled date as delivered. Avoid a parallel persisted delivery ledger.
+Filter only `status === 'delivered'`, with the matching **industry receiving city**, sorted by `arrivalOnDay` descending and stable ID tie break. This status is required: a scheduled in-transit order does *not* count as delivered. Under the existing invariant, the delivered order's `arrivalOnDay` is the day its arrival was processed. Reuse the order's existing material, quantity, source and city fields; do not scan reports, join by ID, invent `ArrivalConfirmation`, or persist another arrival ledger.
 
-Surface the receiving city's most recent **dated** confirmation in the existing `WorldMap.svelte` city inspector, with localized city/material/quantity/day and an explicit “received by industry city” description. Manual and recurring-route transfers use the same record; a route-specific latest arrival can reuse this selector if the route inspector benefits, but do not duplicate a logistics details UI. Off-screen arrivals remain inspectable when the user later visits their receiving city's inspector. Do not claim delivery to a retail shelf or named warehouse.
+Present the latest order in the existing `WorldMap.svelte` receiving-industry-city inspector via `MapSurfaceHost`, localized in EN/JA/zh-Hant with origin, destination, material, quantity, **arrival day**, and explicit industry-to-industry language. Reuse existing logistics arrival copy where it fits; do not claim any retail shelf was supplied.
 
-### 4. Blocked status: enhance what already exists
+### 4. Enhance existing blocked/stalled markers, not inspector taxonomy
 
-Retain the authoritative `IndustryMapBuildingRender.status` and the current status dots. For `blocked` and `stalled`, add a tiny non-animated contrasting glyph/outline **inside the existing marker**, not another badge on top of selection/placement targets. Differentiate these two actionable states by shape as well as color; position the marker outside the building footprint where it already resides. **Intentional scope boundary:** `idle`, `produced` and `imported-inputs` retain their existing color-based markers in this slice, with localized status text available in the inspector. Full shape differentiation across all industrial statuses is optional future accessibility polish, not a requirement to extend this ticket.
+Extend only `industryMapScene.ts`'s current `drawBuildingStatusDot` with distinct, contrasting, non-animated inside-dot glyphs/shape for `blocked` and `stalled`; keep the marker at an un-bobbed center outside the footprint. `idle`, `produced` and `imported-inputs` remain color-coded in this slice, with status text in the inspector; full all-status shape treatment is future accessibility work.
 
-Reuse the industry inspector's localized status and current `getIndustrialLinkIssues` text/action where a known link issue exists. If no grounded specific cause is available, show a localized generic “Production blocked/stalled” explanation (not a fabricated missing-input or warehouse diagnosis). Do not reclassify block reasons in Phaser. Status labels, text and marker must stay consistent.
-
-## Integration boundaries and exclusions
-
-Affected modules: `mapActivityFeedback.ts` (new, pure), controller accepted-publish callback, `+page.svelte` volatile delivery/reset, `MapSurfaceHost.svelte`, map wrappers, two Phaser scenes, `logisticsReadModels.ts`, `WorldMap.svelte`, existing `IndustryTileInspector.svelte` and localized catalogs.
-
-No `GameState`/`DailyReport` changes, no codec/migration, new timer, event bus, background queue, SFX, art work, transport fleet, pedestrians, location-based production ledger, or simulation rebalance. No changes to original placement or tile-selection command ownership.
+Reuse `IndustryTileInspector.svelte`'s status and link-issue/actions, including existing stalled-buffer explanation. Do not add generic duplicated status copy or claim a specific block cause the simulation has not proved. At most add a brief localized blocked explanation if the current UI proves insufficient; no new cause taxonomy.
 
 ## Tests and acceptance
 
-- True successful opening and level increase pulse once. No rejected, unchanged, snapshot-only or load-induced pulse.
-- A producer with positive material output pulses when the *new report* proves production, including partial/stalled/imported-inputs outcomes; zero-output/status-only/input-only/transfer-only does not. A synthetic two-output producer yields one pulse with the lowest eligible material ID, not duplicate pulses.
-- Receiving-city inspector shows actual material, quantity, destination and **recorded report day** for manual/route deliveries. Pending/late orders without report arrival are never “delivered”; no retail claim.
-- Hidden/inactive scene, late lazy mount, repeated snapshot, save load, mode/map/city change, external scenario adoption and Phaser recreation never replay old effects.
-- Existing blocked status glyph is legible, non-animated, aligned with inspector text and does not steal pointer/keyboard interactions.
-- Static reduced-motion feedback, normal map selection, placement, camera controls and current time behavior stay intact at 1×/2×/5×.
-- Automated pure selector/controller/scene/component tests and affected Playwright flows; manual visual review for motion and mobile/canvas readability.
+- Accepted new store and higher level each produce one event; unchanged/rejected/failed-save/CAS-conflict/load/adoption/selection do not. No-cue and terminal scenario commits are covered.
+- A newly appended report plus actual positive `lastProduction` yields one pulse per producer, including positive-output `stalled` and `imported-inputs`; old report, zero output, imports-only and inventory-only do not. No same-eight starvation with more than eight producers.
+- Wrappers consume a sequence once; inactive, paused, unready and wrong-city batches drop, late mounts and city switches never replay. Snapshot publication after callback still shows a newly opened store once. Scene ring expiration is wall-time only, not dependent on game speed.
+- Existing sprite bobbing is disabled under reduced motion in both scenes; blocked/stalled dot itself never bobs, with or without reduced motion. Rings, material art, hit tests, camera and controls remain intact.
+- A delivered order is shown with its recorded day and receiving industry city; an in-transit or merely scheduled order is not. No retail-delivery claim or arrival animation.
+- Stable **consumed** canvas sequence/IDs enable browser assertions after pulse expiry. EN/JA/zh-Hant parity and targeted unit/component/browser tests cover the feature.
 
-## Risks and mitigations
-
-1. **False success from report aggregation:** pair positive per-building `lastProduction` with the newly appended same-city/material daily report; do not assign arbitrary aggregate production to a building.
-2. **Replay from snapshot reads:** distinguish accepted publish callback from broad `onStateChange`; consume sequences only once, drop on inactive/late scene and lifecycle changes.
-3. **Phaser sprite churn:** draw temporary footprint graphics, not effects tied to rebuilt retail images.
-4. **Wrong delivery scope:** display only report-backed industry-city arrivals; planned arrival dates are not confirmation.
-5. **Visual/click interference:** use noninteractive graphics and existing status marker positions; retain accessible inspector text.
-
-**Delivery rule:** This planning checkpoint and full runtime implementation/tests share one HPA-295 PR. The documents alone do not mean the ticket is complete.
+**Delivery rule:** This document and all implementation/tests remain on PR #64; this planning checkpoint does not complete HPA-295.
