@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { flushSync, type ComponentProps } from 'svelte';
 import type { MapActivity } from '$lib/game/mapActivityFeedback';
@@ -16,6 +16,7 @@ const mockSetParentSize = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
 const mockShowMapActivity = vi.fn();
+const mockSetReducedMotion = vi.fn();
 const mockCanvas = { dataset: {} as Record<string, string> };
 const MockGame = vi.fn().mockImplementation(function () {
 	if (shouldFail) throw new Error('Phaser unavailable');
@@ -47,7 +48,8 @@ vi.mock('$lib/phaser/cityMapScene', () => {
 				setEventHandler: mockSetEventHandler,
 				setKeyboardEnabled: mockSetKeyboardEnabled,
 				updateSnapshot: mockUpdateSnapshot,
-				showMapActivity: mockShowMapActivity
+				showMapActivity: mockShowMapActivity,
+				setReducedMotion: mockSetReducedMotion
 			};
 		})
 	};
@@ -356,5 +358,86 @@ describe('CityMap map activity delivery', () => {
 		await markSceneReady(2);
 
 		expect(mockShowMapActivity).toHaveBeenCalledTimes(1);
+	});
+});
+
+type ReducedMotionListener = (event: { matches: boolean }) => void;
+
+// Stands in for matchMedia('(prefers-reduced-motion: reduce)'): it can flip its value and fire change.
+function fakeReducedMotionQuery(matches: boolean) {
+	const listeners: ReducedMotionListener[] = [];
+	const mql = {
+		matches,
+		addEventListener: vi.fn((_type: string, listener: ReducedMotionListener) => {
+			listeners.push(listener);
+		}),
+		removeEventListener: vi.fn()
+	};
+	return {
+		mql,
+		change(next: boolean) {
+			mql.matches = next;
+			for (const listener of listeners) {
+				listener({ matches: next });
+			}
+		}
+	};
+}
+
+describe('CityMap reduced motion', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('applies the reduced-motion preference to the scene once it exists', async () => {
+		vi.stubGlobal(
+			'matchMedia',
+			vi.fn(() => fakeReducedMotionQuery(true).mql)
+		);
+
+		await render(CityMap, mapProps());
+
+		await expect.poll(() => mockSetReducedMotion.mock.lastCall).toEqual([true]);
+	});
+
+	it('reapplies the preference when the media query changes', async () => {
+		const query = fakeReducedMotionQuery(false);
+		vi.stubGlobal(
+			'matchMedia',
+			vi.fn(() => query.mql)
+		);
+		await render(CityMap, mapProps());
+		await expect.poll(() => mockSetReducedMotion.mock.lastCall).toEqual([false]);
+
+		query.change(true);
+
+		expect(mockSetReducedMotion).toHaveBeenLastCalledWith(true);
+	});
+
+	it('removes its change listener when the view is destroyed', async () => {
+		const query = fakeReducedMotionQuery(false);
+		vi.stubGlobal(
+			'matchMedia',
+			vi.fn(() => query.mql)
+		);
+		const view = await render(CityMap, mapProps());
+		await expect.poll(() => mockSetReducedMotion.mock.lastCall).toEqual([false]);
+
+		await view.unmount();
+
+		expect(query.mql.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+	});
+
+	it('stays safe and keeps normal motion when matchMedia is unavailable', async () => {
+		vi.stubGlobal('matchMedia', undefined);
+
+		await render(CityMap, mapProps());
+
+		await expect.poll(() => mockSetReducedMotion.mock.lastCall).toEqual([false]);
+		expect(mockUpdateSnapshot).toHaveBeenCalled();
 	});
 });

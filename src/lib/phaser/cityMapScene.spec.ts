@@ -95,7 +95,8 @@ vi.mock('phaser', () => {
 });
 
 import { CityMapScene } from './cityMapScene';
-import type { CityMapSnapshot, CityMapTileRender } from '../game/mapRender';
+import type { CityMapSnapshot, CityMapStoreRender, CityMapTileRender } from '../game/mapRender';
+import type { MapActivity, MapActivityBatch } from '../game/mapActivityFeedback';
 import { STORE_ART_LIST, TERRAIN_ART_LIST } from '../assets/gameArt';
 
 function makeTile(overrides?: Partial<CityMapTileRender>): CityMapTileRender {
@@ -2218,6 +2219,233 @@ describe('CityMapScene', () => {
 			scene.create();
 			s(scene).ownershipGraphics = undefined;
 			expect(() => s(scene).drawOwnershipOutlines()).not.toThrow();
+		});
+	});
+
+	describe('map activity pulses', () => {
+		// A 2x2 store at (0, 0) on its first frame: the ring sits 3px outside the footprint.
+		const FIRST_FRAME_RING = [-3, -3, 70, 70];
+
+		function storeAt(id: string, x: number, y: number): CityMapStoreRender {
+			return {
+				id,
+				name: id,
+				archetypeId: 'convenience',
+				tileId: `${id}-tile`,
+				x,
+				y,
+				width: 2,
+				height: 2
+			};
+		}
+
+		function openedBatch(seq: number, ...entityIds: string[]): MapActivityBatch {
+			return {
+				seq,
+				activities: entityIds.map(
+					(entityId): MapActivity => ({ kind: 'store-opened', cityId: 'test-city', entityId })
+				)
+			};
+		}
+
+		function startWithStores(stores: CityMapStoreRender[]): void {
+			scene.create();
+			scene.updateSnapshot(makeSnapshot({ width: 24, height: 12, stores }));
+		}
+
+		function ringsDrawn(): unknown[][] {
+			return s(scene).markerGraphics.strokeRect.mock.calls;
+		}
+
+		function resetRingMocks(): void {
+			s(scene).markerGraphics.strokeRect.mockClear();
+			s(scene).markerGraphics.lineStyle.mockClear();
+		}
+
+		// Draws one frame and returns the ring calls made during it.
+		function drawFrame(time: number): { rings: unknown[][]; styles: unknown[][] } {
+			resetRingMocks();
+			scene.update(time);
+			return {
+				rings: [...ringsDrawn()],
+				styles: [...s(scene).markerGraphics.lineStyle.mock.calls]
+			};
+		}
+
+		it('rings the footprint of each store named in a batch', () => {
+			expect.assertions(1);
+			startWithStores([storeAt('s1', 0, 0), storeAt('s2', 4, 0)]);
+			scene.showMapActivity(openedBatch(1, 's1'));
+			scene.update(1000);
+			expect(ringsDrawn()).toEqual([FIRST_FRAME_RING]);
+		});
+
+		it('rings a store-upgraded entity the same way as a store-opened one', () => {
+			expect.assertions(1);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.showMapActivity({
+				seq: 2,
+				activities: [{ kind: 'store-upgraded', cityId: 'test-city', entityId: 's1' }]
+			});
+			scene.update(1000);
+			expect(ringsDrawn()).toEqual([FIRST_FRAME_RING]);
+		});
+
+		it('coalesces repeated shows for an in-flight entity and keeps its original start time', () => {
+			expect.assertions(3);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.showMapActivity(openedBatch(1, 's1'));
+			scene.update(1000);
+			scene.showMapActivity(openedBatch(2, 's1'));
+			expect(s(scene).activityPulses.size).toBe(1);
+			expect(drawFrame(1300).rings).toHaveLength(1);
+			expect(drawFrame(1600).rings).toHaveLength(0);
+		});
+
+		it('draws a ring for every entity in a batch with more than eight stores', () => {
+			expect.assertions(1);
+			const stores = Array.from({ length: 10 }, (_, index) => storeAt(`s${index}`, index * 2, 0));
+			startWithStores(stores);
+			scene.showMapActivity(openedBatch(1, ...stores.map((store) => store.id)));
+			scene.update(1000);
+			expect(ringsDrawn()).toHaveLength(10);
+		});
+
+		it('rings a target missing at show time once a later snapshot contains it', () => {
+			expect.assertions(2);
+			startWithStores([]);
+			scene.showMapActivity(openedBatch(1, 's-new'));
+			scene.update(1000);
+			expect(ringsDrawn()).toHaveLength(0);
+			resetRingMocks();
+			scene.updateSnapshot(
+				makeSnapshot({ width: 24, height: 12, stores: [storeAt('s-new', 0, 0)] })
+			);
+			expect(ringsDrawn()).toEqual([FIRST_FRAME_RING]);
+		});
+
+		it('expires a target that never appears in a snapshot without error', () => {
+			expect.assertions(2);
+			startWithStores([]);
+			scene.showMapActivity(openedBatch(1, 's-ghost'));
+			expect(() => {
+				scene.update(1000);
+				scene.update(1700);
+			}).not.toThrow();
+			expect(s(scene).activityPulses.size).toBe(0);
+		});
+
+		it('does not re-arm an expired pulse on later renders or draws', () => {
+			expect.assertions(2);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.showMapActivity(openedBatch(1, 's1'));
+			scene.update(1000);
+			scene.update(1600);
+			resetRingMocks();
+			scene.updateSnapshot(makeSnapshot({ width: 24, height: 12, stores: [storeAt('s1', 0, 0)] }));
+			expect(ringsDrawn()).toHaveLength(0);
+			expect(drawFrame(1700).rings).toHaveLength(0);
+		});
+
+		it('drops in-flight pulses when the snapshot switches city', () => {
+			expect.assertions(2);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.showMapActivity(openedBatch(1, 's1'));
+			scene.update(1000);
+			resetRingMocks();
+			scene.updateSnapshot(
+				makeSnapshot({ cityId: 'other-city', width: 24, height: 12, stores: [storeAt('s1', 0, 0)] })
+			);
+			expect(ringsDrawn()).toHaveLength(0);
+			expect(drawFrame(1100).rings).toHaveLength(0);
+		});
+
+		it('drops in-flight pulses on shutdown and clears the last batch attributes', () => {
+			expect.assertions(3);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.showMapActivity(openedBatch(4, 's1'));
+			scene.update(1000);
+			getHandler(s(scene).events.once as Mock, 'shutdown').call(scene);
+			const dataset = s(scene).game.canvas.dataset;
+			expect(s(scene).activityPulses.size).toBe(0);
+			expect(dataset.mapActivitySequence).toBeUndefined();
+			expect(dataset.mapActivityTargetIds).toBeUndefined();
+		});
+
+		it('records the last received batch on the canvas and keeps it after pulses expire', () => {
+			expect.assertions(4);
+			startWithStores([storeAt('s1', 0, 0), storeAt('s2', 4, 0)]);
+			scene.showMapActivity(openedBatch(7, 's1', 's2'));
+			const dataset = s(scene).game.canvas.dataset;
+			expect(dataset.mapActivitySequence).toBe('7');
+			expect(dataset.mapActivityTargetIds).toBe('s1,s2');
+			scene.update(1000);
+			scene.update(2000);
+			expect(dataset.mapActivitySequence).toBe('7');
+			expect(dataset.mapActivityTargetIds).toBe('s1,s2');
+		});
+
+		it('adds no zones or interactive objects for a pulse', () => {
+			expect.assertions(3);
+			scene.create();
+			s(scene).textures.exists = vi.fn((key: string) => key === 'shop-storefront-convenience');
+			scene.updateSnapshot(makeSnapshot({ width: 24, height: 12, stores: [storeAt('s1', 0, 0)] }));
+			const zoneCalls = s(scene).add.zone.mock.calls.length;
+			const storeSprite = s(scene).storeSprites[0].sprite;
+			scene.showMapActivity(openedBatch(1, 's1'));
+			// The mock scene has no tweens manager, so a sprite tween would throw here.
+			scene.update(1000);
+			scene.update(1300);
+			expect(s(scene).add.zone.mock.calls.length).toBe(zoneCalls);
+			expect(storeSprite.setInteractive).not.toHaveBeenCalled();
+			expect(s(scene).markerGraphics.setInteractive).not.toHaveBeenCalled();
+		});
+
+		it('does not start a pulse from a snapshot redraw before the first frame', () => {
+			expect.assertions(4);
+			startWithStores([]);
+			scene.showMapActivity(openedBatch(1, 's1'));
+			scene.updateSnapshot(makeSnapshot({ width: 24, height: 12, stores: [storeAt('s1', 0, 0)] }));
+			expect(ringsDrawn()).toHaveLength(0);
+			expect(drawFrame(5000).rings).toHaveLength(1);
+			expect(drawFrame(5300).rings).toHaveLength(1);
+			expect(drawFrame(5600).rings).toHaveLength(0);
+		});
+
+		it('draws an identical static ring for the whole lifetime under reduced motion', () => {
+			expect.assertions(2);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.setReducedMotion(true);
+			scene.showMapActivity(openedBatch(1, 's1'));
+			const frames = [1000, 1200, 1400, 1599].map((time) => drawFrame(time));
+			expect(frames[0]!.rings).toHaveLength(1);
+			expect(new Set(frames.map((frame) => JSON.stringify(frame))).size).toBe(1);
+		});
+
+		it('animates the ring under normal motion', () => {
+			expect.assertions(1);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.showMapActivity(openedBatch(1, 's1'));
+			const first = drawFrame(1000);
+			const later = drawFrame(1300);
+			expect(later).not.toEqual(first);
+		});
+
+		it('zeroes the store sprite bob under reduced motion and keeps it under normal motion', () => {
+			expect.assertions(2);
+			scene.create();
+			s(scene).textures.exists = vi.fn((key: string) => key === 'shop-storefront-convenience');
+			scene.updateSnapshot(makeSnapshot({ width: 24, height: 12, stores: [storeAt('s1', 0, 0)] }));
+			const storeSprite = s(scene).storeSprites[0].sprite;
+			const spriteYs = (): number[] =>
+				[0, 90, 175, 400].map((time) => {
+					scene.update(time);
+					return storeSprite.setPosition.mock.lastCall[1];
+				});
+			scene.setReducedMotion(true);
+			expect(spriteYs()).toEqual([32, 32, 32, 32]);
+			scene.setReducedMotion(false);
+			expect(new Set(spriteYs()).size).toBeGreaterThan(1);
 		});
 	});
 });

@@ -49,6 +49,9 @@ const PLACEMENT_PREVIEW_INVALID_COLOR = 0x8e2a1f;
 const PLACEMENT_PREVIEW_ALPHA = 0.28;
 /** Classic prime multiplier (cf. Java's String.hashCode) used to derive a stable, well-distributed variant index per tile coordinate. */
 const TERRAIN_VARIANT_HASH_PRIME = 31;
+/** Wall-clock lifetime of a one-shot activity ring, measured on the frame loop clock. */
+const ACTIVITY_PULSE_DURATION_MS = 600;
+const ACTIVITY_RING_COLOR = 0xf5c542;
 
 type CameraPanKeys = Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
 
@@ -64,6 +67,11 @@ interface TileFootprint {
 	y: number;
 	width: number;
 	height: number;
+}
+
+interface ActivityPulse {
+	/** Frame-loop time of the first draw pass; unset until a frame runs. */
+	startTime?: number;
 }
 
 export class CityMapScene extends Phaser.Scene {
@@ -92,8 +100,9 @@ export class CityMapScene extends Phaser.Scene {
 	private hasUserAdjustedCamera = false;
 	private panKeys: CameraPanKeys | null = null;
 	private keyboardEnabled = true;
-	private lastActivitySeq: number | null = null;
-	private activityTargetIds: readonly string[] = [];
+	private activityPulses = new Map<string, ActivityPulse>();
+	private lastFrameTime: number | null = null;
+	private reducedMotion = false;
 
 	constructor() {
 		super({ key: 'CityMapScene' });
@@ -129,6 +138,7 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	update(time: number, delta = 0): void {
+		this.lastFrameTime = time;
 		this.updateKeyboardPan(delta);
 		this.drawStoreMarkers(time);
 		this.updateCanvasCameraAttributes();
@@ -147,10 +157,23 @@ export class CityMapScene extends Phaser.Scene {
 		this.renderSnapshot();
 	}
 
-	/** Records the last delivered batch; pulse drawing is not wired yet. */
+	setReducedMotion(reduced: boolean): void {
+		this.reducedMotion = reduced;
+	}
+
+	/**
+	 * Starts a one-shot ring for each entity in the batch. A repeat for an entity that
+	 * is still pulsing keeps its original start. Nothing is stamped here; the first draw that
+	 * has a frame clock does.
+	 */
 	showMapActivity(batch: MapActivityBatch): void {
-		this.lastActivitySeq = batch.seq;
-		this.activityTargetIds = batch.activities.map((activity) => activity.entityId);
+		for (const activity of batch.activities) {
+			if (!this.activityPulses.has(activity.entityId)) {
+				this.activityPulses.set(activity.entityId, {});
+			}
+		}
+
+		this.updateCanvasMapActivityAttributes(batch);
 	}
 
 	private renderSnapshot(): void {
@@ -171,6 +194,8 @@ export class CityMapScene extends Phaser.Scene {
 
 		if (terrainChanged) {
 			this.mapGraphics.clear();
+			// A new terrain identity means another city or map, so in-flight rings are dropped.
+			this.activityPulses.clear();
 			this.destroyTerrainSprites();
 			this.destroyTileZones();
 			// The terrain key combines cityId|widthxheight with every tile's
@@ -221,7 +246,7 @@ export class CityMapScene extends Phaser.Scene {
 		this.drawPlacementPreview();
 		this.createStoreSprites();
 		this.drawInteractionOutlines();
-		this.drawStoreMarkers(0);
+		this.drawStoreMarkers(this.lastFrameTime);
 	}
 
 	private computeTerrainKey(): string {
@@ -472,18 +497,21 @@ export class CityMapScene extends Phaser.Scene {
 		this.updateCanvasCameraAttributes();
 	}
 
-	private drawStoreMarkers(time: number): void {
+	// null before the first frame: there is no clock yet, so pulses neither start nor expire.
+	private drawStoreMarkers(time: number | null): void {
 		if (!this.markerGraphics || !this.snapshot) {
 			return;
 		}
 
 		this.markerGraphics.clear();
 
+		// Reduced motion scales the bob amplitude to zero; the formula itself is unchanged.
+		const bobScale = this.reducedMotion ? 0 : 1;
 		if (this.storeSprites.length > 0) {
 			for (const storeSprite of this.storeSprites) {
 				storeSprite.sprite.setPosition(
 					storeSprite.baseX,
-					storeSprite.baseY + Math.sin(time / 350 + storeSprite.index) * 2
+					storeSprite.baseY + Math.sin((time ?? 0) / 350 + storeSprite.index) * 2 * bobScale
 				);
 			}
 		}
@@ -497,7 +525,44 @@ export class CityMapScene extends Phaser.Scene {
 			this.markerGraphics.fillCircle(x, y, COMPETITOR_MARKER_RADIUS);
 			this.markerGraphics.strokeCircle(x, y, COMPETITOR_MARKER_RADIUS);
 		}
+		if (time !== null) {
+			this.drawActivityPulses(this.markerGraphics, this.snapshot.stores, time);
+		}
+
 		this.updateCanvasCompetitorMarkerAttributes(activeCompetitors.length);
+	}
+
+	/**
+	 * Draws one ring per pulse whose store is in the current snapshot. The first pass
+	 * after a pulse is shown stamps it, so a pulse that waited (absent store, pause)
+	 * still expires on wall time and is dropped rather than replayed.
+	 */
+	private drawActivityPulses(
+		graphics: Phaser.GameObjects.Graphics,
+		stores: readonly CityMapStoreRender[],
+		time: number
+	): void {
+		for (const [storeId, pulse] of this.activityPulses) {
+			pulse.startTime ??= time;
+			const elapsed = time - pulse.startTime;
+
+			if (elapsed >= ACTIVITY_PULSE_DURATION_MS) {
+				this.activityPulses.delete(storeId);
+				continue;
+			}
+
+			const store = stores.find((candidate) => candidate.id === storeId);
+
+			if (!store) {
+				continue;
+			}
+
+			// The ring starts 3px outside the footprint and spreads 5px while it fades.
+			// Reduced motion holds the first-frame ring still for the whole lifetime.
+			const progress = this.reducedMotion ? 0 : elapsed / ACTIVITY_PULSE_DURATION_MS;
+			graphics.lineStyle(3, ACTIVITY_RING_COLOR, 0.9 * (1 - progress));
+			this.strokeFootprintRect(graphics, this.getStoreFootprint(store), -(3 + 5 * progress));
+		}
 	}
 
 	private drawInteractionOutlines(): void {
@@ -827,6 +892,30 @@ export class CityMapScene extends Phaser.Scene {
 		canvas.dataset.competitorMarkerCount = String(markerCount);
 	}
 
+	private updateCanvasMapActivityAttributes(batch: MapActivityBatch): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		canvas.dataset.mapActivitySequence = String(batch.seq);
+		canvas.dataset.mapActivityTargetIds = batch.activities
+			.map((activity) => activity.entityId)
+			.join(',');
+	}
+
+	private clearCanvasMapActivityAttributes(): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		delete canvas.dataset.mapActivitySequence;
+		delete canvas.dataset.mapActivityTargetIds;
+	}
+
 	private updateCanvasTerrainAttributes(
 		mode: 'image' | 'missing',
 		baseSpriteCount: number,
@@ -926,6 +1015,8 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	private destroySceneObjects(): void {
+		this.activityPulses.clear();
+		this.clearCanvasMapActivityAttributes();
 		this.destroyStoreSprites();
 		this.destroyTerrainSprites();
 		this.destroyTileZones();

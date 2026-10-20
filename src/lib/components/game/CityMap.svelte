@@ -65,6 +65,23 @@
 		scene?.setKeyboardEnabled(keyboardEnabled);
 	});
 
+	// Follows the OS reduced-motion setting live. The scene stops its perpetual bob and draws
+	// static rings instead of animated ones. Teardown removes the listener when the scene
+	// changes or the view is destroyed; an absent matchMedia keeps normal motion.
+	$effect(() => {
+		const currentScene = scene;
+		if (!currentScene) {
+			return;
+		}
+
+		const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+		const apply = () => currentScene.setReducedMotion(query?.matches ?? false);
+		apply();
+		query?.addEventListener('change', apply);
+
+		return () => query?.removeEventListener('change', apply);
+	});
+
 	// Pause/resume the render loop with the overlay state. The game instance is
 	// created asynchronously, so this effect re-runs once it is available and
 	// applies the current paused state. `pause`/`resume` are optional-chained so

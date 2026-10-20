@@ -100,6 +100,23 @@
 		scene?.setKeyboardEnabled(keyboardEnabled);
 	});
 
+	// Follows the OS reduced-motion setting live. The scene stops its perpetual bob and draws
+	// static rings instead of animated ones. Teardown removes the listener when the scene
+	// changes or the view is destroyed; an absent matchMedia keeps normal motion.
+	$effect(() => {
+		const currentScene = scene;
+		if (!currentScene) {
+			return;
+		}
+
+		const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+		const apply = () => currentScene.setReducedMotion(query?.matches ?? false);
+		apply();
+		query?.addEventListener('change', apply);
+
+		return () => query?.removeEventListener('change', apply);
+	});
+
 	$effect(() => {
 		const currentGame = game;
 		if (!currentGame || !active || !containerWidth || !containerHeight) {
