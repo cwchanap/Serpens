@@ -99,6 +99,22 @@ export function selectRecentTransfers(game: GameState, limit = 20): TransferOrde
 		.slice(0, limit);
 }
 
+/** Only delivered orders are arrival evidence; a scheduled in-transit order never is. */
+export function selectRecentDeliveredTransfers(
+	game: GameState,
+	destinationCityId: WorldCityId,
+	limit = 1
+): TransferOrder[] {
+	return game.logistics.transferOrders
+		.filter(
+			(order) => order.status === 'delivered' && order.destinationCityId === destinationCityId
+		)
+		.sort(
+			(left, right) => right.arrivalOnDay - left.arrivalOnDay || -compareRawIds(left.id, right.id)
+		)
+		.slice(0, limit);
+}
+
 export function selectRecentRouteDispatchAttempts(
 	game: GameState,
 	limit = 2

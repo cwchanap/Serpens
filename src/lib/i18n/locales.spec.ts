@@ -118,6 +118,19 @@ describe('locale resolution', () => {
 		}
 	});
 
+	it('provides the latest delivered transfer inspector keys in every supported locale', () => {
+		const keys = ['worldMap.latestDeliveryTitle', 'worldMap.latestDeliveryRow'];
+
+		for (const locale of Object.keys(messagesByLocale) as (keyof typeof messagesByLocale)[]) {
+			const catalog = messagesByLocale[locale];
+			for (const key of keys) {
+				const value = resolveCatalogValue(catalog, key);
+				expect(value, `${locale} missing ${key}`).toBeDefined();
+				expect(typeof value, `${locale} ${key} is not a string`).toBe('string');
+			}
+		}
+	});
+
 	it('provides the identical supply planner evidence key set in every supported locale', () => {
 		const keys = collectLeafPaths(messagesByLocale.en.supplyAdvisor, 'supplyAdvisor');
 

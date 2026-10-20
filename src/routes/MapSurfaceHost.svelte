@@ -11,6 +11,7 @@
 	} from '$lib/game/mapViewKeepAlive';
 	import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
+	import type { TransferOrder } from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
 	import type { I18nBundle } from '$lib/i18n';
 
@@ -33,6 +34,7 @@
 		logisticsRouteSummaries?: readonly RouteOperationalSummary[];
 		selectedLogisticsRouteId?: string | null;
 		onSelectLogisticsRoute?: (routeId: string) => void;
+		latestDeliveredTransfer?: TransferOrder | null;
 
 		mapSnapshot: CityMapSnapshot;
 		retailMapActivity: MapActivityBatch;
@@ -63,6 +65,7 @@
 		logisticsRouteSummaries = [],
 		selectedLogisticsRouteId = null,
 		onSelectLogisticsRoute = () => {},
+		latestDeliveredTransfer = null,
 		mapSnapshot,
 		retailMapActivity,
 		onSelectRetailTile,
@@ -95,6 +98,7 @@
 				{logisticsRouteSummaries}
 				{selectedLogisticsRouteId}
 				{onSelectLogisticsRoute}
+				{latestDeliveredTransfer}
 			/>
 		</div>
 	{/if}
