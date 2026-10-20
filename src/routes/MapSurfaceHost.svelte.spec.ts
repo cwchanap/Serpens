@@ -7,6 +7,7 @@ import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
 import { resolveEffectiveRecurringRoute } from '$lib/game/logisticsRouteModifiers';
 import type { RecurringRoute } from '$lib/game/types';
 import type { MapViewId, VisitedMapViews } from '$lib/game/mapViewKeepAlive';
+import type { MapActivityBatch } from '$lib/game/mapActivityFeedback';
 import { WORLD_CITY_CATALOG, type WorldCityStatus } from '$lib/game/world';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import MapSurfaceHost from './MapSurfaceHost.svelte';
@@ -17,8 +18,11 @@ vi.mock('phaser', () => ({
 		Game: class {
 			destroy(): void {}
 		},
-		Scene: class {},
-		Scale: { RESIZE: 0, CENTER_BOTH: 0 }
+		Scene: class {
+			events = { once: (): void => {} };
+		},
+		Scale: { RESIZE: 0, CENTER_BOTH: 0 },
+		Scenes: { Events: { CREATE: 'create' } }
 	}
 }));
 
@@ -43,9 +47,11 @@ interface SurfaceProps {
 	onSelectLogisticsRoute: (routeId: string) => void;
 
 	mapSnapshot: CityMapSnapshot;
+	retailMapActivity: MapActivityBatch;
 	onSelectRetailTile: (tileId: string) => void;
 
 	industryMapSnapshot: IndustryMapSnapshot;
+	industryMapActivity: MapActivityBatch;
 	onSelectIndustryTile: (tileId: string) => void;
 	onCancelRailBuild: () => void;
 	railKeyboardEnabled: boolean;
@@ -128,6 +134,7 @@ function surfaceProps(overrides: Partial<SurfaceProps> = {}): SurfaceProps {
 		],
 		selectedLogisticsRouteId: null,
 		onSelectLogisticsRoute: vi.fn(),
+		retailMapActivity: { seq: 0, activities: [] },
 		mapSnapshot: {
 			cityId: 'retail-city',
 			width: 1,
@@ -139,6 +146,7 @@ function surfaceProps(overrides: Partial<SurfaceProps> = {}): SurfaceProps {
 			competitors: []
 		},
 		onSelectRetailTile: vi.fn(),
+		industryMapActivity: { seq: 0, activities: [] },
 		industryMapSnapshot: {
 			cityId: 'industry-city',
 			width: 1,

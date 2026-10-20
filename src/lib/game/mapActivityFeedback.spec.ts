@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createOneCityInventoryFixture } from './cityInventory.testUtils';
-import { selectMapActivity, type MapActivity } from './mapActivityFeedback';
+import { nextMapActivityBatch, selectMapActivity, type MapActivity } from './mapActivityFeedback';
 import { simulateDay } from './simulateDay';
 import { createNewGame, openStore, updatePolicy, upgradeStore } from './state';
 import type { DailyMaterialMovement, GameState, IndustrialBuilding, MaterialId } from './types';
@@ -197,5 +197,40 @@ describe('selectMapActivity', () => {
 		expect(selectMapActivity(before, after)).toEqual([bottlerActivity, pumpActivity]);
 		expect(before).toEqual(beforeSnapshot);
 		expect(after).toEqual(afterSnapshot);
+	});
+});
+
+describe('nextMapActivityBatch', () => {
+	test('returns the current batch itself when the change has nothing to show', () => {
+		const current = { seq: 3, activities: [] };
+		const game = createNewGame('convenience', 20260603);
+
+		expect(nextMapActivityBatch(current, game, game)).toBe(current);
+	});
+
+	test('publishes the next sequence with the projected activities', () => {
+		const before = { ...createNewGame('convenience', 20260603), cash: 1_000_000 };
+		const after = openStore(before, {
+			archetypeId: 'convenience',
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 }
+		});
+
+		expect(nextMapActivityBatch({ seq: 3, activities: [] }, before, after)).toEqual({
+			seq: 4,
+			activities: [{ kind: 'store-opened', cityId: 'harbor-city', entityId: 'store-2' }]
+		});
+	});
+
+	test('keeps the current batch and warns instead of throwing when projection fails', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const current = { seq: 3, activities: [] };
+		const malformed = {
+			...createNewGame('convenience', 20260603),
+			stores: undefined
+		} as unknown as GameState;
+
+		expect(nextMapActivityBatch(current, null, malformed)).toBe(current);
+		expect(warn).toHaveBeenCalledTimes(1);
+		warn.mockRestore();
 	});
 });

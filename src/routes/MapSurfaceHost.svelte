@@ -3,6 +3,7 @@
 	import IndustryMap from '$lib/components/game/IndustryMap.svelte';
 	import WorldMap from '$lib/components/game/WorldMap.svelte';
 	import type { CityMapSnapshot } from '$lib/game/mapRender';
+	import type { MapActivityBatch } from '$lib/game/mapActivityFeedback';
 	import {
 		shouldRenderMapView,
 		type MapViewId,
@@ -34,9 +35,11 @@
 		onSelectLogisticsRoute?: (routeId: string) => void;
 
 		mapSnapshot: CityMapSnapshot;
+		retailMapActivity: MapActivityBatch;
 		onSelectRetailTile: (tileId: string) => void;
 
 		industryMapSnapshot: IndustryMapSnapshot;
+		industryMapActivity: MapActivityBatch;
 		onSelectIndustryTile: (tileId: string) => void;
 		onCancelRailBuild: () => void;
 		railKeyboardEnabled: boolean;
@@ -61,8 +64,10 @@
 		selectedLogisticsRouteId = null,
 		onSelectLogisticsRoute = () => {},
 		mapSnapshot,
+		retailMapActivity,
 		onSelectRetailTile,
 		industryMapSnapshot,
+		industryMapActivity,
 		onSelectIndustryTile,
 		onCancelRailBuild,
 		railKeyboardEnabled
@@ -100,6 +105,7 @@
 		>
 			<CityMap
 				snapshot={mapSnapshot}
+				activity={retailMapActivity}
 				onTileSelected={onSelectRetailTile}
 				active={activeMapView === 'retail'}
 				paused={isMapPaused}
@@ -115,6 +121,7 @@
 		>
 			<IndustryMap
 				snapshot={industryMapSnapshot}
+				activity={industryMapActivity}
 				onTileSelected={onSelectIndustryTile}
 				onBuildCancelled={onCancelRailBuild}
 				active={activeMapView === 'industry'}

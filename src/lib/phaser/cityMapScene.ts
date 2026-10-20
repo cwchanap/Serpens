@@ -19,6 +19,7 @@ import type {
 	CityMapStoreRender,
 	CityMapTileRender
 } from '../game/mapRender';
+import type { MapActivityBatch } from '../game/mapActivityFeedback';
 import {
 	RETAIL_STORE_FOOTPRINT_HEIGHT,
 	RETAIL_STORE_FOOTPRINT_WIDTH
@@ -91,6 +92,8 @@ export class CityMapScene extends Phaser.Scene {
 	private hasUserAdjustedCamera = false;
 	private panKeys: CameraPanKeys | null = null;
 	private keyboardEnabled = true;
+	private lastActivitySeq: number | null = null;
+	private activityTargetIds: readonly string[] = [];
 
 	constructor() {
 		super({ key: 'CityMapScene' });
@@ -140,6 +143,12 @@ export class CityMapScene extends Phaser.Scene {
 	updateSnapshot(snapshot: CityMapSnapshot): void {
 		this.snapshot = snapshot;
 		this.renderSnapshot();
+	}
+
+	/** Records the last delivered batch; pulse drawing is not wired yet. */
+	showMapActivity(batch: MapActivityBatch): void {
+		this.lastActivitySeq = batch.seq;
+		this.activityTargetIds = batch.activities.map((activity) => activity.entityId);
 	}
 
 	private renderSnapshot(): void {

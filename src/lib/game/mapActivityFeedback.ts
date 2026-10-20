@@ -44,6 +44,31 @@ export function selectMapActivity(previous: GameState | null, next: GameState): 
 	return activities.sort(compareActivities);
 }
 
+export interface MapActivityBatch {
+	seq: number;
+	activities: readonly MapActivity[];
+}
+
+/**
+ * Next route batch for an accepted change: the same batch object when nothing
+ * is visible, otherwise a new sequence. Never throws, because an exception in
+ * the accepted-change observer would read as a failed write for a commit that
+ * already landed.
+ */
+export function nextMapActivityBatch(
+	current: MapActivityBatch,
+	previous: GameState | null,
+	next: GameState
+): MapActivityBatch {
+	try {
+		const activities = selectMapActivity(previous, next);
+		return activities.length > 0 ? { seq: current.seq + 1, activities } : current;
+	} catch (error) {
+		console.warn('Unable to project map activity for an accepted change', error);
+		return current;
+	}
+}
+
 function hasNewDailyReport(previous: GameState, next: GameState): boolean {
 	const latest = next.reports.at(-1);
 

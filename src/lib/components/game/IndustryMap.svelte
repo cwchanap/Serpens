@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import type { IndustryMapSnapshot } from '$lib/game/industryMapRender';
+	import type { MapActivityBatch } from '$lib/game/mapActivityFeedback';
 	import type { I18nBundle } from '$lib/i18n';
 
 	interface Props {
@@ -24,8 +25,12 @@
 		 * also fire buildCancelled behind the overlay.
 		 */
 		keyboardEnabled?: boolean;
+		/** Latest route batch. Each new seq is consumed once and forwarded only to an eligible scene. */
+		activity?: MapActivityBatch;
 		i18n: I18nBundle;
 	}
+
+	const NO_ACTIVITY: MapActivityBatch = { seq: 0, activities: [] };
 
 	let {
 		snapshot,
@@ -34,6 +39,7 @@
 		active = true,
 		paused = false,
 		keyboardEnabled = true,
+		activity = NO_ACTIVITY,
 		i18n
 	}: Props = $props();
 
@@ -44,6 +50,9 @@
 	let scene: import('$lib/phaser/industryMapScene').IndustryMapScene | undefined = $state();
 	let game: import('phaser').Game | undefined = $state();
 	let destroyed = false;
+	let sceneReady = $state(false);
+	// Consume-once bookkeeping, deliberately not reactive: a new seq counts as consumed on arrival.
+	let lastActivitySeq = untrack(() => activity.seq);
 
 	onMount(() => {
 		void startPhaser();
@@ -100,6 +109,25 @@
 		currentGame.scale?.setParentSize?.(containerWidth, Math.max(containerHeight, 520));
 	});
 
+	$effect(() => {
+		const batch = activity;
+		if (batch.seq === lastActivitySeq) {
+			return;
+		}
+		lastActivitySeq = batch.seq;
+
+		const currentScene = scene;
+		if (!currentScene || !sceneReady || !active || paused) {
+			return;
+		}
+
+		const cityId = snapshot.cityId;
+		const eligible = batch.activities.filter((item) => item.cityId === cityId);
+		if (eligible.length > 0) {
+			currentScene.showMapActivity({ seq: batch.seq, activities: eligible });
+		}
+	});
+
 	async function startPhaser() {
 		if (!container || game) {
 			return;
@@ -124,6 +152,9 @@
 				}
 			});
 
+			nextScene.events.once(Phaser.Scenes.Events.CREATE, () => {
+				sceneReady = true;
+			});
 			scene = nextScene;
 			game = new Phaser.Game({
 				type: Phaser.AUTO,

@@ -17,6 +17,7 @@ import type {
 	IndustryMapSnapshot,
 	IndustryMapTileRender
 } from '../game/industryMapRender';
+import type { MapActivityBatch } from '../game/mapActivityFeedback';
 import {
 	INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT,
 	INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH
@@ -167,6 +168,8 @@ export class IndustryMapScene extends Phaser.Scene {
 	// do not also fire buildCancelled behind the overlay and silently pop a
 	// rail waypoint or exit rail mode.
 	private keyboardEnabled = true;
+	private lastActivitySeq: number | null = null;
+	private activityTargetIds: readonly string[] = [];
 
 	constructor() {
 		super({ key: 'IndustryMapScene' });
@@ -225,6 +228,12 @@ export class IndustryMapScene extends Phaser.Scene {
 	updateSnapshot(snapshot: IndustryMapSnapshot): void {
 		this.snapshot = snapshot;
 		this.renderSnapshot();
+	}
+
+	/** Records the last delivered batch; pulse drawing is not wired yet. */
+	showMapActivity(batch: MapActivityBatch): void {
+		this.lastActivitySeq = batch.seq;
+		this.activityTargetIds = batch.activities.map((activity) => activity.entityId);
 	}
 
 	private renderSnapshot(): void {
