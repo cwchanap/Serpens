@@ -115,6 +115,7 @@ const STATUS_COLORS: Record<IndustryMapBuildingRender['status'], number> = {
 	stalled: 0xa855f7,
 	blocked: 0x8e2a1f
 };
+const STATUS_GLYPH_COLOR = 0xfff4dc;
 
 type CameraPanKeys = Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
 interface BuildingSpriteEntry {
@@ -738,9 +739,9 @@ export class IndustryMapScene extends Phaser.Scene {
 			return;
 		}
 
-		this.snapshot.buildings.forEach((building, index) => {
+		this.snapshot.buildings.forEach((building) => {
 			if (this.buildingSpriteById.has(building.id)) {
-				this.drawBuildingStatusDot(building, index, time ?? 0);
+				this.drawBuildingStatusDot(building);
 			}
 		});
 
@@ -867,24 +868,54 @@ export class IndustryMapScene extends Phaser.Scene {
 		});
 	}
 
-	private drawBuildingStatusDot(
-		building: IndustryMapBuildingRender,
-		index: number,
-		time: number
-	): void {
+	private drawBuildingStatusDot(building: IndustryMapBuildingRender): void {
 		if (!this.markerGraphics) {
 			return;
 		}
 
-		const position = this.getBuildingMarkerPosition(building, index, time);
+		const center = getBuildingFootprintCenter(building);
 		const fillColor = STATUS_COLORS[building.status];
 		const zoom = this.cameras.main.zoom || 1;
 		const radius = 12 / zoom;
-		const statusY = position.y - (getBuildingFootprintHeight(building) * TILE_SIZE) / 2 - 15 / zoom;
+		const statusY = center.y - (getBuildingFootprintHeight(building) * TILE_SIZE) / 2 - 15 / zoom;
 		this.markerGraphics.fillStyle(fillColor, 0.98);
-		this.markerGraphics.fillCircle(position.x, statusY, radius);
+		this.markerGraphics.fillCircle(center.x, statusY, radius);
 		this.markerGraphics.lineStyle(1 / zoom, 0x4a3b27, 0.9);
-		this.markerGraphics.strokeCircle(position.x, statusY, radius);
+		this.markerGraphics.strokeCircle(center.x, statusY, radius);
+
+		if (building.status === 'blocked') {
+			const armReach = radius * 0.4;
+			this.markerGraphics.lineStyle(radius * 0.2, STATUS_GLYPH_COLOR, 1);
+			this.markerGraphics.lineBetween(
+				center.x - armReach,
+				statusY - armReach,
+				center.x + armReach,
+				statusY + armReach
+			);
+			this.markerGraphics.lineBetween(
+				center.x + armReach,
+				statusY - armReach,
+				center.x - armReach,
+				statusY + armReach
+			);
+		} else if (building.status === 'stalled') {
+			const barWidth = radius * 0.24;
+			const barHalfGap = radius * 0.12;
+			const barHeight = radius * 0.9;
+			this.markerGraphics.fillStyle(STATUS_GLYPH_COLOR, 1);
+			this.markerGraphics.fillRect(
+				center.x - barHalfGap - barWidth,
+				statusY - barHeight / 2,
+				barWidth,
+				barHeight
+			);
+			this.markerGraphics.fillRect(
+				center.x + barHalfGap,
+				statusY - barHeight / 2,
+				barWidth,
+				barHeight
+			);
+		}
 	}
 
 	private getBuildingMarkerPosition(
@@ -894,13 +925,11 @@ export class IndustryMapScene extends Phaser.Scene {
 	): { x: number; y: number } {
 		// Reduced motion scales the bob amplitude to zero; the formula itself is unchanged.
 		const bobScale = this.reducedMotion ? 0 : 1;
+		const center = getBuildingFootprintCenter(building);
 
 		return {
-			x: building.x * TILE_SIZE + (getBuildingFootprintWidth(building) * TILE_SIZE) / 2,
-			y:
-				building.y * TILE_SIZE +
-				(getBuildingFootprintHeight(building) * TILE_SIZE) / 2 +
-				Math.sin(time / 360 + index) * 1.8 * bobScale
+			x: center.x,
+			y: center.y + Math.sin(time / 360 + index) * 1.8 * bobScale
 		};
 	}
 
@@ -1332,6 +1361,13 @@ function getBuildingFootprintWidth(building: IndustryMapBuildingRender): number 
 
 function getBuildingFootprintHeight(building: IndustryMapBuildingRender): number {
 	return Math.max(1, building.height ?? INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT);
+}
+
+function getBuildingFootprintCenter(building: IndustryMapBuildingRender): { x: number; y: number } {
+	return {
+		x: building.x * TILE_SIZE + (getBuildingFootprintWidth(building) * TILE_SIZE) / 2,
+		y: building.y * TILE_SIZE + (getBuildingFootprintHeight(building) * TILE_SIZE) / 2
+	};
 }
 
 function getFootprintPixelRect(
