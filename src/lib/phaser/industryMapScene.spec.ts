@@ -2360,6 +2360,30 @@ describe('IndustryMapScene', () => {
 			expect(s(scene).activityPulses.size).toBe(0);
 		});
 
+		test('expires a pulse accepted before a pause instead of replaying it on resume', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.update(1000);
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			// A paused game runs no frames; the resume frame's clock has jumped past the lifetime.
+			expect(drawFrame(scene, marker, 62_000).rings).toHaveLength(0);
+			expect(s(scene).activityPulses.size).toBe(0);
+		});
+
+		test('drops the material image and pulse when a rendered building leaves the snapshot', () => {
+			expect.assertions(2);
+			const { scene, imageInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.update(1000);
+			const materialImage = imageInstances.at(-1)!;
+			// A same-city demolition removes the building from the next snapshot; the
+			// icon must not linger on the vacant footprint until natural expiry.
+			scene.updateSnapshot(makeSnapshot({ buildings: [] }));
+			expect(materialImage.mock.destroy).toHaveBeenCalled();
+			expect(s(scene).activityPulses.size).toBe(0);
+		});
+
 		test('does not re-arm an expired pulse on later renders or draws', () => {
 			expect.assertions(3);
 			const { scene, graphicsInstances, imageInstances } = startScene([buildingAt('b-1', 0, 0)]);

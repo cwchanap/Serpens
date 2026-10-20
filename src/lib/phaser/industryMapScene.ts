@@ -143,7 +143,10 @@ function preloadIndustryAsset(scene: Phaser.Scene, path: string): void {
 }
 
 interface ActivityPulse {
-	/** Frame-loop time of the first draw pass; unset until a frame runs. */
+	/**
+	 * Frame clock bounding the pulse's wall-time life: the last tick before
+	 * acceptance, or the first draw pass when no frame has run yet.
+	 */
 	startTime?: number;
 	materialId?: MaterialId;
 	image?: Phaser.GameObjects.Image;
@@ -257,15 +260,18 @@ export class IndustryMapScene extends Phaser.Scene {
 
 	/**
 	 * Starts a one-shot pulse for each entity in the batch. A repeat for an entity that
-	 * is still pulsing keeps its original start. Nothing is stamped here; the first draw that
-	 * has a frame clock does.
+	 * is still pulsing keeps its original start. The start is stamped from the last
+	 * frame clock — falling back to the first draw when no frame has run — so a pulse
+	 * accepted before a pause expires on wall time instead of replaying on resume.
 	 */
 	showMapActivity(batch: MapActivityBatch): void {
 		for (const activity of batch.activities) {
 			if (!this.activityPulses.has(activity.entityId)) {
 				this.activityPulses.set(
 					activity.entityId,
-					activity.kind === 'production' ? { materialId: activity.materialId } : {}
+					activity.kind === 'production'
+						? { materialId: activity.materialId, startTime: this.lastFrameTime ?? undefined }
+						: { startTime: this.lastFrameTime ?? undefined }
 				);
 			}
 		}
@@ -754,8 +760,11 @@ export class IndustryMapScene extends Phaser.Scene {
 
 	/**
 	 * Draws one ring per pulse whose building is in the current snapshot, with the produced
-	 * material's icon on the footprint's top-right corner. The first pass after a pulse is
-	 * shown stamps it, so an absent building or a pause still expires on wall time.
+	 * material's icon on the footprint's top-right corner. Life runs from acceptance, so a
+	 * pulse that waited (absent building, pause) still expires on wall time. Once a pulse
+	 * has rendered its icon, losing its building from the snapshot — a same-city
+	 * demolition — drops the icon and the pulse instead of letting it linger on the
+	 * vacant footprint until expiry; a pulse still waiting for its target keeps waiting.
 	 */
 	private drawActivityPulses(
 		graphics: Phaser.GameObjects.Graphics,
@@ -775,6 +784,10 @@ export class IndustryMapScene extends Phaser.Scene {
 			const building = buildings.find((candidate) => candidate.id === buildingId);
 
 			if (!building) {
+				if (pulse.image) {
+					pulse.image.destroy();
+					this.activityPulses.delete(buildingId);
+				}
 				continue;
 			}
 

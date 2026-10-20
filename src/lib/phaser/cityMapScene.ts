@@ -70,7 +70,10 @@ interface TileFootprint {
 }
 
 interface ActivityPulse {
-	/** Frame-loop time of the first draw pass; unset until a frame runs. */
+	/**
+	 * Frame clock bounding the pulse's wall-time life: the last tick before
+	 * acceptance, or the first draw pass when no frame has run yet.
+	 */
 	startTime?: number;
 }
 
@@ -163,13 +166,14 @@ export class CityMapScene extends Phaser.Scene {
 
 	/**
 	 * Starts a one-shot ring for each entity in the batch. A repeat for an entity that
-	 * is still pulsing keeps its original start. Nothing is stamped here; the first draw that
-	 * has a frame clock does.
+	 * is still pulsing keeps its original start. The start is stamped from the last
+	 * frame clock — falling back to the first draw when no frame has run — so a pulse
+	 * accepted before a pause expires on wall time instead of replaying on resume.
 	 */
 	showMapActivity(batch: MapActivityBatch): void {
 		for (const activity of batch.activities) {
 			if (!this.activityPulses.has(activity.entityId)) {
-				this.activityPulses.set(activity.entityId, {});
+				this.activityPulses.set(activity.entityId, { startTime: this.lastFrameTime ?? undefined });
 			}
 		}
 
@@ -533,9 +537,9 @@ export class CityMapScene extends Phaser.Scene {
 	}
 
 	/**
-	 * Draws one ring per pulse whose store is in the current snapshot. The first pass
-	 * after a pulse is shown stamps it, so a pulse that waited (absent store, pause)
-	 * still expires on wall time and is dropped rather than replayed.
+	 * Draws one ring per pulse whose store is in the current snapshot. Life runs from
+	 * acceptance, so a pulse that waited (absent store, pause) still expires on wall
+	 * time and is dropped rather than replayed.
 	 */
 	private drawActivityPulses(
 		graphics: Phaser.GameObjects.Graphics,
