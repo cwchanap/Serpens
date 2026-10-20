@@ -2484,6 +2484,294 @@ describe('IndustryMapScene', () => {
 			expect(new Set(sampleFrames().map((frame) => frame.spriteY)).size).toBeGreaterThan(1);
 		});
 	});
+
+	describe('status dot glyphs', () => {
+		type GraphicsMock = ReturnType<typeof createGraphicsMock>['mock'];
+		type DrawnCalls = Record<string, unknown[][]>;
+		type Segment = [number, number, number, number];
+
+		const MARKER_GRAPHICS_INDEX = 3;
+		const PLAIN_DOT_METHODS = ['clear', 'fillCircle', 'fillStyle', 'lineStyle', 'strokeCircle'];
+		const DOT_STROKE_COLOR = 0x4a3b27;
+		const STATUS_FILL_COLORS = {
+			idle: 0xb8a271,
+			produced: 0x4b5a2b,
+			'imported-inputs': 0xb8862f,
+			blocked: 0x8e2a1f,
+			stalled: 0xa855f7
+		};
+		const SAMPLE_TIMES = [0, 90, 500, 1234];
+
+		function statusBuilding(
+			id: string,
+			status: IndustryMapBuildingRender['status'],
+			x = 0,
+			y = 0
+		): IndustryMapBuildingRender {
+			return {
+				id,
+				name: id,
+				typeId: 'grain-farm',
+				tileId: `t-${x}-${y}`,
+				x,
+				y,
+				width: 2,
+				height: 2,
+				status
+			};
+		}
+
+		function startStatusScene(
+			buildings: IndustryMapBuildingRender[],
+			overrides: Partial<IndustryMapSnapshot> = {}
+		) {
+			const harness = setupScene();
+			harness.texturesExistsSpy.mockReturnValue(true);
+			harness.scene.create();
+			harness.scene.updateSnapshot(makeSnapshot({ buildings, ...overrides }));
+			return harness;
+		}
+
+		function clearCalls(graphics: GraphicsMock): void {
+			for (const fn of Object.values(graphics)) {
+				if (vi.isMockFunction(fn)) {
+					fn.mockClear();
+				}
+			}
+		}
+
+		function recordedCalls(graphics: GraphicsMock): DrawnCalls {
+			const recorded: DrawnCalls = {};
+			for (const [name, fn] of Object.entries(graphics)) {
+				if (vi.isMockFunction(fn) && fn.mock.calls.length > 0) {
+					recorded[name] = fn.mock.calls;
+				}
+			}
+			return recorded;
+		}
+
+		function drawMarkerFrame(
+			scene: IndustryMapScene,
+			marker: GraphicsMock,
+			time: number
+		): DrawnCalls {
+			clearCalls(marker);
+			scene.update(time);
+			return recordedCalls(marker);
+		}
+
+		function callsTo(frame: DrawnCalls, method: string): number[][] {
+			return (frame[method] ?? []) as number[][];
+		}
+
+		function dotCenter(frame: DrawnCalls): { x: number; y: number; radius: number } {
+			const [x, y, radius] = callsTo(frame, 'strokeCircle').at(-1)!;
+			return { x, y, radius };
+		}
+
+		function near(a: number, b: number): boolean {
+			return Math.abs(a - b) < 1e-6;
+		}
+
+		function relativeLuminance(color: number): number {
+			const channel = (value: number) => {
+				const srgb = value / 255;
+				return srgb <= 0.03928 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+			};
+			return (
+				0.2126 * channel((color >> 16) & 0xff) +
+				0.7152 * channel((color >> 8) & 0xff) +
+				0.0722 * channel(color & 0xff)
+			);
+		}
+
+		function contrastRatio(a: number, b: number): number {
+			const [luminanceA, luminanceB] = [relativeLuminance(a), relativeLuminance(b)];
+			return (Math.max(luminanceA, luminanceB) + 0.05) / (Math.min(luminanceA, luminanceB) + 0.05);
+		}
+
+		function sampleFrames(status: IndustryMapBuildingRender['status'], reducedMotion: boolean) {
+			const { scene, graphicsInstances, imageInstances } = startStatusScene([
+				statusBuilding('b-1', status)
+			]);
+			const sprite = s(scene).buildingSpriteById.get('b-1');
+			const spriteMock = imageInstances.find((image) => image.chainable === sprite)!.mock;
+			scene.setReducedMotion(reducedMotion);
+			return SAMPLE_TIMES.map((time) => ({
+				frame: JSON.stringify(
+					drawMarkerFrame(scene, graphicsInstances[MARKER_GRAPHICS_INDEX]!.mock, time)
+				),
+				spriteY: spriteMock.setPosition.mock.lastCall?.[1]
+			}));
+		}
+
+		function tapTiles(
+			harness: ReturnType<typeof startStatusScene>,
+			points: Array<[number, number]>
+		): unknown[] {
+			const handler = vi.fn();
+			harness.scene.setEventHandler(handler);
+			const zone = harness.zoneInstances[0]!;
+			for (const [x, y] of points) {
+				const pointer = harness.makePointer({ x, y, worldX: x, worldY: y, isDown: true });
+				zone.fire('pointerdown', pointer);
+				zone.fire('pointerup', pointer);
+			}
+			return interactionEvents(handler);
+		}
+
+		test.each(['blocked', 'stalled'] as const)(
+			'the %s dot and glyph hold a fixed center while the sprite bobs, with reduced motion off and on',
+			(status) => {
+				expect.assertions(4);
+				const normal = sampleFrames(status, false);
+				expect(new Set(normal.map((sample) => sample.frame)).size).toBe(1);
+				expect(new Set(normal.map((sample) => sample.spriteY)).size).toBeGreaterThan(1);
+				const reduced = sampleFrames(status, true);
+				expect(new Set(reduced.map((sample) => sample.frame)).size).toBe(1);
+				expect(new Set(reduced.map((sample) => sample.spriteY)).size).toBe(1);
+			}
+		);
+
+		test.each(['idle', 'produced', 'imported-inputs'] as const)(
+			'the %s status draws only the plain status dot',
+			(status) => {
+				expect.assertions(1);
+				const { scene, graphicsInstances } = startStatusScene([statusBuilding('b-1', status)]);
+				const frame = drawMarkerFrame(scene, graphicsInstances[MARKER_GRAPHICS_INDEX]!.mock, 500);
+				expect(frame).toEqual({
+					clear: [[]],
+					fillStyle: [[STATUS_FILL_COLORS[status], 0.98]],
+					fillCircle: [[32, -15, 12]],
+					lineStyle: [[1, DOT_STROKE_COLOR, 0.9]],
+					strokeCircle: [[32, -15, 12]]
+				});
+			}
+		);
+
+		test('blocked draws a crossed X centered inside the dot', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances } = startStatusScene([statusBuilding('b-1', 'blocked')]);
+			const frame = drawMarkerFrame(scene, graphicsInstances[MARKER_GRAPHICS_INDEX]!.mock, 500);
+			const { x: cx, y: cy, radius } = dotCenter(frame);
+			const segments = callsTo(frame, 'lineBetween') as Segment[];
+			expect(
+				segments.map(([x1, y1, x2, y2]) => ({
+					diagonal: x1 !== x2 && y1 !== y2,
+					centered: near((x1 + x2) / 2, cx) && near((y1 + y2) / 2, cy),
+					inside: [
+						[x1, y1],
+						[x2, y2]
+					].every(([px, py]) => Math.hypot(px - cx, py - cy) <= radius)
+				}))
+			).toEqual([
+				{ diagonal: true, centered: true, inside: true },
+				{ diagonal: true, centered: true, inside: true }
+			]);
+			expect(
+				new Set(segments.map(([x1, y1, x2, y2]) => Math.sign((x2 - x1) * (y2 - y1)))).size
+			).toBe(2);
+		});
+
+		test('stalled draws two vertical bars centered inside the dot', () => {
+			expect.assertions(3);
+			const { scene, graphicsInstances } = startStatusScene([statusBuilding('b-1', 'stalled')]);
+			const frame = drawMarkerFrame(scene, graphicsInstances[MARKER_GRAPHICS_INDEX]!.mock, 500);
+			const { x: cx, y: cy, radius } = dotCenter(frame);
+			const bars = callsTo(frame, 'fillRect') as Segment[];
+			expect(
+				bars.map(([x, y, width, height]) => ({
+					vertical: height > width,
+					inside: [
+						[x, y],
+						[x + width, y],
+						[x, y + height],
+						[x + width, y + height]
+					].every(([px, py]) => Math.hypot(px - cx, py - cy) <= radius)
+				}))
+			).toEqual([
+				{ vertical: true, inside: true },
+				{ vertical: true, inside: true }
+			]);
+			const offsets = bars.map(([x, , width]) => x + width / 2 - cx);
+			expect(offsets[0]! + offsets[1]!).toBeCloseTo(0);
+			expect(offsets[0]!).toBeLessThan(0);
+		});
+
+		test('blocked and stalled add different glyph methods while idle adds none', () => {
+			expect.assertions(3);
+			const addedMethods = (status: IndustryMapBuildingRender['status']) => {
+				const { scene, graphicsInstances } = startStatusScene([statusBuilding('b-1', status)]);
+				const frame = drawMarkerFrame(scene, graphicsInstances[MARKER_GRAPHICS_INDEX]!.mock, 500);
+				return Object.keys(frame).filter((name) => !PLAIN_DOT_METHODS.includes(name));
+			};
+			expect(addedMethods('blocked')).toEqual(['lineBetween']);
+			expect(addedMethods('stalled')).toEqual(['fillRect']);
+			expect(addedMethods('idle')).toEqual([]);
+		});
+
+		test.each(['blocked', 'stalled'] as const)(
+			'the %s glyph contrasts with its status fill and the dot stroke',
+			(status) => {
+				expect.assertions(2);
+				const fill = STATUS_FILL_COLORS[status];
+				const { scene, graphicsInstances } = startStatusScene([statusBuilding('b-1', status)]);
+				const frame = drawMarkerFrame(scene, graphicsInstances[MARKER_GRAPHICS_INDEX]!.mock, 500);
+				const glyphColors = [
+					...callsTo(frame, 'fillStyle').map(([color]) => color),
+					...callsTo(frame, 'lineStyle').map(([, color]) => color)
+				].filter((color) => color !== fill && color !== DOT_STROKE_COLOR);
+				expect(glyphColors.length).toBeGreaterThan(0);
+				expect(
+					Math.min(...glyphColors.map((color) => contrastRatio(color, fill)))
+				).toBeGreaterThanOrEqual(3);
+			}
+		);
+
+		test('the glyph adds no interactive objects, images, zones or canvas counters', () => {
+			expect.assertions(6);
+			const interactiveCalls = (zones: ReturnType<typeof createZoneMock>[]) =>
+				zones.reduce((total, zone) => total + zone.mock.setInteractive.mock.calls.length, 0);
+			const plain = startStatusScene([statusBuilding('b-1', 'idle')]);
+			const blocked = startStatusScene([statusBuilding('b-1', 'blocked')]);
+			for (const harness of [plain, blocked]) {
+				harness.graphicsInstances.forEach((graphics) => clearCalls(graphics.mock));
+				harness.scene.update(500);
+			}
+			expect(
+				blocked.graphicsInstances
+					.filter((_, index) => index !== MARKER_GRAPHICS_INDEX)
+					.map((graphics) => recordedCalls(graphics.mock))
+			).toEqual([{}, {}, {}, {}]);
+			expect(blocked.graphicsInstances).toHaveLength(plain.graphicsInstances.length);
+			expect(blocked.imageInstances).toHaveLength(plain.imageInstances.length);
+			expect(blocked.zoneInstances).toHaveLength(plain.zoneInstances.length);
+			expect(interactiveCalls(blocked.zoneInstances)).toBe(interactiveCalls(plain.zoneInstances));
+			expect(blocked.canvas.dataset).toEqual(plain.canvas.dataset);
+		});
+
+		test('a tap on a tile under a blocked marker still selects that tile', () => {
+			expect.assertions(1);
+			const harness = startStatusScene([statusBuilding('b-1', 'blocked', 0, 1)]);
+			expect(
+				tapTiles(harness, [
+					[30, 17],
+					[40, 50]
+				])
+			).toEqual([
+				{ type: 'tileSelected', tileId: 't-0-0' },
+				{ type: 'tileSelected', tileId: 't-1-1' }
+			]);
+		});
+
+		test('a tap on a placement-valid tile under a stalled marker still selects that tile', () => {
+			expect.assertions(1);
+			const harness = startStatusScene([statusBuilding('b-1', 'stalled', 0, 1)], {
+				placementPreview: { validTileIds: ['t-0-0'], invalidTileIds: [] }
+			});
+			expect(tapTiles(harness, [[30, 17]])).toEqual([{ type: 'tileSelected', tileId: 't-0-0' }]);
+		});
+	});
 });
 
 describe('railArtForConnections', () => {
