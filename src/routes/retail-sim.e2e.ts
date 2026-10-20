@@ -9,13 +9,17 @@ import {
 	generateIndustryCity,
 	getIndustryTilesByResource
 } from '../lib/game/industry';
-import { estimateNextLoanPayment, getScheduledPrincipalForInstallment } from '../lib/game/finance';
+import {
+	estimateNextLoanPayment,
+	getExpansionFinanceOffer,
+	getScheduledPrincipalForInstallment
+} from '../lib/game/finance';
 import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '../lib/game/industryPlacement';
 import { createRecurringRoute } from '../lib/game/interCityLogistics';
-import { openStoreAtTile } from '../lib/game/placement';
+import { forecastOpening, openStoreAtTile } from '../lib/game/placement';
 import { buildDailyResultView } from '../lib/game/reports';
 import { buildRail, buildRailPreview } from '../lib/game/railPlacement';
 import { simulateDay } from '../lib/game/simulateDay';
@@ -3180,6 +3184,53 @@ test('reloading the autosave does not replay or re-issue a map activity batch', 
 	await expect(reloadedCanvas).toHaveAttribute('data-store-sprite-count', '1');
 	await expect(reloadedCanvas).not.toHaveAttribute('data-map-activity-sequence');
 	await expect(reloadedCanvas).not.toHaveAttribute('data-map-activity-target-ids');
+});
+
+test('financed store opening writes a map activity batch that names the new store', async ({
+	page
+}) => {
+	const seeded = createNewGame('convenience', 20260917);
+	const city = seeded.cities.find((candidate) => candidate.id === seeded.activeCityId)!;
+	const tile = city.tiles.find((candidate) => {
+		try {
+			const opened = openStoreAtTile(
+				{ ...seeded, cash: 1e9 },
+				{ tileId: candidate.id, archetypeId: 'convenience' }
+			);
+			return opened.stores.length === seeded.stores.length + 1;
+		} catch {
+			return false;
+		}
+	});
+	if (!tile) throw new Error('Seeded city has no tile that opens a convenience store');
+	const cost = forecastOpening(tile, 'convenience').setupCost;
+	const shortCash = cost - 1_000;
+	expect(getExpansionFinanceOffer({ ...seeded, cash: shortCash }, cost)).not.toBeNull();
+	await installSandboxAutoSave(page, { ...seeded, cash: shortCash });
+
+	const canvas = activeMapCanvas(page);
+	const sequenceBeforeOpen = await readMapActivitySequence(canvas);
+	const storeIdsBefore = (await readAutoSaveGame(page)).stores.map((store) => store.id);
+
+	await chooseRetailBuildTool(page, /build convenience store/i);
+	await clickCanvasTile(page, canvas, tile.x, tile.y);
+	const review = page.getByRole('dialog', { name: 'Review financing' });
+	await expect(review).toBeVisible();
+	await expect(canvas).toHaveAttribute('data-map-paused', 'true');
+	// The commit started by Confirm writes the batch while the review is still open.
+	await review.getByRole('button', { name: 'Confirm financing', exact: true }).click();
+
+	await expect
+		.poll(async () => (await readAutoSaveGame(page)).stores.length)
+		.toBe(storeIdsBefore.length + 1);
+	const storeId = (await readAutoSaveGame(page)).stores.find(
+		(store) => !storeIdsBefore.includes(store.id)
+	)!.id;
+	await expect.poll(() => readMapActivitySequence(canvas)).toBeGreaterThan(sequenceBeforeOpen);
+	await expect(canvas).toHaveAttribute(
+		'data-map-activity-target-ids',
+		new RegExp(`(^|,)${escapeRegExp(storeId)}(,|$)`)
+	);
 });
 
 async function expectOverlayToCoverMap(page: Page) {
