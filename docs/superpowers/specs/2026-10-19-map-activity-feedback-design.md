@@ -1,6 +1,6 @@
 # HPA-295 — Map Activity Feedback: Design
 
-**Status:** Planning checkpoint — runtime implementation and verification remain in this same delivery PR.
+**Status:** Implemented and verified in this delivery PR; check, lint, unit, and the full retail E2E suite pass.
 **Ticket:** https://linear.app/cwchanap/issue/HPA-295/gameplay-polish-make-maps-respond-to-real-openings-upgrades-production
 **Baseline:** `main` at `200bc7bc479b0459c3827a8c47128cbad1918364` (October 19, 2026).
 **Implementation plan:** `docs/superpowers/plans/2026-10-19-map-activity-feedback.md`.
