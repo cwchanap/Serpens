@@ -1388,19 +1388,27 @@ async function expectMapCameraReady(canvas: Locator) {
 
 async function clickCanvasTile(page: Page, canvas: Locator, x: number, y: number) {
 	const worldTileSize = 32;
-	const tileWorldX = x * worldTileSize + worldTileSize / 2;
-	const tileWorldY = y * worldTileSize + worldTileSize / 2;
+	await clickCanvasWorldPoint(
+		page,
+		canvas,
+		x * worldTileSize + worldTileSize / 2,
+		y * worldTileSize + worldTileSize / 2
+	);
+}
 
+// Clicks a world-space point (a tile centre, or a status marker), wheel-panning the view first
+// when the point is off screen.
+async function clickCanvasWorldPoint(page: Page, canvas: Locator, worldX: number, worldY: number) {
 	const initialViewX = Number((await canvas.getAttribute('data-map-view-x')) ?? 0);
 	const initialViewY = Number((await canvas.getAttribute('data-map-view-y')) ?? 0);
 	const initialViewWidth = Number((await canvas.getAttribute('data-map-view-width')) ?? 0);
 	const initialViewHeight = Number((await canvas.getAttribute('data-map-view-height')) ?? 0);
 
 	const tileVisible =
-		tileWorldX >= initialViewX &&
-		tileWorldX <= initialViewX + initialViewWidth &&
-		tileWorldY >= initialViewY &&
-		tileWorldY <= initialViewY + initialViewHeight;
+		worldX >= initialViewX &&
+		worldX <= initialViewX + initialViewWidth &&
+		worldY >= initialViewY &&
+		worldY <= initialViewY + initialViewHeight;
 
 	if (!tileVisible) {
 		const zoomBox = await canvas.boundingBox();
@@ -1412,10 +1420,10 @@ async function clickCanvasTile(page: Page, canvas: Locator, x: number, y: number
 				const viewWidth = Number((await canvas.getAttribute('data-map-view-width')) ?? 0);
 				const viewHeight = Number((await canvas.getAttribute('data-map-view-height')) ?? 0);
 				const visible =
-					tileWorldX >= viewX &&
-					tileWorldX <= viewX + viewWidth &&
-					tileWorldY >= viewY &&
-					tileWorldY <= viewY + viewHeight;
+					worldX >= viewX &&
+					worldX <= viewX + viewWidth &&
+					worldY >= viewY &&
+					worldY <= viewY + viewHeight;
 				if (!visible) {
 					await page.mouse.move(zoomBox.x + zoomBox.width / 2, zoomBox.y + zoomBox.height / 2);
 					await page.mouse.wheel(0, 5000);
@@ -1435,11 +1443,16 @@ async function clickCanvasTile(page: Page, canvas: Locator, x: number, y: number
 	const viewY = Number((await canvas.getAttribute('data-map-view-y')) ?? 0);
 	const viewWidth = Number((await canvas.getAttribute('data-map-view-width')) ?? box.width);
 	const viewHeight = Number((await canvas.getAttribute('data-map-view-height')) ?? box.height);
-	const clientX = box.x + ((x * worldTileSize + worldTileSize / 2 - viewX) / viewWidth) * box.width;
-	const clientY =
-		box.y + ((y * worldTileSize + worldTileSize / 2 - viewY) / viewHeight) * box.height;
+	const clientX = box.x + ((worldX - viewX) / viewWidth) * box.width;
+	const clientY = box.y + ((worldY - viewY) / viewHeight) * box.height;
 
 	await page.mouse.click(clientX, clientY);
+}
+
+// Store activity is only written for accepted changes, so an absent attribute reads as 0 and the
+// first batch is sequence 1.
+async function readMapActivitySequence(canvas: Locator): Promise<number> {
+	return Number((await canvas.getAttribute('data-map-activity-sequence')) ?? 0);
 }
 
 async function expectTerrainAssets(page: Page) {
@@ -3118,6 +3131,57 @@ test('player can found a store from a narrow viewport', async ({ page }) => {
 	await expect(page.locator('[aria-label="Cash"]')).toContainText(/\$[0-9,]+/);
 });
 
+test('opening a store writes a map activity batch that names the new store', async ({ page }) => {
+	await page.goto('/');
+	const canvas = await expectRetailMapReady(page);
+	const sequenceBeforeOpen = await readMapActivitySequence(canvas);
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+
+	// The autosave holds the new store's id, so the batch is checked against saved state.
+	await expect.poll(async () => (await readAutoSaveGame(page)).stores.length).toBe(1);
+	const storeId = (await readAutoSaveGame(page)).stores[0]!.id;
+	await expect.poll(() => readMapActivitySequence(canvas)).toBeGreaterThan(sequenceBeforeOpen);
+	await expect(canvas).toHaveAttribute(
+		'data-map-activity-target-ids',
+		new RegExp(`(^|,)${escapeRegExp(storeId)}(,|$)`)
+	);
+});
+
+test('reloading the autosave does not replay or re-issue a map activity batch', async ({
+	page
+}) => {
+	await page.goto('/');
+	const canvas = await expectRetailMapReady(page);
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+	await expect.poll(() => readMapActivitySequence(canvas)).toBeGreaterThan(0);
+	await expect.poll(async () => (await readAutoSaveGame(page)).stores.length).toBe(1);
+
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
+
+	const reloadedCanvas = await expectRetailMapReady(page);
+	// The restored store is drawn first, so any replayed batch would already be on the canvas.
+	await expect(reloadedCanvas).toHaveAttribute('data-store-sprite-count', '1');
+	await expect(reloadedCanvas).not.toHaveAttribute('data-map-activity-sequence');
+	await expect(reloadedCanvas).not.toHaveAttribute('data-map-activity-target-ids');
+});
+
 async function expectOverlayToCoverMap(page: Page) {
 	const canvas = activeMapCanvas(page);
 	const overlay = page.getByRole('dialog', { name: /tile details/i });
@@ -3582,6 +3646,66 @@ test('player can switch to the industry city map and back to retail', async ({ p
 	await expect(page.locator('.map-canvas canvas')).toHaveCount(2);
 	await expect(activeMapCanvas(page)).toHaveAttribute('data-store-sprite-count', '1');
 	await expect(page.getByRole('dialog', { name: /industry tile details/i })).toHaveCount(0);
+});
+
+test('a blocked industrial status dot leaves the tile beneath it selectable', async ({ page }) => {
+	test.setTimeout(90_000);
+	let game: GameState = { ...createNewGame('convenience', 20260917), cash: 100_000 };
+	const city = game.industryCities.find((candidate) => candidate.id === game.activeIndustryCityId)!;
+	const tileAt = (x: number, y: number) => city.tiles.find((tile) => tile.x === x && tile.y === y);
+	// The status dot sits just above the 2x2 footprint, so the anchor needs a plain, unlocked
+	// industrial tile above it for the click to land on an unambiguous tile.
+	const anchor = city.tiles.find((tile) => {
+		const above = tileAt(tile.x, tile.y - 1);
+		return (
+			above?.terrain === 'industrial' &&
+			!above.locked &&
+			getIndustrialPlacementBlockReason(game, tile.id, 'warehouse') === null
+		);
+	});
+	if (!anchor) throw new Error('No warehouse anchor with a plain industrial tile above it');
+	game = buildIndustrialBuilding(game, { tileId: anchor.id, buildingTypeId: 'warehouse' });
+	// Blocked is only reached through edge-case production paths, so the fixture seeds the saved
+	// status, the same way the snack factory fixture seeds its building fields.
+	game = {
+		...game,
+		industrialBuildings: game.industrialBuildings.map((building) => ({
+			...building,
+			status: 'blocked' as const,
+			blockedDays: 1
+		}))
+	};
+	await installSandboxAutoSave(page, game);
+
+	await openMapMenuItem(page, /industry city map/i);
+	const canvas = await expectIndustryMapReady(page);
+	await expect(canvas).toHaveAttribute('data-industry-building-count', '1');
+
+	const industryInspector = page.getByRole('dialog', { name: /industry tile details/i });
+	await clickCanvasTile(page, canvas, anchor.x, anchor.y);
+	// A building tile names the building rather than the tile, so check its details region.
+	const buildingDetails = industryInspector.getByRole('region', {
+		name: /industrial building details/i
+	});
+	await expect(buildingDetails.getByRole('heading', { name: /warehouse/i })).toBeVisible();
+	await expect(buildingDetails.locator('.building-status')).toHaveText(/^Blocked$/i);
+	await closeIndustryInspectorIfOpen(page);
+
+	// The dot is centred on the footprint's top edge, 15 screen px above it, with a 12 px radius.
+	// A point 6 px left of its centre is inside the dot and over the tile above the anchor.
+	const worldTileSize = 32;
+	const zoom = Number(await canvas.getAttribute('data-map-zoom'));
+	await clickCanvasWorldPoint(
+		page,
+		canvas,
+		(anchor.x + 1) * worldTileSize - 6 / zoom,
+		anchor.y * worldTileSize - 15 / zoom
+	);
+	await expect(
+		industryInspector.getByRole('heading', {
+			name: industryTileHeadingRegex(anchor.x, anchor.y - 1)
+		})
+	).toBeVisible();
 });
 
 test('industry build menu shows construction status before founding a store', async ({ page }) => {
