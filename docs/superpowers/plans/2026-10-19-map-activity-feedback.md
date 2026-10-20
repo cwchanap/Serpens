@@ -121,12 +121,12 @@ Run additional focused component/scene tests and the relevant browser test file 
 
 ## Done means
 
-- [ ] New/levelled store and positive actual production have true accepted-publish provenance and one-shot drawing.
-- [ ] No eight-producer starvation; no per-scene queue or replay on pauses, remounts, city switch or loads.
-- [ ] No-cue and terminal scenario changes notify; CAS conflict/no-op/rejection/load do not.
-- [ ] Reduced motion disables **existing** bob and pulse animation; blocked/stalled dot is static and non-color-only.
-- [ ] Delivered industry transfers are displayed by destination, quantity, material and true day using the delivered order.
-- [ ] EN/JA/zh-Hant parity, specs, check/lint/unit and focused E2E pass.
-- [ ] No simulation/schema/new art/SFX/event framework changes; one PR only.
+- [x] New/levelled store and positive actual production have true accepted-publish provenance and one-shot drawing.
+- [x] No eight-producer starvation; no per-scene queue or replay on pauses, remounts, city switch or loads.
+- [x] No-cue and terminal scenario changes notify; CAS conflict/no-op/rejection/load do not.
+- [x] Reduced motion disables **existing** bob and pulse animation; blocked/stalled dot is static and non-color-only.
+- [x] Delivered industry transfers are displayed by destination, quantity, material and true day using the delivered order.
+- [x] EN/JA/zh-Hant parity, specs, check/lint/unit and focused E2E pass.
+- [x] No simulation/schema/new art/SFX/event framework changes; one PR only.
 
 **Do not mark PR ready until implemented and verified.**
