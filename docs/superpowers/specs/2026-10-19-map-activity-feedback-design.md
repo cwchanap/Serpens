@@ -46,7 +46,7 @@ selectMapActivity(previous: GameState | null, next: GameState): MapActivity[];
 
 Opening = newly added store ID; upgrade = existing store whose `level` increased. Do not use changed appearance, selected tile, or any transition that merely inspects a store. A founding store is a legitimate opening only after the founding operation commits.
 
-For production, require the just-accepted game to have a **new completed report day** and that report to record positive produced material in the same city. Then match the after-state building's positive `lastProduction` with the report by city/material. This pairing is needed because the daily aggregate report has no building ID. Do not infer production from `status`, input imports, production totals alone, or city inventory deltas. A building with positive output and a partial/`imported-inputs` status still qualifies; a building with no output does not.
+For production, require the just-accepted game to have a **new completed report day** and that report to record positive produced material in the same city. Then match the after-state building's positive `lastProduction` with the report by city/material. This pairing is needed because the daily aggregate report has no building ID. Do not infer production from `status`, input imports, production totals alone, or city inventory deltas. A building with positive output and a partial/`imported-inputs` status still qualifies; a building with no output does not. If a producer has multiple positive output materials, select the lowest material ID as its single representative pulse: the pulse acknowledges the building's production, not every individual material. Current recipes each have one output, so pin this forward-looking behavior with a synthetic two-output fixture, without changing production content.
 
 Return deterministic, bounded events (stable entity ID ordering, one pulse per entity per accepted commit, maximum eight visual targets per view). The route assigns a local, monotonically increasing delivery sequence to the single latest batch. No persistent IDs or generic domain event interface are introduced.
 
@@ -76,7 +76,7 @@ Surface the receiving city's most recent **dated** confirmation in the existing 
 
 ### 4. Blocked status: enhance what already exists
 
-Retain the authoritative `IndustryMapBuildingRender.status` and the current status dots. For `blocked` and `stalled`, add a tiny non-animated contrasting glyph/outline **inside the existing marker**, not another badge on top of selection/placement targets. Differentiate the state by shape as well as color; position the marker outside the building footprint where it already resides.
+Retain the authoritative `IndustryMapBuildingRender.status` and the current status dots. For `blocked` and `stalled`, add a tiny non-animated contrasting glyph/outline **inside the existing marker**, not another badge on top of selection/placement targets. Differentiate these two actionable states by shape as well as color; position the marker outside the building footprint where it already resides. **Intentional scope boundary:** `idle`, `produced` and `imported-inputs` retain their existing color-based markers in this slice, with localized status text available in the inspector. Full shape differentiation across all industrial statuses is optional future accessibility polish, not a requirement to extend this ticket.
 
 Reuse the industry inspector's localized status and current `getIndustrialLinkIssues` text/action where a known link issue exists. If no grounded specific cause is available, show a localized generic “Production blocked/stalled” explanation (not a fabricated missing-input or warehouse diagnosis). Do not reclassify block reasons in Phaser. Status labels, text and marker must stay consistent.
 
@@ -89,7 +89,7 @@ No `GameState`/`DailyReport` changes, no codec/migration, new timer, event bus, 
 ## Tests and acceptance
 
 - True successful opening and level increase pulse once. No rejected, unchanged, snapshot-only or load-induced pulse.
-- A producer with positive material output pulses when the *new report* proves production, including partial/stalled/imported-inputs outcomes; zero-output/status-only/input-only/transfer-only does not.
+- A producer with positive material output pulses when the *new report* proves production, including partial/stalled/imported-inputs outcomes; zero-output/status-only/input-only/transfer-only does not. A synthetic two-output producer yields one pulse with the lowest eligible material ID, not duplicate pulses.
 - Receiving-city inspector shows actual material, quantity, destination and **recorded report day** for manual/route deliveries. Pending/late orders without report arrival are never “delivered”; no retail claim.
 - Hidden/inactive scene, late lazy mount, repeated snapshot, save load, mode/map/city change, external scenario adoption and Phaser recreation never replay old effects.
 - Existing blocked status glyph is legible, non-animated, aligned with inspector text and does not steal pointer/keyboard interactions.
