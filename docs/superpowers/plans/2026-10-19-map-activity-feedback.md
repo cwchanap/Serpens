@@ -33,7 +33,7 @@ selectMapActivity(previous: GameState | null, next: GameState): MapActivity[];
 
 Return no event on a null-to-null or non-evidence change; sort by stable view/city/entity keys and cap output to eight events per view per commit. Compare store IDs and previous/next `level`. If founding creates one store, it is an opening; do not infer opening from changing `tileId` or selection.
 
-For production, only consider the just-completed day when next has one freshly appended `DailyReport` (confirm `report.day` advanced relative to previous latest report). Require a positive movement in `next.reports.at(-1)!.productionReport.produced` for the same city and material as a positive movement in that building's `lastProduction`. Use a single stable material (e.g. lowest ID among eligible positive movements) to label each producer pulse. Do **not** add building identifiers to `DailyProductionReport`.
+For production, only consider the just-completed day when next has one freshly appended `DailyReport` (confirm `report.day` advanced relative to previous latest report). Require a positive movement in `next.reports.at(-1)!.productionReport.produced` for the same city and material as a positive movement in that building's `lastProduction`. Use the lowest material ID among eligible positive movements to label **one pulse per producer**, not a separate pulse for each output. Current `PRODUCTION_RECIPES` have one output each; use a synthetic multi-output production/report fixture to pin the tie-break without adding game content. Do **not** add building identifiers to `DailyProductionReport`.
 
 ### Tests
 
@@ -43,6 +43,7 @@ For production, only consider the just-completed day when next has one freshly a
 4. `status: 'produced'` with zero or absent actual movements -> none; imports, rail transfers or stock differences without positive production -> none.
 5. Historical report present with no new report, report day replay, wrong city/material, and positive aggregate report for another producer -> none.
 6. Input states unchanged; stable sorting, max-eight cap, one per entity.
+7. Synthetic producer with two positive output materials (both present in the new day's aggregate report) -> exactly one pulse, labeled with the lexicographically lowest eligible material ID, regardless of movement array order; adding a second output must not create a second pulse.
 
 ## Step 2 — Hook the true controller publish path, not snapshot observation
 
@@ -83,7 +84,7 @@ Prove view/city filtering, sequence increments and resets in a small pure helper
 
 Add canvas attributes like `data-map-activity-kind` and `data-map-activity-count` or `data-map-activity-sequence` *only for deterministic tests*, following current data-attribute conventions. Clear them on lifecycle/reset. Do not build a test-only event API.
 
-Scene test cases: pulse once when scene ready, no duplicate on snapshot refresh, target disappears or city changes, hidden/paused drop, recreation drop, cap/coalesce, 1×/2×/5× safety (presentation durations, no tick scheduling), reduced motion static, click/drag/zoom/placement unaffected.
+Scene test cases: pulse once when scene ready, no duplicate on snapshot refresh, target disappears or city changes, hidden/paused drop, recreation drop, cap/coalesce, 1×/2×/5× safety (presentation durations, no tick scheduling), reduced motion static, click/drag/zoom/placement unaffected. Feed the synthetic two-output production event from Step 1 and assert exactly one scene pulse/target and its deterministic representative material ID; do not invent a multi-output recipe or render a per-material pulse queue.
 
 ## Step 5 — Dated real arrivals in receiving-city inspector
 
@@ -99,7 +100,7 @@ Tests include manual and recurring deliveries, two receiving cities, same-day ti
 
 **Edit:** `src/lib/phaser/industryMapScene.ts` and `IndustryTileInspector.svelte` only where the baseline lacks readability; relevant specs.
 
-Keep `drawBuildingStatusDot` as the only per-building status marker. Render a compact contrasting static glyph/outline for `blocked` and `stalled` within the existing dot. Do not animate blocked state; do not add a second positional badge or a renderer-owned cause taxonomy.
+Keep `drawBuildingStatusDot` as the only per-building status marker. Render a compact contrasting static glyph/outline for `blocked` and `stalled` within the existing dot. Do not animate blocked state; do not add a second positional badge or a renderer-owned cause taxonomy. This task intentionally does **not** add different shapes for `idle`, `produced` and `imported-inputs`; their existing status labels remain available through the inspector, and full all-status glyph differentiation is out of scope.
 
 Confirm that `IndustryTileInspector` always exposes existing localized `building.status` and, when grounded, the actionable `getIndustrialLinkIssues` reason already supplied by HPA-284/#63. For cases without a known cause, use generic translated text rather than a fabricated “missing rails/inputs” detail. Make sure screen reader/status text and marker state derive from the same snapshot/building status, and the marker sits outside the tile click footprint.
 
