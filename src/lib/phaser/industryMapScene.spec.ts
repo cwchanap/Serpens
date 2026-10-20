@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import type { IndustryMapSnapshot } from '../game/industryMapRender';
+import type { IndustryMapBuildingRender, IndustryMapSnapshot } from '../game/industryMapRender';
+import type { MapActivity, MapActivityBatch } from '../game/mapActivityFeedback';
+import { INDUSTRY_MATERIAL_ART_LIST, getIndustryMaterialArt } from '../assets/gameArt';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -130,7 +132,7 @@ const s = (scene: IndustryMapScene) => scene as unknown as Record<string, any>;
 function setupScene() {
 	const canvas = createCanvasElement();
 	const loadImageSpy = vi.fn();
-	const texturesExistsSpy = vi.fn(() => false);
+	const texturesExistsSpy = vi.fn<(key: string) => boolean>(() => false);
 	const inputListeners: Record<string, Listener[]> = {};
 	const keyboardListeners: Record<string, Listener[]> = {};
 	const scaleListeners: Record<string, Listener[]> = {};
@@ -2206,6 +2208,280 @@ describe('IndustryMapScene', () => {
 			fireSceneShutdown();
 			fireKeydownEscape();
 			expect(interactionEvents(handler)).toEqual([]);
+		});
+	});
+
+	describe('map activity pulses', () => {
+		type GraphicsMock = ReturnType<typeof createGraphicsMock>['mock'];
+		const MATERIAL_TEXTURE_PREFIX = 'industry:/assets/game/industry/materials/';
+		const GRAIN_TEXTURE = `industry:${getIndustryMaterialArt('grain')}`;
+		// A 2x2 building at (0, 0) on its first frame: the ring sits 3px outside the footprint.
+		const FIRST_FRAME_RING = [-3, -3, 70, 70];
+
+		function materialTexturesOnly(key: string): boolean {
+			return key.startsWith(MATERIAL_TEXTURE_PREFIX);
+		}
+
+		function buildingAt(id: string, x: number, y: number): IndustryMapBuildingRender {
+			return {
+				id,
+				name: id,
+				typeId: 'grain-farm',
+				tileId: `${id}-tile`,
+				x,
+				y,
+				width: 2,
+				height: 2,
+				status: 'produced'
+			};
+		}
+
+		function producedBatch(seq: number, ...entityIds: string[]): MapActivityBatch {
+			return {
+				seq,
+				activities: entityIds.map(
+					(entityId): MapActivity => ({
+						kind: 'production',
+						cityId: 'city-1',
+						entityId,
+						materialId: 'grain'
+					})
+				)
+			};
+		}
+
+		function startScene(
+			buildings: IndustryMapBuildingRender[],
+			textures: (key: string) => boolean = materialTexturesOnly
+		) {
+			const harness = setupScene();
+			harness.texturesExistsSpy.mockImplementation(textures);
+			harness.scene.create();
+			harness.scene.updateSnapshot(makeSnapshot({ buildings }));
+			return harness;
+		}
+
+		function materialImageCount(scene: IndustryMapScene): number {
+			return (s(scene).add.image.mock.calls as unknown[][]).filter(
+				(call) => call[2] === GRAIN_TEXTURE
+			).length;
+		}
+
+		// Draws one frame and returns the ring calls made during it.
+		function drawFrame(scene: IndustryMapScene, marker: GraphicsMock, time: number) {
+			marker.strokeRect.mockClear();
+			marker.lineStyle.mockClear();
+			scene.update(time);
+			return { rings: [...marker.strokeRect.mock.calls], styles: [...marker.lineStyle.mock.calls] };
+		}
+
+		test('preloads the industry material art alongside the other industry assets', () => {
+			expect.assertions(1);
+			const { scene, loadImageSpy, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(false);
+			scene.preload();
+			const loadedKeys = loadImageSpy.mock.calls.map(([key]) => key);
+			expect(
+				INDUSTRY_MATERIAL_ART_LIST.every((path) => loadedKeys.includes(`industry:${path}`))
+			).toBe(true);
+		});
+
+		test('draws the produced material beside the building with the standard industry texture key', () => {
+			expect.assertions(1);
+			const { scene } = startScene([buildingAt('b-1', 0, 0)]);
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.update(1000);
+			expect(materialImageCount(scene)).toBe(1);
+		});
+
+		test('keeps one material image per producing building across frames', () => {
+			expect.assertions(1);
+			const { scene } = startScene([buildingAt('b-1', 0, 0)]);
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.update(1000);
+			scene.update(1100);
+			scene.update(1200);
+			expect(materialImageCount(scene)).toBe(1);
+		});
+
+		test('draws the ring without an image when the material texture is missing', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances } = startScene([buildingAt('b-1', 0, 0)], () => false);
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.update(1000);
+			expect(graphicsInstances[3]!.mock.strokeRect).toHaveBeenCalledTimes(1);
+			expect(materialImageCount(scene)).toBe(0);
+		});
+
+		test('draws every producer in a batch with more than eight entries', () => {
+			expect.assertions(2);
+			const buildings = Array.from({ length: 10 }, (_, index) =>
+				buildingAt(`b-${index}`, index * 2, 0)
+			);
+			const { scene, graphicsInstances } = startScene(buildings);
+			scene.showMapActivity(producedBatch(1, ...buildings.map((building) => building.id)));
+			scene.update(1000);
+			expect(graphicsInstances[3]!.mock.strokeRect).toHaveBeenCalledTimes(10);
+			expect(materialImageCount(scene)).toBe(10);
+		});
+
+		test('adds no zones and leaves the building sprite count unchanged for a pulse', () => {
+			expect.assertions(3);
+			const { scene, canvas, zoneInstances, texturesExistsSpy } = setupScene();
+			texturesExistsSpy.mockReturnValue(true);
+			scene.create();
+			scene.updateSnapshot(makeSnapshot({ buildings: [buildingAt('b-1', 0, 0)] }));
+			const zoneCount = zoneInstances.length;
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.update(1000);
+			expect(canvas.dataset.industryBuildingSpriteCount).toBe('1');
+			expect(zoneInstances.length).toBe(zoneCount);
+			expect(materialImageCount(scene)).toBe(1);
+		});
+
+		test('rings a producer missing at show time once a later snapshot contains it', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances } = startScene([]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.showMapActivity(producedBatch(1, 'b-new'));
+			expect(drawFrame(scene, marker, 1000).rings).toHaveLength(0);
+			scene.updateSnapshot(makeSnapshot({ buildings: [buildingAt('b-new', 0, 0)] }));
+			expect(marker.strokeRect.mock.calls).toEqual([FIRST_FRAME_RING]);
+		});
+
+		test('expires a producer that never appears in a snapshot without error', () => {
+			expect.assertions(2);
+			const { scene } = startScene([]);
+			scene.showMapActivity(producedBatch(1, 'b-ghost'));
+			expect(() => {
+				scene.update(1000);
+				scene.update(1700);
+			}).not.toThrow();
+			expect(s(scene).activityPulses.size).toBe(0);
+		});
+
+		test('does not re-arm an expired pulse on later renders or draws', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.update(1000);
+			scene.update(1600);
+			marker.strokeRect.mockClear();
+			scene.updateSnapshot(makeSnapshot({ buildings: [buildingAt('b-1', 0, 0)] }));
+			expect(marker.strokeRect).not.toHaveBeenCalled();
+			expect(drawFrame(scene, marker, 1700).rings).toHaveLength(0);
+		});
+
+		test('coalesces repeated shows for an in-flight producer and keeps its original start time', () => {
+			expect.assertions(3);
+			const { scene, graphicsInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.update(1000);
+			scene.showMapActivity(producedBatch(2, 'b-1'));
+			expect(s(scene).activityPulses.size).toBe(1);
+			expect(drawFrame(scene, marker, 1300).rings).toHaveLength(1);
+			expect(drawFrame(scene, marker, 1600).rings).toHaveLength(0);
+		});
+
+		test('drops in-flight pulses and destroys their images when the snapshot switches city', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances, imageInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.update(1000);
+			const materialImage = imageInstances.at(-1)!;
+			scene.updateSnapshot(
+				makeSnapshot({ cityId: 'other-city', buildings: [buildingAt('b-1', 0, 0)] })
+			);
+			expect(materialImage.mock.destroy).toHaveBeenCalled();
+			expect(drawFrame(scene, marker, 1100).rings).toHaveLength(0);
+		});
+
+		test('shutdown drops in-flight pulses, destroys their images and clears the batch attributes', () => {
+			expect.assertions(4);
+			const { scene, canvas, imageInstances, fireSceneShutdown } = startScene([
+				buildingAt('b-1', 0, 0)
+			]);
+			scene.showMapActivity(producedBatch(4, 'b-1'));
+			scene.update(1000);
+			const materialImage = imageInstances.at(-1)!;
+			fireSceneShutdown();
+			expect(materialImage.mock.destroy).toHaveBeenCalled();
+			expect(s(scene).activityPulses.size).toBe(0);
+			expect(canvas.dataset.mapActivitySequence).toBeUndefined();
+			expect(canvas.dataset.mapActivityTargetIds).toBeUndefined();
+		});
+
+		test('records the last received batch on the canvas and keeps it after pulses expire', () => {
+			expect.assertions(4);
+			const { scene, canvas } = startScene([buildingAt('b-1', 0, 0), buildingAt('b-2', 2, 0)]);
+			scene.showMapActivity(producedBatch(7, 'b-1', 'b-2'));
+			expect(canvas.dataset.mapActivitySequence).toBe('7');
+			expect(canvas.dataset.mapActivityTargetIds).toBe('b-1,b-2');
+			scene.update(1000);
+			scene.update(2000);
+			expect(canvas.dataset.mapActivitySequence).toBe('7');
+			expect(canvas.dataset.mapActivityTargetIds).toBe('b-1,b-2');
+		});
+
+		test('does not start a pulse from a snapshot redraw before the first frame', () => {
+			expect.assertions(4);
+			const { scene, graphicsInstances } = startScene([]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			scene.updateSnapshot(makeSnapshot({ buildings: [buildingAt('b-1', 0, 0)] }));
+			expect(marker.strokeRect).not.toHaveBeenCalled();
+			expect(drawFrame(scene, marker, 5000).rings).toHaveLength(1);
+			expect(drawFrame(scene, marker, 5300).rings).toHaveLength(1);
+			expect(drawFrame(scene, marker, 5600).rings).toHaveLength(0);
+		});
+
+		test('draws an identical static ring for the whole lifetime under reduced motion', () => {
+			expect.assertions(2);
+			const { scene, graphicsInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.setReducedMotion(true);
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			const frames = [1000, 1200, 1400, 1599].map((time) => drawFrame(scene, marker, time));
+			expect(frames[0]!.rings).toHaveLength(1);
+			expect(new Set(frames.map((frame) => JSON.stringify(frame))).size).toBe(1);
+		});
+
+		test('animates the ring under normal motion', () => {
+			expect.assertions(1);
+			const { scene, graphicsInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			const first = drawFrame(scene, marker, 1000);
+			const later = drawFrame(scene, marker, 1300);
+			expect(later).not.toEqual(first);
+		});
+
+		test('holds the building sprite and status dot still under reduced motion', () => {
+			expect.assertions(3);
+			const { scene, graphicsInstances, imageInstances } = startScene(
+				[buildingAt('b-1', 0, 0)],
+				() => true
+			);
+			const sprite = s(scene).buildingSpriteById.get('b-1');
+			const spriteMock = imageInstances.find((image) => image.chainable === sprite)!.mock;
+			const marker = graphicsInstances[3]!.mock;
+			const sampleFrames = () =>
+				[0, 90, 175, 400].map((time) => {
+					scene.update(time);
+					return {
+						spriteY: spriteMock.setPosition.mock.lastCall?.[1],
+						dot: marker.strokeCircle.mock.lastCall
+					};
+				});
+			scene.setReducedMotion(true);
+			const reduced = sampleFrames();
+			expect(reduced.map((frame) => frame.spriteY)).toEqual([32, 32, 32, 32]);
+			expect(new Set(reduced.map((frame) => JSON.stringify(frame.dot))).size).toBe(1);
+			scene.setReducedMotion(false);
+			expect(new Set(sampleFrames().map((frame) => frame.spriteY)).size).toBeGreaterThan(1);
 		});
 	});
 });

@@ -1,7 +1,9 @@
 import { asset } from '$app/paths';
 import {
+	getIndustryMaterialArt,
 	INDUSTRIAL_BUILDING_ART,
 	INDUSTRIAL_BUILDING_ART_LIST,
+	INDUSTRY_MATERIAL_ART_LIST,
 	INDUSTRY_RESOURCE_ART,
 	INDUSTRY_RESOURCE_ART_LIST,
 	INDUSTRY_TERRAIN_ART,
@@ -18,6 +20,7 @@ import type {
 	IndustryMapTileRender
 } from '../game/industryMapRender';
 import type { MapActivityBatch } from '../game/mapActivityFeedback';
+import type { MaterialId } from '../game/types';
 import {
 	INDUSTRIAL_BUILDING_FOOTPRINT_HEIGHT,
 	INDUSTRIAL_BUILDING_FOOTPRINT_WIDTH
@@ -100,6 +103,10 @@ const PLACEMENT_PREVIEW_ALPHA = 0.28;
 const PLACEMENT_PREVIEW_RESOURCE_COLOR = 0xf2c14e;
 const PLACEMENT_PREVIEW_RESOURCE_ALPHA = 0.55;
 const PLACEMENT_PREVIEW_RESOURCE_INVALID_ALPHA = 0.1;
+/** Wall-clock lifetime of a one-shot production pulse, measured on the frame loop clock. */
+const ACTIVITY_PULSE_DURATION_MS = 600;
+const ACTIVITY_RING_COLOR = 0xf5c542;
+const ACTIVITY_MATERIAL_SIZE = 20;
 
 const STATUS_COLORS: Record<IndustryMapBuildingRender['status'], number> = {
 	idle: 0xb8a271,
@@ -132,6 +139,13 @@ function preloadIndustryAsset(scene: Phaser.Scene, path: string): void {
 	if (!scene.textures.exists(key)) {
 		scene.load.image(key, asset(path));
 	}
+}
+
+interface ActivityPulse {
+	/** Frame-loop time of the first draw pass; unset until a frame runs. */
+	startTime?: number;
+	materialId?: MaterialId;
+	image?: Phaser.GameObjects.Image;
 }
 
 export class IndustryMapScene extends Phaser.Scene {
@@ -169,8 +183,9 @@ export class IndustryMapScene extends Phaser.Scene {
 	// do not also fire buildCancelled behind the overlay and silently pop a
 	// rail waypoint or exit rail mode.
 	private keyboardEnabled = true;
-	private lastActivitySeq: number | null = null;
-	private activityTargetIds: readonly string[] = [];
+	private activityPulses = new Map<string, ActivityPulse>();
+	private lastFrameTime: number | null = null;
+	private reducedMotion = false;
 
 	constructor() {
 		super({ key: 'IndustryMapScene' });
@@ -180,6 +195,7 @@ export class IndustryMapScene extends Phaser.Scene {
 		for (const path of [
 			...INDUSTRY_TERRAIN_ART_LIST,
 			...INDUSTRY_RESOURCE_ART_LIST,
+			...INDUSTRY_MATERIAL_ART_LIST,
 			...INDUSTRIAL_BUILDING_ART_LIST,
 			...RAIL_ART_LIST
 		]) {
@@ -208,6 +224,7 @@ export class IndustryMapScene extends Phaser.Scene {
 	}
 
 	update(time: number, delta = 0): void {
+		this.lastFrameTime = time;
 		this.updateKeyboardPan(delta);
 		this.updateBuildingSprites(time);
 		this.drawMarkerGraphics(time);
@@ -233,10 +250,26 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.renderSnapshot();
 	}
 
-	/** Records the last delivered batch; pulse drawing is not wired yet. */
+	setReducedMotion(reduced: boolean): void {
+		this.reducedMotion = reduced;
+	}
+
+	/**
+	 * Starts a one-shot pulse for each entity in the batch. A repeat for an entity that
+	 * is still pulsing keeps its original start. Nothing is stamped here; the first draw that
+	 * has a frame clock does.
+	 */
 	showMapActivity(batch: MapActivityBatch): void {
-		this.lastActivitySeq = batch.seq;
-		this.activityTargetIds = batch.activities.map((activity) => activity.entityId);
+		for (const activity of batch.activities) {
+			if (!this.activityPulses.has(activity.entityId)) {
+				this.activityPulses.set(
+					activity.entityId,
+					activity.kind === 'production' ? { materialId: activity.materialId } : {}
+				);
+			}
+		}
+
+		this.updateCanvasMapActivityAttributes(batch);
 	}
 
 	private renderSnapshot(): void {
@@ -269,6 +302,8 @@ export class IndustryMapScene extends Phaser.Scene {
 
 		if (terrainChanged) {
 			this.mapGraphics.clear();
+			// A new terrain identity means another city or map, so in-flight pulses are dropped.
+			this.clearActivityPulses();
 			this.destroyTileZones();
 			this.destroyTerrainSprites();
 			// The terrain key combines cityId|widthxheight with every tile's
@@ -317,7 +352,7 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.drawRailPreview();
 		this.rebuildMarkerSprites();
 		this.drawRails();
-		this.drawMarkerGraphics(0);
+		this.drawMarkerGraphics(this.lastFrameTime);
 		this.drawInteractionOutlines();
 	}
 
@@ -474,7 +509,7 @@ export class IndustryMapScene extends Phaser.Scene {
 			this.createBuildingSprite(building);
 		}
 
-		this.updateBuildingSprites(0);
+		this.updateBuildingSprites(this.lastFrameTime ?? 0);
 		this.updateCanvasIndustryAttributes();
 	}
 
@@ -690,7 +725,8 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.placementPreviewGraphics.strokeRect(x + 2, y + 2, width - 4, height - 4);
 	}
 
-	private drawMarkerGraphics(time: number): void {
+	// null before the first frame, as in the city scene: no clock, so no pulse work yet.
+	private drawMarkerGraphics(time: number | null): void {
 		if (!this.markerGraphics) {
 			return;
 		}
@@ -704,11 +740,71 @@ export class IndustryMapScene extends Phaser.Scene {
 
 		this.snapshot.buildings.forEach((building, index) => {
 			if (this.buildingSpriteById.has(building.id)) {
-				this.drawBuildingStatusDot(building, index, time);
+				this.drawBuildingStatusDot(building, index, time ?? 0);
 			}
 		});
 
+		if (time !== null) {
+			this.drawActivityPulses(this.markerGraphics, this.snapshot.buildings, time);
+		}
+
 		this.updateCanvasIndustryAttributes();
+	}
+
+	/**
+	 * Draws one ring per pulse whose building is in the current snapshot, with the produced
+	 * material's icon on the footprint's top-right corner. The first pass after a pulse is
+	 * shown stamps it, so an absent building or a pause still expires on wall time.
+	 */
+	private drawActivityPulses(
+		graphics: Phaser.GameObjects.Graphics,
+		buildings: readonly IndustryMapBuildingRender[],
+		time: number
+	): void {
+		for (const [buildingId, pulse] of this.activityPulses) {
+			pulse.startTime ??= time;
+			const elapsed = time - pulse.startTime;
+
+			if (elapsed >= ACTIVITY_PULSE_DURATION_MS) {
+				pulse.image?.destroy();
+				this.activityPulses.delete(buildingId);
+				continue;
+			}
+
+			const building = buildings.find((candidate) => candidate.id === buildingId);
+
+			if (!building) {
+				continue;
+			}
+
+			// The ring starts 3px outside the footprint and spreads 5px while it fades.
+			// Reduced motion holds the first-frame ring and icon still for the whole lifetime.
+			const progress = this.reducedMotion ? 0 : elapsed / ACTIVITY_PULSE_DURATION_MS;
+			const footprint = this.getBuildingFootprint(building);
+			graphics.lineStyle(3, ACTIVITY_RING_COLOR, 0.9 * (1 - progress));
+			this.strokeFootprintRect(graphics, footprint, -(3 + 5 * progress));
+
+			if (pulse.materialId) {
+				const textureKey = industryTextureKey(getIndustryMaterialArt(pulse.materialId));
+
+				if (!pulse.image && this.textures.exists(textureKey)) {
+					pulse.image = this.add
+						.image((footprint.x + footprint.width) * TILE_SIZE, footprint.y * TILE_SIZE, textureKey)
+						.setDisplaySize(ACTIVITY_MATERIAL_SIZE, ACTIVITY_MATERIAL_SIZE)
+						.setDepth(MARKER_DEPTH + 1);
+				}
+
+				pulse.image?.setAlpha(1 - progress);
+			}
+		}
+	}
+
+	private clearActivityPulses(): void {
+		for (const pulse of this.activityPulses.values()) {
+			pulse.image?.destroy();
+		}
+
+		this.activityPulses.clear();
 	}
 
 	private createResourceSprite(tile: IndustryMapTileRender): void {
@@ -796,12 +892,15 @@ export class IndustryMapScene extends Phaser.Scene {
 		index: number,
 		time: number
 	): { x: number; y: number } {
+		// Reduced motion scales the bob amplitude to zero; the formula itself is unchanged.
+		const bobScale = this.reducedMotion ? 0 : 1;
+
 		return {
 			x: building.x * TILE_SIZE + (getBuildingFootprintWidth(building) * TILE_SIZE) / 2,
 			y:
 				building.y * TILE_SIZE +
 				(getBuildingFootprintHeight(building) * TILE_SIZE) / 2 +
-				Math.sin(time / 360 + index) * 1.8
+				Math.sin(time / 360 + index) * 1.8 * bobScale
 		};
 	}
 
@@ -1045,6 +1144,30 @@ export class IndustryMapScene extends Phaser.Scene {
 		this.updateCanvasCameraAttributes();
 	}
 
+	private updateCanvasMapActivityAttributes(batch: MapActivityBatch): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		canvas.dataset.mapActivitySequence = String(batch.seq);
+		canvas.dataset.mapActivityTargetIds = batch.activities
+			.map((activity) => activity.entityId)
+			.join(',');
+	}
+
+	private clearCanvasMapActivityAttributes(): void {
+		const canvas = this.game?.canvas;
+
+		if (!canvas) {
+			return;
+		}
+
+		delete canvas.dataset.mapActivitySequence;
+		delete canvas.dataset.mapActivityTargetIds;
+	}
+
 	private updateCanvasIndustryAttributes(): void {
 		const canvas = this.game?.canvas;
 
@@ -1176,6 +1299,8 @@ export class IndustryMapScene extends Phaser.Scene {
 	}
 
 	private destroySceneObjects(): void {
+		this.clearActivityPulses();
+		this.clearCanvasMapActivityAttributes();
 		this.destroyTileZones();
 		this.destroyTerrainSprites();
 		this.destroyResourceSprites();
