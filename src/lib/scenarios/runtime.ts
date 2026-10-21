@@ -18,6 +18,7 @@ import {
 } from '$lib/game/retailSupply';
 import { simulateDay } from '$lib/game/simulateDay';
 import type { SimulationRules } from '$lib/game/simulationRules';
+import { DEFAULT_SIMULATION_RULES } from '$lib/game/simulationRules';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
 import {
 	resolveDecision,
@@ -31,6 +32,7 @@ import { financeWorldCityOpening, openWorldCity, selectWorldCity } from '$lib/ga
 import { financeIndustrialBuilding } from '$lib/game/industryPlacement';
 import { deeplyEqual } from '$lib/game/equality';
 import { isDecisionFailureCode } from '$lib/game/eventEffects';
+import type { DecisionContext } from '$lib/game/decisionContext';
 import { isScenarioCommandAllowed } from './capabilities';
 import { evaluateScenarioConditions } from './metrics';
 import { calculateScenarioScoreProjection, medalForScore } from './scoring';
@@ -63,6 +65,27 @@ export type ExecuteScenarioCommandResult =
 			};
 			decisionFailure?: ScenarioDecisionFailure;
 			retailSupplyFailure?: { reason: RetailSupplyAssignmentFailure };
+			decisionContext?: DecisionContext;
+	  };
+
+/**
+ * Outcome of applying one scenario command to a game without any scenario-run
+ * bookkeeping. Rejections carry the same failure payloads as
+ * `executeScenarioCommand` plus the context of the system decision a
+ * transition appended while failing its own postcondition.
+ */
+export type ApplyGameCommandResult =
+	| { ok: true; changed: boolean; game: GameState }
+	| {
+			ok: false;
+			code: 'invalid-command';
+			financeFailure?: {
+				code: FinanceFailureCode;
+				context: Record<string, string | number>;
+			};
+			decisionFailure?: ScenarioDecisionFailure;
+			retailSupplyFailure?: { reason: RetailSupplyAssignmentFailure };
+			decisionContext?: DecisionContext;
 	  };
 
 export type ScenarioStartResult = ScenarioOperationResult<ScenarioRun>;
@@ -217,12 +240,12 @@ type ScenarioDispatchResult =
 
 function dispatchScenarioCommand(
 	game: GameState,
-	definition: ScenarioDefinition,
-	command: ScenarioCommand
+	command: ScenarioCommand,
+	rules: SimulationRules
 ): ScenarioDispatchResult {
 	switch (command.kind) {
 		case 'advanceDay':
-			return simulateDay(game, compileSimulationRules(definition));
+			return simulateDay(game, rules);
 		case 'resolveDecision':
 			return resolveDecision(game, command.decisionId, command.optionId);
 		case 'updatePolicy':
@@ -311,6 +334,91 @@ function dispatchScenarioCommand(
 	}
 }
 
+/**
+ * Apply one scenario command to a game via the real engine transitions, with
+ * no scenario-run bookkeeping: no UUIDs, capability gate, evaluation or medal
+ * logic. This is the shared path used by `executeScenarioCommand` and the
+ * balance harness. Rejected commands return `ok: false` with the failure
+ * payload produced by the transition.
+ */
+export function applyGameCommand(
+	game: GameState,
+	command: ScenarioCommand,
+	rules: SimulationRules = DEFAULT_SIMULATION_RULES
+): ApplyGameCommandResult {
+	let next: GameState;
+	try {
+		const dispatched = dispatchScenarioCommand(game, command, rules);
+		if ('ok' in dispatched) {
+			if (!dispatched.ok) {
+				if ('reason' in dispatched) {
+					return {
+						ok: false,
+						code: 'invalid-command',
+						retailSupplyFailure: { reason: dispatched.reason }
+					};
+				}
+				if (isDecisionFailureCode(dispatched.code)) {
+					const decisionFailure = dispatched as Extract<DecisionResolutionResult, { ok: false }>;
+					return {
+						ok: false,
+						code: 'invalid-command',
+						decisionFailure: {
+							code: decisionFailure.code,
+							context: decisionFailure.context,
+							...(decisionFailure.financeFailure === undefined
+								? {}
+								: { financeFailure: decisionFailure.financeFailure })
+						}
+					};
+				}
+				const financeFailure = dispatched as FinanceActionFailure;
+				return {
+					ok: false,
+					code: 'invalid-command',
+					financeFailure: { code: financeFailure.code, context: financeFailure.context }
+				};
+			}
+			next = dispatched.game;
+		} else {
+			next = dispatched;
+		}
+	} catch {
+		// The command passed capability/content checks but the transition itself
+		// rejected it (e.g. openStoreAtTile throws on a locked/occupied tile, or
+		// buildIndustrialBuilding throws on an invalid placement). Surface this as
+		// a rejected command instead of letting it propagate to the controller's
+		// catch-all, which would mislabel a state-validation error as a
+		// persistence-write failure and offer a pointless retry.
+		return { ok: false, code: 'invalid-command' };
+	}
+	if (command.kind === 'openStore') {
+		// openStoreAtTile never fails loudly: a blocked placement appends a
+		// "location unavailable" system decision (likewise for store-cap or cash
+		// rejections inside openStore). Verify the expected postcondition — one
+		// new store on the requested tile with the requested archetype — so a
+		// rejected opening cannot masquerade as progress.
+		const opened =
+			next.stores.length === game.stores.length + 1 &&
+			next.stores.some(
+				(store) => store.tileId === command.tileId && store.archetypeId === command.archetypeId
+			);
+		if (!opened) {
+			const appended =
+				next.decisions.length > game.decisions.length
+					? next.decisions[next.decisions.length - 1]
+					: undefined;
+			const decisionContext = appended?.kind === 'system' ? appended.context : undefined;
+			return {
+				ok: false,
+				code: 'invalid-command',
+				...(decisionContext === undefined ? {} : { decisionContext })
+			};
+		}
+	}
+	return { ok: true, changed: !deeplyEqual(game, next), game: next };
+}
+
 function terminalRun(
 	run: ScenarioRun,
 	definition: ScenarioDefinition,
@@ -348,74 +456,44 @@ export function executeScenarioCommand(
 	const capability = isScenarioCommandAllowed(definition, run, command);
 	if (!capability.allowed) return { ok: false, code: capability.code };
 
-	let game: GameState;
-	try {
-		const dispatched = dispatchScenarioCommand(run.game, definition, command);
-		if ('ok' in dispatched) {
-			if (dispatched.ok) {
-				game = dispatched.game;
-			} else if ('reason' in dispatched) {
-				return {
-					ok: false,
-					code: 'invalid-command',
-					retailSupplyFailure: { reason: dispatched.reason }
-				};
-			} else if (isDecisionFailureCode(dispatched.code)) {
-				const decisionFailure = dispatched as Extract<DecisionResolutionResult, { ok: false }>;
-				return {
-					ok: false,
-					code: 'invalid-command',
-					decisionFailure: {
-						code: decisionFailure.code,
-						context: decisionFailure.context,
-						...(decisionFailure.financeFailure === undefined
-							? {}
-							: { financeFailure: decisionFailure.financeFailure })
-					}
-				};
-			} else {
-				const financeFailure = dispatched as FinanceActionFailure;
-				return {
-					ok: false,
-					code: 'invalid-command',
-					financeFailure: { code: financeFailure.code, context: financeFailure.context }
-				};
-			}
-		} else {
-			game = dispatched;
-		}
-	} catch {
-		// The command passed capability/content checks but the transition itself
-		// rejected it (e.g. openStoreAtTile throws on a locked/occupied tile, or
-		// buildIndustrialBuilding throws on an invalid placement). Surface this as
-		// a rejected command instead of letting it propagate to the controller's
-		// catch-all, which would mislabel a state-validation error as a
-		// persistence-write failure and offer a pointless retry.
-		return { ok: false, code: 'invalid-command' };
+	const applied = applyGameCommand(run.game, command, compileSimulationRules(definition));
+	if (!applied.ok) {
+		return {
+			ok: false,
+			code: applied.code,
+			financeFailure: applied.financeFailure,
+			decisionFailure: applied.decisionFailure,
+			retailSupplyFailure: applied.retailSupplyFailure,
+			decisionContext: applied.decisionContext
+		};
 	}
-	if (deeplyEqual(run.game, game)) return { ok: true, changed: false, run };
+	if (!applied.changed) return { ok: true, changed: false, run };
 
-	const conditions = evaluateScenarioConditions(definition, game, false);
+	const conditions = evaluateScenarioConditions(definition, applied.game, false);
 	const failed = conditions.failures.some((failure) => failure.status === 'triggered');
 	const completed = conditions.required.every((objective) => objective.status === 'satisfied');
 
 	if (failed) {
-		return { ok: true, changed: true, run: terminalRun(run, definition, game, 'failed') };
+		return { ok: true, changed: true, run: terminalRun(run, definition, applied.game, 'failed') };
 	}
 	if (completed) {
-		return { ok: true, changed: true, run: terminalRun(run, definition, game, 'completed') };
+		return {
+			ok: true,
+			changed: true,
+			run: terminalRun(run, definition, applied.game, 'completed')
+		};
 	}
 	if (command.kind === 'advanceDay' && conditions.deadline?.triggered) {
-		return { ok: true, changed: true, run: terminalRun(run, definition, game, 'failed') };
+		return { ok: true, changed: true, run: terminalRun(run, definition, applied.game, 'failed') };
 	}
-	const evaluation = withScoreProjection(definition, game, conditions);
+	const evaluation = withScoreProjection(definition, applied.game, conditions);
 
 	return {
 		ok: true,
 		changed: true,
 		run: {
 			...run,
-			game,
+			game: applied.game,
 			evaluation,
 			result: null
 		}

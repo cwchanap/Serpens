@@ -21,6 +21,10 @@ import {
 	upgradeRailSegment,
 	type RailBuildInput
 } from '$lib/game/railPlacement';
+import {
+	decisionContextLocationBlocked,
+	decisionContextLocationGeneric
+} from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
 import { resolveImportCostMultiplier } from '$lib/game/simulationRules';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
@@ -51,6 +55,7 @@ import type {
 } from './types';
 import {
 	abandonScenario,
+	applyGameCommand,
 	compileSimulationRules,
 	evaluateScenario,
 	executeScenarioCommand,
@@ -306,6 +311,16 @@ function findExpansionTile(game: GameState) {
 	return city.tiles.find(
 		(tile) => getStoreFootprintPlacementBlockReason(lookup, tile, occupied) === null
 	)!;
+}
+
+function findBlockedExpansionTile(game: GameState) {
+	const city = game.cities.find((candidate) => candidate.id === game.activeCityId)!;
+	const lookup = createCityTileLookup(city);
+	const occupied = getOccupiedStoreTileIds(city, game.stores, lookup);
+	const tile = city.tiles.find(
+		(candidate) => getStoreFootprintPlacementBlockReason(lookup, candidate, occupied) !== null
+	)!;
+	return { tile, blockReason: getStoreFootprintPlacementBlockReason(lookup, tile, occupied)! };
 }
 
 function grainBuildFixture() {
@@ -630,6 +645,43 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 			openStoreAtTile(game, { tileId: tile.id, archetypeId: 'convenience' })
 		);
 		expect(next.game.stores).toHaveLength(2);
+	});
+
+	it('rejects an openStore on a blocked tile instead of reading the appended decision as success', () => {
+		const game = foundingGame();
+		const { tile, blockReason } = findBlockedExpansionTile(game);
+		const base = commandDefinition(['openStore']);
+		const definition = {
+			...base,
+			content: {
+				...base.content,
+				retailPlacements: [
+					{
+						cityId: 'harbor-city' as const,
+						tileId: tile.id,
+						archetypeId: 'convenience' as const
+					}
+				]
+			}
+		};
+
+		const result = executeScenarioCommand(activeRun(definition, game), definition, {
+			kind: 'openStore',
+			tileId: tile.id,
+			archetypeId: 'convenience'
+		});
+
+		// The capability gate allows this placement (it is in retailPlacements),
+		// but the game rejects it by appending a system decision instead of a new
+		// store. That must classify as a rejected command, not progress.
+		expect(result).toEqual({
+			ok: false,
+			code: 'invalid-command',
+			decisionContext:
+				blockReason === 'occupied'
+					? decisionContextLocationGeneric()
+					: decisionContextLocationBlocked(blockReason)
+		});
 	});
 
 	it('executes upgradeStore', () => {
@@ -1179,6 +1231,68 @@ function replayLaunchCalibration(
 
 	return run;
 }
+
+describe('applyGameCommand', { timeout: 30_000 }, () => {
+	it('applies a valid openStore through the shared path without a ScenarioRun', () => {
+		const game = foundingGame();
+		const tile = findExpansionTile(game);
+
+		const result = applyGameCommand(game, {
+			kind: 'openStore',
+			tileId: tile.id,
+			archetypeId: 'convenience'
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('Expected the openStore command to apply.');
+		expect(result.changed).toBe(true);
+		expect(result.game.stores).toHaveLength(2);
+		expect(result.game.stores.some((store) => store.tileId === tile.id)).toBe(true);
+	});
+
+	it('rejects a blocked openStore with the decision context as the failure reason', () => {
+		const game = foundingGame();
+		const { tile, blockReason } = findBlockedExpansionTile(game);
+
+		const result = applyGameCommand(game, {
+			kind: 'openStore',
+			tileId: tile.id,
+			archetypeId: 'convenience'
+		});
+
+		expect(result).toEqual({
+			ok: false,
+			code: 'invalid-command',
+			decisionContext:
+				blockReason === 'occupied'
+					? decisionContextLocationGeneric()
+					: decisionContextLocationBlocked(blockReason)
+		});
+	});
+
+	it('reports a harmless semantic no-op as ok without changes', () => {
+		const game = foundingGame();
+
+		const result = applyGameCommand(game, {
+			kind: 'updatePolicy',
+			patch: { pricing: game.policy.pricing }
+		});
+
+		expect(result).toEqual({ ok: true, changed: false, game });
+	});
+
+	it('applies advanceDay with explicit rules so modifiers flow through the shared path', () => {
+		const game = foundingGame();
+		const definition = commandDefinition(['advanceDay']);
+		const rules = compileSimulationRules(definition);
+
+		const result = applyGameCommand(game, { kind: 'advanceDay' }, rules);
+
+		expect(result).toMatchObject({ ok: true, changed: true });
+		if (!result.ok || !result.changed) throw new Error('Expected advanceDay to apply.');
+		expect(result.game).toEqual(simulateDay(game, rules));
+	});
+});
 
 describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	it('keeps the first-profit calibration stable after instance-id resolution cutover', () => {
