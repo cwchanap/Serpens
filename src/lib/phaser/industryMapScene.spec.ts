@@ -2371,6 +2371,20 @@ describe('IndustryMapScene', () => {
 			expect(s(scene).activityPulses.size).toBe(0);
 		});
 
+		test('shows a pulse accepted after resume but before the first resumed frame', () => {
+			expect.assertions(3);
+			const { scene, graphicsInstances } = startScene([buildingAt('b-1', 0, 0)]);
+			const marker = graphicsInstances[3]!.mock;
+			scene.update(1000);
+			// Pause froze the clock at 1000; the wrapper's resume transition clears it
+			// so this accept falls back to first-draw stamping instead of expiring.
+			scene.resetFrameClock();
+			scene.showMapActivity(producedBatch(1, 'b-1'));
+			expect(drawFrame(scene, marker, 62_000).rings).toEqual([FIRST_FRAME_RING]);
+			expect(drawFrame(scene, marker, 62_600).rings).toHaveLength(0);
+			expect(s(scene).activityPulses.size).toBe(0);
+		});
+
 		test('drops the material image and pulse when a rendered building leaves the snapshot', () => {
 			expect.assertions(2);
 			const { scene, imageInstances } = startScene([buildingAt('b-1', 0, 0)]);

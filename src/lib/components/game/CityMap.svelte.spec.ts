@@ -15,6 +15,7 @@ const mockSetKeyboardEnabled = vi.fn();
 const mockSetParentSize = vi.fn();
 const mockPause = vi.fn();
 const mockResume = vi.fn();
+const mockResetFrameClock = vi.fn();
 const mockShowMapActivity = vi.fn();
 const mockSetReducedMotion = vi.fn();
 const mockCanvas = { dataset: {} as Record<string, string> };
@@ -49,7 +50,8 @@ vi.mock('$lib/phaser/cityMapScene', () => {
 				setKeyboardEnabled: mockSetKeyboardEnabled,
 				updateSnapshot: mockUpdateSnapshot,
 				showMapActivity: mockShowMapActivity,
-				setReducedMotion: mockSetReducedMotion
+				setReducedMotion: mockSetReducedMotion,
+				resetFrameClock: mockResetFrameClock
 			};
 		})
 	};
@@ -148,6 +150,39 @@ describe('CityMap', () => {
 		rerender({ snapshot: stubSnapshot, onTileSelected: vi.fn(), paused: false, i18n });
 		await waitForMock(mockResume);
 		expect(mockResume).toHaveBeenCalled();
+	});
+
+	it('resets the scene frame clock before resume when the map was paused', async () => {
+		expect.assertions(2);
+
+		const { rerender } = render(CityMap, {
+			snapshot: stubSnapshot,
+			onTileSelected: vi.fn(),
+			paused: true,
+			i18n
+		});
+
+		await waitForMock(mockPause);
+		rerender({ snapshot: stubSnapshot, onTileSelected: vi.fn(), paused: false, i18n });
+		await waitForMock(mockResume);
+		expect(mockResetFrameClock).toHaveBeenCalledTimes(1);
+		expect(mockResetFrameClock.mock.invocationCallOrder[0]!).toBeLessThan(
+			mockResume.mock.invocationCallOrder.at(-1)!
+		);
+	});
+
+	it('does not reset the scene frame clock when the game was never paused', async () => {
+		expect.assertions(2);
+
+		render(CityMap, {
+			snapshot: stubSnapshot,
+			onTileSelected: vi.fn(),
+			i18n
+		});
+
+		await waitForMock(mockResume);
+		expect(mockResume).toHaveBeenCalled();
+		expect(mockResetFrameClock).not.toHaveBeenCalled();
 	});
 
 	it('does not call onTileSelected for non-tileSelected scene events', async () => {

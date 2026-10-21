@@ -259,6 +259,17 @@ export class IndustryMapScene extends Phaser.Scene {
 	}
 
 	/**
+	 * Clears the accept-time frame clock. The wrapper calls this on the pause→resume
+	 * transition so a batch accepted after resume — but before the first resumed
+	 * frame — falls back to first-draw stamping instead of taking the stale
+	 * pre-pause clock and expiring immediately. Pulses already stamped keep their
+	 * start, so activity accepted before the pause still expires on wall time.
+	 */
+	resetFrameClock(): void {
+		this.lastFrameTime = null;
+	}
+
+	/**
 	 * Starts a one-shot pulse for each entity in the batch. A repeat for an entity that
 	 * is still pulsing keeps its original start. The start is stamped from the last
 	 * frame clock — falling back to the first draw when no frame has run — so a pulse
