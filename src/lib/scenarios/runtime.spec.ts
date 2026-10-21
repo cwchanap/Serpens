@@ -5,7 +5,11 @@ import {
 	generateCity
 } from '$lib/game/city';
 import { getIndustryTilesByResource } from '$lib/game/industry';
-import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
+import {
+	buildIndustrialBuilding,
+	getIndustrialPlacementBlockReason,
+	upgradeBuilding
+} from '$lib/game/industryPlacement';
 import { financeIndustrialBuilding } from '$lib/game/industryPlacement';
 import { borrow, payOffLoan, refinanceLoan, repayLoan } from '$lib/game/finance';
 import {
@@ -22,6 +26,7 @@ import {
 	type RailBuildInput
 } from '$lib/game/railPlacement';
 import {
+	decisionContextIndustrialOccupiedTile,
 	decisionContextLocationBlocked,
 	decisionContextLocationGeneric
 } from '$lib/game/decisionContext';
@@ -321,6 +326,19 @@ function findBlockedExpansionTile(game: GameState) {
 		(candidate) => getStoreFootprintPlacementBlockReason(lookup, candidate, occupied) !== null
 	)!;
 	return { tile, blockReason: getStoreFootprintPlacementBlockReason(lookup, tile, occupied)! };
+}
+
+function legalIndustryPlacementFixture(game: GameState): {
+	tile: { id: string };
+	buildingTypeId: 'warehouse';
+} {
+	const city = game.industryCities.find((candidate) => candidate.id === game.activeIndustryCityId)!;
+	const tile = city.tiles.find(
+		(candidate) =>
+			!candidate.locked &&
+			getIndustrialPlacementBlockReason(game, candidate.id, 'warehouse') === null
+	)!;
+	return { tile, buildingTypeId: 'warehouse' as const };
 }
 
 function grainBuildFixture() {
@@ -1267,6 +1285,46 @@ describe('applyGameCommand', { timeout: 30_000 }, () => {
 				blockReason === 'occupied'
 					? decisionContextLocationGeneric()
 					: decisionContextLocationBlocked(blockReason)
+		});
+	});
+
+	it('applies a valid buildIndustrialBuilding through the shared path without a ScenarioRun', () => {
+		const game = foundingGame();
+		const { tile, buildingTypeId } = legalIndustryPlacementFixture(game);
+
+		const result = applyGameCommand(game, {
+			kind: 'buildIndustrialBuilding',
+			tileId: tile.id,
+			buildingTypeId
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('Expected the buildIndustrialBuilding command to apply.');
+		expect(result.changed).toBe(true);
+		expect(result.game.industrialBuildings).toHaveLength(1);
+		expect(result.game.industrialBuildings[0]).toMatchObject({
+			tileId: tile.id,
+			typeId: buildingTypeId
+		});
+	});
+
+	it('rejects a blocked buildIndustrialBuilding with the decision context as the failure reason', () => {
+		const game = foundingGame();
+		const { tile, buildingTypeId } = legalIndustryPlacementFixture(game);
+		// Occupy the tile first so the rebuild hits the placement rejection path
+		// that appends a construction-delayed decision instead of throwing.
+		const occupied = buildIndustrialBuilding(game, { tileId: tile.id, buildingTypeId });
+
+		const result = applyGameCommand(occupied, {
+			kind: 'buildIndustrialBuilding',
+			tileId: tile.id,
+			buildingTypeId
+		});
+
+		expect(result).toEqual({
+			ok: false,
+			code: 'invalid-command',
+			decisionContext: decisionContextIndustrialOccupiedTile()
 		});
 	});
 

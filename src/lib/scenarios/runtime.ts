@@ -404,11 +404,28 @@ export function applyGameCommand(
 				(store) => store.tileId === command.tileId && store.archetypeId === command.archetypeId
 			);
 		if (!opened) {
-			const appended =
-				next.decisions.length > game.decisions.length
-					? next.decisions[next.decisions.length - 1]
-					: undefined;
-			const decisionContext = appended?.kind === 'system' ? appended.context : undefined;
+			const decisionContext = appendedSystemDecisionContext(game, next);
+			return {
+				ok: false,
+				code: 'invalid-command',
+				...(decisionContext === undefined ? {} : { decisionContext })
+			};
+		}
+	}
+	if (command.kind === 'buildIndustrialBuilding') {
+		// buildIndustrialBuilding never fails loudly either: a blocked placement
+		// appends a "construction delayed" system decision (likewise unknown
+		// tile/type or missing cash). Verify the expected postcondition — one new
+		// building of the requested type on the requested tile — so a rejected
+		// build cannot masquerade as progress.
+		const built =
+			next.industrialBuildings.length === game.industrialBuildings.length + 1 &&
+			next.industrialBuildings.some(
+				(building) =>
+					building.tileId === command.tileId && building.typeId === command.buildingTypeId
+			);
+		if (!built) {
+			const decisionContext = appendedSystemDecisionContext(game, next);
 			return {
 				ok: false,
 				code: 'invalid-command',
@@ -417,6 +434,15 @@ export function applyGameCommand(
 		}
 	}
 	return { ok: true, changed: !deeplyEqual(game, next), game: next };
+}
+
+function appendedSystemDecisionContext(
+	before: GameState,
+	after: GameState
+): DecisionContext | undefined {
+	if (after.decisions.length <= before.decisions.length) return undefined;
+	const appended = after.decisions[after.decisions.length - 1];
+	return appended?.kind === 'system' ? appended.context : undefined;
 }
 
 function terminalRun(
