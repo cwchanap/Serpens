@@ -44,6 +44,8 @@
 	let sceneReady = $state(false);
 	// Consume-once bookkeeping, deliberately not reactive: a new seq counts as consumed on arrival.
 	let lastActivitySeq = untrack(() => activity.seq);
+	// Last applied pause state, non-reactive bookkeeping for the resume transition.
+	let wasPaused: boolean | undefined;
 
 	onMount(() => {
 		void startPhaser();
@@ -85,7 +87,10 @@
 	// Pause/resume the render loop with the overlay state. The game instance is
 	// created asynchronously, so this effect re-runs once it is available and
 	// applies the current paused state. `pause`/`resume` are optional-chained so
-	// tests with a stub Game do not have to implement them.
+	// tests with a stub Game do not have to implement them. On the pause→resume
+	// transition the scene's frame clock is reset first: a batch accepted before
+	// the first resumed frame must not take the stale pre-pause clock and expire
+	// without drawing.
 	$effect(() => {
 		const currentGame = game;
 		if (!currentGame) {
@@ -100,8 +105,12 @@
 		if (shouldPause) {
 			currentGame.pause?.();
 		} else {
+			if (wasPaused === true) {
+				scene?.resetFrameClock?.();
+			}
 			currentGame.resume?.();
 		}
+		wasPaused = shouldPause;
 	});
 
 	$effect(() => {

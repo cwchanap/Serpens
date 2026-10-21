@@ -2345,6 +2345,19 @@ describe('CityMapScene', () => {
 			expect(s(scene).activityPulses.size).toBe(0);
 		});
 
+		it('shows a pulse accepted after resume but before the first resumed frame', () => {
+			expect.assertions(3);
+			startWithStores([storeAt('s1', 0, 0)]);
+			scene.update(1000);
+			// Pause froze the clock at 1000; the wrapper's resume transition clears it
+			// so this accept falls back to first-draw stamping instead of expiring.
+			scene.resetFrameClock();
+			scene.showMapActivity(openedBatch(1, 's1'));
+			expect(drawFrame(62_000).rings).toEqual([FIRST_FRAME_RING]);
+			expect(drawFrame(62_600).rings).toHaveLength(0);
+			expect(s(scene).activityPulses.size).toBe(0);
+		});
+
 		it('does not re-arm an expired pulse on later renders or draws', () => {
 			expect.assertions(2);
 			startWithStores([storeAt('s1', 0, 0)]);
