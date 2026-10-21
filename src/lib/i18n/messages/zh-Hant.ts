@@ -849,7 +849,7 @@ export const zhHant = {
 		bottlenecks: {
 			missingProducer: '缺少 {materialName} 的生產者。',
 			warehouseCapacity: '倉庫容量瓶頸：溢出 {overflow} 單位；剩餘容量 {freeCapacity}。',
-			railDisconnected: '{buildingName} 需要鐵路連接才能運送 {materialName}。',
+			railDisconnected: '{buildingName} 需要鐵路連接至 {destinationName} 才能運送 {materialName}。',
 			productionCapacity: '{materialName} 的生產能力瓶頸：每天短缺 {deficit}。',
 			inventoryCover: '{materialName} 的庫存約在第 {stockoutDay} 天耗盡。',
 			importReliance: '進口依賴：30 天內需要 {materialName} {units} 單位。',
@@ -895,7 +895,7 @@ export const zhHant = {
 			buildProducer: '建設 {buildingName} 以供應 {materialName}',
 			upgradeBuilding: '將 {buildingName} 升級至第 {level} 級',
 			buildWarehouse: '在 {cityName} 建設倉庫',
-			connectRail: '為 {materialName} 連接鐵路',
+			connectRail: '為 {materialName} 從 {originName} 連接鐵路至 {destinationName}',
 			createRoute: '建立 {materialName} 路線：{originName} → {destinationName}',
 			editRoute: '編輯路線 {routeId}：{fieldName} {from} → {to}',
 			resumeRoute: '恢復路線 {routeId}',

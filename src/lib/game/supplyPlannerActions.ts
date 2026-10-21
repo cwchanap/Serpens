@@ -106,7 +106,12 @@ export type SupplyPlannerAction =
 			buildingTypeId: 'warehouse';
 			cost: number;
 	  }
-	| { kind: 'connect-rail'; buildingId: string; materialId: MaterialId }
+	| {
+			kind: 'connect-rail';
+			buildingId: string;
+			destinationBuildingId: string;
+			materialId: MaterialId;
+	  }
 	| { kind: 'create-route'; input: RecurringRouteInput }
 	| {
 			kind: 'edit-route';
@@ -326,6 +331,7 @@ function makePlan(
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: baseline.bottleneck.buildingId,
+			destinationBuildingId: baseline.bottleneck.destinationBuildingId,
 			materialId: baseline.bottleneck.materialId
 		};
 		const candidate = unchangedCandidate(baseline, action, {
@@ -1882,7 +1888,7 @@ export function actionKey(action: SupplyPlannerAction): string {
 		case 'build-warehouse':
 			return `build-warehouse:${action.cityId}`;
 		case 'connect-rail':
-			return `connect-rail:${action.materialId}:${action.buildingId}`;
+			return `connect-rail:${action.materialId}:${action.buildingId}:${action.destinationBuildingId}`;
 		case 'create-route':
 			return `create-route:${action.input.originCityId}:${action.input.destinationCityId}:${action.input.materialId}:${action.input.capacity}:${action.input.frequencyDays}:${action.input.leadTimeDays}:${action.input.transportCostPerUnit}:${action.input.priority}`;
 		case 'edit-route':

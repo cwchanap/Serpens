@@ -115,6 +115,16 @@ export interface SupplyPlannerSnapshot {
 		Record<string, readonly ReachableProcessorEntry[]>
 	>;
 	/**
+	 * Usability-blind pair-level rail evidence: sorted downstream processor
+	 * ids each specific producer can already reach by rail (directly or via
+	 * the warehouse hub), regardless of whether the processor is itself
+	 * usable. Keyed by `${buildingId}\u0000${materialId}`. Lets bottleneck
+	 * classification verify that a proposed producer→sink edge is genuinely
+	 * missing, so connect-rail advice is never issued for an edge the current
+	 * network already satisfies.
+	 */
+	railReachableProcessorIdsByBuildingAndMaterial: Partial<Record<string, readonly string[]>>;
+	/**
 	 * Total per-day input capacity of usable downstream processors that can
 	 * reach a warehouse, keyed by the upstream raw/intermediate material they
 	 * consume. City inventory is a warehouse source: a processor can only
@@ -314,6 +324,7 @@ export interface RequiredChainReachability {
 	reachableProcessorsByBuildingAndMaterial: Partial<
 		Record<string, readonly ReachableProcessorEntry[]>
 	>;
+	railReachableProcessorIdsByBuildingAndMaterial: Partial<Record<string, readonly string[]>>;
 	warehouseConnectedConsumerCapacityByMaterial: Partial<Record<MaterialId, number>>;
 	warehouseConnectedProcessorsByMaterial: Partial<
 		Record<MaterialId, readonly ReachableProcessorEntry[]>
@@ -361,7 +372,13 @@ export interface SupplyWarehouseEvidence {
 export type SupplyBottleneck =
 	| { kind: 'missing-producer'; materialId: MaterialId; chainDepth: number }
 	| { kind: 'warehouse-capacity'; overflowUnits: number; freeCapacity: number }
-	| { kind: 'rail-disconnected'; buildingId: string; materialId: MaterialId }
+	| {
+			kind: 'rail-disconnected';
+			buildingId: string;
+			/** Concrete downstream sink the rail graph says is not yet connected. */
+			destinationBuildingId: string;
+			materialId: MaterialId;
+	  }
 	| { kind: 'production-capacity'; materialId: MaterialId; deficitPerDay: number }
 	| { kind: 'inventory-cover'; materialId: MaterialId; stockoutDay: number }
 	| { kind: 'import-reliance'; materialId: MaterialId; importedUnits30: number }
@@ -530,6 +547,8 @@ export function buildSupplyPlannerSnapshot(
 		reachableDemandByBuildingAndMaterial: reachability.reachableDemandByBuildingAndMaterial,
 		reachableBranchesByBuildingAndMaterial: reachability.reachableBranchesByBuildingAndMaterial,
 		reachableProcessorsByBuildingAndMaterial: reachability.reachableProcessorsByBuildingAndMaterial,
+		railReachableProcessorIdsByBuildingAndMaterial:
+			reachability.railReachableProcessorIdsByBuildingAndMaterial,
 		warehouseConnectedConsumerCapacityByMaterial:
 			reachability.warehouseConnectedConsumerCapacityByMaterial,
 		warehouseConnectedProcessorsByMaterial: reachability.warehouseConnectedProcessorsByMaterial,
@@ -735,6 +754,7 @@ export function buildRequiredChainReachability(
 		reachableDemandByBuildingAndMaterial: reachableDemand.byBuildingAndMaterial,
 		reachableBranchesByBuildingAndMaterial: reachableDemand.byBranchesByBuildingAndMaterial,
 		reachableProcessorsByBuildingAndMaterial: reachableDemand.byProcessorsByBuildingAndMaterial,
+		railReachableProcessorIdsByBuildingAndMaterial: reachableDemand.byRailReachableProcessorIds,
 		warehouseConnectedConsumerCapacityByMaterial:
 			reachableDemand.byWarehouseConnectedConsumerCapacity,
 		warehouseConnectedProcessorsByMaterial: reachableDemand.byWarehouseConnectedProcessors
@@ -1004,6 +1024,7 @@ function computeReachableDemandByMaterial(
 	byBuildingAndMaterial: Partial<Record<string, number>>;
 	byBranchesByBuildingAndMaterial: Partial<Record<string, ReadonlyMap<MaterialId, number>>>;
 	byProcessorsByBuildingAndMaterial: Partial<Record<string, ReachableProcessorEntry[]>>;
+	byRailReachableProcessorIds: Partial<Record<string, readonly string[]>>;
 	byWarehouseConnectedConsumerCapacity: Partial<Record<MaterialId, number>>;
 	byWarehouseConnectedProcessors: Partial<Record<MaterialId, ReachableProcessorEntry[]>>;
 } {
@@ -1011,6 +1032,7 @@ function computeReachableDemandByMaterial(
 	const byBuildingAndMaterial: Partial<Record<string, number>> = {};
 	const byBranchesByBuildingAndMaterial: Partial<Record<string, Map<MaterialId, number>>> = {};
 	const byProcessorsByBuildingAndMaterial: Partial<Record<string, ReachableProcessorEntry[]>> = {};
+	const byRailReachableProcessorIds: Partial<Record<string, readonly string[]>> = {};
 	const byWarehouseConnectedConsumerCapacity: Partial<Record<MaterialId, number>> = {};
 	const byWarehouseConnectedProcessors: Partial<Record<MaterialId, ReachableProcessorEntry[]>> = {};
 	const requirementByMaterial = new Map(requirements.map((r) => [r.materialId, r]));
@@ -1103,6 +1125,26 @@ function computeReachableDemandByMaterial(
 
 			let branchReachableByAny = false;
 			for (const producer of producers) {
+				const key = producerKey(producer.building.id);
+
+				// Usability-blind rail evidence: record every branch
+				// processor this producer can already reach, even when the
+				// processor itself is unusable — classification needs this to
+				// avoid recommending an already-satisfied rail edge.
+				const railReachableIds = branchProcessors
+					.filter(
+						(processor) =>
+							canBuildingReachBuilding(context, producer.building, processor.building) ||
+							(canReachAnyWarehouse(context, producer.building) &&
+								canReachAnyWarehouse(context, processor.building))
+					)
+					.map((processor) => processor.building.id);
+				if (railReachableIds.length > 0) {
+					const merged = new Set(byRailReachableProcessorIds[key] ?? []);
+					for (const id of railReachableIds) merged.add(id);
+					byRailReachableProcessorIds[key] = [...merged].sort(compareCodeUnitStrings);
+				}
+
 				// Find the specific processors this producer can reach.
 				const reachableProcessors = branchProcessors.filter((processor) => {
 					const processorUsable =
@@ -1117,7 +1159,6 @@ function computeReachableDemandByMaterial(
 				if (reachableProcessors.length === 0) continue;
 
 				branchReachableByAny = true;
-				const key = producerKey(producer.building.id);
 				byBuildingAndMaterial[key] = (byBuildingAndMaterial[key] ?? 0) + demandFromBranch;
 				let branches = byBranchesByBuildingAndMaterial[key];
 				if (!branches) {
@@ -1161,6 +1202,7 @@ function computeReachableDemandByMaterial(
 		byBuildingAndMaterial,
 		byBranchesByBuildingAndMaterial,
 		byProcessorsByBuildingAndMaterial,
+		byRailReachableProcessorIds,
 		byWarehouseConnectedConsumerCapacity,
 		byWarehouseConnectedProcessors
 	};
@@ -1190,6 +1232,7 @@ function disconnectedReachability(
 		reachableDemandByBuildingAndMaterial: {},
 		reachableBranchesByBuildingAndMaterial: {},
 		reachableProcessorsByBuildingAndMaterial: {},
+		railReachableProcessorIdsByBuildingAndMaterial: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {}
 	};
@@ -2681,6 +2724,47 @@ function warehouseEvidence(snapshot: SupplyPlannerSnapshot): SupplyWarehouseEvid
 const CONNECTIVITY_EPSILON = 1e-9;
 
 /**
+ * Picks a deterministic missing producer→sink rail edge for a (building,
+ * material) pair from existing reachability evidence, or null when the
+ * network already satisfies every candidate edge. Candidate destinations
+ * come from the material's usable sinks; when none are recorded, from the
+ * installed downstream processors (connecting a stranded producer to an
+ * unusable processor can make it usable via the producer's warehouse
+ * access). Edges the producer already reaches — per usability-blind rail
+ * evidence — are excluded, so the returned edge is genuinely missing.
+ */
+function findMissingRailDestination(
+	snapshot: SupplyPlannerSnapshot,
+	originId: string,
+	materialId: MaterialId
+): string | null {
+	const candidates: string[] = [...(snapshot.usableSinkBuildingIdsByMaterial[materialId] ?? [])];
+	if (candidates.length === 0) {
+		if (MATERIALS[materialId]?.kind === 'finished') {
+			for (const building of snapshot.buildings) {
+				if (building.typeId === 'warehouse') candidates.push(building.id);
+			}
+		} else {
+			for (const [, recipeId] of MATERIAL_PRODUCER_RECIPES) {
+				const recipe = PRODUCTION_RECIPES[recipeId];
+				if (!recipe?.inputs.some((input) => input.materialId === materialId)) continue;
+				for (const building of buildingsForRecipe(snapshot.buildings, recipeId)) {
+					candidates.push(building.id);
+				}
+			}
+		}
+	}
+	const alreadyReachable = new Set(
+		snapshot.railReachableProcessorIdsByBuildingAndMaterial[`${originId}\u0000${materialId}`] ?? []
+	);
+	return (
+		candidates
+			.filter((candidateId) => candidateId !== originId && !alreadyReachable.has(candidateId))
+			.sort(compareCodeUnitStrings)[0] ?? null
+	);
+}
+
+/**
  * Detects a capacity deficit caused by producer→branch connectivity
  * rather than a genuine installed-capacity shortage. When total installed
  * capacity is sufficient (≥ required) but max-flow usable capacity is
@@ -2697,7 +2781,7 @@ function findConnectivityDeficit(
 	snapshot: SupplyPlannerSnapshot,
 	materials: readonly SupplyMaterialProjection[],
 	allocations: Partial<Record<MaterialId, BranchAllocationResult>>
-): { buildingId: string; materialId: MaterialId } | null {
+): { buildingId: string; destinationBuildingId: string; materialId: MaterialId } | null {
 	const usableIds = new Set(snapshot.usableBuildingIds);
 
 	// Compute the buildingsForRecipe/usable pair once per material — both
@@ -2792,10 +2876,14 @@ function findConnectivityDeficit(
 						producerEntries.filter((e) => e.branchId === branchId).map((e) => e.processorId)
 					);
 					// If the producer can't reach all usable processors for
-					// this branch, it's stranded by rail topology.
-					if (![...branchProcessorIds].every((id) => reachableForBranch.has(id))) {
+					// this branch, it's stranded by rail topology — name the
+					// first unreachable processor as the destination.
+					const missingProcessorId =
+						branchProcessorIds.find((id) => !reachableForBranch.has(id)) ?? null;
+					if (missingProcessorId !== null) {
 						return {
 							buildingId: allocation.producerIds[pi]!,
+							destinationBuildingId: missingProcessorId,
 							materialId: material.materialId
 						};
 					}
@@ -2807,8 +2895,14 @@ function findConnectivityDeficit(
 						];
 					const canReachBranch = branches?.has(branchId);
 					if (!canReachBranch) {
+						const destination = computeBranchProcessorIds(snapshot, branchId, usableIds)[0];
+						// Without any usable processor for the branch there is
+						// no viable rail edge — leave the deficit to the
+						// truthful non-rail classification.
+						if (destination === undefined) continue;
 						return {
 							buildingId: allocation.producerIds[pi]!,
+							destinationBuildingId: destination,
 							materialId: material.materialId
 						};
 					}
@@ -2821,22 +2915,22 @@ function findConnectivityDeficit(
 }
 
 /**
- * Returns the set of usable processor building IDs that produce the given
- * downstream material (branch). Used by findConnectivityDeficit to check
- * whether a producer can reach all processor instances in an unsatisfied
- * branch.
+ * Returns the usable processor building IDs that produce the given
+ * downstream material (branch), sorted by id. Used by findConnectivityDeficit
+ * to check whether a producer can reach all processor instances in an
+ * unsatisfied branch and to pick a concrete missing destination.
  */
 function computeBranchProcessorIds(
 	snapshot: SupplyPlannerSnapshot,
 	branchId: MaterialId,
 	usableIds: Set<string>
-): Set<string> {
+): string[] {
 	const recipeId = MATERIAL_PRODUCER_RECIPES.get(branchId);
-	if (!recipeId) return new Set();
+	if (!recipeId) return [];
 	const processors = buildingsForRecipe(snapshot.buildings, recipeId).filter((b) =>
 		usableIds.has(b.id)
 	);
-	return new Set(processors.map((b) => b.id));
+	return processors.map((b) => b.id).sort(compareCodeUnitStrings);
 }
 
 function primaryBottleneck(
@@ -2886,18 +2980,30 @@ function primaryBottleneck(
 			}
 		}
 	}
-	const disconnectedCandidate = disconnectedCandidates.sort(
+	disconnectedCandidates.sort(
 		(left, right) =>
 			right.material.chainDepth - left.material.chainDepth ||
 			compareCodeUnitStrings(left.material.materialId, right.material.materialId) ||
 			compareCodeUnitStrings(left.buildingId, right.buildingId)
-	)[0];
-	if (disconnectedCandidate) {
-		return {
-			kind: 'rail-disconnected',
-			buildingId: disconnectedCandidate.buildingId,
-			materialId: disconnectedCandidate.material.materialId
-		};
+	);
+	for (const candidate of disconnectedCandidates) {
+		// Only recommend a rail connection for a genuinely missing edge; a
+		// disconnected candidate with every candidate edge already satisfied
+		// cannot be fixed by rail, so try the next candidate (or fall
+		// through to the truthful non-rail bottleneck below).
+		const destination = findMissingRailDestination(
+			snapshot,
+			candidate.buildingId,
+			candidate.material.materialId
+		);
+		if (destination !== null) {
+			return {
+				kind: 'rail-disconnected',
+				buildingId: candidate.buildingId,
+				destinationBuildingId: destination,
+				materialId: candidate.material.materialId
+			};
+		}
 	}
 
 	const reachabilityGap = [...materials]
@@ -2915,15 +3021,26 @@ function primaryBottleneck(
 				compareCodeUnitStrings(left.materialId, right.materialId)
 		)[0];
 	if (reachabilityGap) {
-		const origin = buildingsForMaterial(snapshot, reachabilityGap.materialId)
+		const origins = buildingsForMaterial(snapshot, reachabilityGap.materialId)
 			.filter((building) => snapshot.usableBuildingIds.includes(building.id))
-			.sort((left, right) => compareCodeUnitStrings(left.id, right.id))[0];
-		if (origin) {
-			return {
-				kind: 'rail-disconnected',
-				buildingId: origin.id,
-				materialId: reachabilityGap.materialId
-			};
+			.sort((left, right) => compareCodeUnitStrings(left.id, right.id));
+		for (const origin of origins) {
+			// The gap means some downstream branch is unserved by rail; only
+			// recommend an origin when a concrete missing edge to a sink
+			// still exists.
+			const destination = findMissingRailDestination(
+				snapshot,
+				origin.id,
+				reachabilityGap.materialId
+			);
+			if (destination !== null) {
+				return {
+					kind: 'rail-disconnected',
+					buildingId: origin.id,
+					destinationBuildingId: destination,
+					materialId: reachabilityGap.materialId
+				};
+			}
 		}
 	}
 
@@ -2937,6 +3054,7 @@ function primaryBottleneck(
 		return {
 			kind: 'rail-disconnected',
 			buildingId: connectivityDeficit.buildingId,
+			destinationBuildingId: connectivityDeficit.destinationBuildingId,
 			materialId: connectivityDeficit.materialId
 		};
 	}
