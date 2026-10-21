@@ -1,119 +1,101 @@
-# HPA-502 — Headless Balance Harness & Sandbox Pacing Design
+# HPA-502 — Headless Sandbox Balance Harness Design
 
 **Linear:** https://linear.app/cwchanap/issue/HPA-502/balance-measure-and-tune-sandbox-pacing-with-a-headless-balance  
-**Parent:** HPA-534  
-**Status:** proposed design; this PR contains planning documents only  
-**Code baseline:** Serpens `main` reviewed on 2026-10-20 (including HPA-295; latest inspected commit `e4f2bf7`)
+**Roadmap:** HPA-534 · **PR:** #65 · **Status:** revised design, planning only  
+**Reviewed baseline:** Serpens main at `27fc3fa`, with feedback on PR #65
 
-## Outcome and delivery boundary
+## Goal and boundaries
 
-Make long-term Serpens economy behavior reproducible, fix pacing problems supported by measured evidence, and re-calibrate the existing challenge scenarios **in the same HPA-502 implementation PR**. The implementation will have a human readiness gate after the measured baseline and before tuning, but **not** a second issue or PR.
+Measure deterministic multi-seed sandbox behavior; correct existing gameplay defects affecting stock, forecasts and supply recommendations; tune the same economy used by players; recalibrate the three launch scenarios. Keep **all design, implementation, baseline measurement, Gate A approval, tuning, tests and final reports in HPA-502 / PR #65**.
 
-Player-visible consequences are corrected numbers and reliable advisor recommendations, not new UI or mechanics. Preserve deterministic state transitions, the existing save model and scenario runtime, and the three-language forecast presentation.
+No new mechanics, persistence fields, save migrations, UI panels, services, scenario packs, AI/search bots, or art/SFX. Engine transitions remain the sole authority. The review's one-seed scratch figures are diagnostic leads, **not** the accepted baseline.
 
-## Verified current-code facts
+## Verified facts and review decisions
 
-- `createNewGame(archetypeId, seed)` in `src/lib/game/state.ts` constructs deterministic retail and industry cities, staffing, finance and competitors. Its optional default is `Date.now()`; the harness must **always pass a seed**. `createFoundingGameAtTile({ archetypeId, city, tileId, seed })` in `placement.ts` builds the founding state from a legal tile.
-- `forecastOpening(tile, archetypeId)` is a separate heuristic, currently `(baseTraffic * 7 + demand * 10 + footTraffic * 6) * fit / 100`. It reports `tile.rent` as projected daily rent, while `simulateDay.ts` currently computes per-store operating cost from archetype `baseRent * 0.92` plus marketing cost; tile rent influences setup cost.
-- `simulateDay(game)` applies existing replenishment, production, transfer, finance, market and event systems; advances the day and appends a `DailyReport` to `game.reports`. Retail replenishment is every seven closing days (`REPLENISHMENT_INTERVAL_DAYS = 7`).
-- `DailyReport` already supplies `operatingIncome`, `operatingCashFlow`, `netCashChange`, `cashAfter`, `outstandingPrincipalAfter`, `storeReports`, and `productionReport`. Product reports supply `unitsSold`, `demandMissed`, `endingStock`, `wasteUnits` and `wasteValue`. No new persistence fields are needed.
-- `summarizeReports` in `reports.ts` produces seven- and thirty-day windows, but accepts partial windows. The harness must demand a **full** window before declaring a positive-window milestone.
-- The scenario dispatcher in `src/lib/scenarios/runtime.ts` is private, applies scenario capability rules, and wraps outcomes in `ScenarioRun`. `startScenario` also creates a random run UUID. Reusing that runtime as the sandbox harness would add unrelated ceremony and non-reportable randomness.
-- `buildSupplyPlan(game, request, availability)` in `supplyPlannerActions.ts` returns a ready plan or an unavailable result. Its `connect-rail` action carries `buildingId` and `materialId`, **not** a destination or a route. `buildRailPreview` and `buildRail` in `railPlacement.ts` are the command authority. They reject a fully existing connection.
-- Current scenario calibration tests in `src/lib/scenarios/runtime.spec.ts` pin no-action First Profit **Gold on day 4**, Import Squeeze Bronze on day 18, and Local Lifeline failure on day 21. The current Import Squeeze reference trace reaches **Silver**, not Gold. The requested no-action-below-Silver and reference-Gold target therefore requires **all affected launch calibration assertions and possibly definitions**, not just Import Squeeze.
-- The normal Vitest projects collect `src/**/*.{spec,test}.{ts,js}` and apply a 10 s test timeout. Codecov enforces 90% for new source. A long sweep cannot live under `src/..spec.ts`.
+1. `stock.ts:296` builds a **city-wide** demand pool from the average of buildable tiles. `simulateProductSalesForCity` allocates that pool via market share/seller scores, policy and price, caps sales by capacity and available stock, then replenishes on the seven-day cadence. `forecastOpening` instead uses tile-local demand/foot traffic, so simply changing its coefficients cannot reliably track realized sales. A scratch probe reports 1,229–2,428 projected vs 41/day actual across five convenience locations in seed 20260503; reproduce this, do not generalize one seed.
+2. `managerDelegation.ts:202`'s `protect-availability` playbook increments both inventory targets whenever missed demand persists; `increaseStockValue` is `max(value + 1, ceil(value * 1.1))` with **no demand-based cap**. An observed target of 543,495 by day 90 is a one-seed probe only. Retail-steady must use this *actual player action* rather than a bot-only stock formula. Fix the unbounded behavior in the production playbook **after Gate A**.
+3. `src/lib/scenarios/runtime.ts:218` already dispatches scenario commands to real engine transitions and `executeScenarioCommand` interprets failures. Only `startScenario` requires a random UUID/scenario lifecycle. Reuse the **definition-free command application**, not the scenario runner or a second `BalanceAction` adapter. The existing command evaluator may misclassify a failed `openStoreAtTile` as successful because it appends a system decision; add semantic postcondition checking once, for both callers.
+4. Rail diagnosis happens in `src/lib/game/supplyPlanner.ts`, not just `supplyPlannerActions.ts`. `primaryBottleneck` can select a globally usable producer for a reachability/branch deficit. That producer may be connected to *one* sink while lacking a connection to *another*: **global “usable” is not proof that a specific producer→sink edge is satisfied**. Identify a concrete missing producer–destination connection, or return a truthful non-rail bottleneck. Reuse the existing reachability graph; do not create a bot-side sink/pathfinder.
+5. `createRetailPlacementPreview` and `getRetailBuildMenuOptions` accept `game: GameState | null`. A richer game-aware forecast **must not break pre-founding/no-game previews**. Replace setup-cost-only `forecastOpening(...).setupCost` calls with `getExpansionSetupCost`, and explicitly handle null game context for projected ranges. The UI currently assumes a synchronous projection; no hidden Monte Carlo simulator.
+6. Only convenience starts with bottled water (see `archetypes.ts`). The advisor-follower bot only covers convenience; all four archetypes get idle and retail-steady runs.
+7. Existing tests run in Vitest: the server project includes `src/**/*.{test,spec}.{js,ts}`; coverage includes `src/**/*.{ts,svelte}`. Put the harness under `tests/balance/` and add its `*.spec.ts` glob to the existing server-project include. `.svelte-kit/tsconfig.json` is generated/untracked; verify after `bun run prepare` that it includes `tests/**/*.ts` as reported in review and that `bun run check` type-checks the harness. If not, make a minimal fix *then*, rather than prespecifying a second runner/tsconfig/CI job.
+8. Scenario runtime tests currently pin First Profit **no-action Gold day 4**, while Import Squeeze's reference wins only **Silver**. Recalibration must enforce no-action below Silver and real documented reference Gold for all three, on official seeds; versions remain `1`.
 
-The Linear issue's initial observations were from a **throwaway probe** at `200bc7b`. They are hypotheses to reproduce, **not accepted baseline numbers**.
+## Lean implementation architecture
 
-## Minimal architecture
+```text
+tests/balance/
+  run.ts          Bun CLI, optional --seeds/--days/--bots/--output
+  bots.ts         idle, delegated retail-steady, convenience advisor
+  measure.ts      pure report metrics + deterministic JSON/Markdown
+  *.spec.ts       normal server Vitest (10 s small fixtures only)
 
-Use a self-contained tool under `scripts/balance/` with `bun run balance` for the CLI and **mandatory** `bun run balance:test` (`bun test scripts/balance/`) for the scoped deterministic regression suite. Keep it outside `src/`, regular Vitest discovery and Codecov coverage automatically; do not edit `vite.config.ts` or `codecov.yml` solely to exclude it. Wire `bun run balance:test` into `.github/workflows/ci.yml`'s existing `unit-tests` job; the full sweep remains local-only. CI currently skips draft PRs, so the tests will execute there once the PR is ready (and can be run locally during planning).
+src/lib/scenarios/runtime.ts       extracted applyGameCommand + command outcomes
+src/lib/game/supplyPlanner.ts      paired rail diagnosis + destination
+src/lib/game/supplyPlannerActions.ts
+src/lib/game/managerDelegation.ts  bound availability playbook
+src/lib/game/placement.ts          game-aware, stock-aware forecast
+src/lib/game/simulateDay.ts        shared recurring-rent calculation
+```
 
-Type-check the harness explicitly: add a small `tsconfig.balance.json` extending the root `tsconfig.json`, with `include: ["scripts/balance/**/*.ts"]`, and a `balance:check` script running `tsc --noEmit -p tsconfig.balance.json`. Run `bun run balance:check` in the existing CI `unit-tests` job alongside `balance:test`. The root `tsconfig.json` extends SvelteKit's generated config, whose `include` covers app files; **do not** replace the root `include` with only `scripts/**/*.ts`, which could silently drop SvelteKit files. One dedicated TS project is the smallest safe type-check boundary; it does not add an engine module or runtime layer.
+One new `package.json` command, e.g. `balance: bun tests/balance/run.ts`. One server test glob added to `vite.config.ts`. **No new CI steps**, separate typecheck config, Bun test runner, Codecov exclusions or benchmark framework.
 
-Proposed small files, merged if easier to maintain:
+### Command execution: reuse, don't fork
 
-- `scripts/balance/run.ts` — CLI argument parsing, seed/archetype/bot matrix, deterministic output to requested directory.
-- `scripts/balance/simulator.ts` — founding helper, day loop, action execution, event/metric recorder.
-- `scripts/balance/bots.ts` — three explicit rule lists; no class hierarchy, search algorithm, agent framework or strategy DSL.
-- `scripts/balance/report.ts` — metric projection, stable JSON serialization, compact Markdown aggregation.
-- `scripts/balance/*.test.ts` — targeted reproducibility, command/no-op and metric tests.
-- `tsconfig.balance.json`, `package.json`, and `.github/workflows/ci.yml` — minimal build/test wiring; two package commands and two CI unit-job steps, without touching application Vitest/coverage configuration.
+Extract the private scenario dispatcher + normalization into an exported, definition-free `applyGameCommand(game, command: ScenarioCommand, rules?)` *in the existing runtime module*, called by both the scenario evaluator and the balance harness. It returns game plus applied/unchanged/rejected evidence; preserve the existing scenario error mapping and capability checks at their current caller boundary. `advanceDay` accepts explicit simulation rules only where the caller supplies them. It must detect a failed store opening via actual store count and expected tile/archetype, even when a system decision was appended. Avoid a separate command abstraction or `ScenarioRun` dependency.
 
-Do **not** move generic engine transitions out of `src/lib/game`, export the scenario-specific dispatcher, add engine hooks, extend `GameState`, store harness metadata in save files or create a second simulation model.
+A one-time bot setup call to `setManagerDelegation` uses the actual exported game transition directly. Do not add scenario command kinds or broaden scenario capabilities solely for the harness.
 
-### Setup and action dispatch
+### Bots and matrix
 
-1. For every `(seed, archetype, bot)`, call `createNewGame(archetype, seed)` to obtain the generated city, select the legal founding tile with the highest `forecastOpening(...).projectedDailyRevenue` (tie-break by tile id), and call `createFoundingGameAtTile` with the **same seed and generated city**. Record the forecast before the opening. A seed sweep intentionally uses different generated worlds; the normal sandbox UI still uses its fixed default seed.
-2. Use one small `executeBalanceAction(game, action)` adapter for exactly the actions the bots need: update stock targets, hire and assign staff, open a store, build/upgrade industry, connect rail, and advance day. Each case delegates to the authoritative `src/lib/game` transition.
-3. Normalize into `{ game, outcome: 'applied' | 'unchanged' | 'rejected', reason? }`. A decision appended by a failed `openStoreAtTile` is **rejected**, not a successful opening; a returned unchanged game or `{ok:false}` is not successful either. Record attempted action kind/key, opening/rail postconditions and any rejection as run-local evidence. Do not silently count a no-op as progress. Reuse `deeplyEqual` only where appropriate for value-equivalent transitions.
-4. Keep bot choice deterministic: stable sort by ids, explicit tie breaks, no unseeded RNG, wall clock, UUID, process timings, localized text or nondeterministic map iteration in emitted reports. Bots may advance the engine RNG legitimately when they perform different real actions; compare across seeds, not by pretending different strategies consume identical RNG streams.
+- **Idle:** found a store and advance days with no actions; compare against active operation instead of requiring artificial early bankruptcy.
+- **Retail steady:** enable a `protect-availability` manager delegation on an actual qualified manager, give it inventory authority, then hire/assign staff for genuine shortages and expand only with real legal placement/cash checks. The bot must not invent a private reorder formula or override the playbook's targets. Measure baseline *with the original uncapped playbook*, then apply the production cap after Gate A; this is the primary baseline/after comparison.
+- **Advisor follower:** convenience-only retail steady plus a single weekly `buildSupplyPlan` call for bottled water. The revised `connect-rail` action carries both `buildingId` and a verified `destinationBuildingId`. Use `buildRailPreview` then the real command; report blocked/unchanged outcomes, do not search sinks in bot code. Unsupported logistics advice is recorded, never treated as fulfilled.
 
-### Three explicit bots
+Run a default deterministic **50-seed × 365-day** matrix for four archetypes × idle/steady and convenience × advisor; permit reduced debug sweeps via flags. Fix a documented 50-seed sequence (including 20260503). Never use implicit `Date.now()`. **Founding tile selection is a fixed, forecast-independent rule:** among legal tiles choose maximum `tile.demand + tile.footTraffic`, then lowest tile id. This rule stays identical before/after changing the forecast; later expansions may use the new forecast.
 
-- **Idle:** legal founding store, then `simulateDay` only. This is a negative-control calibration, not the target profitable strategy.
-- **Retail steady:** maintain sensible `targetStock` and `reorderThreshold` from real demand/weekly replenishment, hire/assign only to satisfy actual role shortages, and open another store only when the legal placement preview, the forecast, cash and store cap permit it. No hidden cash injection, finance shortcut or forced outcomes. Use stable candidate and tile ordering.
-- **Advisor follower:** start with retail-steady basics; on one fixed day each week call `buildSupplyPlan` for an explicitly selected bottled-water product/category with availability matching the bot's supported operations. Apply producer/warehouse/upgrade/rail actions through the real transitions, picking legal industry tiles using `createIndustryPlacementPreview`. For rail, enumerate installed downstream consumer/warehouse candidates deterministically, use `buildRailPreview` with those actual endpoints and `waypoints: []`, then commit only a viable novel path. Unsupported inter-city route actions remain reported as unsupported; do not secretly perform them or add logistics-bot scope to this ticket.
+### Forecast: use the real demand model
 
-If no rail destination can be identified, report the blocked step instead of fabricating a connection. A repeat of the same recommendation that cannot change the intended domain outcome is a stall. Fix the **planner's** false recommendation separately; do not hide it with a bot-level ignore list.
+Replace the tile-local revenue heuristic with a **game-aware, deterministic projection** grounded in the engine's actual city demand pool, effective market/seller share and policies, available starting products, inventory target divided by `REPLENISHMENT_INTERVAL_DAYS`, store capacity and actual effective selling prices. Use the existing pure demand/market helpers where possible and extract only a narrow pure helper if needed; do not call `simulateDay` or duplicate its full tick.
 
-### Measurements and denominator rules
+The projection must be **per candidate store**, not the current *total* company demand returned by `getPolicyAdjustedCityProductDemand`. City-level demand can be computed once per preview/archetype and reused for valid tiles; do not make repeated expensive cloning/policy calculations per tile. The pre-founding `game: null` preview remains a supported, tested path: explicitly choose the smallest deterministic way to supply its generated city and founding store context (or adjust the API at the preview boundary), with no invented/random seed and no unhandled null. Favor `forecastOpening(game, tile, archetypeId)` where game context is available; change signature as needed rather than preserving a misleading public shape.
 
-Collect incremental, run-local observations while processing real daily reports; avoid serializing the full evolving `GameState` or all 365 daily reports into the committed baseline.
+Replace setup-cost-only forecast calls with `getExpansionSetupCost`, including current call sites/tests. Extract the existing actual base recurring rent calculation from `simulateDay` and use it for `projectedDailyRent`. **Do not charge tile.rent every day** merely to fix the label; district rent already influences setup cost. Keep EN/JA/zh-Hant copy aligned if meaning changes. Validate the new projection against first-14-day realized store revenue, per completed opening and district, rather than only an aggregate median.
 
-| Metric | Contract |
-| --- | --- |
-| Positive 7/30-day window | First completed day with **7/30 actual reports** and **positive summed `operatingIncome`**; also display operating cash flow and net cash change for diagnosis, but do not conflate loan proceeds with profit |
-| Negative cash / minimum cash | First day `cashAfter < 0`, plus minimum observed cash (include founding cash); never treat opening principal as operating profit |
-| Checkpoints | Cash, outstanding debt, store count and store levels at days 30/60/90/180/365 when the run reaches them |
-| Missed demand | `sum(demandMissed) / sum(unitsSold + demandMissed)` across recorded product-days; mark denominator-zero as `null` |
-| Stockout share | Product-days with `endingStock === 0` divided by all active product-days; separate from missed demand and from stock-health percentage |
-| Waste | Sum `wasteUnits` and `wasteValue` from product reports; avoid counting `inventoryLossExpense` twice |
-| Forecast error | For each new store, snapshot forecast on its actual opening tile/archetype and compare to the **first 14 completed operating days** of that store's revenue. Return null/incomplete instead of using a shorter period |
-| Advisor stall | Same actionable `actionKey` recommended on subsequent weekly checks after an unchanged/rejected attempt, with a recorded reason; also flag buildings whose authoritative `status` stays `stalled` for 7 consecutive completed days |
-| Summary | By bot and archetype: number of seeds passing each target, median and meaningful low/high values; stable machine-readable failures and a short Markdown narrative |
+### Rail: fix classification + destination once
 
-Use reports rather than intermediate product stock snapshots for post-day evidence. Track store opening days in a **runner-local ledger**. Record attempted actions separately from daily report figures.
+Make `SupplyBottleneck` / `SupplyPlannerAction`'s `connect-rail` contain the specific reachable or potentially routable `destinationBuildingId` chosen by the graph. For *each candidate producer/sink pair*, ensure that the current rail network does not already satisfy that edge and that the recommendation is actionable using the authoritative rail preview; if no viable missing edge remains, fall through to the real bottleneck (`production-capacity`, `import-reliance`, etc.), not another `connect-rail`. A producer attached to a warehouse may still be disconnected from a particular downstream processor: preserve the multi-branch case.
 
-### Modes, reproducibility and output
+Fix with TDD **before implementing the harness**. This is a production **correctness fix**, not economic-constant tuning. Baseline measurements are taken on this repaired planner, and the baseline report must explicitly disclose that; do not compare advisor results against an unrepaired planner without labeling the difference. Update related planner UI/action-key consumers and tests as required, without a new UI system.
 
-- `bun run balance --mode quick [--output <dir>]`: fixed 3 seeds including 20260503, representative archetypes and all 3 bots over 120 days; intended for local regression, **not** mandatory CI (the focused scoped `balance:test` suite runs in CI).
-- `bun run balance --mode full [--output <dir>]`: fixed documented 50-seed set × all 4 archetypes × all 3 bots over 365 days. No CI requirement for a full sweep.
-- Support an explicit `--seeds`, `--days` and `--bots` override for debugging; reject invalid inputs, never substitute `Date.now()`.
-- Stable, version-tagged, sorted JSON with input parameters, per-run metrics, action outcomes and aggregate summaries; corresponding Markdown renders those same values. No timestamps, file paths, benchmark durations, random IDs, locale-dependent number formatting or volatile commit SHA in deterministic files.
-- `docs/balance/baseline.json`, `baseline.md`, `after.json` and `after.md` are committed artifacts from the same fixed full matrix; add a concise `tuning-changelog.md`. Keep per-day traces opt-in/debug-only to avoid enormous diffs.
-- Two runs with the same config and same source revision must produce byte-identical JSON and Markdown, verified with a file-byte/hash comparison test.
+### Manager: cap player-visible behavior, after Gate A
 
-### Readiness gate and target policy
+After baseline approval, cap `protect-availability`'s proposed `targetStock` and `reorderThreshold` using **observed recent demand over a replenishment interval**, subject to a small documented safety margin and meaningful hysteresis; do not reset to a fixed magic number or permit 10% daily compounding indefinitely. Preserve `reorderThreshold <= targetStock`, idempotence at the cap, and stock availability semantics. Test with pressure over 90 days, multiple products and no-demand observations. This is a production fix, not bot policy.
 
-**Gate A: measurements before tuning.** Commit baseline artifacts, reproduction commands, runtime cost observations and proposed target thresholds to the **same branch and draft PR**. Request explicit sign-off in its discussion before changing economic constants. This does not split HPA-502 into separate PRs.
+## Measurement and evidence
 
-**Proposed thresholds, subject to Gate A:** retail steady has a positive full 30-day operating-income window by day 30 on seed 20260503 and on at least 80% of sweep seeds, with nonnegative cash for its first 90 days; first-14-day opening forecasts are within ±25% of actual average revenue **per completed opening**, with a reported percentage of openings in range and breakdowns by archetype and district (agree the required coverage percentage at Gate A); advisor follower completes a real bottled-water local chain without stalls. Use **idle as a comparative negative control**: measure its 45/90-day cash, profit windows and viability against retail steady, and decide at Gate A what meaningful disadvantage idle should exhibit. The initial probe shows idle cash negativity around day 60–120, so mere survival through day 45 is too weak; do not impose an arbitrary bankruptcy-by-day-30 condition just to make idle worse. Capture per-archetype breakdowns and sample counts to avoid hiding failures in an aggregate.
+Compute metrics in **one pure `measureRun(game, openingLedger)` after simulation** from existing `game.reports`, which already retains daily history; do not add an incremental recorder or persistent fields. Keep only a small runner-local store-opening ledger and action/rejection observations.
 
-Do not silently loosen targets to fit the baseline. If data proves a threshold inappropriate, document the tradeoff and obtain sign-off **before** tuning.
+- First positive **full** 7- and 30-day *`operatingIncome`* windows; show operating cash flow separately and never count loan proceeds as profit.
+- First negative `cashAfter` day, minimum cash including founding cash, and cash/debt/store levels at days 30, 60, 90, 180, 365.
+- Missed-demand ratio = sum missed / sum(missed + sold); stockout share = product-days ending at zero / active product-days; sum `wasteUnits` and `wasteValue`; use `null` for missing denominators.
+- Forecast error per opening using that store's *14 complete days* after founding/expansion, with in-range fraction (±25%) per archetype/district; short observations are incomplete, not passes.
+- Repeated weekly no-op advisor recommendation and 7 consecutive stalled production days, with command outcome and reason.
 
-### Tuning boundaries, prioritized by evidence
+The CLI writes deterministic JSON + Markdown locally under `--output`; commit only concise, reproducible **`docs/balance/baseline.md`, `after.md` and `tuning-changelog.md`**. Include seeds/config, sample counts, thresholds, per-archetype results and reproduction commands. Do not maintain versioned serialized report schemas or commit large JSON datasets. Assert determinism by running the same config twice and comparing **the serialized outputs byte-for-byte** in a focused Vitest test (no filesystem hash machinery). Reports contain no timestamps, UUIDs, machine paths or durations.
 
-1. **Fix truthful opening forecasts.** Prefer a light, explainable correction tied to the demand/stock/capacity the real engine can serve, not a second daily simulator embedded in `forecastOpening`. Resolve the `projectedDailyRent` discrepancy **by default with a truthful projected value/label** using existing archetype recurring costs; only consider a new district-rent-driven daily charge if Gate A evidence and a separate gameplay rationale justify changing every store's and scenario's recurring economy. Check labels across EN, JA and zh-Hant when user-facing meaning changes.
-2. **Make intentional retail operation viable.** Tune existing stock defaults, replenishment cadence, pricing/economic multipliers, payroll and operating costs as needed. Do not make idle play optimal.
-3. **Fix already-satisfied rail recommendation.** At the `rail-disconnected` planner branch, verify the actual rail connectivity/usable sink before recommending `connect-rail`; use existing graph/path helpers and never recommend a connection that `buildRailPreview` reports as already connected. A focused regression recreates pump → bottler and pump → warehouse.
-4. **Scale actual production buffers if measured stalls justify it**, consistently with existing level throughput.
-5. Keep changes to existing gameplay formulas and constants; no new mechanics or save fields.
+### Gate A: mandatory pause before economics
 
-### Scenario regression and pre-release policy
+Measure the unchanged economy first (with only the labeled rail correctness repair), then review per-archetype results and agree thresholds **in this same draft PR**. Proposals: retail steady positive full 30-day operating-income window by day 30 on fixed seed and >=80% of other sweep seeds; nonnegative cash through first 90 days; ±25% *per-opening* revenue error with a coverage percentage to approve; no stalls in the convenience advisor; idle must be meaningfully less effective than managed operation, judged comparatively rather than by a new arbitrary failure day.
 
-After tuning, rerun the three existing scenarios with their **official seeds** and real command traces. Preserve the existing command/evaluation pipeline. Recalibrate thresholds, start setup, medal score boundaries or reference actions as the evidence requires, so **every no-action run earns below Silver** and each documented reference trace earns **Gold** (including Import Squeeze). These are acceptance criteria, **not** invitations to weaken/remove the tests. Keep scenario version **1** and replace obsolete expected score/day values in tests: pre-release scores are not backward-compatible contracts.
+**Do not fix the unbounded manager playbook, adjust forecast formula or tune constants before measuring and approving Gate A.** One-seed scratch probes establish hypotheses, not targets.
 
-Only change scenario text when values or outcome messaging become inaccurate; update EN/JA/zh-Hant together. Do not introduce new scenarios, new goals, or migrate persisted runs.
+## Scenario calibration and verification
 
-## Verification
+Economy edits and launch scenario calibration are **interleaved** after Gate A: the current `runtime.spec.ts` pins exact scores/days, which will become obsolete. Replace those pins with outcome and medal **behavioral contracts** after checking the official traces: every no-action run below Silver, every documented reference trace Gold, all three scenarios, without weakening gameplay intent. Rerun the launch traces after each tuning commit. Maintain version `1` and update translated content if facts change.
 
-- Harness unit checks (mandatory `bun run balance:test` in CI, scoped to `scripts/balance/`): same seed/bot/config => byte-identical output; distinct seeds produce distinct generated worlds; full-window positivity waits until 7/30 observations; denominator-zero/null; store first-14-day attribution; invalid commands/decision append/railAlreadyConnected count as failed progress; fixed advisor weekly cadence. Mandatory `bun run balance:check` verifies harness TypeScript independently from `bun run check`.
-- Game unit checks: planner stops recommending already-connected rail; forecast matches actual calibrated range; stocking/finances/production unchanged outside intended tuning.
-- Scenarios: all no-action below Silver, all documented reference runs Gold with real transitions; full runtime and catalog validation.
-- Run before PR ready: `bun run check`, `bun run balance:check`, `bun run lint`, `bun run test:unit -- --run`, `bun run balance:test`, local quick/full sweeps with deterministic report verification, `retail-sim.e2e.ts` and scenario flow E2E tests.
-- Acceptance files show baseline versus after on the same config, with target status and precise exceptions.
+CI remains the existing `bun run check`, `bun run lint` and `bun run test:coverage`, with harness specs picked up by the server Vitest project's single new include glob. Run the full matrix locally twice and compare output bytes; run the affected Playwright scenario and retail tests before marking the single PR ready. No new CI jobs/steps and no full sweep in CI.
 
-## Explicit exclusions
+## Exclusions
 
-No bankruptcy or closing mechanics, UI panel, save schema change, telemetry, headless browser, alternate game engine, AI/search bots, new audio/art, backend, compatibility migrations, or scenario pack/progression work belonging to HPA-511/HPA-318.
+No bankruptcy/closure system, additional challenge scenarios, sandbox goal ladder, new analytics backend, graphics, telemetry, save migration, separate PR or task split.
