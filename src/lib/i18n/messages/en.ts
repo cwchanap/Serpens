@@ -862,7 +862,8 @@ export const en = {
 			missingProducer: 'Missing producer for {materialName}.',
 			warehouseCapacity:
 				'Warehouse capacity bottleneck: {overflow} overflow units; {freeCapacity} free capacity.',
-			railDisconnected: 'Rail connection required for {buildingName} to move {materialName}.',
+			railDisconnected:
+				'Rail connection required for {buildingName} to reach {destinationName} and move {materialName}.',
 			productionCapacity: 'Production capacity bottleneck for {materialName}: {deficit}/day short.',
 			inventoryCover:
 				'Inventory cover reaches stockout around day {stockoutDay} for {materialName}.',
@@ -911,7 +912,7 @@ export const en = {
 			buildProducer: 'Build {buildingName} for {materialName}',
 			upgradeBuilding: 'Upgrade {buildingName} to level {level}',
 			buildWarehouse: 'Build warehouse in {cityName}',
-			connectRail: 'Connect rail for {materialName}',
+			connectRail: 'Connect rail from {originName} to {destinationName} for {materialName}',
 			createRoute: 'Create {materialName} route: {originName} → {destinationName}',
 			editRoute: 'Edit route {routeId}: {fieldName} {from} → {to}',
 			resumeRoute: 'Resume route {routeId}',

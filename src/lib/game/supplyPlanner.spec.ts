@@ -16,6 +16,7 @@ import {
 	getPolicyDemandMultiplier
 } from './stock';
 import { createNewGame } from './state';
+import { buildRailPreview } from './railPlacement';
 import {
 	buildRequiredChainReachability,
 	buildSupplyMaterialRequirements,
@@ -110,6 +111,7 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 		reachableDemandByBuildingAndMaterial: {},
 		reachableBranchesByBuildingAndMaterial: {},
 		reachableProcessorsByBuildingAndMaterial: {},
+		railReachableProcessorIdsByBuildingAndMaterial: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {},
 		...overrides
@@ -789,7 +791,13 @@ describe('supply planner snapshot', () => {
 				freeCapacity: 100,
 				overflowUnits: 0
 			},
-			bottleneck: { kind: 'rail-disconnected', buildingId: 'grain-farm-1', materialId: 'grain' },
+			bottleneck: {
+				kind: 'rail-disconnected',
+				buildingId: 'grain-farm-1',
+				// The farm already reaches mill-a; mill-b is the missing edge.
+				destinationBuildingId: 'flour-mill-b',
+				materialId: 'grain'
+			},
 			limitations: [
 				{ kind: 'rail-capacity-not-modeled' },
 				{ kind: 'store-sales-capacity-not-modeled' }
@@ -2256,6 +2264,8 @@ describe('supply planner snapshot', () => {
 		if (projection.bottleneck.kind === 'rail-disconnected') {
 			expect(projection.bottleneck.materialId).toBe('water');
 			expect(projection.bottleneck.buildingId).toBe('water-pump-1');
+			// The advice must name the concrete sink the pump cannot reach.
+			expect(projection.bottleneck.destinationBuildingId).toBe('water-bottler-1');
 		}
 	});
 
@@ -2359,6 +2369,8 @@ describe('supply planner snapshot', () => {
 			expect(projection.bottleneck.materialId).toBe('water');
 			// Pump B has residual capacity stranded by rail topology.
 			expect(projection.bottleneck.buildingId).toBe('pump-b');
+			// The advice must name the unreachable filtration processor.
+			expect(projection.bottleneck.destinationBuildingId).toBe('filtration-1');
 		}
 	});
 
@@ -2447,6 +2459,7 @@ describe('supply planner snapshot', () => {
 		expect(projection.bottleneck).toEqual({
 			kind: 'rail-disconnected',
 			buildingId: 'grain-farm-1',
+			destinationBuildingId: 'flour-mill-1',
 			materialId: 'grain'
 		});
 	});
@@ -2532,6 +2545,7 @@ describe('supply planner snapshot', () => {
 		expect(first.bottleneck).toEqual({
 			kind: 'rail-disconnected',
 			buildingId: 'grain-farm-a',
+			destinationBuildingId: 'flour-mill-1',
 			materialId: 'grain'
 		});
 	});
@@ -3256,6 +3270,7 @@ describe('supply planner reachability branch coverage', () => {
 		expect(projection.bottleneck).toEqual({
 			kind: 'rail-disconnected',
 			buildingId: 'grain-farm-a',
+			destinationBuildingId: 'flour-mill-1',
 			materialId: 'grain'
 		});
 	});
@@ -4317,5 +4332,170 @@ describe('supply planner route modifier projection', () => {
 		// Effective capacity 5 trails the destination need, so the route is
 		// capacity-constrained by the halved capacity.
 		expect(forecast?.projectedCondition).toBe('route-capacity-constrained');
+	});
+});
+
+describe('supply planner rail connectivity destination', () => {
+	const fullAvailability = {
+		canBuildIndustry: true,
+		canUpgradeIndustry: true,
+		canBuildRail: true,
+		canManageLogistics: true,
+		canSetRetailSupplySource: true,
+		allowedIndustryBuildingTypeIds: [] as const
+	};
+
+	function previewBlockCode(
+		gameState: GameState,
+		originBuildingId: string,
+		destinationBuildingId: string
+	): string | null {
+		const preview = buildRailPreview(gameState, {
+			originBuildingId,
+			waypoints: [],
+			destinationBuildingId
+		});
+		return preview.blockReason?.code ?? null;
+	}
+
+	function readyPlan(gameState: GameState) {
+		const result = buildSupplyPlan(
+			gameState,
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
+			fullAvailability
+		);
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') throw new Error(`Expected ready plan, got ${result.status}`);
+		return result.plan;
+	}
+
+	it('recommends a concrete missing edge instead of an already-connected pair', () => {
+		// Reported loop: the advice names the pump with no destination. The
+		// pump→warehouse edge is already built, so following the advice is a
+		// no-op (already connected) and the same advice repeats forever. The
+		// genuinely missing edge is pump→bottler.
+		const base = plannerGame([product('bottled-water')], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 'industry-city', 1, 3, 2),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 3, 6),
+				building('water-bottler', 'water-bottler-1', 'industry-city', 1, 12, 2)
+			]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: verticalRails(1, 8) } : city
+			)
+		};
+
+		// The old advice's natural producer→warehouse pair is a no-op.
+		expect(previewBlockCode(game, 'water-pump-1', 'warehouse-1')).toBe('railAlreadyConnected');
+
+		const plan = readyPlan(game);
+		expect(plan.recommendation.action).toEqual({
+			kind: 'connect-rail',
+			buildingId: 'water-pump-1',
+			destinationBuildingId: 'water-bottler-1',
+			materialId: 'water'
+		});
+		// The recommended edge is genuinely missing and buildable with the
+		// authoritative rail preview.
+		if (plan.recommendation.action.kind === 'connect-rail') {
+			expect(
+				previewBlockCode(
+					game,
+					plan.recommendation.action.buildingId,
+					plan.recommendation.action.destinationBuildingId
+				)
+			).toBeNull();
+		}
+	});
+
+	it('carries a destination when the producer-side pairs are all already connected', () => {
+		// Reported loop pairs: pump→bottler and pump→warehouse are both
+		// already connected. The recommendation must not depend on them: it
+		// names the isolated bottler and a concrete warehouse destination.
+		const base = plannerGame([product('bottled-water')], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 'industry-city', 1, 3, 2),
+				building('water-bottler', 'water-bottler-1', 'industry-city', 1, 3, 6),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 3, 10),
+				building('water-bottler', 'water-bottler-2', 'industry-city', 1, 12, 2)
+			]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: verticalRails(1, 12) } : city
+			)
+		};
+
+		expect(previewBlockCode(game, 'water-pump-1', 'water-bottler-1')).toBe('railAlreadyConnected');
+		expect(previewBlockCode(game, 'water-pump-1', 'warehouse-1')).toBe('railAlreadyConnected');
+
+		const plan = readyPlan(game);
+		expect(plan.recommendation.action).toEqual({
+			kind: 'connect-rail',
+			buildingId: 'water-bottler-2',
+			destinationBuildingId: 'warehouse-1',
+			materialId: 'bottled-water'
+		});
+		expect(previewBlockCode(game, 'water-bottler-2', 'warehouse-1')).toBeNull();
+	});
+
+	it('falls through to the true bottleneck when every candidate edge is already connected', () => {
+		// The pump already reaches the only downstream processor by rail and
+		// there is no usable sink left to connect — a connect-rail advice
+		// would loop on an already-connected pair, so the planner must
+		// classify the real shortage instead.
+		const projection = projectSupplySnapshot(
+			projectionSnapshot({
+				finishedMaterialId: 'bottled-water',
+				demandPerDay: 10,
+				buildings: [
+					{ id: 'water-pump-1', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+					{
+						id: 'water-bottler-1',
+						cityId: 'industry-city',
+						typeId: 'water-bottler',
+						level: 1
+					}
+				],
+				disconnectedBuildingIds: ['water-pump-1'],
+				railReachableProcessorIdsByBuildingAndMaterial: {
+					'water-pump-1\u0000water': ['water-bottler-1']
+				}
+			})
+		);
+
+		expect(projection.bottleneck.kind).not.toBe('rail-disconnected');
+		expect(projection.bottleneck.kind).toBe('production-capacity');
+	});
+
+	it('breaks destination ties deterministically by building id', () => {
+		// Two warehouses could serve the isolated bottler; the destination
+		// must be the id-sorted first one regardless of insertion order.
+		const base = plannerGame([product('bottled-water')], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 'industry-city', 1, 3, 2),
+				building('water-bottler', 'water-bottler-1', 'industry-city', 1, 3, 6),
+				building('warehouse', 'warehouse-2', 'industry-city', 1, 3, 10),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 3, 14),
+				building('water-bottler', 'water-bottler-2', 'industry-city', 1, 12, 2)
+			]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city' ? { ...city, rails: verticalRails(1, 16) } : city
+			)
+		};
+
+		const plan = readyPlan(game);
+		if (plan.recommendation.action.kind !== 'connect-rail') {
+			throw new Error('Expected connect-rail recommendation');
+		}
+		expect(plan.recommendation.action.buildingId).toBe('water-bottler-2');
+		expect(plan.recommendation.action.destinationBuildingId).toBe('warehouse-1');
 	});
 });

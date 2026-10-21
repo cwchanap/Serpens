@@ -856,7 +856,8 @@ export const ja = {
 		bottlenecks: {
 			missingProducer: '{materialName} の生産者が不足しています。',
 			warehouseCapacity: '倉庫容量のボトルネック: {overflow} 単位超過、空き容量 {freeCapacity}。',
-			railDisconnected: '{materialName} を移動するには {buildingName} の鉄道接続が必要です。',
+			railDisconnected:
+				'{buildingName} が {destinationName} に接続され、{materialName} を運ぶには鉄道が必要です。',
 			productionCapacity: '{materialName} の生産能力ボトルネック: {deficit}/日不足。',
 			inventoryCover: '{materialName} の在庫は約 {stockoutDay} 日目に枯渇します。',
 			importReliance: '輸入依存: 30日間で {materialName} を {units} 単位。',
@@ -902,7 +903,7 @@ export const ja = {
 			buildProducer: '{materialName} のために {buildingName}を建設',
 			upgradeBuilding: '{buildingName}をレベル{level}へアップグレード',
 			buildWarehouse: '{cityName} に倉庫を建設',
-			connectRail: '{materialName} の鉄道を接続',
+			connectRail: '{originName} から {destinationName} へ {materialName} の鉄道を接続',
 			createRoute: '{materialName} のルートを作成: {originName} → {destinationName}',
 			editRoute: 'ルート {routeId} を編集: {fieldName} {from} → {to}',
 			resumeRoute: 'ルート {routeId} を再開',

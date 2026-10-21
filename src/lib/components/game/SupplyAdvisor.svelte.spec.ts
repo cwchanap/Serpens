@@ -89,6 +89,7 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	reachableDemandByBuildingAndMaterial: {},
 	reachableBranchesByBuildingAndMaterial: {},
 	reachableProcessorsByBuildingAndMaterial: {},
+	railReachableProcessorIdsByBuildingAndMaterial: {},
 	warehouseConnectedConsumerCapacityByMaterial: {},
 	warehouseConnectedProcessorsByMaterial: {}
 };
@@ -490,15 +491,23 @@ describe('SupplyAdvisor', () => {
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: 'water-pump-1',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		};
 		const onAction = vi.fn();
 		renderPlanner(
 			readyResult({
+				snapshot: {
+					buildings: [
+						...baseSnapshot.buildings,
+						{ id: 'water-bottler-1', cityId: 'industry-city', typeId: 'water-bottler', level: 1 }
+					]
+				},
 				baseline: {
 					bottleneck: {
 						kind: 'rail-disconnected',
 						buildingId: 'water-pump-1',
+						destinationBuildingId: 'water-bottler-1',
 						materialId: 'bottled-water'
 					}
 				},
@@ -515,7 +524,11 @@ describe('SupplyAdvisor', () => {
 			{ onAction }
 		);
 		await expect
-			.element(page.getByText('Rail connection required for Water Pump to move Bottled Water.'))
+			.element(
+				page.getByText(
+					'Rail connection required for Water Pump to reach Water Bottler and move Bottled Water.'
+				)
+			)
 			.toBeVisible();
 		await expect.element(page.getByText(/rail cost will be calculated/i)).toBeVisible();
 		await expect.element(page.getByText(/net 30-day estimate/i)).not.toBeInTheDocument();
@@ -1203,13 +1216,18 @@ describe('SupplyAdvisor bottleneck and noop coverage', () => {
 					bottleneck: {
 						kind: 'rail-disconnected',
 						buildingId: 'water-bottler-1',
+						destinationBuildingId: 'water-pump-1',
 						materialId: 'bottled-water'
 					}
 				}
 			})
 		);
 		await expect
-			.element(page.getByText(/rail connection required for water bottler to move bottled water/i))
+			.element(
+				page.getByText(
+					/Rail connection required for Water Bottler to reach Water Pump and move Bottled Water\./i
+				)
+			)
 			.toBeVisible();
 	});
 });
@@ -1222,6 +1240,7 @@ describe('SupplyAdvisor branch coverage', () => {
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: 'missing-building-id',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		};
 		renderPlanner(
@@ -1230,6 +1249,7 @@ describe('SupplyAdvisor branch coverage', () => {
 					bottleneck: {
 						kind: 'rail-disconnected',
 						buildingId: 'missing-building-id',
+						destinationBuildingId: 'water-pump-1',
 						materialId: 'bottled-water'
 					}
 				},

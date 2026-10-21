@@ -91,6 +91,7 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	reachableDemandByBuildingAndMaterial: {},
 	reachableBranchesByBuildingAndMaterial: {},
 	reachableProcessorsByBuildingAndMaterial: {},
+	railReachableProcessorIdsByBuildingAndMaterial: {},
 	warehouseConnectedConsumerCapacityByMaterial: {},
 	warehouseConnectedProcessorsByMaterial: {}
 };
@@ -588,6 +589,7 @@ describe('handoffSupplyPlannerAction', () => {
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: 'warehouse-1',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		};
 		const result = readyResult(
@@ -610,6 +612,7 @@ describe('handoffSupplyPlannerAction', () => {
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: 'warehouse-1',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		};
 		const result = readyResult(
@@ -632,6 +635,7 @@ describe('handoffSupplyPlannerAction', () => {
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: 'warehouse-1',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		};
 		const result = readyResult(
@@ -669,6 +673,7 @@ describe('handoffSupplyPlannerAction', () => {
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: 'rail-switch-fail-1',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		};
 		const result = readyResult(
@@ -726,6 +731,7 @@ describe('handoffSupplyPlannerAction', () => {
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: 'nonexistent-building',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		};
 		const result = readyResult(
@@ -759,6 +765,7 @@ describe('handoffSupplyPlannerAction', () => {
 		const action: SupplyPlannerAction = {
 			kind: 'connect-rail',
 			buildingId: 'rail-target-1',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		};
 		const result = readyResult(

@@ -291,6 +291,7 @@ function plannerSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Supply
 		reachableDemandByBuildingAndMaterial: {},
 		reachableBranchesByBuildingAndMaterial: {},
 		reachableProcessorsByBuildingAndMaterial: {},
+		railReachableProcessorIdsByBuildingAndMaterial: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {},
 		...overrides
@@ -527,6 +528,7 @@ describe('supply planner route composition', () => {
 		const action = {
 			kind: 'connect-rail',
 			buildingId: 'water-pump-1',
+			destinationBuildingId: 'warehouse-1',
 			materialId: 'bottled-water'
 		} as const;
 

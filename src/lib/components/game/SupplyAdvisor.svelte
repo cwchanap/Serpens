@@ -89,7 +89,9 @@
 				});
 			case 'connect-rail':
 				return i18n.t('supplyAdvisor.actions.connectRail', {
-					materialName: materialName(action.materialId)
+					materialName: materialName(action.materialId),
+					originName: buildingName(snapshot, action.buildingId),
+					destinationName: buildingName(snapshot, action.destinationBuildingId)
 				});
 			case 'create-route':
 				return i18n.t('supplyAdvisor.actions.createRoute', {
@@ -161,6 +163,7 @@
 			case 'rail-disconnected':
 				return i18n.t('supplyAdvisor.bottlenecks.railDisconnected', {
 					buildingName: buildingName(snapshot, bottleneck.buildingId),
+					destinationName: buildingName(snapshot, bottleneck.destinationBuildingId),
 					materialName: materialName(bottleneck.materialId)
 				});
 			case 'production-capacity':

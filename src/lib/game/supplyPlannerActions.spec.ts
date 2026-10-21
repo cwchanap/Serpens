@@ -1624,9 +1624,14 @@ describe('supply planner action helper coverage', () => {
 				toSupplyCityId: 'breadbasket-basin'
 			})
 		).toBe('change-supply-source:harbor-city:breadbasket-basin');
-		expect(actionKey({ kind: 'connect-rail', buildingId: 'b-1', materialId: 'water' })).toBe(
-			'connect-rail:water:b-1'
-		);
+		expect(
+			actionKey({
+				kind: 'connect-rail',
+				buildingId: 'b-1',
+				destinationBuildingId: 'b-2',
+				materialId: 'water'
+			})
+		).toBe('connect-rail:water:b-1:b-2');
 		expect(actionKey({ kind: 'none', reason: 'surplus' })).toBe('none:surplus');
 	});
 
