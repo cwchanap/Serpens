@@ -27,7 +27,9 @@ The Linear issue's initial observations were from a **throwaway probe** at `200b
 
 ## Minimal architecture
 
-Use a self-contained tool under `scripts/balance/` and a single `bun run balance` script (and `bun run balance:test` if test discovery requires an explicit command). Keep this outside `src/`, outside regular Vitest discovery and outside Codecov coverage automatically; do not edit `vite.config.ts` or `codecov.yml` solely to exclude it. Harness tests can use Bun's isolated test runner.
+Use a self-contained tool under `scripts/balance/` with `bun run balance` for the CLI and **mandatory** `bun run balance:test` (`bun test scripts/balance/`) for the scoped deterministic regression suite. Keep it outside `src/`, regular Vitest discovery and Codecov coverage automatically; do not edit `vite.config.ts` or `codecov.yml` solely to exclude it. Wire `bun run balance:test` into `.github/workflows/ci.yml`'s existing `unit-tests` job; the full sweep remains local-only. CI currently skips draft PRs, so the tests will execute there once the PR is ready (and can be run locally during planning).
+
+Type-check the harness explicitly: add a small `tsconfig.balance.json` extending the root `tsconfig.json`, with `include: ["scripts/balance/**/*.ts"]`, and a `balance:check` script running `tsc --noEmit -p tsconfig.balance.json`. Run `bun run balance:check` in the existing CI `unit-tests` job alongside `balance:test`. The root `tsconfig.json` extends SvelteKit's generated config, whose `include` covers app files; **do not** replace the root `include` with only `scripts/**/*.ts`, which could silently drop SvelteKit files. One dedicated TS project is the smallest safe type-check boundary; it does not add an engine module or runtime layer.
 
 Proposed small files, merged if easier to maintain:
 
@@ -36,6 +38,7 @@ Proposed small files, merged if easier to maintain:
 - `scripts/balance/bots.ts` — three explicit rule lists; no class hierarchy, search algorithm, agent framework or strategy DSL.
 - `scripts/balance/report.ts` — metric projection, stable JSON serialization, compact Markdown aggregation.
 - `scripts/balance/*.test.ts` — targeted reproducibility, command/no-op and metric tests.
+- `tsconfig.balance.json`, `package.json`, and `.github/workflows/ci.yml` — minimal build/test wiring; two package commands and two CI unit-job steps, without touching application Vitest/coverage configuration.
 
 Do **not** move generic engine transitions out of `src/lib/game`, export the scenario-specific dispatcher, add engine hooks, extend `GameState`, store harness metadata in save files or create a second simulation model.
 
@@ -74,7 +77,7 @@ Use reports rather than intermediate product stock snapshots for post-day eviden
 
 ### Modes, reproducibility and output
 
-- `bun run balance --mode quick [--output <dir>]`: fixed 3 seeds including 20260503, representative archetypes and all 3 bots over 120 days; small enough for local regression and optional CI smoke.
+- `bun run balance --mode quick [--output <dir>]`: fixed 3 seeds including 20260503, representative archetypes and all 3 bots over 120 days; intended for local regression, **not** mandatory CI (the focused scoped `balance:test` suite runs in CI).
 - `bun run balance --mode full [--output <dir>]`: fixed documented 50-seed set × all 4 archetypes × all 3 bots over 365 days. No CI requirement for a full sweep.
 - Support an explicit `--seeds`, `--days` and `--bots` override for debugging; reject invalid inputs, never substitute `Date.now()`.
 - Stable, version-tagged, sorted JSON with input parameters, per-run metrics, action outcomes and aggregate summaries; corresponding Markdown renders those same values. No timestamps, file paths, benchmark durations, random IDs, locale-dependent number formatting or volatile commit SHA in deterministic files.
@@ -85,13 +88,13 @@ Use reports rather than intermediate product stock snapshots for post-day eviden
 
 **Gate A: measurements before tuning.** Commit baseline artifacts, reproduction commands, runtime cost observations and proposed target thresholds to the **same branch and draft PR**. Request explicit sign-off in its discussion before changing economic constants. This does not split HPA-502 into separate PRs.
 
-**Proposed thresholds, subject to Gate A:** retail steady has a positive full 30-day operating-income window by day 30 on seed 20260503 and on at least 80% of sweep seeds, with nonnegative cash for its first 90 days; idle survives through day 45; first-14-day opening forecasts are within ±25% of actual average revenue (specify whether measuring all openings or median/coverage at Gate A); advisor follower completes a real bottled-water local chain without stalls. Capture per-archetype breakdown to avoid hiding failures in an aggregate.
+**Proposed thresholds, subject to Gate A:** retail steady has a positive full 30-day operating-income window by day 30 on seed 20260503 and on at least 80% of sweep seeds, with nonnegative cash for its first 90 days; first-14-day opening forecasts are within ±25% of actual average revenue **per completed opening**, with a reported percentage of openings in range and breakdowns by archetype and district (agree the required coverage percentage at Gate A); advisor follower completes a real bottled-water local chain without stalls. Use **idle as a comparative negative control**: measure its 45/90-day cash, profit windows and viability against retail steady, and decide at Gate A what meaningful disadvantage idle should exhibit. The initial probe shows idle cash negativity around day 60–120, so mere survival through day 45 is too weak; do not impose an arbitrary bankruptcy-by-day-30 condition just to make idle worse. Capture per-archetype breakdowns and sample counts to avoid hiding failures in an aggregate.
 
 Do not silently loosen targets to fit the baseline. If data proves a threshold inappropriate, document the tradeoff and obtain sign-off **before** tuning.
 
 ### Tuning boundaries, prioritized by evidence
 
-1. **Fix truthful opening forecasts.** Prefer a light, explainable correction tied to the demand/stock/capacity the real engine can serve, not a second daily simulator embedded in `forecastOpening`. Resolve the `projectedDailyRent` discrepancy: either normalize district rent into actual recurring cost or change the projection to truthfully describe the existing charge. Choose using measured balance impact. Check labels across EN, JA and zh-Hant when user-facing meaning changes.
+1. **Fix truthful opening forecasts.** Prefer a light, explainable correction tied to the demand/stock/capacity the real engine can serve, not a second daily simulator embedded in `forecastOpening`. Resolve the `projectedDailyRent` discrepancy **by default with a truthful projected value/label** using existing archetype recurring costs; only consider a new district-rent-driven daily charge if Gate A evidence and a separate gameplay rationale justify changing every store's and scenario's recurring economy. Check labels across EN, JA and zh-Hant when user-facing meaning changes.
 2. **Make intentional retail operation viable.** Tune existing stock defaults, replenishment cadence, pricing/economic multipliers, payroll and operating costs as needed. Do not make idle play optimal.
 3. **Fix already-satisfied rail recommendation.** At the `rail-disconnected` planner branch, verify the actual rail connectivity/usable sink before recommending `connect-rail`; use existing graph/path helpers and never recommend a connection that `buildRailPreview` reports as already connected. A focused regression recreates pump → bottler and pump → warehouse.
 4. **Scale actual production buffers if measured stalls justify it**, consistently with existing level throughput.
@@ -105,10 +108,10 @@ Only change scenario text when values or outcome messaging become inaccurate; up
 
 ## Verification
 
-- Harness unit checks: same seed/bot/config => byte-identical output; distinct seeds produce distinct generated worlds; full-window positivity waits until 7/30 observations; denominator-zero/null; store first-14-day attribution; invalid commands/decision append/railAlreadyConnected count as failed progress; fixed advisor weekly cadence.
+- Harness unit checks (mandatory `bun run balance:test` in CI, scoped to `scripts/balance/`): same seed/bot/config => byte-identical output; distinct seeds produce distinct generated worlds; full-window positivity waits until 7/30 observations; denominator-zero/null; store first-14-day attribution; invalid commands/decision append/railAlreadyConnected count as failed progress; fixed advisor weekly cadence. Mandatory `bun run balance:check` verifies harness TypeScript independently from `bun run check`.
 - Game unit checks: planner stops recommending already-connected rail; forecast matches actual calibrated range; stocking/finances/production unchanged outside intended tuning.
 - Scenarios: all no-action below Silver, all documented reference runs Gold with real transitions; full runtime and catalog validation.
-- Run before PR ready: `bun run check`, `bun run lint`, `bun run test:unit -- --run`, harness quick/full determinism tests, `retail-sim.e2e.ts` and scenario flow E2E tests.
+- Run before PR ready: `bun run check`, `bun run balance:check`, `bun run lint`, `bun run test:unit -- --run`, `bun run balance:test`, local quick/full sweeps with deterministic report verification, `retail-sim.e2e.ts` and scenario flow E2E tests.
 - Acceptance files show baseline versus after on the same config, with target status and precise exceptions.
 
 ## Explicit exclusions
