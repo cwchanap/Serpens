@@ -21,6 +21,11 @@ comment:
 ignore:
   - 'src/lib/vitest-examples'
   - 'src/routes/demo'
+  # Balance harness lives in tests/balance/**: it is test-side code (bots/CLI/
+  # measurement), exercised by its own specs but outside the src/** coverage
+  # instrumentation — same category as the spec ignores below, so Codecov must
+  # not score it as uninstrumented patch lines (if_not_found: failure).
+  - 'tests/**'
   - 'src/**/*.spec.ts'
   - 'src/**/*.svelte.spec.ts'
   - 'src/**/*.e2e.ts'
