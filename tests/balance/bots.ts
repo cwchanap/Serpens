@@ -58,6 +58,8 @@ export interface OpeningRecord {
 	tileId: string;
 	archetypeId: ArchetypeId;
 	neighborhood: CityTile['neighborhood'];
+	/** Store level at opening; harness bots never upgrade stores. */
+	level: number;
 	forecast: OpeningForecast;
 }
 
@@ -153,6 +155,7 @@ export function runBot(
 				tileId: tile.id,
 				archetypeId,
 				neighborhood: tile.neighborhood,
+				level: founded.stores[0]!.level,
 				forecast: forecastOpening(tile, archetypeId)
 			}
 		],
@@ -340,6 +343,7 @@ function runExpansionPlaybook(game: GameState, ledger: BotLedger, day: number): 
 		tileId: candidate.id,
 		archetypeId: store.archetypeId,
 		neighborhood: candidate.neighborhood,
+		level: store.level,
 		forecast: forecastOpening(candidate, store.archetypeId)
 	});
 	return result.game;
