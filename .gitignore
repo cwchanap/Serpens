@@ -34,3 +34,6 @@ test-results
 
 # Coverage
 /coverage
+
+# Balance harness sweep artifacts (JSON stays local, only curated baseline.md is committed)
+docs/balance/generated/

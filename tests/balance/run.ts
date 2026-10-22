@@ -1,13 +1,29 @@
 /**
- * Balance-harness CLI shell (HPA-502). This stage only parses and validates
- * the sweep flags with explicit errors; the sweep itself (bots, simulation,
- * report writing) arrives with the harness measurement stage.
+ * Balance-harness CLI (HPA-502). Parses and validates the sweep flags with
+ * explicit errors, runs the deterministic seed/archetype/bot matrix through
+ * real engine transitions, measures each run purely, and writes JSON +
+ * Markdown to the chosen --output path (no timestamps, UUIDs, machine paths
+ * or durations anywhere in the artifacts).
  *
  * Every seed is provided explicitly on the command line — never rely on the
  * game's `Date.now()` default, or sweeps stop being reproducible.
  */
 
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { ARCHETYPES } from '$lib/game/archetypes';
+import { runBot } from './bots';
+import {
+	botsForArchetype,
+	buildSweepReport,
+	measureRun,
+	renderSweepMarkdown,
+	SWEEP_BOTS,
+	type SweepRunResult
+} from './measure';
+
+const SWEEP_BOT_IDS: readonly string[] = SWEEP_BOTS;
 
 export interface BalanceSweepOptions {
 	seeds: number[];
@@ -75,12 +91,32 @@ export function parseBalanceSweepArgs(argv: readonly string[]): BalanceSweepOpti
 
 export function main(argv: readonly string[]): number {
 	const options = parseBalanceSweepArgs(argv);
+	const requestedBots = new Set(options.bots);
+	for (const bot of requestedBots) {
+		if (!SWEEP_BOT_IDS.includes(bot)) {
+			argsError(`unknown bot "${bot}". Expected ${SWEEP_BOT_IDS.join(', ')}.`);
+		}
+	}
+	const archetypeIds = ARCHETYPES.map((archetype) => archetype.id);
+	const results: SweepRunResult[] = [];
+	for (const seed of options.seeds) {
+		for (const archetypeId of archetypeIds) {
+			for (const bot of botsForArchetype(archetypeId)) {
+				if (!requestedBots.has(bot)) continue;
+				const { game, ledger } = runBot(bot, archetypeId, seed, options.days);
+				results.push({ seed, archetypeId, bot, measurement: measureRun(game, ledger) });
+			}
+		}
+	}
+	const report = buildSweepReport(options.seeds, options.days, results);
+	const outputBase = options.output ?? 'docs/balance/generated/balance-sweep';
+	mkdirSync(dirname(outputBase), { recursive: true });
+	writeFileSync(`${outputBase}.json`, `${JSON.stringify(report, null, 2)}\n`);
+	writeFileSync(`${outputBase}.md`, renderSweepMarkdown(report));
 	console.log(
-		`balance: parsed --seeds ${options.seeds.join(',')} --days ${options.days} --bots ${options.bots.join(',')}` +
-			(options.output === undefined ? '' : ` --output ${options.output}`)
+		`balance: measured ${results.length} run(s) over ${options.seeds.length} seed(s) × ${options.days} days; wrote ${outputBase}.json and ${outputBase}.md`
 	);
-	console.error('balance: sweep wiring arrives with the harness measurement stage.');
-	return 1;
+	return 0;
 }
 
 if (import.meta.url === (process.argv[1] ? pathToFileURL(process.argv[1]).href : '')) {
