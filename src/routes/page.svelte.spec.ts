@@ -293,6 +293,7 @@ function plannerSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Supply
 		reachableProcessorsByBuildingAndMaterial: {},
 		railReachableProcessorIdsByBuildingAndMaterial: {},
 		routableRailTargetIdsByOriginId: {},
+		railReachableWarehouseIdsByOriginId: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {},
 		...overrides

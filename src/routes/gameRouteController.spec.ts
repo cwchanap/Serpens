@@ -2278,6 +2278,41 @@ describe('GameRouteController', () => {
 			expect(saveSpy).not.toHaveBeenCalled();
 		});
 
+		it('carries the failing transition decision context on a rejected scenario command', async () => {
+			const base = firstProfitDefinition();
+			const definition = {
+				...base,
+				allowedCommands: ['openStore'] as const,
+				content: {
+					...base.content,
+					// Whitelist the founding store's own tile: the command passes
+					// the capability gate, then openStoreAtTile appends a
+					// location-unavailable system decision and the postcondition
+					// check rejects it as invalid-command.
+					retailPlacements: [
+						{
+							cityId: 'harbor-city' as const,
+							tileId: 'harbor-city-29-35',
+							archetypeId: 'convenience' as const
+						}
+					]
+				}
+			};
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller, definition);
+			const result = await harness.controller.openStore('harbor-city-29-35', 'convenience');
+
+			expect(result).toEqual({ status: 'rejected' });
+			expect(harness.controller.state.scenarioOperationError?.code).toBe('invalid-command');
+			// The blocked opening's system-decision context must survive the
+			// executeScenarioCommand → scenarioOperationError conversion so the
+			// banner can render the actual refusal reason, not just the code.
+			expect(harness.controller.state.scenarioOperationError?.decisionContext?.code).toBe(
+				'locationGeneric'
+			);
+		});
+
 		it('does not duplicate a pending scenario borrowing command', async () => {
 			const base = firstProfitDefinition();
 			const definition = { ...base, allowedCommands: ['borrow'] as const };

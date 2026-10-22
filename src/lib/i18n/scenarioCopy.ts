@@ -1,4 +1,5 @@
 import type { I18nBundle, TranslationKey } from '$lib/i18n';
+import { localizeDecisionContextValue } from '$lib/i18n/gameCopy';
 import type { ScenarioCatalogEntry } from '$lib/scenarios/catalog';
 import { encodeScenarioShareCode } from '$lib/scenarios/shareCode';
 import type {
@@ -427,5 +428,11 @@ export function scenarioDiagnosticText(error: ScenarioOperationError, i18n: I18n
 		'missing-run': 'scenarioDiagnostics.missingRun',
 		'setup-invariant-failed': 'scenarioDiagnostics.setupInvariantFailed'
 	};
-	return i18n.t(keys[error.code]);
+	const text = i18n.t(keys[error.code]);
+	// Rejections that carry the failing transition's system-decision context
+	// (e.g. blocked placement, missing cash) append its localized reason so
+	// the banner explains what actually blocked the command.
+	return error.decisionContext === undefined
+		? text
+		: `${text} ${localizeDecisionContextValue(error.decisionContext, i18n)}`;
 }

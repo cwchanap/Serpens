@@ -479,8 +479,9 @@ export const BOT_DEFINITIONS = [
 	'advisor (convenience only): retail-steady plus the supply planner recommendation every 7 in-game days, executed through applyGameCommand / buildRailPreview (build producer or warehouse, upgrade building, connect rail).'
 ];
 
-export const SWEEP_REGENERATION_COMMAND =
-	'bun tests/balance/run.ts --seeds 20260501,20260502,...,20260550 --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/balance-sweep';
+const SWEEP_SEEDS = Array.from({ length: 50 }, (_, index) => 20260501 + index);
+
+export const SWEEP_REGENERATION_COMMAND = `bun tests/balance/run.ts --seeds ${SWEEP_SEEDS.join(',')} --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/balance-sweep`;
 
 /** Deterministic Markdown rendering of a sweep report. */
 export function renderSweepMarkdown(report: SweepReport): string {

@@ -857,7 +857,7 @@ export const ja = {
 			missingProducer: '{materialName} の生産者が不足しています。',
 			warehouseCapacity: '倉庫容量のボトルネック: {overflow} 単位超過、空き容量 {freeCapacity}。',
 			railDisconnected:
-				'{buildingName} が {destinationName} に接続され、{materialName} を運ぶには鉄道が必要です。',
+				'{materialName} を運ぶには、{buildingName} を {destinationName} へ鉄道で接続する必要があります。',
 			productionCapacity: '{materialName} の生産能力ボトルネック: {deficit}/日不足。',
 			inventoryCover: '{materialName} の在庫は約 {stockoutDay} 日目に枯渇します。',
 			importReliance: '輸入依存: 30日間で {materialName} を {units} 単位。',

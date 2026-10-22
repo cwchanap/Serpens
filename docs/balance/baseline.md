@@ -5,6 +5,7 @@
 - Branch: `hpa-502-balance-harness-plan`, re-measured after the PR-review delegation-scope fix (see disclosure below).
 - **Disclosure (required):** the rail planner *correctness* fix (Task 1, commit `ce28bb9` — connect-rail advice grounded in a concrete missing rail edge) landed **before** this baseline. The measured economy is otherwise untouched; advisor results below are measured on the repaired planner, and must not be compared against an unrepaired planner without labeling that difference.
 - **Disclosure (bot fix):** the retail-steady/advisor `protect-availability` delegation originally used founding-store scope, so stores opened by the expansion playbook never entered the manager's target set. The delegation now uses **city scope** (`tests/balance/bots.ts`), covering all same-city stores. This baseline was regenerated on the corrected bot and supersedes the earlier store-scope sweep from this PR's history; idle runs are unchanged (idle takes no actions), but every managed metric moved.
+- **Disclosure (review fixes):** this baseline was re-measured after three PR-review correctness fixes — the rail planner now excludes warehouses a producer already reaches when naming a missing rail edge (`src/lib/game/supplyPlanner.ts`), and the advisor bot executes the exact tile the planner evaluated instead of the lowest-id legal tile (`tests/balance/bots.ts`; `build-producer`/`build-warehouse` actions now carry `tileId`). The regenerated 450-run output is byte-identical to the prior baseline except the now-executable regenerate command, confirming these fixes do not shift the measured economy.
 - Sweep: 50 explicit seeds × 365 days × (4 archetypes × {idle, retail-steady} + convenience × advisor) = **450 runs** (seeds `20260501`–`20260550`, includes the mandated `20260503`).
 - Artifacts: the verbose JSON stays local under `docs/balance/generated/` (git-ignored); only this curated `baseline.md` is committed. The full generated Markdown (config, aggregates, all 450 per-run rows, and the complete exception list) is embedded below verbatim.
 
@@ -16,7 +17,7 @@
   - `retail-steady`: delegates `protect-availability` (city scope, so expansion stores stay managed) to the first eligible manager, hires/assigns staff to cover every store shortage, and opens the best legal, cash-safe tile while under the store cap.
   - `advisor` (convenience only): retail-steady plus the supply planner's recommendation every 7 in-game days, executed through `applyGameCommand` / `buildRailPreview` (build producer or warehouse, upgrade building, connect rail).
 - **Regenerate the JSON + Markdown artifacts:**
-  `bun tests/balance/run.ts --seeds 20260501,20260502,...,20260550 --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/balance-sweep`
+  `bun tests/balance/run.ts --seeds 20260501,20260502,20260503,20260504,20260505,20260506,20260507,20260508,20260509,20260510,20260511,20260512,20260513,20260514,20260515,20260516,20260517,20260518,20260519,20260520,20260521,20260522,20260523,20260524,20260525,20260526,20260527,20260528,20260529,20260530,20260531,20260532,20260533,20260534,20260535,20260536,20260537,20260538,20260539,20260540,20260541,20260542,20260543,20260544,20260545,20260546,20260547,20260548,20260549,20260550 --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/balance-sweep`
   (seed list is `20260501`–`20260550`; measured wall-clock ≈ 3 min). Determinism is asserted by spec (`tests/balance/measure.spec.ts`: same seed/config serializes byte-identically).
 
 ## Headline measured results (medians across 50 seeds)
@@ -27,11 +28,11 @@
 | convenience | retail-steady | 0/50, 0/50 | day 21 | −20,045 | −862,797 | ≈ −3.5e16 | 26.9% | 2.8% | −97.6% |
 | convenience | advisor | 0/50, 0/50 | day 20–21 | −22,523 | −866,173 | ≈ −3.5e16 | 26.9% | 2.8% | −97.6% |
 | boutique | idle | 50/50, 0/50 | day 120 | 28,740 | 4,952 | −78,962 | 90.0% | 71.5% | −77.3% |
-| boutique | retail-steady | 50/50, 50/50 | day 21 | −25,003 | 9,703 | 239,456 | 5.4% | 3.4% | −68.5% |
+| boutique | retail-steady | 50/50, 50/50 | day 21 | −25,003 | 9,703 | 239,456 | 5.4% | 3.4% | −65.1% |
 | electronics | idle | 21/50, 0/50 | day 91 | 33,530 | 1,982 | −100,596 | 80.2% | 71.2% | −70.7% |
 | electronics | retail-steady | 50/50, 0/50 | day 7 | −32,824 | −38,649 | −125,082 | 2.1% | 1.6% | −59.7% |
 | grocery | idle | 0/50, 0/50 | day 60 | 17,234 | −28,032 | −211,004 | 90.1% | 71.5% | −97.9% |
-| grocery | retail-steady | 0/50, 0/50 | day 30 | −25,339 | −257,825 | ≈ −3.2e16 | 38.4% | 26.3% | −97.1% |
+| grocery | retail-steady | 0/50, 0/50 | day 30 | −25,339 | −257,825 | ≈ −3.2e16 | 38.4% | 26.3% | −97.0% |
 
 Negative forecast error = the opening forecast **overestimates** the store's realized first-14-day mean revenue.
 
@@ -56,7 +57,7 @@ Negative forecast error = the opening forecast **overestimates** the store's rea
 - Seeds (50): 20260501, 20260502, 20260503, 20260504, 20260505, 20260506, 20260507, 20260508, 20260509, 20260510, 20260511, 20260512, 20260513, 20260514, 20260515, 20260516, 20260517, 20260518, 20260519, 20260520, 20260521, 20260522, 20260523, 20260524, 20260525, 20260526, 20260527, 20260528, 20260529, 20260530, 20260531, 20260532, 20260533, 20260534, 20260535, 20260536, 20260537, 20260538, 20260539, 20260540, 20260541, 20260542, 20260543, 20260544, 20260545, 20260546, 20260547, 20260548, 20260549, 20260550
 - Days per run: 365
 - Ordering: seed, then archetype (convenience < boutique < electronics < grocery), then bot (idle < retail-steady < advisor).
-- Regenerate JSON/Markdown: `bun tests/balance/run.ts --seeds 20260501,20260502,...,20260550 --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/balance-sweep`
+- Regenerate JSON/Markdown: `bun tests/balance/run.ts --seeds 20260501,20260502,20260503,20260504,20260505,20260506,20260507,20260508,20260509,20260510,20260511,20260512,20260513,20260514,20260515,20260516,20260517,20260518,20260519,20260520,20260521,20260522,20260523,20260524,20260525,20260526,20260527,20260528,20260529,20260530,20260531,20260532,20260533,20260534,20260535,20260536,20260537,20260538,20260539,20260540,20260541,20260542,20260543,20260544,20260545,20260546,20260547,20260548,20260549,20260550 --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/balance-sweep`
 - Bot: idle: takes no actions; only the daily advanceDay tick runs (negative control).
 - Bot: retail-steady: delegates protect-availability (city scope, so expansion stores stay managed) to the first eligible manager, hires/assigns to cover every staffing shortage, and opens the best legal affordable tile while under the store cap.
 - Bot: advisor (convenience only): retail-steady plus the supply planner recommendation every 7 in-game days, executed through applyGameCommand / buildRailPreview (build producer or warehouse, upgrade building, connect rail).

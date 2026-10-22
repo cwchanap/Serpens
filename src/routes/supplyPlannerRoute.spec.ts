@@ -93,6 +93,7 @@ const baseSnapshot: SupplyPlannerSnapshot = {
 	reachableProcessorsByBuildingAndMaterial: {},
 	railReachableProcessorIdsByBuildingAndMaterial: {},
 	routableRailTargetIdsByOriginId: {},
+	railReachableWarehouseIdsByOriginId: {},
 	warehouseConnectedConsumerCapacityByMaterial: {},
 	warehouseConnectedProcessorsByMaterial: {}
 };
