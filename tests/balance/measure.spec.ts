@@ -188,6 +188,7 @@ function fakeLedger(
 		archetypeId: 'convenience',
 		bot: 'retail-steady',
 		foundingTileId: 'tile-a1',
+		foundingCash: 100,
 		openings,
 		actions
 	};
@@ -267,6 +268,20 @@ describe('cash trajectory (HPA-502 Stage 3)', () => {
 		expect(measured.minimumCash).toBe(80);
 		expect(measured.minimumCashDay).toBe(1);
 		expect(measured.firstNegativeCashDay).toBeNull();
+	});
+
+	it('takes founding cash from the ledger, not the day-1 report cashBefore', () => {
+		// Bots act before the first advanceDay tick, so reports[0].cashBefore is
+		// already downstream of day-1 hires/expansions/builds (here: 60 post-spend
+		// vs the true 100 founding baseline).
+		const reports = days(3, (day) => ({
+			cashBefore: day === 1 ? 60 : 140,
+			cashAfter: 140
+		}));
+		const measured = measureRun({ reports }, fakeLedger());
+		expect(measured.foundingCash).toBe(100);
+		expect(measured.minimumCash).toBe(100);
+		expect(measured.minimumCashDay).toBe(0);
 	});
 });
 
@@ -470,6 +485,52 @@ describe('advisor no-op repeats and producer stalls (HPA-502 Stage 3)', () => {
 			)
 		);
 		expect(notRepeated.advisorRepeatedNoOp).toBeNull();
+	});
+
+	it('ignores daily retail no-ops recorded under the advisor bot label', () => {
+		const weeklyAdvisorNoOp = (day: number) => ({
+			day,
+			bot: 'advisor' as const,
+			action: 'advisor:build-producer',
+			outcome: 'no-op' as const,
+			detail: 'no legal tile for water-plant'
+		});
+		const dailyRetailNoOp = (day: number) => ({
+			day,
+			bot: 'advisor' as const,
+			action: 'openStore',
+			outcome: 'no-op' as const,
+			detail: 'store cap reached'
+		});
+		// Intervening daily retail no-ops must not reset the weekly streak: the
+		// advisor replans on days 1/8/15 and hits the identical block each time.
+		const interleaved = measureRun(
+			{ reports: days(3) },
+			fakeLedger(
+				[fakeOpening()],
+				[
+					...Array.from({ length: 20 }, (_, index) => dailyRetailNoOp(index + 1)),
+					weeklyAdvisorNoOp(1),
+					weeklyAdvisorNoOp(8),
+					weeklyAdvisorNoOp(15)
+				]
+			)
+		);
+		expect(interleaved.advisorRepeatedNoOp).toEqual({
+			startDay: 1,
+			streak: 3,
+			action: 'advisor:build-producer',
+			detail: 'no legal tile for water-plant'
+		});
+		// Retail no-ops alone never produce an advisor streak either.
+		const retailOnly = measureRun(
+			{ reports: days(3) },
+			fakeLedger(
+				[fakeOpening()],
+				Array.from({ length: 20 }, (_, index) => dailyRetailNoOp(index + 1))
+			)
+		);
+		expect(retailOnly.advisorRepeatedNoOp).toBeNull();
 	});
 
 	it('flags a producer stalled seven consecutive days after the first applied build', () => {

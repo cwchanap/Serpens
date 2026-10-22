@@ -97,13 +97,13 @@ export interface RunMeasurement {
 	foundingTileId: string;
 	daysSimulated: number;
 	/** Cash before the first daily tick, i.e. right after founding. */
-	foundingCash: number | null;
+	foundingCash: number;
 	firstPositiveWindow7: WindowMetric | null;
 	firstPositiveWindow30: WindowMetric | null;
 	firstNegativeCashDay: number | null;
-	minimumCash: number | null;
+	minimumCash: number;
 	/** Report day of the minimum; 0 means the founding-cash baseline. */
-	minimumCashDay: number | null;
+	minimumCashDay: number;
 	checkpoints: CheckpointMetric[];
 	missedDemandShare: number | null;
 	stockoutShare: number | null;
@@ -188,8 +188,16 @@ function groupBy<T extends string>(
 
 /** Longest run of weekly-cadence advisor no-ops with an identical outcome+reason. */
 function findRepeatedAdvisorNoOp(ledger: BotLedger): RepeatedNoOpMetric | null {
+	// Only the `advisor:`-prefixed planner records count: retail-steady no-ops
+	// (openStore/hireStaff/...) share the ledger's bot label during advisor runs
+	// and their daily cadence would otherwise reset the weekly streak.
 	const noOps = ledger.actions
-		.filter((action) => action.bot === 'advisor' && action.outcome === 'no-op')
+		.filter(
+			(action) =>
+				action.bot === 'advisor' &&
+				action.action.startsWith('advisor:') &&
+				action.outcome === 'no-op'
+		)
 		.sort((a, b) => a.day - b.day);
 	let best: RepeatedNoOpMetric | null = null;
 	let startDay = 0;
@@ -305,11 +313,14 @@ function measureForecastOutcomes(
 /** Pure post-simulation measurement of one bot run. */
 export function measureRun(game: Pick<GameState, 'reports'>, ledger: BotLedger): RunMeasurement {
 	const reports = game.reports;
-	const foundingCash = reports.length > 0 ? reports[0]!.cashBefore : null;
+	// Founding cash comes from the ledger, not reports[0].cashBefore: bots act
+	// before the first advanceDay tick, so that report field is already
+	// downstream of day-1 hires/expansions/builds.
+	const foundingCash = ledger.foundingCash;
 
 	let firstNegativeCashDay: number | null = null;
 	let minimumCash = foundingCash;
-	let minimumCashDay: number | null = foundingCash === null ? null : 0;
+	let minimumCashDay = 0;
 	let missedDemand = 0;
 	let soldUnits = 0;
 	let productDays = 0;

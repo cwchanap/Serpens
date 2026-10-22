@@ -69,6 +69,8 @@ export interface BotLedger {
 	archetypeId: ArchetypeId;
 	bot: BotId;
 	foundingTileId: string;
+	/** Cash right after founding, before the day-1 bot actions that precede the first tick. */
+	foundingCash: number;
 	openings: OpeningRecord[];
 	actions: BotActionRecord[];
 }
@@ -148,6 +150,7 @@ export function runBot(
 		archetypeId,
 		bot,
 		foundingTileId: tile.id,
+		foundingCash: founded.cash,
 		openings: [
 			{
 				day: founded.day,
