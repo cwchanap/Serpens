@@ -1,4 +1,5 @@
 import type { SfxCueId } from '$lib/audio/audioCatalog';
+import type { DecisionContext } from '$lib/game/decisionContext';
 import { deeplyEqual } from '$lib/game/equality';
 import { isDecisionFailureCode } from '$lib/game/eventEffects';
 import {
@@ -331,8 +332,11 @@ const INITIAL_STATE: GameRouteControllerState = {
 	scenarioRunSyncEpoch: 0
 };
 
-function scenarioError(code: ScenarioOperationError['code']): ScenarioOperationError {
-	return { code, diagnostics: [] };
+function scenarioError(
+	code: ScenarioOperationError['code'],
+	decisionContext?: DecisionContext
+): ScenarioOperationError {
+	return { code, diagnostics: [], ...(decisionContext === undefined ? {} : { decisionContext }) };
 }
 
 function isSaveConflict(
@@ -1672,6 +1676,10 @@ export class GameRouteController {
 		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
 
 		let rejectedCode: ScenarioOperationError['code'] | null = null;
+		// The failing transition's system-decision context (e.g. blocked
+		// placement, missing cash) travels with the rejection so the
+		// scenarioOperationError render path can explain the refusal.
+		let rejectedDecisionContext: DecisionContext | undefined;
 		// Object wrapper so TypeScript's closure control-flow analysis can
 		// observe mutations made inside the runPersistenceGatedOperation
 		// callback — a bare `let` would be narrowed back to its initial type
@@ -1739,6 +1747,7 @@ export class GameRouteController {
 								retailSupplyRejection.value = execution.retailSupplyFailure.reason;
 							}
 							rejectedCode = execution.code;
+							rejectedDecisionContext = execution.decisionContext;
 							return { status: 'rejected' as const };
 						}
 						if (!execution.changed) return { status: 'unchanged' as const };
@@ -1946,7 +1955,7 @@ export class GameRouteController {
 			}
 			if (result.status === 'rejected' && rejectedCode) {
 				this.patchState({
-					scenarioOperationError: scenarioError(rejectedCode),
+					scenarioOperationError: scenarioError(rejectedCode, rejectedDecisionContext),
 					retryScenarioOperation: null
 				});
 			}

@@ -89,6 +89,14 @@ export type SupplyPlannerAction =
 			kind: 'build-producer';
 			materialId: MaterialId;
 			buildingTypeId: IndustrialBuildingTypeId;
+			/**
+			 * The placement tile this candidate was evaluated on — the
+			 * representative tile of its reachable-sink placement class
+			 * (rail-ready preferred). Headless executors build here so the
+			 * real build lands on the evaluated placement; the interactive
+			 * handoff lets the player choose a tile instead.
+			 */
+			tileId?: string;
 			cost: number;
 	  }
 	| {
@@ -104,6 +112,11 @@ export type SupplyPlannerAction =
 			kind: 'build-warehouse';
 			cityId: WorldCityId;
 			buildingTypeId: 'warehouse';
+			/**
+			 * The placement tile this candidate was evaluated on
+			 * (rail-ready preferred). See build-producer's tileId.
+			 */
+			tileId?: string;
 			cost: number;
 	  }
 	| {
@@ -1160,6 +1173,7 @@ function producerCandidates(
 				kind: 'build-producer',
 				materialId,
 				buildingTypeId: buildingType.id,
+				tileId: placementTile.tile.id,
 				cost: buildingType.buildCost
 			};
 			// A finished-goods producer with no warehouse to sink into yet is a
@@ -1305,6 +1319,7 @@ function warehouseCandidates(
 		kind: 'build-warehouse',
 		cityId: snapshot.supplyCityId,
 		buildingTypeId: 'warehouse',
+		tileId: (placement.railReadyTile ?? placement.validTile).id,
 		cost: buildingType.buildCost
 	};
 	const comparison = compareCandidate(

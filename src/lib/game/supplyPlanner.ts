@@ -139,6 +139,15 @@ export interface SupplyPlannerSnapshot {
 	 */
 	routableRailTargetIdsByOriginId: Partial<Record<string, readonly string[]>>;
 	/**
+	 * Existing-rail evidence: sorted warehouse ids each producer of a
+	 * required material already reaches over the current rail network,
+	 * keyed by `${originId}`. Uses the same attach-cell shipping-path
+	 * semantics that make `buildRailPreview` report `railAlreadyConnected`,
+	 * so bottleneck classification can drop warehouse candidates the origin
+	 * is already connected to and never name a satisfied warehouse edge.
+	 */
+	railReachableWarehouseIdsByOriginId: Partial<Record<string, readonly string[]>>;
+	/**
 	 * Total per-day input capacity of usable downstream processors that can
 	 * reach a warehouse, keyed by the upstream raw/intermediate material they
 	 * consume. City inventory is a warehouse source: a processor can only
@@ -340,6 +349,7 @@ export interface RequiredChainReachability {
 	>;
 	railReachableProcessorIdsByBuildingAndMaterial: Partial<Record<string, readonly string[]>>;
 	routableRailTargetIdsByOriginId: Partial<Record<string, readonly string[]>>;
+	railReachableWarehouseIdsByOriginId: Partial<Record<string, readonly string[]>>;
 	warehouseConnectedConsumerCapacityByMaterial: Partial<Record<MaterialId, number>>;
 	warehouseConnectedProcessorsByMaterial: Partial<
 		Record<MaterialId, readonly ReachableProcessorEntry[]>
@@ -565,6 +575,7 @@ export function buildSupplyPlannerSnapshot(
 		railReachableProcessorIdsByBuildingAndMaterial:
 			reachability.railReachableProcessorIdsByBuildingAndMaterial,
 		routableRailTargetIdsByOriginId: reachability.routableRailTargetIdsByOriginId,
+		railReachableWarehouseIdsByOriginId: reachability.railReachableWarehouseIdsByOriginId,
 		warehouseConnectedConsumerCapacityByMaterial:
 			reachability.warehouseConnectedConsumerCapacityByMaterial,
 		warehouseConnectedProcessorsByMaterial: reachability.warehouseConnectedProcessorsByMaterial,
@@ -746,7 +757,9 @@ export function buildRequiredChainReachability(
 			getFootprintAdjacentCoords(building).map((coord) => railCellKey(coord.x, coord.y))
 		);
 	}
+	const warehouses = scopedBuildings.filter((building) => building.typeId === 'warehouse');
 	const routableRailTargetIdsByOriginId: Partial<Record<string, readonly string[]>> = {};
+	const railReachableWarehouseIdsByOriginId: Partial<Record<string, readonly string[]>> = {};
 	for (const outputs of outputsByMaterial.values()) {
 		for (const output of outputs) {
 			const originId = output.building.id;
@@ -763,6 +776,25 @@ export function buildRequiredChainReachability(
 						(adjacentCellKeysByBuildingId.get(candidate.id) ?? []).some((key) => reachable.has(key))
 				)
 				.map((candidate) => candidate.id);
+			// Existing-rail evidence: warehouses this origin can already ship
+			// to over the current network — the same attach-cell path check
+			// that makes buildRailPreview report railAlreadyConnected. Kept
+			// usability-blind so destination selection can exclude edges the
+			// network already satisfies.
+			const originAttach = attachCellsByBuildingId.get(originId) ?? [];
+			railReachableWarehouseIdsByOriginId[originId] = warehouses
+				.filter(
+					(warehouse) =>
+						warehouse.id !== originId &&
+						findShippingPath(
+							network,
+							budget,
+							originAttach,
+							attachCellsByBuildingId.get(warehouse.id) ?? []
+						) !== null
+				)
+				.map((warehouse) => warehouse.id)
+				.sort(compareCodeUnitStrings);
 		}
 	}
 
@@ -806,6 +838,7 @@ export function buildRequiredChainReachability(
 		reachableProcessorsByBuildingAndMaterial: reachableDemand.byProcessorsByBuildingAndMaterial,
 		railReachableProcessorIdsByBuildingAndMaterial: reachableDemand.byRailReachableProcessorIds,
 		routableRailTargetIdsByOriginId,
+		railReachableWarehouseIdsByOriginId,
 		warehouseConnectedConsumerCapacityByMaterial:
 			reachableDemand.byWarehouseConnectedConsumerCapacity,
 		warehouseConnectedProcessorsByMaterial: reachableDemand.byWarehouseConnectedProcessors
@@ -1285,6 +1318,7 @@ function disconnectedReachability(
 		reachableProcessorsByBuildingAndMaterial: {},
 		railReachableProcessorIdsByBuildingAndMaterial: {},
 		routableRailTargetIdsByOriginId: {},
+		railReachableWarehouseIdsByOriginId: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {}
 	};
@@ -2821,9 +2855,14 @@ function findMissingRailDestination(
 			}
 		}
 	}
-	const alreadyReachable = new Set(
-		snapshot.railReachableProcessorIdsByBuildingAndMaterial[`${originId}\u0000${materialId}`] ?? []
-	);
+	const alreadyReachable = new Set([
+		...(snapshot.railReachableProcessorIdsByBuildingAndMaterial[`${originId}\u0000${materialId}`] ??
+			[]),
+		// Warehouses this origin already ships to over existing rail: a
+		// producer→warehouse edge those ids would name is already satisfied,
+		// so recommending it would reproduce the railAlreadyConnected no-op.
+		...(snapshot.railReachableWarehouseIdsByOriginId[originId] ?? [])
+	]);
 	return (
 		candidates
 			.filter(

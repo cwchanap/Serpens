@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { isTileBuildable } from '$lib/game/city';
 import { deeplyEqual } from '$lib/game/equality';
+import { getIndustrialPlacementBlockReason } from '$lib/game/industryPlacement';
 import { forecastOpening } from '$lib/game/placement';
 import {
 	createCityTileLookup,
@@ -148,6 +149,43 @@ describe('balance harness bots (HPA-502 Stage 2)', () => {
 			expect(result.game).toBe(current);
 			current = result.game;
 		}
+	});
+
+	it('builds the producer on the planner-evaluated tile, not the first legal tile', () => {
+		const { game } = runBot('idle', 'convenience', SEED, 1);
+		const city = game.industryCities.find(
+			(candidate) => candidate.id === game.activeIndustryCityId
+		);
+		expect(city).toBeDefined();
+		const legalTileIds = city!.tiles
+			.filter((tile) => getIndustrialPlacementBlockReason(game, tile.id, 'water-bottler') === null)
+			.map((tile) => tile.id)
+			.sort();
+		expect(legalTileIds.length).toBeGreaterThan(1);
+		// A legal tile that is not the id-first fallback: if the executor
+		// silently re-derived placement it would land on legalTileIds[0] and
+		// the harness would measure a different placement than the planner
+		// evaluated.
+		const evaluatedTileId = legalTileIds[1]!;
+		const action: SupplyPlannerAction = {
+			kind: 'build-producer',
+			materialId: 'bottled-water',
+			buildingTypeId: 'water-bottler',
+			tileId: evaluatedTileId,
+			cost: 0
+		};
+		const result = executeAdvisorAction(game, action, game.day);
+
+		expect(result.record.outcome).toBe('applied');
+		expect(result.record.detail).toBe(`water-bottler on ${evaluatedTileId}`);
+		expect(
+			result.game.industrialBuildings.some(
+				(building) => building.typeId === 'water-bottler' && building.tileId === evaluatedTileId
+			)
+		).toBe(true);
+		expect(
+			result.game.industrialBuildings.some((building) => building.tileId === legalTileIds[0])
+		).toBe(false);
 	});
 
 	it('consults the advisor exactly once per weekly cadence day', () => {

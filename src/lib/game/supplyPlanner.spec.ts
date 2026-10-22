@@ -113,6 +113,7 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 		reachableProcessorsByBuildingAndMaterial: {},
 		railReachableProcessorIdsByBuildingAndMaterial: {},
 		routableRailTargetIdsByOriginId: {},
+		railReachableWarehouseIdsByOriginId: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {},
 		...overrides
@@ -4596,5 +4597,63 @@ describe('supply planner rail connectivity destination', () => {
 		const projection = projectSupplySnapshot(snapshot);
 
 		expect(projection.bottleneck.kind).not.toBe('rail-disconnected');
+	});
+
+	it('excludes warehouses the usable origin already reaches from the missing-edge pick', () => {
+		// Reachability-gap trigger: a usable pump already ships to
+		// warehouse-1 over existing rail while downstream demand is
+		// unserved. warehouse-1 sorts first among the material's sinks, so
+		// without the warehouse exclusion the planner names the
+		// already-connected pump→warehouse-1 edge and the advisor repeats
+		// that railAlreadyConnected no-op forever. It must name warehouse-2.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'bottled-water',
+			demandPerDay: 10,
+			buildings: [
+				{ id: 'water-pump-1', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'water-bottler-1', cityId: 'industry-city', typeId: 'water-bottler', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 },
+				{ id: 'warehouse-2', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['water-pump-1', 'water-bottler-1'],
+			usableSinkBuildingIdsByMaterial: { water: ['warehouse-1', 'warehouse-2'] },
+			reachableDemandByMaterial: { water: 0 },
+			railReachableWarehouseIdsByOriginId: { 'water-pump-1': ['warehouse-1'] },
+			routableRailTargetIdsByOriginId: { 'water-pump-1': ['warehouse-1', 'warehouse-2'] }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+
+		expect(projection.bottleneck.kind).toBe('rail-disconnected');
+		if (projection.bottleneck.kind === 'rail-disconnected') {
+			expect(projection.bottleneck.buildingId).toBe('water-pump-1');
+			expect(projection.bottleneck.destinationBuildingId).toBe('warehouse-2');
+		}
+	});
+
+	it('keeps the id-first warehouse when no warehouse-reachability evidence is recorded', () => {
+		// An origin missing from the evidence map is unverified — the
+		// evidence narrows candidate destinations but never invents them, so
+		// a snapshot built without it keeps the previous id-order selection.
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'bottled-water',
+			demandPerDay: 10,
+			buildings: [
+				{ id: 'water-pump-1', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'water-bottler-1', cityId: 'industry-city', typeId: 'water-bottler', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 },
+				{ id: 'warehouse-2', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['water-pump-1', 'water-bottler-1'],
+			usableSinkBuildingIdsByMaterial: { water: ['warehouse-1', 'warehouse-2'] },
+			reachableDemandByMaterial: { water: 0 },
+			routableRailTargetIdsByOriginId: { 'water-pump-1': ['warehouse-1', 'warehouse-2'] }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+
+		expect(projection.bottleneck.kind).toBe('rail-disconnected');
+		if (projection.bottleneck.kind === 'rail-disconnected') {
+			expect(projection.bottleneck.buildingId).toBe('water-pump-1');
+			expect(projection.bottleneck.destinationBuildingId).toBe('warehouse-1');
+		}
 	});
 });

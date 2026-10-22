@@ -434,7 +434,11 @@ export function executeAdvisorAction(
 			};
 		}
 		const buildingTypeId = action.buildingTypeId;
-		const tileId = findLegalIndustryTile(game, buildingTypeId);
+		// Execute the placement the planner evaluated (rail-ready class
+		// preferred) rather than whichever legal tile sorts first — the
+		// harness must measure what the plan measured. Actions built
+		// without a tile fall back to the first legal tile.
+		const tileId = action.tileId ?? findLegalIndustryTile(game, buildingTypeId);
 		if (!tileId) {
 			return {
 				game,

@@ -10,6 +10,7 @@ import type {
 	WorldCityId
 } from '$lib/game/types';
 import type { TranslationKey } from '$lib/i18n/translate';
+import type { DecisionContext } from '$lib/game/decisionContext';
 import type { DecisionResolutionFailureCode } from '$lib/game/eventEffects';
 import type { FinanceFailureCode } from '$lib/game/finance';
 
@@ -381,6 +382,13 @@ export type ScenarioOperationErrorCode =
 export interface ScenarioOperationError {
 	code: ScenarioOperationErrorCode;
 	diagnostics: ScenarioDiagnostic[];
+	/**
+	 * Context of the system decision a command transition appended while
+	 * failing its postcondition (e.g. a blocked placement or missing cash on
+	 * an `invalid-command` rejection). Carried so localized rendering can
+	 * explain the rejection instead of showing only the bare code.
+	 */
+	decisionContext?: DecisionContext;
 }
 
 export type ScenarioOperationResult<T> =

@@ -397,7 +397,7 @@ function classifyDecision(decision: DecisionItem): string | null {
 	return null;
 }
 
-function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): string {
+export function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBundle): string {
 	switch (ctx.code) {
 		case 'expansionUnavailable':
 			return i18n.t('copy.decisions.expansionUnavailable.context', { storeCap: ctx.storeCap });

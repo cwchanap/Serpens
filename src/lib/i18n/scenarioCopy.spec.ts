@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createI18n } from '$lib/i18n';
+import { decisionContextIndustrialOccupiedTile } from '$lib/game/decisionContext';
 import type {
 	ScenarioDefinition,
 	ScenarioPersistenceSummary,
@@ -232,6 +233,22 @@ describe('scenario copy', () => {
 				createI18n('en')
 			)
 		).toContain('save');
+	});
+
+	it('appends the failing transition decision context to a rejected command message', () => {
+		// A rejected command whose transition recorded *why* (e.g. an occupied
+		// industrial tile) must render that reason alongside the generic code
+		// text — the banner would otherwise show a bare "invalid command".
+		const text = scenarioDiagnosticText(
+			{
+				code: 'invalid-command',
+				diagnostics: [],
+				decisionContext: decisionContextIndustrialOccupiedTile()
+			},
+			createI18n('en')
+		);
+
+		expect(text).toContain('Occupied industrial tile');
 	});
 
 	it('formats committed evaluation progress, evidence, modifiers, risks, and contributor names', () => {
