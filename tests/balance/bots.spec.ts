@@ -1,9 +1,6 @@
 /**
- * Balance-harness bot specs (HPA-502 Stage 2). These specs are not yet in a
- * Vitest include glob — Task 4 (Stage 3) adds the tests-directory glob to the
- * server project. Until then, run them explicitly with a one-off Vitest
- * config scoped to tests/balance (see .superpowers/sdd task-3 report for the
- * exact invocation used for green evidence).
+ * Balance-harness bot specs (HPA-502 Stage 2). Included in the Vitest server
+ * project via the tests-directory spec glob in vite.config.ts.
  *
  * Every bot run uses an explicit seed; nothing relies on `Date.now()`.
  */
@@ -86,7 +83,7 @@ describe('balance harness bots (HPA-502 Stage 2)', () => {
 		expect(game.day).toBe(6); // day 1 acted on, then five advanceDay ticks
 	});
 
-	it('delegates protect-availability to a real eligible staff manager', () => {
+	it('delegates protect-availability to a real eligible staff manager at city scope', () => {
 		const { game, ledger } = runBot('retail-steady', 'convenience', SEED, 3);
 
 		const delegation = game.managerDelegations.find(
@@ -97,14 +94,35 @@ describe('balance harness bots (HPA-502 Stage 2)', () => {
 		expect(delegation.enabled).toBe(true);
 		expect(delegation.authority.inventory).toBe(true);
 		expect(delegation.authority.pricing).toBe(false);
-		if (delegation.scope.kind !== 'store') throw new Error('Expected store-scope delegation.');
+		if (delegation.scope.kind !== 'city') throw new Error('Expected city-scope delegation.');
 		const scope = delegation.scope;
-		expect(game.stores.some((store) => store.id === scope.storeId)).toBe(true);
+		expect(game.stores.every((store) => store.cityId === scope.cityId)).toBe(true);
 		const manager = game.staff.find((member) => member.id === delegation.managerId);
 		expect(manager?.role).toBe('manager');
 		expect(
 			ledger.actions.some(
 				(action) => action.action === 'setManagerDelegation' && action.outcome === 'applied'
+			)
+		).toBe(true);
+	});
+
+	it('keeps expansion stores inside the protect-availability target set', () => {
+		const { game, ledger } = runBot('retail-steady', 'convenience', SEED, 10);
+
+		// The expansion playbook must actually have opened a second store.
+		const expansion = ledger.openings[1];
+		expect(expansion).toBeDefined();
+		if (!expansion) throw new Error('Expected the bot to open a second store.');
+
+		// Regression guard for the old store-scoped delegation: an applied
+		// inventory-targets change on the expansion store proves the manager's
+		// playbook target set covers it, not just the founding store.
+		expect(
+			game.managerActionHistory.some(
+				(entry) =>
+					entry.outcome === 'applied' &&
+					entry.change.kind === 'inventory-targets' &&
+					entry.change.storeId === expansion.storeId
 			)
 		).toBe(true);
 	});

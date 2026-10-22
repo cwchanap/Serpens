@@ -475,7 +475,7 @@ export const SWEEP_DISCLOSURE =
 
 export const BOT_DEFINITIONS = [
 	'idle: takes no actions; only the daily advanceDay tick runs (negative control).',
-	'retail-steady: delegates protect-availability to the first eligible manager, hires/assigns to cover every staffing shortage, and opens the best legal affordable tile while under the store cap.',
+	'retail-steady: delegates protect-availability (city scope, so expansion stores stay managed) to the first eligible manager, hires/assigns to cover every staffing shortage, and opens the best legal affordable tile while under the store cap.',
 	'advisor (convenience only): retail-steady plus the supply planner recommendation every 7 in-game days, executed through applyGameCommand / buildRailPreview (build producer or warehouse, upgrade building, connect rail).'
 ];
 

@@ -210,7 +210,11 @@ function runRetailSteadyDay(game: GameState, ledger: BotLedger, day: number): Ga
 	return next;
 }
 
-/** Delegate protect-availability to the first eligible manager, once. */
+/**
+ * Delegate protect-availability to the first eligible manager, once. City
+ * scope (not the founding store) so stores opened later by the expansion
+ * playbook stay inside the manager's target set.
+ */
 function ensureManagerDelegation(game: GameState, ledger: BotLedger, day: number): GameState {
 	if (
 		game.managerDelegations.some(
@@ -227,7 +231,7 @@ function ensureManagerDelegation(game: GameState, ledger: BotLedger, day: number
 	const store = [...game.stores].sort(byId)[0]!;
 	const delegated = setManagerDelegation(game, {
 		managerId: manager.id,
-		scope: { kind: 'store', storeId: store.id },
+		scope: { kind: 'city', cityId: store.cityId as WorldCityId },
 		playbook: 'protect-availability',
 		authority: { pricing: false, inventory: true, staffing: false, supply: false },
 		enabled: true
@@ -242,7 +246,13 @@ function ensureManagerDelegation(game: GameState, ledger: BotLedger, day: number
 		);
 		return game;
 	}
-	record(ledger, day, 'setManagerDelegation', 'applied', `manager ${manager.id} on ${store.id}`);
+	record(
+		ledger,
+		day,
+		'setManagerDelegation',
+		'applied',
+		`manager ${manager.id} on ${store.cityId}`
+	);
 	return delegated;
 }
 
