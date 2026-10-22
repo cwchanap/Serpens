@@ -2730,8 +2730,11 @@ const CONNECTIVITY_EPSILON = 1e-9;
  * come from the material's usable sinks; when none are recorded, from the
  * installed downstream processors (connecting a stranded producer to an
  * unusable processor can make it usable via the producer's warehouse
- * access). Edges the producer already reaches — per usability-blind rail
- * evidence — are excluded, so the returned edge is genuinely missing.
+ * access). Finished materials need no fallback: their usable sinks are
+ * every installed warehouse, so an empty sink list means no warehouse
+ * exists and there is no rail edge worth naming. Edges the producer
+ * already reaches — per usability-blind rail evidence — are excluded, so
+ * the returned edge is genuinely missing.
  */
 function findMissingRailDestination(
 	snapshot: SupplyPlannerSnapshot,
@@ -2740,17 +2743,11 @@ function findMissingRailDestination(
 ): string | null {
 	const candidates: string[] = [...(snapshot.usableSinkBuildingIdsByMaterial[materialId] ?? [])];
 	if (candidates.length === 0) {
-		if (MATERIALS[materialId]?.kind === 'finished') {
-			for (const building of snapshot.buildings) {
-				if (building.typeId === 'warehouse') candidates.push(building.id);
-			}
-		} else {
-			for (const [, recipeId] of MATERIAL_PRODUCER_RECIPES) {
-				const recipe = PRODUCTION_RECIPES[recipeId];
-				if (!recipe?.inputs.some((input) => input.materialId === materialId)) continue;
-				for (const building of buildingsForRecipe(snapshot.buildings, recipeId)) {
-					candidates.push(building.id);
-				}
+		for (const [, recipeId] of MATERIAL_PRODUCER_RECIPES) {
+			const recipe = PRODUCTION_RECIPES[recipeId];
+			if (!recipe?.inputs.some((input) => input.materialId === materialId)) continue;
+			for (const building of buildingsForRecipe(snapshot.buildings, recipeId)) {
+				candidates.push(building.id);
 			}
 		}
 	}
