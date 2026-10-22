@@ -14,8 +14,11 @@ import {
 	buildRailNetwork,
 	createRailBudget,
 	findShippingPath,
-	getBuildingAttachCellKeys
+	getBuildingAttachCellKeys,
+	getFootprintAdjacentCoords,
+	railCellKey
 } from './rail';
+import { findReachableRailCells } from './railPlacement';
 import { REPLENISHMENT_INTERVAL_DAYS, resolveRetailSupplyContext } from './retailSupply';
 import { getPolicyAdjustedCityProductDemand, type EffectivePolicyByStoreId } from './stock';
 import { getProductDefinition } from './products';
@@ -124,6 +127,17 @@ export interface SupplyPlannerSnapshot {
 	 * network already satisfies.
 	 */
 	railReachableProcessorIdsByBuildingAndMaterial: Partial<Record<string, readonly string[]>>;
+	/**
+	 * New-rail routability evidence: sorted building ids reachable from
+	 * each producer of a required material via rail that could still be
+	 * built, keyed by `${originId}`. Uses the same passability semantics
+	 * as `buildRailPreview` (existing rail traversable, rail-legal empty
+	 * tiles buildable), so bottleneck classification can name only
+	 * producer→sink edges the rail builder would actually satisfy. An
+	 * origin missing from the map is treated as unverified — the evidence
+	 * narrows candidate destinations but never invents them.
+	 */
+	routableRailTargetIdsByOriginId: Partial<Record<string, readonly string[]>>;
 	/**
 	 * Total per-day input capacity of usable downstream processors that can
 	 * reach a warehouse, keyed by the upstream raw/intermediate material they
@@ -325,6 +339,7 @@ export interface RequiredChainReachability {
 		Record<string, readonly ReachableProcessorEntry[]>
 	>;
 	railReachableProcessorIdsByBuildingAndMaterial: Partial<Record<string, readonly string[]>>;
+	routableRailTargetIdsByOriginId: Partial<Record<string, readonly string[]>>;
 	warehouseConnectedConsumerCapacityByMaterial: Partial<Record<MaterialId, number>>;
 	warehouseConnectedProcessorsByMaterial: Partial<
 		Record<MaterialId, readonly ReachableProcessorEntry[]>
@@ -549,6 +564,7 @@ export function buildSupplyPlannerSnapshot(
 		reachableProcessorsByBuildingAndMaterial: reachability.reachableProcessorsByBuildingAndMaterial,
 		railReachableProcessorIdsByBuildingAndMaterial:
 			reachability.railReachableProcessorIdsByBuildingAndMaterial,
+		routableRailTargetIdsByOriginId: reachability.routableRailTargetIdsByOriginId,
 		warehouseConnectedConsumerCapacityByMaterial:
 			reachability.warehouseConnectedConsumerCapacityByMaterial,
 		warehouseConnectedProcessorsByMaterial: reachability.warehouseConnectedProcessorsByMaterial,
@@ -716,6 +732,40 @@ export function buildRequiredChainReachability(
 		);
 	}
 
+	// New-rail routability evidence for bottleneck destination selection:
+	// for every producer of a required material (each a potential
+	// connect-rail origin), the scoped buildings reachable via rail that
+	// could still be built — the same passability semantics as
+	// buildRailPreview/canRouteRailBetween. One forward search per origin,
+	// then a target is routable when any of its footprint-adjacent cells
+	// lies inside the reachable frontier.
+	const adjacentCellKeysByBuildingId = new Map<string, readonly string[]>();
+	for (const building of scopedBuildings) {
+		adjacentCellKeysByBuildingId.set(
+			building.id,
+			getFootprintAdjacentCoords(building).map((coord) => railCellKey(coord.x, coord.y))
+		);
+	}
+	const routableRailTargetIdsByOriginId: Partial<Record<string, readonly string[]>> = {};
+	for (const outputs of outputsByMaterial.values()) {
+		for (const output of outputs) {
+			const originId = output.building.id;
+			if (routableRailTargetIdsByOriginId[originId] !== undefined) continue;
+			const reachable = findReachableRailCells(
+				game,
+				snapshot.supplyCityId,
+				getFootprintAdjacentCoords(output.building)
+			);
+			routableRailTargetIdsByOriginId[originId] = scopedBuildings
+				.filter(
+					(candidate) =>
+						candidate.id !== originId &&
+						(adjacentCellKeysByBuildingId.get(candidate.id) ?? []).some((key) => reachable.has(key))
+				)
+				.map((candidate) => candidate.id);
+		}
+	}
+
 	const context: ReachabilityContext = {
 		network,
 		budget,
@@ -755,6 +805,7 @@ export function buildRequiredChainReachability(
 		reachableBranchesByBuildingAndMaterial: reachableDemand.byBranchesByBuildingAndMaterial,
 		reachableProcessorsByBuildingAndMaterial: reachableDemand.byProcessorsByBuildingAndMaterial,
 		railReachableProcessorIdsByBuildingAndMaterial: reachableDemand.byRailReachableProcessorIds,
+		routableRailTargetIdsByOriginId,
 		warehouseConnectedConsumerCapacityByMaterial:
 			reachableDemand.byWarehouseConnectedConsumerCapacity,
 		warehouseConnectedProcessorsByMaterial: reachableDemand.byWarehouseConnectedProcessors
@@ -1233,6 +1284,7 @@ function disconnectedReachability(
 		reachableBranchesByBuildingAndMaterial: {},
 		reachableProcessorsByBuildingAndMaterial: {},
 		railReachableProcessorIdsByBuildingAndMaterial: {},
+		routableRailTargetIdsByOriginId: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {}
 	};
@@ -2724,6 +2776,22 @@ function warehouseEvidence(snapshot: SupplyPlannerSnapshot): SupplyWarehouseEvid
 const CONNECTIVITY_EPSILON = 1e-9;
 
 /**
+ * True when new-rail routability evidence confirms a path could still be
+ * built from origin to target (same passability semantics as
+ * buildRailPreview). Origins absent from the evidence map are unverified —
+ * the evidence narrows candidate destinations but never invents them, so
+ * snapshots built without it keep the previous id-order selection.
+ */
+function isRoutableRailTarget(
+	snapshot: SupplyPlannerSnapshot,
+	originId: string,
+	targetId: string
+): boolean {
+	const routable = snapshot.routableRailTargetIdsByOriginId[originId];
+	return routable === undefined || routable.includes(targetId);
+}
+
+/**
  * Picks a deterministic missing producer→sink rail edge for a (building,
  * material) pair from existing reachability evidence, or null when the
  * network already satisfies every candidate edge. Candidate destinations
@@ -2734,7 +2802,9 @@ const CONNECTIVITY_EPSILON = 1e-9;
  * every installed warehouse, so an empty sink list means no warehouse
  * exists and there is no rail edge worth naming. Edges the producer
  * already reaches — per usability-blind rail evidence — are excluded, so
- * the returned edge is genuinely missing.
+ * the returned edge is genuinely missing. Edges the rail builder could
+ * not satisfy — per new-rail routability evidence — are excluded too, so
+ * the returned edge is also buildable when that evidence is present.
  */
 function findMissingRailDestination(
 	snapshot: SupplyPlannerSnapshot,
@@ -2756,7 +2826,12 @@ function findMissingRailDestination(
 	);
 	return (
 		candidates
-			.filter((candidateId) => candidateId !== originId && !alreadyReachable.has(candidateId))
+			.filter(
+				(candidateId) =>
+					candidateId !== originId &&
+					!alreadyReachable.has(candidateId) &&
+					isRoutableRailTarget(snapshot, originId, candidateId)
+			)
 			.sort(compareCodeUnitStrings)[0] ?? null
 	);
 }
@@ -2874,9 +2949,14 @@ function findConnectivityDeficit(
 					);
 					// If the producer can't reach all usable processors for
 					// this branch, it's stranded by rail topology — name the
-					// first unreachable processor as the destination.
+					// first unreachable processor the rail builder could
+					// actually connect as the destination.
 					const missingProcessorId =
-						branchProcessorIds.find((id) => !reachableForBranch.has(id)) ?? null;
+						branchProcessorIds.find(
+							(id) =>
+								!reachableForBranch.has(id) &&
+								isRoutableRailTarget(snapshot, allocation.producerIds[pi]!, id)
+						) ?? null;
 					if (missingProcessorId !== null) {
 						return {
 							buildingId: allocation.producerIds[pi]!,
@@ -2892,7 +2972,9 @@ function findConnectivityDeficit(
 						];
 					const canReachBranch = branches?.has(branchId);
 					if (!canReachBranch) {
-						const destination = computeBranchProcessorIds(snapshot, branchId, usableIds)[0];
+						const destination = computeBranchProcessorIds(snapshot, branchId, usableIds).find(
+							(id) => isRoutableRailTarget(snapshot, allocation.producerIds[pi]!, id)
+						);
 						// Without any usable processor for the branch there is
 						// no viable rail edge — leave the deficit to the
 						// truthful non-rail classification.
