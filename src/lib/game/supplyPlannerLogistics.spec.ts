@@ -107,6 +107,7 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 		reachableBranchesByBuildingAndMaterial: {},
 		reachableProcessorsByBuildingAndMaterial: {},
 		railReachableProcessorIdsByBuildingAndMaterial: {},
+		routableRailTargetIdsByOriginId: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {},
 		logistics: {

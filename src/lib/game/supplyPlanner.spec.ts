@@ -112,6 +112,7 @@ function projectionSnapshot(overrides: Partial<SupplyPlannerSnapshot> = {}): Sup
 		reachableBranchesByBuildingAndMaterial: {},
 		reachableProcessorsByBuildingAndMaterial: {},
 		railReachableProcessorIdsByBuildingAndMaterial: {},
+		routableRailTargetIdsByOriginId: {},
 		warehouseConnectedConsumerCapacityByMaterial: {},
 		warehouseConnectedProcessorsByMaterial: {},
 		...overrides
@@ -4497,5 +4498,103 @@ describe('supply planner rail connectivity destination', () => {
 		}
 		expect(plan.recommendation.action.buildingId).toBe('water-bottler-2');
 		expect(plan.recommendation.action.destinationBuildingId).toBe('warehouse-1');
+	});
+
+	it('skips an id-first sink with no buildable rail path and names the routable alternative', () => {
+		// Reported loop: pump connected to a bottler, two disconnected
+		// warehouses. warehouse-1 sorts first but is ringed by blocked
+		// terrain, so the authoritative rail preview cannot route to it —
+		// the planner would recommend an impossible edge and the advisor
+		// would repeat it forever. It must name warehouse-2 instead.
+		const blockedAdjacent = [
+			{ x: 10, y: 1 },
+			{ x: 11, y: 1 },
+			{ x: 10, y: 4 },
+			{ x: 11, y: 4 },
+			{ x: 9, y: 2 },
+			{ x: 9, y: 3 },
+			{ x: 12, y: 2 },
+			{ x: 12, y: 3 }
+		];
+		const base = plannerGame([product('bottled-water')], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 'industry-city', 1, 3, 2),
+				building('water-bottler', 'water-bottler-1', 'industry-city', 1, 3, 6),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 10, 2),
+				building('warehouse', 'warehouse-2', 'industry-city', 1, 16, 2)
+			]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? {
+							...city,
+							tiles: city.tiles.map((tile) =>
+								blockedAdjacent.some((coord) => coord.x === tile.x && coord.y === tile.y)
+									? { ...tile, terrain: 'blocked' as const, locked: true }
+									: tile
+							),
+							rails: verticalRails(1, 8)
+						}
+					: city
+			)
+		};
+
+		// Fixture check: the id-first sink is genuinely unroutable while
+		// the alternative accepts rail — matching the reported repro.
+		expect(previewBlockCode(game, 'water-bottler-1', 'warehouse-1')).toBe('railNoValidPath');
+		expect(previewBlockCode(game, 'water-bottler-1', 'warehouse-2')).toBeNull();
+
+		const plan = readyPlan(game);
+		expect(plan.recommendation.action).toEqual({
+			kind: 'connect-rail',
+			buildingId: 'water-bottler-1',
+			destinationBuildingId: 'warehouse-2',
+			materialId: 'bottled-water'
+		});
+	});
+
+	it('names the first routable sink when the id-first candidate is not rail-routable', () => {
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'bottled-water',
+			demandPerDay: 10,
+			buildings: [
+				{ id: 'water-pump-1', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'water-bottler-1', cityId: 'industry-city', typeId: 'water-bottler', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 },
+				{ id: 'warehouse-2', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['water-pump-1'],
+			disconnectedBuildingIds: ['water-bottler-1'],
+			usableSinkBuildingIdsByMaterial: { 'bottled-water': ['warehouse-1', 'warehouse-2'] },
+			routableRailTargetIdsByOriginId: { 'water-bottler-1': ['warehouse-2'] }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+
+		expect(projection.bottleneck.kind).toBe('rail-disconnected');
+		if (projection.bottleneck.kind === 'rail-disconnected') {
+			expect(projection.bottleneck.buildingId).toBe('water-bottler-1');
+			expect(projection.bottleneck.destinationBuildingId).toBe('warehouse-2');
+		}
+	});
+
+	it('falls through to the true bottleneck when no candidate sink is rail-routable', () => {
+		const snapshot = projectionSnapshot({
+			finishedMaterialId: 'bottled-water',
+			demandPerDay: 10,
+			buildings: [
+				{ id: 'water-pump-1', cityId: 'industry-city', typeId: 'water-pump', level: 1 },
+				{ id: 'water-bottler-1', cityId: 'industry-city', typeId: 'water-bottler', level: 1 },
+				{ id: 'warehouse-1', cityId: 'industry-city', typeId: 'warehouse', level: 1 }
+			],
+			usableBuildingIds: ['water-pump-1'],
+			disconnectedBuildingIds: ['water-bottler-1'],
+			usableSinkBuildingIdsByMaterial: { 'bottled-water': ['warehouse-1'] },
+			routableRailTargetIdsByOriginId: { 'water-bottler-1': [] }
+		});
+		const projection = projectSupplySnapshot(snapshot);
+
+		expect(projection.bottleneck.kind).not.toBe('rail-disconnected');
 	});
 });
