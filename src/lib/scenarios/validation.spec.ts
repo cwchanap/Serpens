@@ -955,6 +955,31 @@ describe('validateScenarioDefinition', () => {
 		});
 	});
 
+	it('validates the parameterless finance metrics as closed current-window queries', () => {
+		const definition = malformedDefinition();
+		definition.requiredObjectives[0].query = {
+			metric: 'total-debt',
+			productIds: ['bottled-water']
+		};
+		definition.requiredObjectives[0].window = { kind: 'run-to-date' };
+		expect(codes(definition)).toEqual(
+			expect.arrayContaining([
+				{ path: 'requiredObjectives[0].query.productIds', code: 'unknown-key' },
+				{ path: 'requiredObjectives[0].window.kind', code: 'unsupported-window' }
+			])
+		);
+
+		const missed = malformedDefinition();
+		missed.requiredObjectives[0].query = { metric: 'missed-loan-payments', extra: true };
+		missed.requiredObjectives[0].window = { kind: 'trailing-reports', count: 2 };
+		expect(codes(missed)).toEqual(
+			expect.arrayContaining([
+				{ path: 'requiredObjectives[0].query.extra', code: 'unknown-key' },
+				{ path: 'requiredObjectives[0].window.kind', code: 'unsupported-window' }
+			])
+		);
+	});
+
 	it('validates supported commands and modifier variants', () => {
 		const definition = malformedDefinition();
 		definition.allowedCommands = [...SCENARIO_COMMAND_KINDS, 'teleport'];

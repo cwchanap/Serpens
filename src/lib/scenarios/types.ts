@@ -181,6 +181,8 @@ export type ScenarioMetricWindow =
 
 export type ScenarioMetricQuery =
 	| { metric: 'cash' }
+	| { metric: 'total-debt' }
+	| { metric: 'missed-loan-payments' }
 	| { metric: 'daily-net-income' }
 	| { metric: 'cumulative-net-income' }
 	| { metric: 'consecutive-positive-net-income-reports' }

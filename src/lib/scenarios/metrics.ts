@@ -1,3 +1,4 @@
+import { getTotalDebt, isOutstandingLoan } from '$lib/game/finance';
 import { isReplenishmentDay } from '$lib/game/retailSupply';
 import type { DailyReport, GameState, ProductId } from '$lib/game/types';
 import type {
@@ -184,6 +185,36 @@ export const METRIC_REGISTRY = {
 		neutral: 0,
 		isComplete: stateMetricComplete,
 		evaluate: ({ game }) => ({ actual: game.cash, contributingIds: [] })
+	},
+	'total-debt': {
+		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'currency',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: stateMetricComplete,
+		evaluate: ({ game }) => ({
+			actual: getTotalDebt(game),
+			contributingIds: game.finance.loans
+				.filter(isOutstandingLoan)
+				.map((loan) => loanEvidenceId(loan.id))
+		})
+	},
+	'missed-loan-payments': {
+		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: stateMetricComplete,
+		evaluate: ({ game }) => ({
+			// Lifetime count across every loan, including paid/refinanced ones;
+			// refinancing never resets it.
+			actual: game.finance.loans.reduce((total, loan) => total + loan.missedPaymentCount, 0),
+			contributingIds: game.finance.loans
+				.filter((loan) => loan.missedPaymentCount > 0)
+				.map((loan) => loanEvidenceId(loan.id))
+		})
 	},
 	'daily-net-income': {
 		supportedWindows: REPORT_WINDOWS,
@@ -398,6 +429,10 @@ export function productEvidenceId(day: number, storeId: string, productId: Produ
 
 export function cityInventoryEvidenceId(cityId: string, materialId: string): string {
 	return `city-inventory:${encodeEvidenceSegment(cityId)}/material:${encodeEvidenceSegment(materialId)}`;
+}
+
+export function loanEvidenceId(loanId: string): string {
+	return `loan:${encodeEvidenceSegment(loanId)}`;
 }
 
 export function evaluateMetric(
