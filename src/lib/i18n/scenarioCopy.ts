@@ -1,6 +1,7 @@
 import type { I18nBundle, TranslationKey } from '$lib/i18n';
 import { localizeDecisionContextValue } from '$lib/i18n/gameCopy';
 import type { ScenarioCatalogEntry } from '$lib/scenarios/catalog';
+import { METRIC_REGISTRY } from '$lib/scenarios/metrics';
 import { encodeScenarioShareCode } from '$lib/scenarios/shareCode';
 import type {
 	ObjectiveEvidence,
@@ -196,16 +197,14 @@ export function buildScenarioCatalogCards(
 }
 
 function formatEvidenceValue(evidence: ObjectiveEvidence, value: number, i18n: I18nBundle): string {
-	if (
-		evidence.metric === 'cash' ||
-		evidence.metric === 'daily-net-income' ||
-		evidence.metric === 'cumulative-net-income' ||
-		evidence.metric === 'retail-import-spend'
-	) {
-		return i18n.format.currency(value);
+	switch (METRIC_REGISTRY[evidence.metric].format) {
+		case 'currency':
+			return i18n.format.currency(value);
+		case 'percent':
+			return i18n.format.percent(value);
+		case 'decimal':
+			return i18n.format.decimal(value);
 	}
-	if (evidence.metric === 'retail-local-share') return i18n.format.percent(value);
-	return i18n.format.decimal(value);
 }
 
 function windowLabel(evidence: ObjectiveEvidence, i18n: I18nBundle): string {

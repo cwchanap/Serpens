@@ -1,9 +1,14 @@
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
-import { areScenarioEvidenceIdsCanonical, scenarioConditionPasses } from '$lib/scenarios/metrics';
+import {
+	METRIC_REGISTRY,
+	areScenarioEvidenceIdsCanonical,
+	scenarioConditionPasses
+} from '$lib/scenarios/metrics';
 import { abandonScenario, evaluateScenario, startScenario } from '$lib/scenarios/runtime';
 import { medalForScore } from '$lib/scenarios/scoring';
 import {
 	MAX_SCENARIO_SEED,
+	SCENARIO_IDS,
 	type ScenarioBestResultRecord,
 	type ScenarioDefinition,
 	type ScenarioDefinitionKey,
@@ -23,30 +28,13 @@ import { SAVE_SCHEMA_VERSION } from './saveTypes';
 export const SCENARIO_STORE_SCHEMA_VERSION = 1;
 export const SCENARIO_RUN_SCHEMA_VERSION = 1;
 
-const SCENARIO_IDS = ['first-profit', 'import-squeeze', 'local-lifeline'] as const;
 const RUN_STATUSES = ['active', 'completed', 'failed', 'abandoned'] as const;
 const ELIGIBILITIES = ['ranked', 'unranked'] as const;
 const MEDALS = ['bronze', 'silver', 'gold'] as const;
 const OBJECTIVE_STATUSES = ['pending', 'satisfied', 'missed'] as const;
 const FAILURE_STATUSES = ['inactive', 'triggered'] as const;
 const COMPARATORS = ['lt', 'lte', 'eq', 'gte', 'gt'] as const;
-const METRICS = [
-	'cash',
-	'daily-net-income',
-	'cumulative-net-income',
-	'consecutive-positive-net-income-reports',
-	'completed-retail-import-cycles',
-	'retail-import-spend',
-	'retail-imported-units',
-	'retail-local-units',
-	'retail-local-share',
-	'units-sold',
-	'demand-missed',
-	'scorecard',
-	'store-count',
-	'industrial-building-count',
-	'city-inventory-quantity'
-] as const;
+const METRICS = Object.keys(METRIC_REGISTRY);
 const WINDOW_KINDS = ['current', 'run-to-date', 'trailing-reports', 'fixed-report-days'] as const;
 
 export type ScenarioDefinitionResolver = (
