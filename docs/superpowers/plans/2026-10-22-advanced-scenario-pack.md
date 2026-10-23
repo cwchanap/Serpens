@@ -18,7 +18,7 @@
 ### 0. Baseline, contract audit, dependency gate
 
 1. Re-read `CLAUDE.md` and scenario design from July 2026, plus current `catalog.ts`, `types.ts`, `runtime.ts`, `setup.ts`, `metrics.ts` and `scenarioCodec.ts`. Capture current main HEAD when coding begins.
-2. Verify merged HPA-502 scope against its checklist. Obtain accepted `after.md` or document explicit decision on whether its un-tuned economy is final. **No medal calibration before that decision.**
+2. Verify merged HPA-502 scope against its checklist. Keep the **Calibration baseline** section of PR #66's description as the auditable gate: initially **Pending**, `main@5fc0ccf`, reviewed 2026-10-22. To unlock stage 6, record decision date, accepted economy commit SHA, and either HPA-502's accepted `after.md` or an explicit decision to treat current main as final. Mark the section **Accepted** only after that evidence exists; until then leave the checklist unchecked. **No medal calibration before that decision.**
 3. Run baseline focused specs (`catalog.spec.ts`, `runtime.spec.ts`, `metrics.spec.ts`, `validation.spec.ts`, `scenarioCodec.spec.ts`). Confirm the three existing official seeds and reference traces; do not change them here.
 
 ### 1. Metrics end-to-end, test-first
@@ -40,7 +40,7 @@
 ### 3. Recurring-route scenario command bridge, test-first
 
 1. Add `createRecurringRoute` / `updateRecurringRoute` / `pauseRecurringRoute` / `resumeRecurringRoute` variants and corresponding kind IDs. Reuse `RecurringRouteInput` and `RecurringRouteUpdateInput` types; ensure incoming untrusted payloads are checked, not just TypeScript-cast.
-2. Implement capability/allowlist validation in `src/lib/scenarios/capabilities.ts` and existing definition validator (`validation/commands.ts`). Reject forbidden commands before any state change.
+2. Extend the static allowed-command definition validation in `src/lib/scenarios/validation/commands.ts`, and put **stateful route-command** validation in `src/lib/scenarios/capabilities.ts` (`isScenarioCommandAllowed`, with access to `run.game`). For both route create/update, compare `leadTimeDays` and `transportCostPerUnit` **exactly** to `quoteInterCityRates(originCityId, destinationCityId)` from `game/interCityLogistics.ts`; reject invalid pairs or mismatched payloads before the transition runs. Do not put game-aware quote checks in the static definition validator. Keep `capacity`/`frequencyDays` player-configurable and reuse existing domain bounds/stock/payment rules. No change to sandbox's editable route economics. Cover correct quote acceptance, manipulated lead time, manipulated freight rate, update with changed cities, forbidden/invalid cities, and rejected-command immutability.
 3. Extend `applyGameCommand` / the existing dispatcher in `runtime.ts` with the four genuine `interCityLogistics.ts` transitions; preserve typed error-to-rejection conversion (including route-not-found). Assert rejected input never changes persisted run or day.
 4. Attach `scenarioCommand` to matching existing controller methods in `src/routes/gameRouteController.ts` so scenario mode goes through `commitMutation` and its persistence gate. Break blanket `manageLogistics` into only the minimum granular flags required by the current panel/hosts; manual dispatch, remove and reprioritize remain sandbox-only unless separately justified. Ensure read-only logistics details are visible in scenario play.
 5. Add focused `runtime.spec.ts`, `capabilities.spec.ts`, `commandGate.spec.ts`, controller specs and affected Svelte component specs. Avoid adding a second operations UI or logistics state owner.
@@ -63,6 +63,8 @@
 
 ### 6. Calibrate, verify and finish in the SAME PR
 
+**Blocking precondition:** The PR body must have a completed **Calibration baseline** decision (accepted economy SHA, decision date, and HPA-502 after-report or explicit acceptance of current main). If that section remains Pending, stage 6 must not begin. Stages 1–5 can proceed independently.
+
 1. Record one reproducible **advance-only** command trace for each new official seed and assert its medal is *below Silver*. Prefer no-action run to deadline rather than merely a fail outcome; if no-action can win a medal, change authoring conditions/thresholds based on evidence.
 2. Record one **legal, documented command trace** for each seed that earns **Gold** without direct game-state mutation/test-only cheaters. Keep reference scripts inside existing scenario runtime specs or a focused shared test utility (not a new automation engine).
 3. Fix any unreachable win objective (e.g. produce never replenishes, rival generated with irrelevant focus, transfer arrives after deadline) by refining the authored start or objective; do not patch the real engine to cheat.
@@ -81,7 +83,7 @@
 
 ## Review checklist (planning checkpoint)
 
-- [ ] Confirm HPA-502 tuning/after-report resolution, or record explicit decision to calibrate on current main
+- [ ] PR #66 **Calibration baseline** is Accepted, with dated decision, pinned economy SHA, and HPA-502 after-report or explicit main-as-baseline acceptance (blocks stage 6)
 - [ ] Agree with metric denominator/window definitions and necessary route command scope
 - [ ] Verify scenario rival-seed and route availability with fixture-level tests during implementation
 - [ ] Avoid splitting this ticket into multiple PRs
