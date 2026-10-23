@@ -33,6 +33,13 @@ const EXPECTED = [
 		officialSeed: 280_003,
 		dayLimit: 21,
 		shareCode: 'SC1.local-lifeline.1.601v.0455cvi'
+	},
+	{
+		id: 'debt-turnaround',
+		version: 1,
+		officialSeed: 280_004,
+		dayLimit: 28,
+		shareCode: 'SC1.debt-turnaround.1.601w.0c7r3u1'
 	}
 ] as const;
 
@@ -43,7 +50,7 @@ function expectDeepFrozen(value: unknown): void {
 }
 
 describe('launch scenario catalog', () => {
-	it('ships exactly three valid immutable current definitions in canonical order', () => {
+	it('ships exactly four valid immutable current definitions in canonical order', () => {
 		expect(
 			listCurrentScenarioDefinitions().map(({ id, version, officialSeed, dayLimit }) => ({
 				id,
@@ -59,8 +66,8 @@ describe('launch scenario catalog', () => {
 				dayLimit
 			}))
 		);
-		expect(new Set(SCENARIO_CATALOG.map(({ id }) => id)).size).toBe(3);
-		expect(new Set(SCENARIO_CATALOG.map(({ id, version }) => `${id}@${version}`)).size).toBe(3);
+		expect(new Set(SCENARIO_CATALOG.map(({ id }) => id)).size).toBe(4);
+		expect(new Set(SCENARIO_CATALOG.map(({ id, version }) => `${id}@${version}`)).size).toBe(4);
 		expectDeepFrozen(SCENARIO_CATALOG);
 		expectDeepFrozen(listScenarioCatalogEntries());
 		for (const definition of SCENARIO_CATALOG) {

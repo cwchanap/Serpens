@@ -53,7 +53,12 @@ export const SCENARIO_COMMAND_KINDS = [
 export const MAX_SCENARIO_SEED = 2_147_483_646;
 
 /** Single source of scenario IDs: extend this tuple, never a parallel list. */
-export const SCENARIO_IDS = ['first-profit', 'import-squeeze', 'local-lifeline'] as const;
+export const SCENARIO_IDS = [
+	'first-profit',
+	'import-squeeze',
+	'local-lifeline',
+	'debt-turnaround'
+] as const;
 export type ScenarioId = (typeof SCENARIO_IDS)[number];
 export type ScenarioDefinitionKey = `${ScenarioId}@${number}`;
 export type ScenarioRunStatus = 'active' | 'completed' | 'failed' | 'abandoned';

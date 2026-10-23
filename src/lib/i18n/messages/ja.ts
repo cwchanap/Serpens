@@ -1941,6 +1941,19 @@ export const ja = {
 			strategyHint: '生産能力と小売需要のバランスを取りましょう。',
 			objectives: { localUnits: '地域生産品を供給する', localShare: '地域供給比率を達成する' },
 			failures: { negativeCash: '現金残高のマイナスを避ける' }
+		},
+		debtTurnaround: {
+			title: '債務立て直し',
+			summary: '期限までに圧迫された創業融資を返済します。',
+			briefing:
+				'毎週の返済を遅らせずに総債務を目標以下まで減らしてください。返済の延滞または現金残高のマイナスで失敗します。',
+			strategyHint:
+				'まず利益を確保してから返済する。プレミアム価格で返済資金を稼いでも、補充週の支出には注意。',
+			objectives: { debtBelowThreshold: '総債務を目標以下に減らす' },
+			failures: {
+				negativeCash: '現金残高のマイナスを避ける',
+				missedInstallment: '融資の返済を延滞させない'
+			}
 		}
 	},
 	scenarioCatalog: {
