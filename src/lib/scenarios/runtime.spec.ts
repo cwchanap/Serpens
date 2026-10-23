@@ -157,6 +157,71 @@ const LOCAL_LIFELINE_REFERENCE_OPENING: ScenarioCommand[] = [
 	}
 ];
 
+/**
+ * Debt-turnaround founding loan id: the scenario setup's `debt` override drops
+ * the factory founding loan (loan-1) and reissues it with the next sequence.
+ */
+const DEBT_TURNAROUND_FOUNDING_LOAN_ID = 'loan-2';
+
+/**
+ * Scheduled reference trace for debt-turnaround: day-1 premium opening, then
+ * fixed $3,000 principal repayments ahead of the weekly installments (days
+ * 9/16/23). Scheduled commands run at the start of their in-game day.
+ */
+const DEBT_TURNAROUND_REFERENCE_SCHEDULE: readonly {
+	day: number;
+	command: ScenarioCommand;
+}[] = [
+	...(
+		[
+			{
+				kind: 'updatePolicy',
+				patch: {
+					pricing: 'premium',
+					inventory: 'lean',
+					staffing: 'service',
+					marketing: 'loyalty',
+					service: 'balanced'
+				}
+			},
+			{
+				kind: 'updateStoreSellingPrice',
+				storeId: 'store-1',
+				productId: 'games',
+				sellingPrice: 72
+			},
+			{
+				kind: 'updateStoreSellingPrice',
+				storeId: 'store-1',
+				productId: 'accessories',
+				sellingPrice: 32
+			},
+			{
+				kind: 'updateStoreInventoryTargets',
+				storeId: 'store-1',
+				productId: 'games',
+				reorderThreshold: 10,
+				targetStock: 45
+			},
+			{
+				kind: 'updateStoreInventoryTargets',
+				storeId: 'store-1',
+				productId: 'accessories',
+				reorderThreshold: 12,
+				targetStock: 50
+			}
+		] as const satisfies readonly ScenarioCommand[]
+	).map((command) => ({ day: 1, command })),
+	...[4, 5, 6, 7, 10].map((day) => ({
+		day,
+		command: {
+			kind: 'repayLoan',
+			loanId: DEBT_TURNAROUND_FOUNDING_LOAN_ID,
+			amount: 3_000
+		} as const
+	}))
+];
+
 const ALL_CITY_IDS = [
 	'harbor-city',
 	'campus-junction',
@@ -1250,6 +1315,41 @@ function replayLaunchCalibration(
 	return run;
 }
 
+function replayScheduledCalibration(
+	scenarioId: ScenarioId,
+	schedule: readonly { day: number; command: ScenarioCommand }[]
+): ScenarioRun {
+	const definition = currentScenarioDefinition(scenarioId);
+	if (!definition) throw new Error(`Missing launch definition ${scenarioId}.`);
+	const started = startScenario(definition, definition.officialSeed);
+	if (!started.ok) throw new Error(`Launch definition ${scenarioId} failed setup.`);
+	let run = started.value;
+	const pending = [...schedule];
+
+	while (run.status === 'active') {
+		while (true) {
+			const next = pending[0];
+			if (!next || next.day !== run.game.day) break;
+			pending.shift();
+			const result = executeScenarioCommand(run, definition, next.command);
+			if (!result.ok || !result.changed) {
+				throw new Error(
+					`${scenarioId} scheduled ${next.command.kind} on day ${next.day} did not change the run.`
+				);
+			}
+			run = result.run;
+			if (run.status !== 'active') return run;
+		}
+		const day = executeScenarioCommand(run, definition, { kind: 'advanceDay' });
+		if (!day.ok || !day.changed) {
+			throw new Error(`${scenarioId} calibration failed to advance.`);
+		}
+		run = day.run;
+	}
+
+	return run;
+}
+
 describe('applyGameCommand', { timeout: 30_000 }, () => {
 	it('applies a valid openStore through the shared path without a ScenarioRun', () => {
 		const game = foundingGame();
@@ -1392,6 +1492,24 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 			}
 		}
 	);
+
+	it('debt-turnaround scheduled reference trace completes on day 10 with gold', () => {
+		const run = replayScheduledCalibration('debt-turnaround', DEBT_TURNAROUND_REFERENCE_SCHEDULE);
+
+		expect(run.status).toBe('completed');
+		expect(run.result).toMatchObject({
+			outcome: 'completed',
+			completionDay: 10,
+			score: 924,
+			medal: 'gold'
+		});
+		// Both failure conditions stay inactive on the reference trace: cash never
+		// goes negative and every scheduled installment is paid on time.
+		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual([
+			'inactive',
+			'inactive'
+		]);
+	});
 });
 
 describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {

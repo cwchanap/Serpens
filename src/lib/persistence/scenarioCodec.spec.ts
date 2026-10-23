@@ -37,7 +37,8 @@ import { runRecord, snapshot } from './scenarioRepository.testUtils';
 const OFFICIAL_SEEDS: Record<ScenarioId, number> = {
 	'first-profit': 280_001,
 	'import-squeeze': 280_002,
-	'local-lifeline': 280_003
+	'local-lifeline': 280_003,
+	'debt-turnaround': 280_004
 };
 
 function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {

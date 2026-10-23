@@ -441,6 +441,115 @@ const localLifeline = {
 	medalThresholds: { silver: 700, gold: 850 }
 } as const satisfies ScenarioDefinition;
 
+const debtTurnaround = {
+	id: 'debt-turnaround',
+	version: 1,
+	titleKey: 'scenarioDefinitions.debtTurnaround.title',
+	summaryKey: 'scenarioDefinitions.debtTurnaround.summary',
+	briefingKey: 'scenarioDefinitions.debtTurnaround.briefing',
+	strategyHintKey: 'scenarioDefinitions.debtTurnaround.strategyHint',
+	officialSeed: 280_004,
+	dayLimit: 28,
+	start: {
+		foundingStore: {
+			ref: 'founding-store',
+			archetypeId: 'electronics',
+			cityId: 'harbor-city',
+			tileId: 'harbor-city-29-35'
+		},
+		industrialBuildings: [],
+		rails: [],
+		overrides: {
+			cash: 9_000,
+			// Substantial founding principal on the standard 84-day term: weekly
+			// installments land on days 9/16/23 inside the 28-day limit, so treading
+			// water never reaches the required paydown.
+			debt: 24_000,
+			storeCap: 1,
+			stores: [
+				{
+					storeRef: 'founding-store',
+					targetLevel: 4,
+					products: [
+						{
+							productId: 'games',
+							stock: 50,
+							reorderThreshold: 20,
+							targetStock: 70,
+							sellingPrice: 48
+						},
+						{
+							productId: 'accessories',
+							stock: 60,
+							reorderThreshold: 20,
+							targetStock: 80,
+							sellingPrice: 24
+						}
+					]
+				}
+			]
+		}
+	},
+	content: {
+		cityIds: ['harbor-city', 'industry-city'],
+		archetypeIds: ['electronics'],
+		productIds: ['games', 'accessories'],
+		materialIds: [],
+		buildingTypeIds: [],
+		retailPlacements: [],
+		industrialPlacements: []
+	},
+	allowedCommands: [
+		...STANDARD_RETAIL_COMMANDS,
+		'borrow',
+		'repayLoan',
+		'payOffLoan',
+		'refinanceLoan'
+	],
+	modifiers: [],
+	requiredObjectives: [
+		{
+			id: 'debt-below-threshold',
+			labelKey: 'scenarioDefinitions.debtTurnaround.objectives.debtBelowThreshold',
+			query: { metric: 'total-debt' },
+			comparator: 'lt',
+			target: 8_000,
+			window: { kind: 'current' }
+		}
+	],
+	optionalObjectives: [],
+	failures: [
+		{
+			id: 'negative-cash',
+			labelKey: 'scenarioDefinitions.debtTurnaround.failures.negativeCash',
+			query: { metric: 'cash' },
+			comparator: 'lt',
+			target: 0,
+			window: { kind: 'current' }
+		},
+		{
+			id: 'missed-installment',
+			labelKey: 'scenarioDefinitions.debtTurnaround.failures.missedInstallment',
+			query: { metric: 'missed-loan-payments' },
+			comparator: 'gt',
+			target: 0,
+			window: { kind: 'current' }
+		}
+	],
+	scoreComponents: [
+		{
+			kind: 'metric',
+			query: { metric: 'total-debt' },
+			window: { kind: 'current' },
+			zeroBonusAt: 16_000,
+			fullBonusAt: 4_000,
+			points: 300
+		},
+		{ kind: 'remaining-days', zeroBonusAt: 0, fullBonusAt: 15, points: 200 }
+	],
+	medalThresholds: { silver: 700, gold: 850 }
+} as const satisfies ScenarioDefinition;
+
 function deepFreeze<T>(value: T): T {
 	if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
 	Object.freeze(value);
@@ -458,7 +567,8 @@ function deepFreeze<T>(value: T): T {
 const ALL_DEFINITIONS: readonly ScenarioDefinition[] = deepFreeze([
 	firstProfit,
 	importSqueeze,
-	localLifeline
+	localLifeline,
+	debtTurnaround
 ]);
 
 function buildDefinitionByKey(

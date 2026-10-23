@@ -1970,6 +1970,19 @@ export const en = {
 			strategyHint: 'Balance production capacity with retail demand.',
 			objectives: { localUnits: 'Supply local units', localShare: 'Reach the local supply share' },
 			failures: { negativeCash: 'Avoid negative cash' }
+		},
+		debtTurnaround: {
+			title: 'Debt Turnaround',
+			summary: 'Pay down a distressed founding loan before the deadline.',
+			briefing:
+				'Reduce total debt below the target while keeping every weekly installment on time. A missed installment or negative cash fails the run.',
+			strategyHint:
+				'Margin first, then repay: premium pricing funds scheduled repayments, but restock weeks still bite.',
+			objectives: { debtBelowThreshold: 'Bring total debt below the target' },
+			failures: {
+				negativeCash: 'Avoid negative cash',
+				missedInstallment: 'Never miss a loan installment'
+			}
 		}
 	},
 	scenarioCatalog: {

@@ -1907,6 +1907,17 @@ export const zhHant = {
 			strategyHint: '平衡生產能力與零售需求。',
 			objectives: { localUnits: '供應在地商品', localShare: '達成在地供應占比' },
 			failures: { negativeCash: '避免現金為負' }
+		},
+		debtTurnaround: {
+			title: '債務翻身',
+			summary: '在期限前償還沉重的創業貸款。',
+			briefing: '在準時繳付每週分期之下，將總債務降至目標以下。分期違約或現金為負即失敗。',
+			strategyHint: '先顧利潤再還款：高級定價能支應還款，但補貨週仍會吃掉現金。',
+			objectives: { debtBelowThreshold: '將總債務降至目標以下' },
+			failures: {
+				negativeCash: '避免現金為負',
+				missedInstallment: '絕不延誤貸款分期'
+			}
 		}
 	},
 	scenarioCatalog: {
