@@ -2,89 +2,84 @@
 
 **Issue:** https://linear.app/cwchanap/issue/HPA-511/content-add-a-scenario-pack-for-debt-freshness-rivals-and-logistics  
 **Design:** ../specs/2026-10-22-advanced-scenario-pack-design.md  
-**Baseline:** `main` at `5fc0ccf` (2026-10-22)  
-**Delivery:** one ticket, **one PR** (this docs-only draft becomes the implementation PR). No implementation PR or technical-layer tickets.
+**Accepted calibration baseline:** `main@5fc0ccf726547b3e0586179d1f9aee154104f50b` (decision: 2026-10-22)  
+**Delivery:** one ticket, **this one PR** from design through implementation, localization, verification and calibration.
 
-## Readiness / decision log
+## Decisions / reuse boundary
 
-- **Chosen:** four new authored scenarios, extending the existing pure metric engine, scenario command dispatcher, strict codec and catalog.
-- **Chosen:** selective seeded rivals and only four recurring-route commands; existing scenario content validator and controller remain authority.
-- **Chosen:** no scenario-specific simulation code, scripted events, new UI shell, extra save schema or new art/SFX.
-- **Calibration blocked pending HPA-502 reconciliation:** Linear status is Done and PR #65 merged, but `docs/balance/after.md` does not exist on main and the PR's file list lacks economic tuning, production manager cap, structural forecast revision and launch-scenario recalibration. Confirm and finish that prerequisite *under HPA-502*, or explicitly decide the current economy is the accepted baseline before setting HPA-511's numeric targets. Do not quietly swallow tuning into this PR.
-- **Open for measured refinement within this PR:** exact opening balances/inventory, day limits (14–28), score bonus shapes and thresholds, relevant seeded rival, debt due-date override necessity, route starting cities/material. Record these choices after testable reference traces, not as prematurely fixed numbers.
+- Build four **vertical slices** in this order: Debt Turnaround, Fresh Market, Rival Next Door, Two-City Supply Run; official seeds `280_004`–`280_007`, respectively. Each slice ends with playable, localized, persisted content and passing **advance-only below Silver / legal Gold** reference traces; no separate implementation PR.
+- First eliminate parallel metric ID/window/product/format lists in a **pure registry refactor** verified by existing tests. Keep the already exhaustive `METRIC_REGISTRY satisfies Record<MetricId, MetricRegistration>`; do not add assertion tests for the same compile-time guarantee.
+- HPA-511 may calibrate **now** against pinned main. HPA-502 is incomplete despite PR #65 being merged (no `docs/balance/after.md` or economy-tuning changes). Reopen HPA-502 to own the still-missing tuning/after report and, **after** any economy change, rerun and recalibrate no-action/Gold reference traces for **all seven scenarios**. Do not pull its tuning into this PR or describe the untuned economy as balanced.
+- Continue existing authoring rules: one immutable definition per scenario ID@version, no scenario-specific engine branches, 500 completion points plus exactly 500 possible bonus points, Bronze 500, Silver > 500, Gold ≤ 1000, 14–28 days and official fixed seeds. Existing launch scenario definitions and share codes remain unchanged.
+- No added state owner, extra editor, loan authoring DSL, scripted events, new art/SFX, schema migrations, rival AI, or bot framework. Use normal gameplay commands for reference traces.
 
-## Work breakdown (staged commits in the same PR)
+## Work breakdown — staged commits in the SAME PR
 
-### 0. Baseline, contract audit, dependency gate
+### 0. Refresh baseline and prove existing contracts
 
-1. Re-read `CLAUDE.md` and scenario design from July 2026, plus current `catalog.ts`, `types.ts`, `runtime.ts`, `setup.ts`, `metrics.ts` and `scenarioCodec.ts`. Capture current main HEAD when coding begins.
-2. Verify merged HPA-502 scope against its checklist. Keep the **Calibration baseline** section of PR #66's description as the auditable gate: initially **Pending**, `main@5fc0ccf`, reviewed 2026-10-22. To unlock stage 6, record decision date, accepted economy commit SHA, and either HPA-502's accepted `after.md` or an explicit decision to treat current main as final. Mark the section **Accepted** only after that evidence exists; until then leave the checklist unchecked. **No medal calibration before that decision.**
-3. Run baseline focused specs (`catalog.spec.ts`, `runtime.spec.ts`, `metrics.spec.ts`, `validation.spec.ts`, `scenarioCodec.spec.ts`). Confirm the three existing official seeds and reference traces; do not change them here.
+1. Re-read `CLAUDE.md` and challenge-mode spec; capture main's SHA and run focused specs: `catalog.spec.ts`, `runtime.spec.ts`, `metrics.spec.ts`, `validation.spec.ts`, `scenarioCodec.spec.ts`. Confirm launch scenarios' current outcomes and note any existing non-Gold reference path rather than silently weakening a test.
+2. Treat `main@5fc0ccf` as the **HPA-511** calibration baseline (already accepted in PR #66); no stage-6 dependency gate or need to wait for the unfinished HPA-502 tuning. If main later changes, verify traces again; HPA-502 owns the later economy-driven rework.
+3. Reuse `src/lib/scenarios/` runtime, catalog, setup, metrics, validation, share-code and persistence APIs; keep current `createMutationAvailability` / `commitMutation` path.
 
-### 1. Metrics end-to-end, test-first
+### 1. One metric registry / ID list (behavior-preserving refactor)
 
-1. Expand the `ScenarioMetricQuery` tagged union in `src/lib/scenarios/types.ts` with debt, missed payments, waste units/share, player share and delivered transfer units.
-2. Write metric fixtures/specs for current-state debt + lifetime missed count (including paid/refinanced loans), report-window aggregation, zero receipts, demand-weighted multi-report share, delivery on arrival day, stable evidence IDs and complete/incomplete trailing windows.
-3. Implement narrowly in `src/lib/scenarios/metrics.ts` using `getTotalDebt`, existing `LoanInstrument`, `DailyProductReport`, `DailyMarketReport` and `DailyLogisticsReport`. Reuse report filtering/evidence helpers, avoid new state.
-4. Update `src/lib/scenarios/validation/shared.ts` (`METRIC_WINDOWS` / product metric categories) and `validation/conditions.ts` for exact query keys, product scope, supported windows and nonempty product IDs; add invalid/unknown/wrong-window test cases.
-5. Update `src/lib/persistence/scenarioCodec.ts` for strict decode/encode query support and **compile-time exhaustiveness** of both scenario IDs and metric IDs. Update codec/repository tests for round trip + unknown metric rejection. Update `src/lib/i18n/scenarioCopy.ts` for currency, ratio and integer formatting. Run focused server specs before continuing.
+1. Add `productScoped` and `format: 'currency' | 'percent' | 'decimal'` metadata to every `METRIC_REGISTRY` entry, preserving existing `supportedWindows`, completeness and evaluator functions. Keep the specialized local-production-path rule in validation; encode it as registry metadata if that avoids another parallel metric ID list.
+2. Derive `METRIC_WINDOWS` / product metric selection in `validation/shared.ts`, codec's known metric IDs in `persistence/scenarioCodec.ts`, and `formatEvidenceValue` in `i18n/scenarioCopy.ts` **from the registry**, rather than maintaining hand-written lists. Preserve strict closed-object query validation in `validation/conditions.ts`, including field-specific checks (product IDs, score, buildings, city/material).
+3. Export `SCENARIO_IDS` from `scenarios/types.ts` and derive `ScenarioId` from its tuple; have `shareCode.ts` and `scenarioCodec.ts` import it. This keeps one ID source without new catalog import cycles.
+4. Run the existing unit/codec/UI copy specs and focused tests for unknown metric/ID rejection, old save/share-code round trips, window rejection and currency/percent formatting. This step is **only a refactor** — no new scenario or metric behavior yet.
 
-**Watch-outs:** `daily-net-income` is already an operating-cash-flow projection; don't reinterpret it to build a new P&L engine. `product-waste-share` denominator is actual report receipts only: scenario's counted product starts at zero stock. Require separate sales volume for success. `delivered-transfer-units` is all arrivals generically; prohibit manual dispatch in the route challenge so a win proves recurring transfer activity.
+### 2. Debt Turnaround — cheapest complete vertical slice
 
-### 2. Opt-in authored competitors, test-first
+1. Add `total-debt` (`getTotalDebt(game)`, current window) and `missed-loan-payments` (sum `missedPaymentCount` for all loans including closed, current window), with metric fixtures and evidence/codec/query tests. Register and format as currency/decimal through the unified registry.
+2. Author `debt-turnaround`, version 1, official seed `280_004`, using **existing `overrides.debt` only**. Founding loans already have an 84-day term and scheduled installments every 7 days; no founding-loan date/term override. Allow existing genuine retail/loan commands.
+3. Required win: debt below measured threshold; failure: any missed installment or negative cash. Do **not** duplicate zero missed payments as a win condition. Keep the missed-payment metric available for the failure and later long-game reuse.
+4. Wire the scenario into the single catalog/ID list, strict codec, share-code fixtures and localization (`en` / `ja` / `zh-Hant`), including title/briefing/strategy/objective/failures. Extend relevant catalog/UI/save tests.
+5. Record deterministic **advance-only below Silver** and **legal Gold** traces in the existing table-driven `runtime.spec.ts` harness. Tune authoring balances, objectives and thresholds from those traces before proceeding. Keep all three launch scenarios unchanged.
 
-1. Add an optional typed retail `competitorCityIds` start override to `types.ts`, `validation/shared.ts` and `validation/start.ts`; reject duplicate, non-retail, not-opened or not-allowlisted cities.
-2. Replace `setup.ts`'s unconditional final `competitors: []` with default empty plus selective `ensureCompetitorsForRetailCity` calls *after* world/city/store materialization. Prove fixed seed+setup yields identical generated rivals and that none overlap the founding footprint.
-3. Preserve all prior rival-free scenarios. Update `setup.spec.ts` / `validation.spec.ts`. Amend `docs/superpowers/specs/2026-08-20-living-market-brands-competitors-design.md` only to clarify this now-supported authored opt-in; do not alter sandbox rival behavior.
+### 3. Fresh Market — exercise opening-stock spoilage
 
-### 3. Recurring-route scenario command bridge, test-first
+1. Add `product-waste-units` and `product-waste-share` for nonempty allowlisted product IDs, over existing aggregate report windows. Read `DailyProductReport.wasteUnits` and `unitsSold`. Define **waste share as** `sum(wasteUnits) / (sum(unitsSold) + sum(wasteUnits))`; if outflow is 0, return 0, but require a separate positive `units-sold` objective to prevent a no-trade win. This deliberately replaces receipts-based waste percentage, which excludes starting stock.
+2. Use existing `overrides.stores[].products[].stock` to seed a **nonzero produce opening lot** with `receivedDay = game.day`; produce has a 10-day shelf life, and replenishment is post-sales on days 7, 14, etc. Explicitly test that spoilage occurs **within** the chosen 14–28-day window and that the fixture has both meaningful sales and waste. Do not force inventory to zero to fix denominator semantics.
+3. Author `fresh-market`, seed `280_005`, with legal price/inventory/staff controls and the normal perishable-stock engine. Complete score, en/ja/zh-Hant copy, codec/catalog fixtures and a real produce-waste evidence test. Handle zero denominator and existing stock in focused metrics specs.
+4. Add no-action and legal Gold traces **now**, not in a distant calibration stage; adjust starting stock, limits and targets from observed outcomes. Retain a separate `product-waste-units` metric even if this specific scenario's ratio objective mainly uses `product-waste-share`, because HPA-511 and HPA-318 need both.
 
-1. Add `createRecurringRoute` / `updateRecurringRoute` / `pauseRecurringRoute` / `resumeRecurringRoute` variants and corresponding kind IDs. Reuse `RecurringRouteInput` and `RecurringRouteUpdateInput` types; ensure incoming untrusted payloads are checked, not just TypeScript-cast.
-2. Extend the static allowed-command definition validation in `src/lib/scenarios/validation/commands.ts`, and put **stateful route-command** validation in `src/lib/scenarios/capabilities.ts` (`isScenarioCommandAllowed`, with access to `run.game`). For both route create/update, compare `leadTimeDays` and `transportCostPerUnit` **exactly** to `quoteInterCityRates(originCityId, destinationCityId)` from `game/interCityLogistics.ts`; reject invalid pairs or mismatched payloads before the transition runs. Do not put game-aware quote checks in the static definition validator. Keep `capacity`/`frequencyDays` player-configurable and reuse existing domain bounds/stock/payment rules. No change to sandbox's editable route economics. Cover correct quote acceptance, manipulated lead time, manipulated freight rate, update with changed cities, forbidden/invalid cities, and rejected-command immutability.
-3. Extend `applyGameCommand` / the existing dispatcher in `runtime.ts` with the four genuine `interCityLogistics.ts` transitions; preserve typed error-to-rejection conversion (including route-not-found). Assert rejected input never changes persisted run or day.
-4. Attach `scenarioCommand` to matching existing controller methods in `src/routes/gameRouteController.ts` so scenario mode goes through `commitMutation` and its persistence gate. Break blanket `manageLogistics` into only the minimum granular flags required by the current panel/hosts; manual dispatch, remove and reprioritize remain sandbox-only unless separately justified. Ensure read-only logistics details are visible in scenario play.
-5. Add focused `runtime.spec.ts`, `capabilities.spec.ts`, `commandGate.spec.ts`, controller specs and affected Svelte component specs. Avoid adding a second operations UI or logistics state owner.
+### 4. Rival Next Door — opt-in deterministic city competitors
 
-### 4. Author and validate all four definitions
+1. Add `player-market-share` using `sum(marketReports.playerDemandPool) / sum(marketReports.cityDemandPool)` over the selected products and trailing/fixed windows; zero denominator → 0 and an incomplete trailing window cannot qualify. Use stored `playerDemandPool`, not a re-rounded estimate from `playerShare`. Test multi-report weighting, zero demand and evidence ordering.
+2. Add a typed optional `competitorCityIds` start override in `scenarios/types.ts`, `validation/shared.ts` and `validation/start.ts`; reject duplicate, closed, non-retail or non-allowlisted IDs. In `setup.ts`, preserve default empty rivals but call `ensureCompetitorsForRetailCity` **after** cities and founding store have materialized for opted-in cities. Prove same seed yields same rivals, no overlap with player's store, old three scenarios still rival-free.
+3. Author `rival-next-door`, seed `280_006`. Fixture-check that at least one generated rival **actually sells the goal product**: `marketCompetition.ts` filters by rival archetype's `startingProductIds` before checking brand, so the `common-ground` brand alone does *not* guarantee competition on every product. Use the assigned seed unless that one assertion fails; no seed search harness or rival authoring system.
+4. Require complete trailing market-share reports plus positive operating performance. Wire definition/copy/catalog/codec and finish its advance-only/Gold reference traces. Amend the living-market design non-goal only to document authored opt-in.
 
-1. Use existing `catalog.ts` conventions: four IDs, version 1, seeds `280_004` through `280_007`, 14–28 day limits, score 500 base + exactly 500 possible bonus points, minimum Bronze 500 and calibrated Silver/Gold.
-2. Register IDs in `types.ts`, `shareCode.ts`, `scenarioCodec.ts` and `ALL_DEFINITIONS`. Update seven-scenario fixed expectations in `catalog.spec.ts`, `scenarioCodec.spec.ts`, `scenarioRepository.spec.ts`, `scenarioCopy.spec.ts` and `ScenarioCatalog.svelte.spec.ts`. Compute expected share codes with the existing encoder (never guess checksums).
-3. **Debt Turnaround:** first test whether `overrides.debt` plus normal loan commands supports a near-due payment. Add a narrowly constrained founding-loan date/term override only if necessary, with validation/codec tests for starting state. No new loan subsystem.
-4. **Fresh Market:** choose a grocery product actually available to the starting store, with zero initial counted stock; assert the normal replenishment/waste lifecycle produces report evidence. Tune sales/waste ratio only after obtaining a legal profitable reference trace.
-5. **Rival Next Door:** pick official seed with a relevant rival product focus; prove market share actually changes via real simulated competition. Require complete trailing window and positive performance.
-6. **Two-City Supply Run:** use `world`, `industrialBuildings`, `cityInventoryMaterials` start overrides to open and provision producer/source in a second industry city. Create a recurring route through the real UI/command. Count delivered arrival quantities only; ensure lead time fits deadline. No forced event or manual transfer shortcut.
-7. Keep all three original definitions unchanged; no edits to their rules/version in this ticket.
+### 5. Two-City Supply Run — recurring logistics end-to-end
 
-### 5. Localization and in-game affordances
+1. Add `delivered-transfer-units` with query shape `{ metric: 'delivered-transfer-units', destinationCityId, materialId }`. Validate known, opened, allowlisted **industry destination** and known allowlisted material, with strict query keys. Sum only matching `DailyReport.logistics.arrivals[].quantity` on arrival days; derive canonical unique evidence IDs from matching `transferOrderId`. Do **not** read the unscoped `logistics.deliveredUnits` scalar. Test wrong destination/material, in-transit transfers, cross-day arrivals and save round-trip.
+2. Add four command kinds to `SCENARIO_COMMAND_KINDS` (the existing `KNOWN_COMMANDS` set follows automatically): `createRecurringRoute`, `updateRecurringRoute`, `pauseRecurringRoute` and `resumeRecurringRoute`. Scenario create/update inputs use `Omit<RecurringRouteInput, 'leadTimeDays' | 'transportCostPerUnit'>` (and the analogous update type). The scenario command cannot supply or overwrite base rates.
+3. In `scenarios/capabilities.ts`, validate payload shapes, IDs and content allowlists (plus route existence where appropriate). In `scenarios/runtime.ts` / `applyGameCommand`, obtain `quoteInterCityRates(originCityId, destinationCityId)`; reject null quotes, then spread the canonical quote **last** into the existing create/update transitions. Recompute on route updates; preserve their typed failures. Reject malformed commands without changing run/game/day. Do not extend the static `validation/commands.ts` beyond the automatically recognized kind list; it validates authored `allowedCommands`, not runtime route rates. Sandbox continues to pass full user-edited route inputs.
+4. Attach the four new `scenarioCommand` variants to existing `gameRouteController.ts` methods and `commitMutation`. Split blanket `manageLogistics` into the minimal existing per-command availability flags (create/update/pause/resume) rather than a second UI. Keep manual dispatch, route remove and reprioritize sandbox-only and show read-only route details in scenarios.
+5. In `LogisticsPanel.svelte`, **lock lead-time and cost fields as read-only, quote-derived displays in scenario mode**; refresh on city-pair change and during editing, while keeping sandbox inputs editable. Strip these fields when constructing scenario commands, even though sandbox transition input still contains them. Add a panel/controller test proving quote display, scenario edit restrictions and successful scenario route create/update through the persistence gate.
+6. Use existing `world` / `industrialBuildings` / `cityInventoryMaterials` opening overrides to author `two-city-supply-run`, seed `280_007`. Goal tracks destination+material arrivals from recurring routes only; manual orders are forbidden. Confirm actual stock, dispatch costs, lead times and deadline make the objective reachable. Wire localization/catalog/codec and run its no-action/Gold reference traces and a focused UI-to-result E2E.
 
-1. Add every title, summary, briefing, hint, objective and failure key under `scenarioDefinitions` to `src/lib/i18n/messages/en.ts`, `ja.ts` and `zh-Hant.ts`; run translation-key parity tests.
-2. Reuse existing Scenario Catalog, briefing, objective progress and result UI. Gate route write controls per actual allowed command; unsupported controls disabled/hidden with non-color status.
-3. Verify keyboard focus and a narrow viewport. No icons, illustration prompts, audio work or separate art-generation ticket required.
+### 6. Cross-scenario verification and delivery
 
-### 6. Calibrate, verify and finish in the SAME PR
-
-**Blocking precondition:** The PR body must have a completed **Calibration baseline** decision (accepted economy SHA, decision date, and HPA-502 after-report or explicit acceptance of current main). If that section remains Pending, stage 6 must not begin. Stages 1–5 can proceed independently.
-
-1. Record one reproducible **advance-only** command trace for each new official seed and assert its medal is *below Silver*. Prefer no-action run to deadline rather than merely a fail outcome; if no-action can win a medal, change authoring conditions/thresholds based on evidence.
-2. Record one **legal, documented command trace** for each seed that earns **Gold** without direct game-state mutation/test-only cheaters. Keep reference scripts inside existing scenario runtime specs or a focused shared test utility (not a new automation engine).
-3. Fix any unreachable win objective (e.g. produce never replenishes, rival generated with irrelevant focus, transfer arrives after deadline) by refining the authored start or objective; do not patch the real engine to cheat.
-4. Assert byte-for-byte deterministic replay where feasible, identical setups and terminal results, accurate report evidence, valid codec save/resume and correct eligibility/share-code behavior.
-5. Focused E2E: start one advanced scenario, see briefing + objectives, perform real actions, advance to terminal outcome/result. Existing First Profit / Import Squeeze / Local Lifeline E2E and their reference paths must still pass.
-6. Run `bun run check`, `bun run lint`, `bun run test:unit -- --run` and affected Playwright tests. Include an implementation summary, official reference command sequences and calibration table in PR body. No separate docs/implementation PR.
+1. Ensure all seven definitions validate; three launch definitions retain version/rules, old save/share codes remain readable, and every scenario's deterministic no-action result remains below Silver while a **real, documented** legal reference trace earns Gold. Re-run all four new traces after the final content edits.
+2. Verify new metric query variants, required typed fields, window compatibility, canonical contributor evidence, codec round trip, unknown metric rejection and seeded start validation. Run en/ja/zh-Hant translation-key parity tests.
+3. Test scenario route costs use the computed city-pair quote even under malformed caller input, no forbidden manual logistics paths, correct scenario-mode panel readonly behavior, plus keyboard/narrow-screen UX. Preserve error localization and unchanged run on rejection.
+4. Run `bun run check`, `bun run lint`, `bun run test:unit -- --run` and targeted Playwright E2E including one advanced scenario start→actions→result and existing scenario flows. Post a reference-command/medal table and verification summary to this PR; **do not open another PR**.
+5. Keep HPA-502 responsible for future economy tuning, after-report and **rerunning all seven** reference traces if economic constants/forecast/cadence change. Do not revise HPA-511's baseline silently.
 
 ## Definition of done
 
-- Seven selectable, localized, immutable current-version definitions; existing three unchanged.
-- New query kinds work across type union, evaluator, validator, window rules, serialization, display formatting, and focused coverage.
-- Finance, waste, rivals and logistics challenges are playable via real transitions, not scripted simulation shortcuts.
-- Four official seeds: deterministic no-action below Silver and reference Gold (with exact conditions/thresholds preserved in tests).
-- No new visual assets; no extra gameplay framework; no persistence migrations.
-- Full check/lint/unit + relevant E2E green, then change this existing draft PR to ready for review.
+- One compiled registry/metadata source for metric IDs, windows, product scope and formatting; one shared scenario ID tuple. Strict closed-object query/save validation retained.
+- Seven selectable, localized, immutable definitions; existing three unchanged; no new art, persistence migrations or gameplay framework.
+- Four new seeds: deterministic no-action **below Silver** and documented legal **Gold**, verified incrementally, with focused runtime + UI + persistence tests.
+- Finance, opening-stock spoilage, genuine rival competition, and destination/material-specific recurring deliveries proven by normal simulation paths.
+- Checks, lint, full unit suite, relevant E2E and localization parity green; change **this same draft PR** to ready only then.
 
-## Review checklist (planning checkpoint)
+## Review checklist
 
-- [ ] PR #66 **Calibration baseline** is Accepted, with dated decision, pinned economy SHA, and HPA-502 after-report or explicit main-as-baseline acceptance (blocks stage 6)
-- [ ] Agree with metric denominator/window definitions and necessary route command scope
-- [ ] Verify scenario rival-seed and route availability with fixture-level tests during implementation
-- [ ] Avoid splitting this ticket into multiple PRs
-- [ ] Complete implementation and documented four-seed reference traces before marking ready
+- [x] Accepted `main@5fc0ccf` as HPA-511's calibration baseline on 2026-10-22 (HPA-502 still owns future tuning).
+- [x] Adopted registry consolidation, outflow-based waste share, destination/material-scoped deliveries, runtime-quoted routes and per-scenario vertical slices.
+- [ ] Implement registry-only refactor; old scenario tests unchanged.
+- [ ] Each vertical scenario slice reaches Gold with a real reference trace; no-action below Silver.
+- [ ] Confirm rival actually sells target product and scenario quote is displayed read-only in the panel.
+- [ ] Full check/lint/unit/E2E and copy parity before marking ready.
