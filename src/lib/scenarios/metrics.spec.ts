@@ -10,6 +10,7 @@ import type {
 	Store
 } from '$lib/game/types';
 import { createEmptyFinanceState } from '$lib/game/finance';
+import type { LoanInstrument } from '$lib/game/types';
 import { emptyLogisticsReport } from '$lib/game/logisticsReport.testUtils';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import type {
@@ -183,6 +184,30 @@ function store(id: string): Store {
 	};
 }
 
+function loan(id: string, overrides: Partial<LoanInstrument> = {}): LoanInstrument {
+	return {
+		id,
+		purpose: 'founding',
+		status: 'active',
+		openedOnDay: 1,
+		originalPrincipal: 5_000,
+		remainingPrincipal: 5_000,
+		annualInterestRateBps: 1_200,
+		termDays: 84,
+		installmentsProcessed: 0,
+		nextPaymentDay: 8,
+		lastInterestAccrualDay: 1,
+		accruedInterestMicros: 0,
+		overdueInterest: 0,
+		overduePrincipal: 0,
+		arrearsSinceDay: null,
+		scheduledPaymentCount: 0,
+		onTimePaymentCount: 0,
+		missedPaymentCount: 0,
+		...overrides
+	};
+}
+
 function building(id: string, typeId: IndustrialBuilding['typeId']): IndustrialBuilding {
 	return {
 		id,
@@ -327,7 +352,25 @@ function metricGame(): GameState {
 				cityId: 'breadbasket-basin',
 				materials: { water: 17 }
 			}
-		]
+		],
+		finance: {
+			...createEmptyFinanceState(1),
+			loans: [
+				loan('loan-1', { remainingPrincipal: 5_000, missedPaymentCount: 2 }),
+				loan('loan-2', {
+					status: 'paid',
+					originalPrincipal: 8_000,
+					remainingPrincipal: 0,
+					missedPaymentCount: 1
+				}),
+				loan('loan-3', { remainingPrincipal: 1_500 }),
+				loan('loan-4', {
+					status: 'refinanced',
+					remainingPrincipal: 0,
+					missedPaymentCount: 0
+				})
+			]
+		}
 	});
 }
 
@@ -451,6 +494,9 @@ describe('scenario metric evidence IDs', () => {
 			).contributingIds
 		).toEqual(['A/build', 'z/build']);
 		expect(
+			evaluateMetric(state, { metric: 'total-debt' }, { kind: 'current' }).contributingIds
+		).toEqual(['loan:loan-1', 'loan:loan-3']);
+		expect(
 			evaluateMetric(
 				state,
 				{ metric: 'retail-imported-units', productIds: ['bottled-water'] },
@@ -468,6 +514,8 @@ describe('scenario metric evidence IDs', () => {
 describe('registered scenario metrics', () => {
 	it.each([
 		[{ metric: 'cash' }, { kind: 'current' }, 12_345, []],
+		[{ metric: 'total-debt' }, { kind: 'current' }, 6_500, ['loan:loan-1', 'loan:loan-3']],
+		[{ metric: 'missed-loan-payments' }, { kind: 'current' }, 3, ['loan:loan-1', 'loan:loan-2']],
 		[{ metric: 'daily-net-income' }, { kind: 'current' }, 8, ['report:8']],
 		[
 			{ metric: 'daily-net-income' },
@@ -661,10 +709,62 @@ describe('registered scenario metrics', () => {
 		});
 	});
 
+	it('counts delinquent principal once and ignores closed loans for total debt', () => {
+		const state = game({
+			finance: {
+				...createEmptyFinanceState(1),
+				loans: [
+					loan('loan-a', {
+						status: 'delinquent',
+						remainingPrincipal: 4_000,
+						overduePrincipal: 2_500,
+						missedPaymentCount: 1
+					}),
+					loan('loan-b', { status: 'paid', remainingPrincipal: 0 })
+				]
+			}
+		});
+
+		expect(evaluateMetric(state, { metric: 'total-debt' }, { kind: 'current' })).toEqual({
+			actual: 4_000,
+			contributingIds: ['loan:loan-a'],
+			windowComplete: true
+		});
+	});
+
+	it('keeps missed loan payments across paid and refinanced history', () => {
+		const state = game({
+			finance: {
+				...createEmptyFinanceState(1),
+				loans: [
+					loan('loan-a', { status: 'refinanced', remainingPrincipal: 0, missedPaymentCount: 2 }),
+					loan('loan-b', { status: 'paid', remainingPrincipal: 0, missedPaymentCount: 1 }),
+					loan('loan-c', { missedPaymentCount: 0 })
+				]
+			}
+		});
+
+		expect(evaluateMetric(state, { metric: 'missed-loan-payments' }, { kind: 'current' })).toEqual({
+			actual: 3,
+			contributingIds: ['loan:loan-a', 'loan:loan-b'],
+			windowComplete: true
+		});
+	});
+
 	it('rejects a metric/window pair outside the registered catalog', () => {
 		expect(() => evaluateMetric(metricGame(), { metric: 'cash' }, { kind: 'run-to-date' })).toThrow(
 			'Metric cash does not support run-to-date.'
 		);
+		expect(() =>
+			evaluateMetric(metricGame(), { metric: 'total-debt' }, { kind: 'run-to-date' })
+		).toThrow('Metric total-debt does not support run-to-date.');
+		expect(() =>
+			evaluateMetric(
+				metricGame(),
+				{ metric: 'missed-loan-payments' },
+				{ kind: 'trailing-reports', count: 3 }
+			)
+		).toThrow('Metric missed-loan-payments does not support trailing-reports.');
 	});
 
 	it('substitutes the metric neutral value when the evaluated actual is not finite', () => {

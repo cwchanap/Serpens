@@ -268,6 +268,44 @@ function createCityInventoryMetricGame(seed: number): GameState {
 	};
 }
 
+function financeMetricDefinition(): ScenarioDefinition {
+	const definition = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+	return {
+		...definition,
+		requiredObjectives: [
+			{
+				id: 'debt-below',
+				labelKey: 'store.defaultName',
+				query: { metric: 'total-debt' },
+				comparator: 'lt',
+				target: 100,
+				window: { kind: 'current' }
+			}
+		],
+		optionalObjectives: [],
+		failures: [
+			{
+				id: 'missed-payments',
+				labelKey: 'store.defaultName',
+				query: { metric: 'missed-loan-payments' },
+				comparator: 'gt',
+				target: 0,
+				window: { kind: 'current' }
+			}
+		],
+		scoreComponents: [
+			{
+				kind: 'metric',
+				query: { metric: 'total-debt' },
+				window: { kind: 'current' },
+				zeroBonusAt: 8_000,
+				fullBonusAt: 0,
+				points: 500
+			}
+		]
+	};
+}
+
 function createCityInventoryMetricRun(definition: ScenarioDefinition): ScenarioRun {
 	const game = createCityInventoryMetricGame(definition.officialSeed);
 	return {
@@ -1546,6 +1584,46 @@ describe('scenario codec', () => {
 		expect(rejected.snapshot.activeRunsByScenarioId).toEqual({});
 		expect(rejected.diagnostics.map((diagnostic) => diagnostic.code)).toContain('invalid-value');
 		expect(removedMetricSnapshot).toEqual(originalSnapshot);
+	});
+
+	it('accepts finance metric evidence and score components from the registry', () => {
+		const definition = financeMetricDefinition();
+		const game = createNewGame('convenience', definition.officialSeed);
+		const run: ScenarioRun = {
+			runId: crypto.randomUUID(),
+			definition: { scenarioId: definition.id, version: definition.version },
+			seed: definition.officialSeed,
+			eligibility: 'ranked',
+			status: 'active',
+			game,
+			evaluation: evaluateScenario(definition, game, false),
+			result: null
+		};
+		const resolver: ScenarioDefinitionResolver = (ref) =>
+			ref.scenarioId === definition.id && ref.version === definition.version
+				? definition
+				: undefined;
+
+		expect(run.evaluation.required[0]?.evidence).toMatchObject({
+			metric: 'total-debt',
+			actual: 8_000,
+			contributingIds: ['loan:loan-1']
+		});
+		expect(run.evaluation.failures[0]?.evidence).toMatchObject({
+			metric: 'missed-loan-payments',
+			actual: 0,
+			contributingIds: []
+		});
+
+		const decoded = decodeScenarioStoreSnapshot(
+			snapshot({ 'first-profit': runRecord(run) }),
+			resolver
+		);
+
+		expect(decoded.diagnostics).toEqual([]);
+		expect(
+			decoded.snapshot.activeRunsByScenarioId['first-profit']?.run.evaluation.required[0]?.evidence
+		).toMatchObject({ metric: 'total-debt', actual: 8_000 });
 	});
 });
 
