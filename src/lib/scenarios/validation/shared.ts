@@ -14,6 +14,7 @@ import {
 import type { City, IndustryCity, ProductId, RailCell } from '$lib/game/types';
 import { POLICY_FIELD_OPTIONS } from '$lib/game/policyInheritance';
 import { WORLD_CITY_CATALOG, getWorldCityDefinition } from '$lib/game/world';
+import { METRIC_REGISTRY } from '../metrics';
 import { SCENARIO_COMMAND_KINDS, type ScenarioDiagnostic } from '../types';
 import { citySeed } from '../setup';
 
@@ -112,33 +113,25 @@ const POLICY_VALUES = Object.fromEntries(
 
 type WindowKind = 'current' | 'run-to-date' | 'trailing-reports' | 'fixed-report-days';
 
-const METRIC_WINDOWS: Readonly<Record<string, ReadonlySet<WindowKind>>> = {
-	cash: new Set(['current']),
-	'daily-net-income': new Set(['current', 'run-to-date', 'trailing-reports', 'fixed-report-days']),
-	'cumulative-net-income': new Set(['run-to-date']),
-	'consecutive-positive-net-income-reports': new Set(['current', 'trailing-reports']),
-	'completed-retail-import-cycles': new Set(['run-to-date']),
-	'retail-import-spend': new Set(['run-to-date', 'trailing-reports', 'fixed-report-days']),
-	'retail-imported-units': new Set(['run-to-date', 'trailing-reports', 'fixed-report-days']),
-	'retail-local-units': new Set(['run-to-date', 'trailing-reports', 'fixed-report-days']),
-	'retail-local-share': new Set(['run-to-date', 'trailing-reports', 'fixed-report-days']),
-	'units-sold': new Set(['run-to-date', 'trailing-reports', 'fixed-report-days']),
-	'demand-missed': new Set(['run-to-date', 'trailing-reports', 'fixed-report-days']),
-	scorecard: new Set(['current']),
-	'store-count': new Set(['current']),
-	'industrial-building-count': new Set(['current']),
-	'city-inventory-quantity': new Set(['current'])
-};
+// All metric identity/window/scope lists derive from METRIC_REGISTRY so the
+// registry stays the single source; conditions.ts consumes these unchanged.
+const METRIC_WINDOWS: Readonly<Record<string, ReadonlySet<WindowKind>>> = Object.fromEntries(
+	Object.entries(METRIC_REGISTRY).map(([metric, registration]) => [
+		metric,
+		registration.supportedWindows
+	])
+);
 
-const PRODUCT_METRICS = new Set([
-	'retail-import-spend',
-	'retail-imported-units',
-	'retail-local-units',
-	'retail-local-share',
-	'units-sold',
-	'demand-missed'
-]);
-const LOCAL_PRODUCTION_METRICS = new Set(['retail-local-units', 'retail-local-share']);
+const PRODUCT_METRICS = new Set(
+	Object.entries(METRIC_REGISTRY)
+		.filter(([, registration]) => registration.productScoped)
+		.map(([metric]) => metric)
+);
+const LOCAL_PRODUCTION_METRICS = new Set(
+	Object.entries(METRIC_REGISTRY)
+		.filter(([, registration]) => registration.requiresLocalProductionPath)
+		.map(([metric]) => metric)
+);
 
 type JsonObject = Record<string, unknown>;
 

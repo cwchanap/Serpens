@@ -32,8 +32,16 @@ interface MetricContext {
 	reports: readonly DailyReport[];
 }
 
+type MetricFormat = 'currency' | 'percent' | 'decimal';
+
 interface MetricRegistration {
 	supportedWindows: ReadonlySet<WindowKind>;
+	/** True when queries carry productIds and evaluation filters product reports. */
+	productScoped: boolean;
+	/** Evidence-value formatting used for actual/target in localized copy. */
+	format: MetricFormat;
+	/** Product-scoped queries that additionally require a feasible producer-to-warehouse path. */
+	requiresLocalProductionPath: boolean;
 	neutral: number;
 	isComplete: (context: MetricContext) => boolean;
 	evaluate: (context: MetricContext) => MetricValue;
@@ -170,18 +178,27 @@ function consecutivePositiveOperatingCashFlow(context: MetricContext): MetricVal
 export const METRIC_REGISTRY = {
 	cash: {
 		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'currency',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: stateMetricComplete,
 		evaluate: ({ game }) => ({ actual: game.cash, contributingIds: [] })
 	},
 	'daily-net-income': {
 		supportedWindows: REPORT_WINDOWS,
+		productScoped: false,
+		format: 'currency',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: (context) => averageOperatingCashFlow(context.reports, 0)
 	},
 	'cumulative-net-income': {
 		supportedWindows: RUN_TO_DATE,
+		productScoped: false,
+		format: 'currency',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: ({ reports }) => ({
@@ -191,12 +208,18 @@ export const METRIC_REGISTRY = {
 	},
 	'consecutive-positive-net-income-reports': {
 		supportedWindows: new Set<WindowKind>(['current', 'trailing-reports']),
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: consecutivePositiveOperatingCashFlow
 	},
 	'completed-retail-import-cycles': {
 		supportedWindows: RUN_TO_DATE,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: ({ reports }) => {
@@ -206,24 +229,36 @@ export const METRIC_REGISTRY = {
 	},
 	'retail-import-spend': {
 		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'currency',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: (context) => sumProductMetric(context, (contribution) => contribution.importSpend)
 	},
 	'retail-imported-units': {
 		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: (context) => sumProductMetric(context, (contribution) => contribution.importedUnits)
 	},
 	'retail-local-units': {
 		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'decimal',
+		requiresLocalProductionPath: true,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: (context) => sumProductMetric(context, (contribution) => contribution.warehouseUnits)
 	},
 	'retail-local-share': {
 		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'percent',
+		requiresLocalProductionPath: true,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: (context) => {
@@ -245,18 +280,27 @@ export const METRIC_REGISTRY = {
 	},
 	'units-sold': {
 		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: (context) => sumProductMetric(context, (contribution) => contribution.unitsSold)
 	},
 	'demand-missed': {
 		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: (context) => sumProductMetric(context, (contribution) => contribution.demandMissed)
 	},
 	scorecard: {
 		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: stateMetricComplete,
 		evaluate: ({ game, query }) => ({
@@ -266,6 +310,9 @@ export const METRIC_REGISTRY = {
 	},
 	'store-count': {
 		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: stateMetricComplete,
 		evaluate: ({ game }) => ({
@@ -275,6 +322,9 @@ export const METRIC_REGISTRY = {
 	},
 	'industrial-building-count': {
 		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: stateMetricComplete,
 		evaluate: ({ game, query }) => {
@@ -292,6 +342,9 @@ export const METRIC_REGISTRY = {
 	},
 	'city-inventory-quantity': {
 		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
 		neutral: 0,
 		isComplete: stateMetricComplete,
 		evaluate: ({ game, query }) => {
