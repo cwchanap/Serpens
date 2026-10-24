@@ -2011,6 +2011,19 @@ export const en = {
 				positiveOperatingPerformance: 'Keep cumulative net income positive'
 			},
 			failures: { negativeCash: 'Avoid negative cash' }
+		},
+		twoCitySupplyRun: {
+			title: 'Two-City Supply Run',
+			summary:
+				'Run a recurring water supply line from Industry City to Breadbasket Basin before the deadline.',
+			briefing:
+				'Breadbasket Basin has opened a warehouse but no water source. Ship at least 150 units of water there with a recurring route before day 21. Manual dispatches are forbidden: only recurring routes count, and their lead times and freight rates come from the official city-pair quote. Negative cash fails the run.',
+			strategyHint:
+				'Open the logistics panel, create a recurring route from Industry City to Breadbasket Basin, and size its capacity so the seeded warehouse stock arrives early. The water pump tops the warehouse up through its rail corridor at five units a day.',
+			objectives: {
+				deliverWaterUnits: 'Deliver water to Breadbasket Basin with a recurring route'
+			},
+			failures: { negativeCash: 'Avoid negative cash' }
 		}
 	},
 	scenarioCatalog: {

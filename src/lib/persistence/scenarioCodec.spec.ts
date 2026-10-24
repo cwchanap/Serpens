@@ -40,7 +40,8 @@ const OFFICIAL_SEEDS: Record<ScenarioId, number> = {
 	'local-lifeline': 280_003,
 	'debt-turnaround': 280_004,
 	'fresh-market': 280_005,
-	'rival-next-door': 280_006
+	'rival-next-door': 280_006,
+	'two-city-supply-run': 280_007
 };
 
 function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {

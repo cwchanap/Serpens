@@ -14,7 +14,8 @@ const fixtureDefinitions = [
 	{ id: 'local-lifeline', version: 1, officialSeed: 280_003 },
 	{ id: 'debt-turnaround', version: 1, officialSeed: 280_004 },
 	{ id: 'fresh-market', version: 1, officialSeed: 280_005 },
-	{ id: 'rival-next-door', version: 1, officialSeed: 280_006 }
+	{ id: 'rival-next-door', version: 1, officialSeed: 280_006 },
+	{ id: 'two-city-supply-run', version: 1, officialSeed: 280_007 }
 ] as const;
 
 function resolveFixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition | undefined {
@@ -51,7 +52,8 @@ describe('scenario share codes', () => {
 		['local-lifeline', 1, 280_003],
 		['debt-turnaround', 1, 280_004],
 		['fresh-market', 1, 280_005],
-		['rival-next-door', 1, 280_006]
+		['rival-next-door', 1, 280_006],
+		['two-city-supply-run', 1, 280_007]
 	])('round-trips %s version %i seed %i', (scenarioId, version, seed) => {
 		const code = encodeScenarioShareCode({ scenarioId: scenarioId as ScenarioId, version }, seed);
 		const decoded = decodeScenarioShareCode(code, resolveFixtureDefinition);

@@ -200,7 +200,31 @@ const commands = [
 		tileId: 'industry-1-2',
 		buildingTypeId: 'water-pump',
 		expectedCost: 12_000
-	}
+	},
+	{
+		kind: 'createRecurringRoute',
+		input: {
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 30,
+			frequencyDays: 3,
+			priority: 1
+		}
+	},
+	{
+		kind: 'updateRecurringRoute',
+		routeId: 'route-1',
+		input: {
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 30,
+			frequencyDays: 3
+		}
+	},
+	{ kind: 'pauseRecurringRoute', routeId: 'route-1' },
+	{ kind: 'resumeRecurringRoute', routeId: 'route-1' }
 ] as const satisfies readonly ScenarioCommand[];
 
 const run = {
@@ -292,7 +316,11 @@ describe('scenario contracts', () => {
 			'refinanceLoan',
 			'financeWorldCity',
 			'financeRetailStore',
-			'financeIndustrialBuilding'
+			'financeIndustrialBuilding',
+			'createRecurringRoute',
+			'updateRecurringRoute',
+			'pauseRecurringRoute',
+			'resumeRecurringRoute'
 		]);
 		expect(commands.map((command) => command.kind)).toEqual(SCENARIO_COMMAND_KINDS);
 	});

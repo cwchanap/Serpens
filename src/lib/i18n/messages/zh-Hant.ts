@@ -1944,6 +1944,18 @@ export const zhHant = {
 				positiveOperatingPerformance: '保持累積淨利為正'
 			},
 			failures: { negativeCash: '避免現金為負' }
+		},
+		twoCitySupplyRun: {
+			title: '雙城物資運補',
+			summary: '在期限前建立從工業城到豐饒盆地的定期供水路線。',
+			briefing:
+				'豐饒盆地已開設倉庫但沒有水源。請在第 21 天前以定期路線運送至少 150 單位的水。手動派車被禁止，只有定期路線才算數，且運輸天數與運費由官方城市間報價決定。現金轉負即失敗。',
+			strategyHint:
+				'打開物流面板，建立從工業城到豐饒盆地的定期路線，並調整運量讓倉庫存量儘早送達。供水泵透過鐵路走廊每天為倉庫補充 5 單位的水。',
+			objectives: {
+				deliverWaterUnits: '以定期路線將水送達豐饒盆地'
+			},
+			failures: { negativeCash: '避免現金轉負' }
 		}
 	},
 	scenarioCatalog: {

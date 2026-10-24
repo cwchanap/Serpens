@@ -64,7 +64,8 @@ export const SCENARIO_IDS = [
 	'local-lifeline',
 	'debt-turnaround',
 	'fresh-market',
-	'rival-next-door'
+	'rival-next-door',
+	'two-city-supply-run'
 ] as const;
 export type ScenarioId = (typeof SCENARIO_IDS)[number];
 export type ScenarioDefinitionKey = `${ScenarioId}@${number}`;
