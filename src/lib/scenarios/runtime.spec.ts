@@ -1816,6 +1816,127 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	});
 });
 
+describe('scenario recurring-route commands', { timeout: 30_000 }, () => {
+	const definition = currentScenarioDefinition('two-city-supply-run');
+	if (!definition) throw new Error('two-city-supply-run definition missing from catalog');
+
+	function startedRun(): ScenarioRun {
+		const started = startScenario(definition, 280_007);
+		if (!started.ok) throw new Error('two-city-supply-run failed to start');
+		return started.value;
+	}
+
+	const createInput = {
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 50,
+		frequencyDays: 2,
+		priority: 0
+	} as const;
+
+	it('injects the canonical city-pair quote on create', () => {
+		const run = startedRun();
+
+		const result = executeScenarioCommand(run, definition, {
+			kind: 'createRecurringRoute',
+			input: createInput
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('route create rejected');
+		expect(result.run.game.logistics.recurringRoutes[0]).toMatchObject({
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			capacity: 50
+		});
+	});
+
+	it('recomputes the quote from the updated city pair', () => {
+		const run = startedRun();
+		const created = executeScenarioCommand(run, definition, {
+			kind: 'createRecurringRoute',
+			input: createInput
+		});
+		if (!created.ok) throw new Error('route create rejected');
+		const routeId = created.run.game.logistics.recurringRoutes[0].id;
+		// Give the game the third industry city so the retargeted pair is
+		// dispatchable: quarry-works sits in a farther distance band than
+		// breadbasket-basin, so a stale stored quote (2/2) cannot satisfy the 3/3
+		// assertion below. Its IndustryCity object is a stub because the runtime
+		// dispatch under test only needs the city to resolve and hold inventory.
+		const quarryStub = {
+			...created.run.game.industryCities[0],
+			id: 'quarry-works',
+			tiles: []
+		};
+		const opened = {
+			...created.run.game,
+			industryCities: [...created.run.game.industryCities, quarryStub],
+			world: {
+				...created.run.game.world,
+				openedCityIds: [...created.run.game.world.openedCityIds, 'quarry-works']
+			},
+			cityInventories: [
+				...created.run.game.cityInventories,
+				{ cityId: 'quarry-works', materials: {} }
+			]
+		};
+
+		const applied = applyGameCommand(opened, {
+			kind: 'updateRecurringRoute',
+			routeId,
+			input: {
+				originCityId: 'industry-city',
+				destinationCityId: 'quarry-works',
+				materialId: 'water',
+				capacity: 40,
+				frequencyDays: 3
+			}
+		});
+
+		expect(applied.ok).toBe(true);
+		if (!applied.ok) throw new Error('route update rejected');
+		expect(
+			applied.game.logistics.recurringRoutes.find((route) => route.id === routeId)
+		).toMatchObject({ leadTimeDays: 3, transportCostPerUnit: 3, capacity: 40 });
+	});
+
+	it.each([
+		['same-city', { destinationCityId: 'industry-city' }, 'same-city'],
+		['non-industry destination', { destinationCityId: 'harbor-city' }, 'invalid-destination']
+	] as const)('rejects %s route pairs without mutating the run', (_label, patch, reason) => {
+		const run = startedRun();
+
+		const result = executeScenarioCommand(run, definition, {
+			kind: 'createRecurringRoute',
+			input: { ...createInput, ...patch }
+		});
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result).toMatchObject({
+				ok: false,
+				code: 'invalid-command',
+				logisticsFailure: { reason }
+			});
+		}
+		expect(run.game.logistics.recurringRoutes).toHaveLength(0);
+	});
+
+	it('rejects malformed route payloads without changing the run', () => {
+		const run = startedRun();
+
+		const result = executeScenarioCommand(run, definition, {
+			kind: 'createRecurringRoute',
+			input: { ...createInput, capacity: -5 }
+		});
+
+		expect(result).toMatchObject({ ok: false, code: 'invalid-command' });
+		expect(run.game.logistics.recurringRoutes).toHaveLength(0);
+	});
+});
+
 describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
 	it('returns the exact run without refreshing evaluation for a semantic no-op', () => {
 		const game = foundingGame();
