@@ -1710,6 +1710,34 @@ describe('GameRouteController', () => {
 			).toEqual({ status: 'logistics-rejected', reason: 'invalid-capacity' });
 		});
 
+		it('rejects scenario-shaped route inputs in sandbox mode as typed logistics failures', async () => {
+			const harness = createHarness();
+			harness.controller.loadSandboxGame(createControllerLogisticsGame());
+			const full = validRecurringRouteInput();
+			const scenarioCreate = {
+				originCityId: full.originCityId,
+				destinationCityId: full.destinationCityId,
+				materialId: full.materialId,
+				capacity: full.capacity,
+				frequencyDays: full.frequencyDays,
+				priority: full.priority
+			};
+
+			expect(await harness.controller.createRecurringRoute(scenarioCreate)).toEqual({
+				status: 'logistics-rejected',
+				reason: 'invalid-lead-time-days'
+			});
+			expect(await harness.controller.updateRecurringRoute('route-1', scenarioCreate)).toEqual({
+				status: 'logistics-rejected',
+				reason: 'invalid-lead-time-days'
+			});
+			// A half-shaped input (exactly one rate field present) also takes the
+			// sandbox transition path, never the scenario command.
+			expect(
+				await harness.controller.createRecurringRoute({ ...scenarioCreate, leadTimeDays: 2 })
+			).toEqual({ status: 'logistics-rejected', reason: 'invalid-lead-time-days' });
+		});
+
 		it('returns insufficient-origin-stock as a typed logistics rejection from dispatchManualTransfer', async () => {
 			const harness = createHarness();
 			harness.controller.loadSandboxGame(createControllerLogisticsGame());
