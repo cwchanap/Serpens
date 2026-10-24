@@ -72,7 +72,7 @@ HPA-39 extends current contracts:
 - Default brand is product-level only; no company/city brand inheritance.
 - `sellingPrice` remains the only player/manager/scenario shelf-price contract.
 - Brand editing is sandbox-only and has no `ScenarioCommand`.
-- Existing authored scenarios remain rival-free; they are not a second market-balance surface in HPA-39.
+- Existing authored scenarios remain rival-free by default; they are not a second market-balance surface in HPA-39. (Narrow post-HPA-39 opt-in: a scenario may list opened retail cities in `start.overrides.competitorCityIds`, and setup reruns the same sandbox rival initializer for exactly those cities after materializing the start world; every scenario without the override stays rival-free.)
 - Competitors are never `Store`, never occupy tiles, and never enter staffing, finance, inventory, production, logistics, managers, or placement legality.
 - Sandbox competitor generation consumes a derived local RNG only; `GameState.rngState` is untouched.
 - No compatibility alias or ghost RNG draw is kept when `Store.competition` is removed.

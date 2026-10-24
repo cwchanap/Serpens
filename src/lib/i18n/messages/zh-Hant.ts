@@ -1930,6 +1930,19 @@ export const zhHant = {
 				produceWasteShare: '維持低生鮮報廢比例'
 			},
 			failures: { negativeCash: '避免現金為負' }
+		},
+		rivalNextDoor: {
+			title: '隔壁的勁敵',
+			summary: '在當地對手競爭下守住生鮮市占率，同時維持商店獲利。',
+			briefing:
+				'對手已進駐你的城市。在完整的近期報告視窗內，讓加權生鮮市占率維持在目標之上，並保持累積淨利為正。現金為負即失敗。',
+			strategyHint:
+				'留意每日市場報告：定價、人力與備貨都會影響你相鄰對手的吸引力。只要追趕視窗補滿，後來居上仍算數。',
+			objectives: {
+				marketShareFloor: '讓生鮮市占率維持在目標之上',
+				positiveOperatingPerformance: '保持累積淨利為正'
+			},
+			failures: { negativeCash: '避免現金為負' }
 		}
 	},
 	scenarioCatalog: {

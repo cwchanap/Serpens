@@ -1996,6 +1996,20 @@ export const en = {
 				produceWasteShare: 'Keep the produce waste share low'
 			},
 			failures: { negativeCash: 'Avoid negative cash' }
+		},
+		rivalNextDoor: {
+			title: 'Rival Next Door',
+			summary:
+				'Defend your produce market share against a local rival while keeping the store profitable.',
+			briefing:
+				'Rivals now trade in your city. Keep your weighted produce market share above the target over a complete trailing window while cumulative net income stays positive. Negative cash fails the run.',
+			strategyHint:
+				'Watch the daily market report: pricing, staffing, and stock coverage all move your attraction against the rival next door. Share recovered late still counts once the trailing window is full.',
+			objectives: {
+				marketShareFloor: 'Hold the produce market share above the target',
+				positiveOperatingPerformance: 'Keep cumulative net income positive'
+			},
+			failures: { negativeCash: 'Avoid negative cash' }
 		}
 	},
 	scenarioCatalog: {

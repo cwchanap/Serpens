@@ -1967,6 +1967,19 @@ export const ja = {
 				produceWasteShare: '生鮮食品の廃棄割合を低く保つ'
 			},
 			failures: { negativeCash: '現金残高のマイナスを避ける' }
+		},
+		rivalNextDoor: {
+			title: '隣のライバル',
+			summary: '地元のライバル店から生鮮食品の市場シェアを守りながら、店舗の黒字を維持します。',
+			briefing:
+				'ライバル店が同じ都市で商売を始めました。直近の完全なレポート期間で加重された生鮮食品の市場シェアを目標以上に保ち、累積純利益も黒字にしましょう。現金残高がマイナスになると失敗します。',
+			strategyHint:
+				'毎日の市場レポートを確認しましょう。価格・要員・在庫の充てんすべてが、隣のライバルとの競争力に影響します。追い上げは期間が埋まってからでも間に合います。',
+			objectives: {
+				marketShareFloor: '生鮮食品の市場シェアを目標以上に保つ',
+				positiveOperatingPerformance: '累積純利益を黒字に保つ'
+			},
+			failures: { negativeCash: '現金残高のマイナスを避ける' }
 		}
 	},
 	scenarioCatalog: {
