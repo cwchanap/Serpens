@@ -20,20 +20,35 @@
 		type LogisticsRouteFormValues,
 		type LogisticsRouteView
 	} from './logisticsPanel';
+	import type {
+		ScenarioRecurringRouteInput,
+		ScenarioRecurringRouteUpdateInput
+	} from '$lib/scenarios/types';
+
+	/** Per-action logistics availability split from the old blanket sandbox flag. */
+	export interface LogisticsAvailability {
+		/** Sandbox-only actions: manual dispatch, reprioritize, remove. */
+		sandboxActions: boolean;
+		createRoute: boolean;
+		updateRoute: boolean;
+		pauseResumeRoute: boolean;
+	}
 
 	interface Props {
 		game: GameState;
 		view: LogisticsPanelView;
 		i18n: I18nBundle;
-		canMutate: boolean;
+		availability: LogisticsAvailability;
 		disabledReason: string | null;
 		focusedRouteId: string | null;
 		routePreset?: RecurringRouteInput | null;
 		onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
-		onCreateRecurringRoute: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
+		onCreateRecurringRoute: (
+			input: RecurringRouteInput | ScenarioRecurringRouteInput
+		) => Promise<GameRouteCommitResult>;
 		onUpdateRecurringRoute: (
 			routeId: string,
-			input: RecurringRouteUpdateInput
+			input: RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput
 		) => Promise<GameRouteCommitResult>;
 		onPauseRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
 		onResumeRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
@@ -48,7 +63,7 @@
 		game,
 		view,
 		i18n,
-		canMutate,
+		availability,
 		disabledReason,
 		focusedRouteId,
 		routePreset = null,
@@ -60,6 +75,18 @@
 		onReprioritizeRecurringRoute,
 		onRemoveRecurringRoute
 	}: Props = $props();
+
+	const canMutate = $derived(
+		availability.sandboxActions ||
+			availability.createRoute ||
+			availability.updateRoute ||
+			availability.pauseResumeRoute
+	);
+	// Scenario mode derives route rates from the canonical city-pair quote;
+	// the lead-time and cost fields become read-only displays.
+	const ratesLocked = $derived(
+		!availability.sandboxActions && (availability.createRoute || availability.updateRoute)
+	);
 
 	const dispatchMaterials: readonly MaterialId[] = ['grain', 'flour', 'snacks', 'packaging'];
 	const quickMaterials = $derived(
@@ -224,7 +251,7 @@
 
 	async function submitManualTransfer(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
-		if (!canMutate || submitting) return;
+		if (!availability.sandboxActions || submitting) return;
 
 		const quantity = parsePositiveInteger(manualQuantity);
 		if (quantity === null) {
@@ -259,7 +286,7 @@
 		}
 	}
 
-	function routeInput(): RecurringRouteInput | null {
+	function routeInput(): RecurringRouteInput | ScenarioRecurringRouteInput | null {
 		if (!routeOriginCityId || !routeDestinationCityId || !routeMaterialId) return null;
 
 		if (routeOriginCityId === routeDestinationCityId) {
@@ -269,8 +296,6 @@
 
 		const capacity = parsePositiveInteger(routeCapacity);
 		const frequencyDays = parsePositiveInteger(routeFrequencyDays);
-		const leadTimeDays = parsePositiveInteger(routeLeadTimeDays);
-		const transportCostPerUnit = parsePositiveInteger(routeTransportCostPerUnit);
 		const priority = parseNonNegativeInteger(routePriority);
 		if (capacity === null) {
 			setFailure('invalid-capacity');
@@ -280,16 +305,31 @@
 			setFailure('invalid-frequency-days');
 			return null;
 		}
+		if (priority === null) {
+			setFailure('invalid-priority');
+			return null;
+		}
+
+		// Scenario commands strip the quote-derived rates entirely: the runtime
+		// recomputes them from the canonical city-pair quote.
+		if (ratesLocked) {
+			return {
+				originCityId: routeOriginCityId,
+				destinationCityId: routeDestinationCityId,
+				materialId: routeMaterialId,
+				capacity,
+				frequencyDays,
+				priority
+			};
+		}
+		const leadTimeDays = parsePositiveInteger(routeLeadTimeDays);
+		const transportCostPerUnit = parsePositiveInteger(routeTransportCostPerUnit);
 		if (leadTimeDays === null) {
 			setFailure('invalid-lead-time-days');
 			return null;
 		}
 		if (transportCostPerUnit === null) {
 			setFailure('invalid-transport-cost-per-unit');
-			return null;
-		}
-		if (priority === null) {
-			setFailure('invalid-priority');
 			return null;
 		}
 
@@ -305,6 +345,24 @@
 		};
 	}
 
+	function buildUpdateInput(
+		input: RecurringRouteInput | ScenarioRecurringRouteInput
+	): RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput {
+		const { originCityId, destinationCityId, materialId, capacity, frequencyDays } = input;
+		if ('leadTimeDays' in input && 'transportCostPerUnit' in input) {
+			return {
+				originCityId,
+				destinationCityId,
+				materialId,
+				capacity,
+				frequencyDays,
+				leadTimeDays: input.leadTimeDays,
+				transportCostPerUnit: input.transportCostPerUnit
+			};
+		}
+		return { originCityId, destinationCityId, materialId, capacity, frequencyDays };
+	}
+
 	async function submitRoute(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
 		if (!canMutate || submitting) return;
@@ -313,17 +371,8 @@
 
 		submitting = true;
 		try {
-			const updateInput: RecurringRouteUpdateInput = {
-				originCityId: input.originCityId,
-				destinationCityId: input.destinationCityId,
-				materialId: input.materialId,
-				capacity: input.capacity,
-				frequencyDays: input.frequencyDays,
-				leadTimeDays: input.leadTimeDays,
-				transportCostPerUnit: input.transportCostPerUnit
-			};
 			const result = editingRouteId
-				? await onUpdateRecurringRoute(editingRouteId, updateInput)
+				? await onUpdateRecurringRoute(editingRouteId, buildUpdateInput(input))
 				: await onCreateRecurringRoute(input);
 			if (!isGameRouteCommitted(result)) {
 				statusMessage = describeResult(result);
@@ -339,13 +388,20 @@
 	}
 
 	function beginEdit(route: LogisticsRouteView): void {
+		if (!availability.updateRoute) return;
 		routeOriginCityId = route.originCityId;
 		routeDestinationCityId = route.destinationCityId;
 		routeMaterialId = route.materialId;
 		routeCapacity = String(route.capacity);
 		routeFrequencyDays = String(route.frequencyDays);
-		routeLeadTimeDays = String(route.leadTimeDays);
-		routeTransportCostPerUnit = String(route.transportCostPerUnit);
+		if (ratesLocked) {
+			// Stored rates may be stale: scenario mode always displays the
+			// current quote for the edited pair.
+			seedRouteQuote(route.originCityId, route.destinationCityId);
+		} else {
+			routeLeadTimeDays = String(route.leadTimeDays);
+			routeTransportCostPerUnit = String(route.transportCostPerUnit);
+		}
 		routePriority = String(route.priority);
 		editingRouteId = route.routeId;
 		routeEditorOpen = true;
@@ -357,7 +413,7 @@
 	}
 
 	async function changeRouteState(route: LogisticsRouteView): Promise<void> {
-		if (!canMutate || submitting) return;
+		if (!availability.pauseResumeRoute || submitting) return;
 		submitting = true;
 		try {
 			const result =
@@ -379,7 +435,7 @@
 	}
 
 	async function reprioritizeRoute(route: LogisticsRouteView): Promise<void> {
-		if (!canMutate || submitting) return;
+		if (!availability.sandboxActions || submitting) return;
 		const priority = parseNonNegativeInteger(
 			priorityValues[route.routeId] ?? String(route.priority)
 		);
@@ -399,7 +455,7 @@
 	}
 
 	async function removeRoute(route: LogisticsRouteView): Promise<void> {
-		if (!canMutate || submitting) return;
+		if (!availability.sandboxActions || submitting) return;
 		submitting = true;
 		try {
 			const result = await onRemoveRecurringRoute(route.routeId);
@@ -449,7 +505,7 @@
 						aria-label={material.label}
 						title={`${material.label} · ${material.stock}`}
 						aria-pressed={manualMaterialId === material.materialId}
-						disabled={!canMutate || submitting}
+						disabled={!availability.sandboxActions || submitting}
 						onclick={() => (manualMaterialId = material.materialId)}
 					>
 						<img
@@ -465,7 +521,7 @@
 					<select
 						id="logistics-manual-material"
 						bind:value={manualMaterialId}
-						disabled={!canMutate || submitting}
+						disabled={!availability.sandboxActions || submitting}
 					>
 						{#each view.materialOptions as material (material.materialId)}
 							<option value={material.materialId}
@@ -484,7 +540,7 @@
 					id="logistics-manual-origin"
 					aria-label={i18n.t('logisticsPanel.fields.origin')}
 					bind:value={manualOriginCityId}
-					disabled={!canMutate || submitting}
+					disabled={!availability.sandboxActions || submitting}
 				>
 					{#each cityOptionsForSelect() as city (city.cityId)}
 						<option value={city.cityId} title={city.inventorySummary}>{city.label}</option>
@@ -500,7 +556,7 @@
 					id="logistics-manual-destination"
 					aria-label={i18n.t('logisticsPanel.fields.destination')}
 					bind:value={manualDestinationCityId}
-					disabled={!canMutate || submitting}
+					disabled={!availability.sandboxActions || submitting}
 				>
 					{#each cityOptionsForSelect() as city (city.cityId)}
 						<option value={city.cityId}>{city.label}</option>
@@ -516,12 +572,12 @@
 					min="1"
 					step="1"
 					bind:value={manualQuantity}
-					disabled={!canMutate || submitting}
+					disabled={!availability.sandboxActions || submitting}
 				/>
 			</div>
 			<button
 				type="submit"
-				disabled={!canMutate || submitting}
+				disabled={!availability.sandboxActions || submitting}
 				aria-label={i18n.t('logisticsPanel.actions.dispatchTransfer')}
 			>
 				<svg viewBox="0 0 24 24" aria-hidden="true"
@@ -599,6 +655,9 @@
 					min="1"
 					step="1"
 					bind:value={routeLeadTimeDays}
+					readonly={ratesLocked}
+					aria-readonly={ratesLocked}
+					title={ratesLocked ? i18n.t('logisticsPanel.ui.quoteLocked') : undefined}
 					disabled={!canMutate || submitting}
 				/>
 				<label for="logistics-route-cost"
@@ -610,6 +669,9 @@
 					min="1"
 					step="1"
 					bind:value={routeTransportCostPerUnit}
+					readonly={ratesLocked}
+					aria-readonly={ratesLocked}
+					title={ratesLocked ? i18n.t('logisticsPanel.ui.quoteLocked') : undefined}
 					disabled={!canMutate || submitting}
 				/>
 				{#if !editingRouteId}
@@ -701,7 +763,7 @@
 						<div class="route-actions">
 							<button
 								type="button"
-								disabled={!canMutate || submitting}
+								disabled={!availability.pauseResumeRoute || submitting}
 								onclick={() => changeRouteState(route)}
 								aria-label={i18n.t(
 									route.state === 'active'
@@ -716,7 +778,7 @@
 							>
 							<button
 								type="button"
-								disabled={!canMutate || submitting}
+								disabled={!availability.updateRoute || submitting}
 								onclick={() => beginEdit(route)}
 								aria-label={i18n.t('logisticsPanel.actions.editRoute')}
 								title={i18n.t('logisticsPanel.actions.editRoute')}><HudIcon name="edit" /></button
@@ -738,11 +800,11 @@
 												...priorityValues,
 												[route.routeId]: event.currentTarget.value
 											})}
-										disabled={!canMutate || submitting}
+										disabled={!availability.sandboxActions || submitting}
 									/>
 									<button
 										type="button"
-										disabled={!canMutate || submitting}
+										disabled={!availability.sandboxActions || submitting}
 										onclick={() => reprioritizeRoute(route)}
 										>{i18n.t('logisticsPanel.actions.reprioritizeRoute')}</button
 									>
@@ -750,7 +812,7 @@
 							</details>
 							<button
 								type="button"
-								disabled={!canMutate || submitting}
+								disabled={!availability.sandboxActions || submitting}
 								onclick={() => removeRoute(route)}
 								aria-label={i18n.t('logisticsPanel.actions.removeRoute')}
 								title={i18n.t('logisticsPanel.actions.removeRoute')}

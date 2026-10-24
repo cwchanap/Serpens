@@ -2204,7 +2204,7 @@ describe('GameRouteController', () => {
 			expect(saveSpy).not.toHaveBeenCalled();
 		});
 
-		it('keeps all logistics writes unavailable in scenario mode without a ScenarioCommand', async () => {
+		it('keeps sandbox-only logistics writes unavailable in scenario mode without a ScenarioCommand', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
 			await startScenario(harness.controller);
@@ -2228,17 +2228,42 @@ describe('GameRouteController', () => {
 			expect(await harness.controller.updateRecurringRoute('route-1', update)).toEqual({
 				status: 'unavailable'
 			});
-			expect(await harness.controller.pauseRecurringRoute('route-1')).toEqual({
-				status: 'unavailable'
-			});
-			expect(await harness.controller.resumeRecurringRoute('route-1')).toEqual({
-				status: 'unavailable'
-			});
 			expect(await harness.controller.reprioritizeRecurringRoute('route-1', 0)).toEqual({
 				status: 'unavailable'
 			});
 			expect(await harness.controller.removeRecurringRoute('route-1')).toEqual({
 				status: 'unavailable'
+			});
+			expect(saveSpy).not.toHaveBeenCalled();
+		});
+
+		it('rejects scenario route commands in a scenario that does not allow them, without saving', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			await startScenario(harness.controller);
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+
+			const full = validRecurringRouteInput();
+			const scenarioCreate = {
+				originCityId: full.originCityId,
+				destinationCityId: full.destinationCityId,
+				materialId: full.materialId,
+				capacity: full.capacity,
+				frequencyDays: full.frequencyDays,
+				priority: full.priority
+			};
+			expect(await harness.controller.createRecurringRoute(scenarioCreate)).toEqual({
+				status: 'rejected'
+			});
+			const scenarioUpdate = { ...scenarioCreate };
+			expect(await harness.controller.updateRecurringRoute('route-1', scenarioUpdate)).toEqual({
+				status: 'rejected'
+			});
+			expect(await harness.controller.pauseRecurringRoute('route-1')).toEqual({
+				status: 'rejected'
+			});
+			expect(await harness.controller.resumeRecurringRoute('route-1')).toEqual({
+				status: 'rejected'
 			});
 			expect(saveSpy).not.toHaveBeenCalled();
 		});

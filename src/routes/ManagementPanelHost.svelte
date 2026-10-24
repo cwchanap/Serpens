@@ -5,6 +5,10 @@
 	import DailyResultSummary from '$lib/components/game/DailyResultSummary.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
+	import type {
+		ScenarioRecurringRouteInput,
+		ScenarioRecurringRouteUpdateInput
+	} from '$lib/scenarios/types';
 	import LogisticsPanel from '$lib/components/game/LogisticsPanel.svelte';
 	import type { LogisticsPanelView } from '$lib/components/game/logisticsPanel';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
@@ -52,7 +56,6 @@
 		focusedFinanceLoanId: string | null;
 		focusedRetailSupplyCityId?: string | null;
 		logisticsView: LogisticsPanelView | null;
-		manageLogistics?: boolean;
 		focusedLogisticsRouteId?: string | null;
 		logisticsRoutePreset?: RecurringRouteInput | null;
 		i18n: I18nBundle;
@@ -79,10 +82,12 @@
 		onPlanProduct?: (productId: ProductId) => void;
 		plannerProductIds?: readonly ProductId[];
 		onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
-		onCreateRecurringRoute: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
+		onCreateRecurringRoute: (
+			input: RecurringRouteInput | ScenarioRecurringRouteInput
+		) => Promise<GameRouteCommitResult>;
 		onUpdateRecurringRoute: (
 			routeId: string,
-			input: RecurringRouteUpdateInput
+			input: RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput
 		) => Promise<GameRouteCommitResult>;
 		onPauseRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
 		onResumeRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
@@ -108,7 +113,6 @@
 		focusedFinanceLoanId,
 		focusedRetailSupplyCityId = null,
 		logisticsView,
-		manageLogistics = false,
 		focusedLogisticsRouteId = null,
 		logisticsRoutePreset = null,
 		i18n,
@@ -409,7 +413,12 @@
 					<LogisticsPanel
 						game={panelGame}
 						view={requireLogisticsView()}
-						canMutate={manageLogistics}
+						availability={{
+							sandboxActions: mutations.manageLogistics,
+							createRoute: mutations.createRecurringRoute,
+							updateRoute: mutations.updateRecurringRoute,
+							pauseResumeRoute: mutations.pauseRecurringRoute || mutations.resumeRecurringRoute
+						}}
 						focusedRouteId={focusedLogisticsRouteId}
 						routePreset={logisticsRoutePreset}
 						{disabledReason}

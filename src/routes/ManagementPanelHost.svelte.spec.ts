@@ -28,6 +28,10 @@ import type {
 	RecurringRouteInput,
 	RecurringRouteUpdateInput
 } from '$lib/game/interCityLogistics';
+import type {
+	ScenarioRecurringRouteInput,
+	ScenarioRecurringRouteUpdateInput
+} from '$lib/scenarios/types';
 import type { I18nBundle } from '$lib/i18n';
 import { createI18n } from '$lib/i18n';
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
@@ -47,7 +51,6 @@ interface ManagementPanelHostProps {
 	focusedFinanceLoanId: string | null;
 	focusedRetailSupplyCityId: string | null;
 	logisticsView: LogisticsPanelView;
-	manageLogistics: boolean;
 	focusedLogisticsRouteId: string | null;
 	logisticsRoutePreset: RecurringRouteInput | null;
 	i18n: I18nBundle;
@@ -71,10 +74,12 @@ interface ManagementPanelHostProps {
 	onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
 	onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
 	onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
-	onCreateRecurringRoute: (input: RecurringRouteInput) => Promise<GameRouteCommitResult>;
+	onCreateRecurringRoute: (
+		input: RecurringRouteInput | ScenarioRecurringRouteInput
+	) => Promise<GameRouteCommitResult>;
 	onUpdateRecurringRoute: (
 		routeId: string,
-		input: RecurringRouteUpdateInput
+		input: RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput
 	) => Promise<GameRouteCommitResult>;
 	onPauseRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
 	onResumeRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
@@ -159,7 +164,6 @@ function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): Managemen
 		i18n,
 		disabledReason: 'Unavailable in this challenge.',
 		logisticsView: buildLogisticsPanelView(panelGame, i18n),
-		manageLogistics: true,
 		focusedLogisticsRouteId: null,
 		logisticsRoutePreset: null,
 		onClose: vi.fn(),

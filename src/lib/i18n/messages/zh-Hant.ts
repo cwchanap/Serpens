@@ -1105,6 +1105,7 @@ export const zhHant = {
 			recent: '最近',
 			routeSchedule: '每次 {capacity} · 每 {days} 天 · 每件 {cost}',
 			quote: '運輸天數：{leadTime} 天 · 運輸費：{cost}。',
+			quoteLocked: '運輸天數與運輸費由官方城市間報價決定。',
 			transferSubmitted: '已派出運輸。',
 			routeCreated: '已建立定期航線。',
 			routeUpdated: '已更新定期航線。',

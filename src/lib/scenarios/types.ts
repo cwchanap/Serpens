@@ -9,6 +9,7 @@ import type {
 	ScoreKey,
 	WorldCityId
 } from '$lib/game/types';
+import type { RecurringRouteInput, RecurringRouteUpdateInput } from '$lib/game/interCityLogistics';
 import type { TranslationKey } from '$lib/i18n/translate';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import type { DecisionResolutionFailureCode } from '$lib/game/eventEffects';
@@ -46,7 +47,11 @@ export const SCENARIO_COMMAND_KINDS = [
 	'refinanceLoan',
 	'financeWorldCity',
 	'financeRetailStore',
-	'financeIndustrialBuilding'
+	'financeIndustrialBuilding',
+	'createRecurringRoute',
+	'updateRecurringRoute',
+	'pauseRecurringRoute',
+	'resumeRecurringRoute'
 ] as const;
 
 /** Largest seed that remains a non-zero Park-Miller RNG state without normalization. */
@@ -68,6 +73,19 @@ export type ScenarioEligibility = 'ranked' | 'unranked';
 export type ScenarioMedal = 'bronze' | 'silver' | 'gold';
 export type ObjectiveConditionStatus = 'pending' | 'satisfied' | 'missed';
 export type FailureConditionStatus = 'inactive' | 'triggered';
+
+/**
+ * Scenario route commands never carry freight rates: lead times and transport
+ * costs always come from the canonical city-pair quote at dispatch time.
+ */
+export type ScenarioRecurringRouteInput = Omit<
+	RecurringRouteInput,
+	'leadTimeDays' | 'transportCostPerUnit'
+>;
+export type ScenarioRecurringRouteUpdateInput = Omit<
+	RecurringRouteUpdateInput,
+	'leadTimeDays' | 'transportCostPerUnit'
+>;
 
 export type ScenarioCommand =
 	| { kind: 'advanceDay' }
@@ -127,7 +145,11 @@ export type ScenarioCommand =
 			tileId: string;
 			buildingTypeId: IndustrialBuildingTypeId;
 			expectedCost: number;
-	  };
+	  }
+	| { kind: 'createRecurringRoute'; input: ScenarioRecurringRouteInput }
+	| { kind: 'updateRecurringRoute'; routeId: string; input: ScenarioRecurringRouteUpdateInput }
+	| { kind: 'pauseRecurringRoute'; routeId: string }
+	| { kind: 'resumeRecurringRoute'; routeId: string };
 
 export interface ScenarioStartBlueprint {
 	foundingStore: {
