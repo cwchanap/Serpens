@@ -212,7 +212,12 @@ export type ScenarioMetricQuery =
 	| { metric: 'scorecard'; score: ScoreKey }
 	| { metric: 'store-count' }
 	| { metric: 'industrial-building-count'; buildingTypeIds: readonly IndustrialBuildingTypeId[] }
-	| { metric: 'city-inventory-quantity'; cityId: WorldCityId; materialId: MaterialId };
+	| { metric: 'city-inventory-quantity'; cityId: WorldCityId; materialId: MaterialId }
+	| {
+			metric: 'delivered-transfer-units';
+			destinationCityId: WorldCityId;
+			materialId: MaterialId;
+	  };
 
 export type ScenarioComparator = 'lt' | 'lte' | 'eq' | 'gte' | 'gt';
 

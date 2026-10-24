@@ -472,6 +472,36 @@ export const METRIC_REGISTRY = {
 				contributingIds: [cityInventoryEvidenceId(query.cityId, query.materialId)]
 			};
 		}
+	},
+	'delivered-transfer-units': {
+		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: reportMetricComplete,
+		evaluate: (context) => {
+			const contributions: Array<{ id: string; quantity: number }> = [];
+			for (const report of context.reports) {
+				if (context.query.metric !== 'delivered-transfer-units') continue;
+				for (const arrival of report.logistics.arrivals) {
+					if (
+						arrival.destinationCityId !== context.query.destinationCityId ||
+						arrival.materialId !== context.query.materialId
+					) {
+						continue;
+					}
+					contributions.push({
+						id: transferArrivalEvidenceId(report.day, arrival.transferOrderId),
+						quantity: arrival.quantity
+					});
+				}
+			}
+			return {
+				actual: contributions.reduce((sum, contribution) => sum + contribution.quantity, 0),
+				contributingIds: contributions.map((contribution) => contribution.id)
+			};
+		}
 	}
 } satisfies Record<MetricId, MetricRegistration>;
 
@@ -521,6 +551,10 @@ export function cityInventoryEvidenceId(cityId: string, materialId: string): str
 
 export function loanEvidenceId(loanId: string): string {
 	return `loan:${encodeEvidenceSegment(loanId)}`;
+}
+
+export function transferArrivalEvidenceId(day: number, transferOrderId: string): string {
+	return `${reportEvidenceId(day)}/transfer:${encodeEvidenceSegment(transferOrderId)}`;
 }
 
 export function evaluateMetric(
