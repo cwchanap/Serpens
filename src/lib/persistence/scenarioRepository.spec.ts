@@ -31,7 +31,8 @@ const OFFICIAL_SEEDS: Record<ScenarioId, number> = {
 	'first-profit': 280_001,
 	'import-squeeze': 280_002,
 	'local-lifeline': 280_003,
-	'debt-turnaround': 280_004
+	'debt-turnaround': 280_004,
+	'fresh-market': 280_005
 };
 
 function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {

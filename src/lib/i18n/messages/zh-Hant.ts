@@ -1918,6 +1918,18 @@ export const zhHant = {
 				negativeCash: '避免現金為負',
 				missedInstallment: '絕不延誤貸款分期'
 			}
+		},
+		freshMarket: {
+			title: '鮮蔬市集',
+			summary: '大量販售生鮮蔬果，同時將報廢佔流出量的比例壓低。',
+			briefing:
+				'賣出大量生鮮，並讓報廢的生鮮佔「已售加報廢」總流出量的比例維持在低位。現金為負即失敗。',
+			strategyHint: '生鮮到貨十天後就會報廢，訂貨請以一週為度：訂太多變成廢棄，訂太少錯失商機。',
+			objectives: {
+				produceSold: '大量販售生鮮',
+				produceWasteShare: '維持低生鮮報廢比例'
+			},
+			failures: { negativeCash: '避免現金為負' }
 		}
 	},
 	scenarioCatalog: {

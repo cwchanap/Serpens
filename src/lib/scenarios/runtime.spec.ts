@@ -50,6 +50,7 @@ import {
 } from '$lib/game/world';
 import { shouldReplaceBestResult } from './scoring';
 import { currentScenarioDefinition } from './catalog';
+import { evaluateMetric } from './metrics';
 import { MAX_SCENARIO_SEED } from './types';
 import type {
 	ScenarioCommand,
@@ -221,6 +222,32 @@ const DEBT_TURNAROUND_REFERENCE_SCHEDULE: readonly {
 		} as const
 	}))
 ];
+
+/**
+ * Scheduled reference trace for fresh-market: day-1 throughput policy
+ * (max store sales capacity) plus a produce reorder window sized so the
+ * day-7 replenishment covers days 11–14, after the oversized opening lot
+ * would otherwise spoil on day 11. The opening lot sells out completely,
+ * so the run finishes with zero produce waste.
+ */
+const FRESH_MARKET_REFERENCE_SCHEDULE: readonly {
+	day: number;
+	command: ScenarioCommand;
+}[] = (
+	[
+		{
+			kind: 'updatePolicy',
+			patch: { inventory: 'generous', staffing: 'service', service: 'speed' }
+		},
+		{
+			kind: 'updateStoreInventoryTargets',
+			storeId: 'store-1',
+			productId: 'produce',
+			reorderThreshold: 450,
+			targetStock: 750
+		}
+	] as const satisfies readonly ScenarioCommand[]
+).map((command) => ({ day: 1, command }));
 
 const ALL_CITY_IDS = [
 	'harbor-city',
@@ -1521,6 +1548,72 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 			'inactive',
 			'inactive'
 		]);
+	});
+
+	it('fresh-market no-action trace fails at the day-15 deadline below Silver with real spoilage', () => {
+		const run = replayScheduledCalibration('fresh-market', []);
+
+		expect(run.status).toBe('failed');
+		expect(run.result).toMatchObject({
+			outcome: 'failed',
+			completionDay: 15,
+			score: 676,
+			medal: null
+		});
+		// The oversized opening lot spoils inside the 14-report window: the
+		// day-11 report carries the expired produce while earlier days sold it.
+		const spoilDay = run.game.reports.find((report) => report.day === 11);
+		expect(spoilDay?.storeReports[0]?.productReports[0]).toMatchObject({
+			productId: 'produce',
+			wasteUnits: 148
+		});
+		const sold = evaluateMetric(
+			run.game,
+			{ metric: 'units-sold', productIds: ['produce'] },
+			{ kind: 'run-to-date' }
+		);
+		expect(sold.actual).toBe(736);
+		expect(
+			evaluateMetric(
+				run.game,
+				{ metric: 'product-waste-share', productIds: ['produce'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBeCloseTo(148 / 884, 15);
+		// Both required objectives miss on the no-action run.
+		expect(run.evaluation.required.map((objective) => objective.status)).toEqual([
+			'missed',
+			'missed'
+		]);
+	});
+
+	it('fresh-market scheduled reference trace completes on day 15 with gold and zero waste', () => {
+		const run = replayScheduledCalibration('fresh-market', FRESH_MARKET_REFERENCE_SCHEDULE);
+
+		expect(run.status).toBe('completed');
+		expect(run.result).toMatchObject({
+			outcome: 'completed',
+			completionDay: 15,
+			score: 1000,
+			medal: 'gold'
+		});
+		// Right-sizing the reorder pipeline sells the whole opening lot before its
+		// day-11 expiry: meaningful volume with zero produce waste.
+		expect(
+			evaluateMetric(
+				run.game,
+				{ metric: 'units-sold', productIds: ['produce'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(1540);
+		expect(
+			evaluateMetric(
+				run.game,
+				{ metric: 'product-waste-share', productIds: ['produce'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(0);
+		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual(['inactive']);
 	});
 });
 

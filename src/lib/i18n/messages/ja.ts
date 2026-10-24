@@ -1954,6 +1954,19 @@ export const ja = {
 				negativeCash: '現金残高のマイナスを避ける',
 				missedInstallment: '融資の返済を延滞させない'
 			}
+		},
+		freshMarket: {
+			title: 'フレッシュマーケット',
+			summary: '廃棄の割合を抑えながら、生鮮食品をたくさん売ります。',
+			briefing:
+				'生鮮食品をたくさん販売し、廃棄された生鮮食品が販売と廃棄の合計に占める割合を低く保ちましょう。現金残高がマイナスになると失敗します。',
+			strategyHint:
+				'生鮮食品は仕入れてから10日で廃棄になります。発注は1週間分に抑え、仕入れすぎは廃棄に、少なすぎは売り機会の損失につながります。',
+			objectives: {
+				produceSold: '生鮮食品をたくさん売る',
+				produceWasteShare: '生鮮食品の廃棄割合を低く保つ'
+			},
+			failures: { negativeCash: '現金残高のマイナスを避ける' }
 		}
 	},
 	scenarioCatalog: {

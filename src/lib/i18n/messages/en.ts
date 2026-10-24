@@ -1983,6 +1983,19 @@ export const en = {
 				negativeCash: 'Avoid negative cash',
 				missedInstallment: 'Never miss a loan installment'
 			}
+		},
+		freshMarket: {
+			title: 'Fresh Market',
+			summary: 'Sell produce in volume while keeping spoilage waste a small share of outflow.',
+			briefing:
+				'Move plenty of produce and keep discarded produce to a low share of everything that leaves the store (sold plus discarded). Negative cash fails the run.',
+			strategyHint:
+				'Produce spoils ten days after it arrives, so size orders to the week: oversupply turns into waste, undersupply turns into missed sales.',
+			objectives: {
+				produceSold: 'Sell produce in volume',
+				produceWasteShare: 'Keep the produce waste share low'
+			},
+			failures: { negativeCash: 'Avoid negative cash' }
 		}
 	},
 	scenarioCatalog: {
