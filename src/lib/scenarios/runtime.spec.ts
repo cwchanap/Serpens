@@ -1930,6 +1930,29 @@ describe('scenario recurring-route commands', { timeout: 30_000 }, () => {
 		expect(run.game.logistics.recurringRoutes).toHaveLength(0);
 	});
 
+	it('rejects an update that retargets a route to a same-city pair without mutating the run', () => {
+		const run = startedRun();
+		const created = executeScenarioCommand(run, definition, {
+			kind: 'createRecurringRoute',
+			input: createInput
+		});
+		if (!created.ok) throw new Error('route create rejected');
+		const route = created.run.game.logistics.recurringRoutes[0];
+
+		const result = executeScenarioCommand(created.run, definition, {
+			kind: 'updateRecurringRoute',
+			routeId: route.id,
+			input: { ...createInput, destinationCityId: 'industry-city' }
+		});
+
+		expect(result).toMatchObject({
+			ok: false,
+			code: 'invalid-command',
+			logisticsFailure: { reason: 'same-city' }
+		});
+		expect(created.run.game.logistics.recurringRoutes[0]).toEqual(route);
+	});
+
 	it('rejects malformed route payloads without changing the run', () => {
 		const run = startedRun();
 
