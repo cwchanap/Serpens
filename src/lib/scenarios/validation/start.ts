@@ -126,6 +126,7 @@ function validateOverrides(
 	}
 	if (Object.hasOwn(overrides, 'policy')) validatePolicy(context, overrides.policy);
 	if (Object.hasOwn(overrides, 'world')) validateWorldOverride(context, overrides.world);
+	validateCompetitorCities(context, overrides.competitorCityIds);
 	const targetLevels = validateStoreOverrides(context, overrides.stores, foundingStore);
 	validateBuildingInventories(context, overrides.buildingInventories, buildings);
 	validateCityInventoryMaterials(context, overrides.cityInventoryMaterials);
@@ -147,6 +148,50 @@ function validatePolicy(context: ValidationContext, value: unknown): void {
 				`Unsupported ${key} policy value.`
 			);
 		}
+	}
+}
+
+function validateCompetitorCities(context: ValidationContext, value: unknown): void {
+	if (value === undefined) return;
+	const ids = arrayValue(context, value, 'start.overrides.competitorCityIds');
+	if (!ids) return;
+	const seen = new Set<string>();
+
+	for (const [index, candidate] of ids.entries()) {
+		const path = `start.overrides.competitorCityIds[${index}]`;
+		if (!validateKnownReference(context, candidate, path, KNOWN_CITY_IDS, 'city')) continue;
+		const cityId = candidate as string;
+		if (seen.has(cityId)) {
+			diagnostic(
+				context,
+				path,
+				'duplicate-reference',
+				cityId,
+				`Duplicate competitor city override: ${cityId}.`
+			);
+		}
+		seen.add(cityId);
+		const city = getWorldCityDefinition(cityId);
+		if (city?.kind !== 'retail') {
+			diagnostic(
+				context,
+				path,
+				'invalid-competitor-city',
+				cityId,
+				'Competitor city overrides require a retail city.'
+			);
+			continue;
+		}
+		if (!context.openedCityIds.has(cityId)) {
+			diagnostic(
+				context,
+				path,
+				'competitor-city-closed',
+				cityId,
+				'Competitor city overrides require an opened retail city.'
+			);
+		}
+		validateIncluded(context, cityId, path, context.content.cities);
 	}
 }
 

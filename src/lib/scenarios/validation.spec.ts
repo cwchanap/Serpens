@@ -767,6 +767,51 @@ describe('validateScenarioDefinition', () => {
 		});
 	});
 
+	it('rejects duplicate, unknown, non-retail, closed, and non-allowlisted competitor city overrides', () => {
+		const accepted = validDefinition();
+		accepted.start.overrides.competitorCityIds = ['harbor-city'];
+		expect(
+			codes(accepted).filter((entry) => entry.path.startsWith('start.overrides.competitorCityIds'))
+		).toEqual([]);
+
+		const duplicate = validDefinition();
+		duplicate.start.overrides.competitorCityIds = ['harbor-city', 'harbor-city'];
+		expect(codes(duplicate)).toContainEqual({
+			path: 'start.overrides.competitorCityIds[1]',
+			code: 'duplicate-reference'
+		});
+
+		const unknown = validDefinition() as unknown as MalformedDefinition;
+		unknown.start.overrides.competitorCityIds = ['missing-city'];
+		expect(codes(unknown)).toContainEqual({
+			path: 'start.overrides.competitorCityIds[0]',
+			code: 'invalid-reference'
+		});
+
+		const wrongKind = validDefinition();
+		wrongKind.content.cityIds = ['harbor-city', 'industry-city'];
+		wrongKind.start.overrides.competitorCityIds = ['industry-city'];
+		expect(codes(wrongKind)).toContainEqual({
+			path: 'start.overrides.competitorCityIds[0]',
+			code: 'invalid-competitor-city'
+		});
+
+		const closed = validDefinition();
+		closed.content.cityIds = ['harbor-city', 'campus-junction'];
+		closed.start.overrides.competitorCityIds = ['campus-junction'];
+		expect(codes(closed)).toContainEqual({
+			path: 'start.overrides.competitorCityIds[0]',
+			code: 'competitor-city-closed'
+		});
+
+		const excluded = validDefinition();
+		excluded.start.overrides.competitorCityIds = ['campus-junction'];
+		expect(codes(excluded)).toContainEqual({
+			path: 'start.overrides.competitorCityIds[0]',
+			code: 'excluded-content'
+		});
+	});
+
 	it('rejects duplicate, unknown, wrong-kind, and closed city inventory overrides', () => {
 		const duplicate = cityInventoryDefinition();
 		duplicate.start.overrides.cityInventoryMaterials = [
