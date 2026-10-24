@@ -550,6 +550,115 @@ const debtTurnaround = {
 	medalThresholds: { silver: 700, gold: 850 }
 } as const satisfies ScenarioDefinition;
 
+const freshMarket = {
+	id: 'fresh-market',
+	version: 1,
+	titleKey: 'scenarioDefinitions.freshMarket.title',
+	summaryKey: 'scenarioDefinitions.freshMarket.summary',
+	briefingKey: 'scenarioDefinitions.freshMarket.briefing',
+	strategyHintKey: 'scenarioDefinitions.freshMarket.strategyHint',
+	officialSeed: 280_005,
+	dayLimit: 15,
+	start: {
+		foundingStore: {
+			ref: 'founding-store',
+			archetypeId: 'grocery',
+			cityId: 'harbor-city',
+			tileId: 'harbor-city-29-35'
+		},
+		industrialBuildings: [],
+		rails: [],
+		overrides: {
+			cash: 12_000,
+			debt: 0,
+			storeCap: 1,
+			stores: [
+				{
+					storeRef: 'founding-store',
+					targetLevel: 1,
+					products: [
+						{
+							// Nonzero opening produce lot; scenario setup dates it at
+							// game.day so the 10-day shelf life expires on day 11 —
+							// inside the 14-report trailing window — whenever any of
+							// it goes unsold. Oversized on purpose: the no-action
+							// trace lets a real slice of it spoil while weekly
+							// replenishment (topping up to targetStock on days 7 and
+							// 14) never triggers under it.
+							productId: 'produce',
+							stock: 1_000,
+							reorderThreshold: 25,
+							targetStock: 90,
+							sellingPrice: 4
+						}
+					]
+				}
+			]
+		}
+	},
+	content: {
+		cityIds: ['harbor-city', 'industry-city'],
+		archetypeIds: ['grocery'],
+		productIds: ['produce'],
+		materialIds: [],
+		buildingTypeIds: [],
+		retailPlacements: [],
+		industrialPlacements: []
+	},
+	allowedCommands: [...STANDARD_RETAIL_COMMANDS],
+	modifiers: [],
+	requiredObjectives: [
+		{
+			id: 'produce-sold',
+			labelKey: 'scenarioDefinitions.freshMarket.objectives.produceSold',
+			query: { metric: 'units-sold', productIds: ['produce'] },
+			comparator: 'gte',
+			target: 850,
+			window: { kind: 'trailing-reports', count: 14 },
+			requiresCompleteWindow: true
+		},
+		{
+			id: 'produce-waste-share',
+			labelKey: 'scenarioDefinitions.freshMarket.objectives.produceWasteShare',
+			query: { metric: 'product-waste-share', productIds: ['produce'] },
+			comparator: 'lte',
+			target: 0.03,
+			window: { kind: 'trailing-reports', count: 14 },
+			requiresCompleteWindow: true
+		}
+	],
+	optionalObjectives: [],
+	failures: [
+		{
+			id: 'negative-cash',
+			labelKey: 'scenarioDefinitions.freshMarket.failures.negativeCash',
+			query: { metric: 'cash' },
+			comparator: 'lt',
+			target: 0,
+			window: { kind: 'current' }
+		}
+	],
+	scoreComponents: [
+		{
+			kind: 'metric',
+			query: { metric: 'product-waste-share', productIds: ['produce'] },
+			window: { kind: 'run-to-date' },
+			zeroBonusAt: 0.25,
+			fullBonusAt: 0.02,
+			points: 300
+		},
+		{
+			kind: 'metric',
+			query: { metric: 'units-sold', productIds: ['produce'] },
+			window: { kind: 'run-to-date' },
+			zeroBonusAt: 600,
+			fullBonusAt: 1_000,
+			points: 200
+		}
+	],
+	medalThresholds: { silver: 700, gold: 850 }
+} as const satisfies ScenarioDefinition;
+
 function deepFreeze<T>(value: T): T {
 	if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
 	Object.freeze(value);
@@ -568,7 +677,8 @@ const ALL_DEFINITIONS: readonly ScenarioDefinition[] = deepFreeze([
 	firstProfit,
 	importSqueeze,
 	localLifeline,
-	debtTurnaround
+	debtTurnaround,
+	freshMarket
 ]);
 
 function buildDefinitionByKey(
