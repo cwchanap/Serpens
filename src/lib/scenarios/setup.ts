@@ -18,6 +18,7 @@ import {
 	initializeRetailSupplyAssignment
 } from '$lib/game/cityInventory';
 import { getStoreUpgradeCost } from '$lib/game/leveling';
+import { ensureCompetitorsForRetailCity } from '$lib/game/competitors';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { railCellKey } from '$lib/game/rail';
 import { isRailWaypointTarget } from '$lib/game/railPlacement';
@@ -666,6 +667,11 @@ export function buildScenarioGame(
 	// Authored scenarios own their market inputs; keep generated sandbox rivals
 	// out of scenario evaluation so references remain reproducible and isolated.
 	game = { ...game, competitors: [] };
+	// Explicit opt-in only: rerun the sandbox rival initializer (derived RNG,
+	// occupied tiles avoided) for exactly the authored retail cities.
+	for (const cityId of definition.start.overrides.competitorCityIds ?? []) {
+		game = ensureCompetitorsForRetailCity(game, cityId);
+	}
 	const startingContentDiagnostic = validateStartingContentCitiesAreOpened(definition, game);
 	if (startingContentDiagnostic) return { ok: false, diagnostics: [startingContentDiagnostic] };
 

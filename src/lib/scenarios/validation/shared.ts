@@ -50,6 +50,7 @@ const OVERRIDE_KEYS = [
 	'debt',
 	'policy',
 	'storeCap',
+	'competitorCityIds',
 	'stores',
 	'buildingInventories',
 	'cityInventoryMaterials',

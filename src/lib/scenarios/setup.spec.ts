@@ -5,6 +5,7 @@ import {
 	generateCity
 } from '$lib/game/city';
 import { getCityInventoryStats } from '$lib/game/cityInventory';
+import { getArchetype } from '$lib/game/archetypes';
 import { createFoundingGameAtTile } from '$lib/game/placement';
 import { getTotalDebt } from '$lib/game/finance';
 import { normalizeSeed } from '$lib/game/rng';
@@ -17,7 +18,7 @@ import {
 	validateCurrentGameState
 } from '$lib/persistence/saveCodec';
 import type { ScenarioDefinition } from './types';
-import { listCurrentScenarioDefinitions } from './catalog';
+import { currentScenarioDefinition, listCurrentScenarioDefinitions } from './catalog';
 import { buildScenarioGame } from './setup';
 
 const transitionControls = vi.hoisted(() => ({
@@ -337,6 +338,52 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.game.competitors).toEqual([]);
+	});
+
+	it('materializes opted-in rivals deterministically without overlapping the player store', () => {
+		const definition = scenarioDefinition();
+		definition.start.overrides.competitorCityIds = ['harbor-city'];
+		const first = buildScenarioGame(definition, definition.officialSeed);
+		const second = buildScenarioGame(definition, definition.officialSeed);
+
+		// Same seed yields the same rivals: the initializer consumes a derived
+		// local RNG, so the gameplay RNG stream is untouched.
+		expect(first.ok).toBe(true);
+		expect(second).toEqual(first);
+		if (!first.ok) return;
+		expect(first.game.rngState).toBe(createFoundingFixtureGame('convenience', 280_001).rngState);
+		const rivals = first.game.competitors.filter(
+			(competitor) => competitor.cityId === 'harbor-city'
+		);
+		expect(rivals.map((competitor) => competitor.id)).toEqual([
+			'competitor-harbor-city-1',
+			'competitor-harbor-city-2'
+		]);
+		const foundingTile = first.game.cities
+			.find((city) => city.id === 'harbor-city')
+			?.tiles.find((tile) => tile.id === 'harbor-city-1-1');
+		expect(foundingTile).toBeDefined();
+		for (const rival of rivals) {
+			expect(rival.location).not.toEqual({
+				neighborhoodId: foundingTile!.neighborhood,
+				x: foundingTile!.x,
+				y: foundingTile!.y
+			});
+		}
+	});
+
+	it('keeps rivals out of opened retail cities that are not opted in', () => {
+		const definition = scenarioDefinition();
+		definition.start.overrides.competitorCityIds = ['harbor-city'];
+		const result = buildScenarioGame(definition, definition.officialSeed);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		// campus-junction is opened and materialized by the same start world but
+		// never opted into rival generation.
+		expect(
+			result.game.competitors.some((competitor) => competitor.cityId === 'campus-junction')
+		).toBe(false);
 	});
 
 	it('applies every authored override and maps setup refs to generated ids', () => {
@@ -940,7 +987,14 @@ describe('launch catalog setup isolation', { timeout: 30_000 }, () => {
 			expect(second.ok).toBe(true);
 			if (!first.ok || !second.ok) continue;
 			expect(first.game).toEqual(second.game);
-			expect(first.game.competitors).toEqual([]);
+			const optedInCityIds = definition.start.overrides.competitorCityIds ?? [];
+			if (optedInCityIds.length === 0) {
+				expect(first.game.competitors).toEqual([]);
+			} else {
+				expect(
+					first.game.competitors.every((competitor) => optedInCityIds.includes(competitor.cityId))
+				).toBe(true);
+			}
 			expect(first.game).not.toBe(second.game);
 			expect(first.game.cities).not.toBe(second.game.cities);
 			expect(first.game.industryCities).not.toBe(second.game.industryCities);
@@ -949,5 +1003,33 @@ describe('launch catalog setup isolation', { timeout: 30_000 }, () => {
 			expect(first.game.cityInventories).not.toBe(second.game.cityInventories);
 			expect(first.game.reports).not.toBe(second.game.reports);
 		}
+	});
+});
+
+describe('rival-next-door authored rivals', { timeout: 30_000 }, () => {
+	it('generates at least one rival that actually sells the market-share goal product', () => {
+		const definition = currentScenarioDefinition('rival-next-door');
+		expect(definition).toBeDefined();
+		if (!definition) return;
+		const result = buildScenarioGame(definition, definition.officialSeed);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+
+		const goalProducts = new Set(
+			definition.requiredObjectives.flatMap((objective) =>
+				objective.query.metric === 'player-market-share' ? objective.query.productIds : []
+			)
+		);
+		expect(goalProducts.size).toBeGreaterThan(0);
+
+		// marketCompetition filters each rival by its archetype's
+		// startingProductIds before checking brand, so the shared common-ground
+		// brand alone does not guarantee competition on the goal product.
+		const competing = result.game.competitors.filter((competitor) =>
+			[...goalProducts].some((productId) =>
+				getArchetype(competitor.archetypeId).startingProductIds.includes(productId)
+			)
+		);
+		expect(competing.length).toBeGreaterThan(0);
 	});
 });

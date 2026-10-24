@@ -58,7 +58,8 @@ export const SCENARIO_IDS = [
 	'import-squeeze',
 	'local-lifeline',
 	'debt-turnaround',
-	'fresh-market'
+	'fresh-market',
+	'rival-next-door'
 ] as const;
 export type ScenarioId = (typeof SCENARIO_IDS)[number];
 export type ScenarioDefinitionKey = `${ScenarioId}@${number}`;
@@ -147,6 +148,12 @@ export interface ScenarioStartBlueprint {
 		debt?: number;
 		policy?: CompanyPolicy;
 		storeCap?: number;
+		/**
+		 * Opt-in seeded rivals: after the start world materializes rival-free,
+		 * the sandbox rival initializer runs for exactly these opened retail
+		 * cities. Cities must be retail, opened, and content-allowlisted.
+		 */
+		competitorCityIds?: readonly WorldCityId[];
 		stores?: readonly {
 			storeRef: string;
 			targetLevel?: number;
