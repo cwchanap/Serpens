@@ -289,6 +289,32 @@ const RIVAL_NEXT_DOOR_REFERENCE_SCHEDULE: readonly {
 	] as const satisfies readonly ScenarioCommand[]
 ).map((command) => ({ day: 1, command }));
 
+/**
+ * Scheduled reference trace for two-city-supply-run: a day-1 recurring
+ * route created without freight rates (the runtime injects the canonical
+ * city-pair quote) sized to ship the entire seeded warehouse stock in two
+ * dispatches. The arrivals land on days 3 and 4, completing the run on
+ * day 5 with the full metric bonus.
+ */
+const TWO_CITY_SUPPLY_RUN_REFERENCE_SCHEDULE: readonly {
+	day: number;
+	command: ScenarioCommand;
+}[] = (
+	[
+		{
+			kind: 'createRecurringRoute',
+			input: {
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 120,
+				frequencyDays: 1,
+				priority: 0
+			}
+		}
+	] as const satisfies readonly ScenarioCommand[]
+).map((command) => ({ day: 1, command }));
+
 const ALL_CITY_IDS = [
 	'harbor-city',
 	'campus-junction',
@@ -1717,6 +1743,75 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 		expect(
 			evaluateMetric(run.game, { metric: 'cumulative-net-income' }, { kind: 'run-to-date' }).actual
 		).toBe(85);
+		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual(['inactive']);
+	});
+
+	it('two-city-supply-run no-action trace fails at the day-21 deadline below Silver', () => {
+		const run = replayScheduledCalibration('two-city-supply-run', []);
+
+		expect(run.status).toBe('failed');
+		expect(run.result).toMatchObject({
+			outcome: 'failed',
+			completionDay: 21,
+			score: 500,
+			medal: null
+		});
+		// Manual dispatches are not among the allowed commands, so a run that
+		// never opens a recurring route ships nothing at all.
+		expect(
+			evaluateMetric(
+				run.game,
+				{
+					metric: 'delivered-transfer-units',
+					destinationCityId: 'breadbasket-basin',
+					materialId: 'water'
+				},
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(0);
+		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual(['inactive']);
+	});
+
+	it('two-city-supply-run scheduled reference trace completes on day 5 with gold', () => {
+		const run = replayScheduledCalibration(
+			'two-city-supply-run',
+			TWO_CITY_SUPPLY_RUN_REFERENCE_SCHEDULE
+		);
+
+		expect(run.status).toBe('completed');
+		expect(run.result).toMatchObject({
+			outcome: 'completed',
+			completionDay: 5,
+			score: 960,
+			medal: 'gold'
+		});
+		// Scenario route economics: the command supplies no freight rates and
+		// the created route carries the canonical city-pair quote verbatim.
+		expect(run.game.logistics.recurringRoutes[0]).toMatchObject({
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 120,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			state: 'active'
+		});
+		// Both arrivals are recurring-route deliveries counted on their arrival
+		// days: 120 units on day 3 and the remaining 80 units on day 4.
+		const delivered = evaluateMetric(
+			run.game,
+			{
+				metric: 'delivered-transfer-units',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water'
+			},
+			{ kind: 'run-to-date' }
+		);
+		expect(delivered).toMatchObject({ actual: 200, windowComplete: true });
+		expect(delivered.contributingIds).toEqual([
+			'report:3/transfer:transfer-1',
+			'report:4/transfer:transfer-2'
+		]);
 		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual(['inactive']);
 	});
 });

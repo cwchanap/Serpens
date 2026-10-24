@@ -757,6 +757,164 @@ const rivalNextDoor = {
 	medalThresholds: { silver: 700, gold: 850 }
 } as const satisfies ScenarioDefinition;
 
+/** Level-5 rail corridor linking the origin water pump to its warehouse. */
+const TWO_CITY_SUPPLY_CORRIDOR = [
+	[4, 18],
+	[4, 17],
+	[4, 16],
+	[4, 15],
+	[4, 14],
+	[4, 13],
+	[4, 12],
+	[5, 12],
+	[6, 12],
+	[7, 12],
+	[8, 12],
+	[9, 12],
+	[10, 12],
+	[11, 12],
+	[12, 12],
+	[13, 12],
+	[14, 12],
+	[15, 12],
+	[16, 12],
+	[17, 12],
+	[18, 12],
+	[19, 12],
+	[20, 12],
+	[21, 12],
+	[22, 12],
+	[23, 12],
+	[24, 12],
+	[25, 12],
+	[26, 12],
+	[26, 11],
+	[26, 10],
+	[26, 9],
+	[26, 8]
+] as const;
+
+const twoCitySupplyRun = {
+	id: 'two-city-supply-run',
+	version: 1,
+	titleKey: 'scenarioDefinitions.twoCitySupplyRun.title',
+	summaryKey: 'scenarioDefinitions.twoCitySupplyRun.summary',
+	briefingKey: 'scenarioDefinitions.twoCitySupplyRun.briefing',
+	strategyHintKey: 'scenarioDefinitions.twoCitySupplyRun.strategyHint',
+	officialSeed: 280_007,
+	dayLimit: 21,
+	start: {
+		foundingStore: {
+			ref: 'founding-store',
+			archetypeId: 'convenience',
+			cityId: 'harbor-city',
+			tileId: 'harbor-city-29-35'
+		},
+		industrialBuildings: [
+			{
+				ref: 'origin-producer',
+				typeId: 'water-pump',
+				cityId: 'industry-city',
+				tileId: 'industry-city-3-19'
+			},
+			{
+				ref: 'origin-warehouse',
+				typeId: 'warehouse',
+				cityId: 'industry-city',
+				tileId: 'industry-city-26-6'
+			},
+			{
+				ref: 'destination-warehouse',
+				typeId: 'warehouse',
+				cityId: 'breadbasket-basin',
+				tileId: 'breadbasket-basin-29-6'
+			}
+		],
+		rails: TWO_CITY_SUPPLY_CORRIDOR.map(([x, y]) => ({
+			cityId: 'industry-city' as const,
+			x,
+			y,
+			level: 5
+		})),
+		overrides: {
+			cash: 12_000,
+			debt: 0,
+			storeCap: 1,
+			cityInventoryMaterials: [
+				// Seeded warehouse stock is the bulk of the deliverable water; the
+				// pump's rail corridor tops it up by five units per day.
+				{ cityId: 'industry-city', materials: { water: 200 } },
+				{ cityId: 'breadbasket-basin', materials: {} }
+			],
+			retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
+			world: {
+				revealedCityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
+				openedCityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
+				activeRetailCityId: 'harbor-city',
+				activeIndustryCityId: 'industry-city'
+			}
+		}
+	},
+	content: {
+		cityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
+		archetypeIds: ['convenience'],
+		productIds: ['bottled-water'],
+		materialIds: ['water'],
+		buildingTypeIds: ['water-pump', 'warehouse'],
+		retailPlacements: [],
+		industrialPlacements: []
+	},
+	allowedCommands: [
+		...STANDARD_RETAIL_COMMANDS,
+		'createRecurringRoute',
+		'updateRecurringRoute',
+		'pauseRecurringRoute',
+		'resumeRecurringRoute'
+	],
+	modifiers: [],
+	requiredObjectives: [
+		{
+			id: 'deliver-water-units',
+			labelKey: 'scenarioDefinitions.twoCitySupplyRun.objectives.deliverWaterUnits',
+			query: {
+				metric: 'delivered-transfer-units',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water'
+			},
+			comparator: 'gte',
+			target: 150,
+			window: { kind: 'run-to-date' }
+		}
+	],
+	optionalObjectives: [],
+	failures: [
+		{
+			id: 'negative-cash',
+			labelKey: 'scenarioDefinitions.twoCitySupplyRun.failures.negativeCash',
+			query: { metric: 'cash' },
+			comparator: 'lt',
+			target: 0,
+			window: { kind: 'current' }
+		}
+	],
+	scoreComponents: [
+		{
+			kind: 'metric',
+			query: {
+				metric: 'delivered-transfer-units',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water'
+			},
+			window: { kind: 'run-to-date' },
+			zeroBonusAt: 150,
+			fullBonusAt: 200,
+			points: 300
+		},
+		{ kind: 'remaining-days', zeroBonusAt: 0, fullBonusAt: 20, points: 200 }
+	],
+	medalThresholds: { silver: 700, gold: 850 }
+} as const satisfies ScenarioDefinition;
+
 function deepFreeze<T>(value: T): T {
 	if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
 	Object.freeze(value);
@@ -777,7 +935,8 @@ const ALL_DEFINITIONS: readonly ScenarioDefinition[] = deepFreeze([
 	localLifeline,
 	debtTurnaround,
 	freshMarket,
-	rivalNextDoor
+	rivalNextDoor,
+	twoCitySupplyRun
 ]);
 
 function buildDefinitionByKey(
