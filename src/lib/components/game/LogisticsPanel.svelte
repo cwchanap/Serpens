@@ -125,6 +125,10 @@
 	let appliedRoutePresetKey = $state<string | null>(null);
 	let editingRouteId = $state<string | null>(null);
 	let routeEditorOpen = $state(false);
+	const canSubmitRoute = $derived(
+		availability.sandboxActions ||
+			(editingRouteId ? availability.updateRoute : availability.createRoute)
+	);
 	let priorityValues = $state<Record<string, string>>({});
 	let statusMessage = $state('');
 	let submitting = $state(false);
@@ -365,7 +369,7 @@
 
 	async function submitRoute(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
-		if (!canMutate || submitting) return;
+		if (!canSubmitRoute || submitting) return;
 		const input = routeInput();
 		if (!input) return;
 
@@ -598,7 +602,7 @@
 					id="logistics-route-origin"
 					value={routeOriginCityId}
 					onchange={changeRouteOrigin}
-					disabled={!canMutate || submitting}
+					disabled={!canSubmitRoute || submitting}
 				>
 					{#each cityOptionsForSelect() as city (city.cityId)}<option value={city.cityId}
 							>{city.label}</option
@@ -611,7 +615,7 @@
 					id="logistics-route-destination"
 					value={routeDestinationCityId}
 					onchange={changeRouteDestination}
-					disabled={!canMutate || submitting}
+					disabled={!canSubmitRoute || submitting}
 				>
 					{#each cityOptionsForSelect() as city (city.cityId)}<option value={city.cityId}
 							>{city.label}</option
@@ -621,7 +625,7 @@
 				<select
 					id="logistics-route-material"
 					bind:value={routeMaterialId}
-					disabled={!canMutate || submitting}
+					disabled={!canSubmitRoute || submitting}
 				>
 					{#each view.materialOptions as material (material.materialId)}<option
 							value={material.materialId}>{material.label}</option
@@ -634,7 +638,7 @@
 					min="1"
 					step="1"
 					bind:value={routeCapacity}
-					disabled={!canMutate || submitting}
+					disabled={!canSubmitRoute || submitting}
 				/>
 				<label for="logistics-route-frequency"
 					>{i18n.t('logisticsPanel.fields.frequencyDays')}</label
@@ -645,7 +649,7 @@
 					min="1"
 					step="1"
 					bind:value={routeFrequencyDays}
-					disabled={!canMutate || submitting}
+					disabled={!canSubmitRoute || submitting}
 				/>
 				<label for="logistics-route-lead-time">{i18n.t('logisticsPanel.fields.leadTimeDays')}</label
 				>
@@ -658,7 +662,7 @@
 					readonly={ratesLocked}
 					aria-readonly={ratesLocked}
 					title={ratesLocked ? i18n.t('logisticsPanel.ui.quoteLocked') : undefined}
-					disabled={!canMutate || submitting}
+					disabled={!canSubmitRoute || submitting}
 				/>
 				<label for="logistics-route-cost"
 					>{i18n.t('logisticsPanel.fields.transportCostPerUnit')}</label
@@ -672,7 +676,7 @@
 					readonly={ratesLocked}
 					aria-readonly={ratesLocked}
 					title={ratesLocked ? i18n.t('logisticsPanel.ui.quoteLocked') : undefined}
-					disabled={!canMutate || submitting}
+					disabled={!canSubmitRoute || submitting}
 				/>
 				{#if !editingRouteId}
 					<label for="logistics-route-priority">{i18n.t('logisticsPanel.fields.priority')}</label>
@@ -682,11 +686,11 @@
 						min="0"
 						step="1"
 						bind:value={routePriority}
-						disabled={!canMutate || submitting}
+						disabled={!canSubmitRoute || submitting}
 					/>
 				{/if}
 				<div class="form-actions">
-					<button type="submit" disabled={!canMutate || submitting}
+					<button type="submit" disabled={!canSubmitRoute || submitting}
 						>{i18n.t(
 							editingRouteId
 								? 'logisticsPanel.actions.updateRoute'

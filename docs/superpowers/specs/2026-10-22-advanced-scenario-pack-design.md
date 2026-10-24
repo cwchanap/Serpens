@@ -31,7 +31,7 @@ Four new version-1 IDs with seeds following the existing official scheme:
 
 | ID / official seed | Player decision | Start and command scope | Success / failure shape |
 | --- | --- | --- | --- |
-| `debt-turnaround` / `280_004` | Pay down a distressed loan rather than borrowing indefinitely | One constrained retail store; substantial founding principal, normal weekly installments on days 7/14/etc.; price, stock, staffing, borrow/repay/payoff/refinance | Debt below calibrated threshold; fail on negative cash or **any missed installment** (no redundant zero-missed objective) |
+| `debt-turnaround` / `280_004` | Pay down a distressed loan rather than borrowing indefinitely | One constrained retail store; substantial founding principal, normal weekly installments on days 9/16/23 within the 28-day limit; price, stock, staffing, borrow/repay/payoff/refinance | Debt below calibrated threshold; fail on negative cash or **any missed installment** (no redundant zero-missed objective) |
 | `fresh-market` / `280_005` | Balance produce availability, margins and spoilage | Grocery with `produce` (10-day shelf life), **nonzero opening produce stock** in dated lots; pricing, inventory targets and hiring | Positive produce sales volume and low waste as a share of produce **outflow** (sold + discarded); fail on negative cash |
 | `rival-next-door` / `280_006` | Defend local share while making money | Retail city with explicitly enabled, derived-seed rivals; pricing, stock, policy and staffing | Minimum weighted market share on a *complete trailing window* plus positive operating performance; fail on negative cash |
 | `two-city-supply-run` / `280_007` | Dispatch a repeatable supply line to the destination | Existing Industry City plus one other opened industry city with a prebuilt producer and seeded inventory; route create/update/pause/resume | Deliver a target number of material units by deadline using a **recurring** route; fail on negative cash or deadline |
@@ -73,7 +73,7 @@ The start blueprint already supports `world`, `cityInventoryMaterials` and indus
 
 ### Loan setup
 
-Use **only** existing `overrides.debt` and normal borrow/repay/refinance commands. Founding loans have an 84-day term and installments every 7 days from startup, so a 14–28-day Debt Turnaround necessarily encounters scheduled payments. Do **not** add a founding-loan term/payment-timing override, loan authoring DSL or modified finance rules.
+Use **only** existing `overrides.debt` and normal borrow/repay/refinance commands. Founding loans have an 84-day term and weekly installments landing on days 9/16/23 within the 28-day Debt Turnaround limit, so the scenario necessarily encounters scheduled payments. Do **not** add a founding-loan term/payment-timing override, loan authoring DSL or modified finance rules.
 
 ### Registration, copy and persistence
 
