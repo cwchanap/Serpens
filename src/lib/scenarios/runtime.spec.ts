@@ -1493,6 +1493,18 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 		}
 	);
 
+	it('debt-turnaround no-action trace fails at the day-28 deadline below Silver', () => {
+		const run = replayScheduledCalibration('debt-turnaround', []);
+
+		expect(run.status).toBe('failed');
+		expect(run.result).toMatchObject({
+			outcome: 'failed',
+			completionDay: 28,
+			score: 500,
+			medal: null
+		});
+	});
+
 	it('debt-turnaround scheduled reference trace completes on day 10 with gold', () => {
 		const run = replayScheduledCalibration('debt-turnaround', DEBT_TURNAROUND_REFERENCE_SCHEDULE);
 
