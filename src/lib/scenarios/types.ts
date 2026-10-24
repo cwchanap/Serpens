@@ -57,7 +57,8 @@ export const SCENARIO_IDS = [
 	'first-profit',
 	'import-squeeze',
 	'local-lifeline',
-	'debt-turnaround'
+	'debt-turnaround',
+	'fresh-market'
 ] as const;
 export type ScenarioId = (typeof SCENARIO_IDS)[number];
 export type ScenarioDefinitionKey = `${ScenarioId}@${number}`;
@@ -198,6 +199,8 @@ export type ScenarioMetricQuery =
 	| { metric: 'retail-local-share'; productIds: readonly ProductId[] }
 	| { metric: 'units-sold'; productIds: readonly ProductId[] }
 	| { metric: 'demand-missed'; productIds: readonly ProductId[] }
+	| { metric: 'product-waste-units'; productIds: readonly ProductId[] }
+	| { metric: 'product-waste-share'; productIds: readonly ProductId[] }
 	| { metric: 'scorecard'; score: ScoreKey }
 	| { metric: 'store-count' }
 	| { metric: 'industrial-building-count'; buildingTypeIds: readonly IndustrialBuildingTypeId[] }
