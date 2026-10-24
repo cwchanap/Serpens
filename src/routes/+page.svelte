@@ -180,6 +180,8 @@
 		ScenarioDefinition,
 		ScenarioOperationError,
 		ScenarioPersistenceSummary,
+		ScenarioRecurringRouteInput,
+		ScenarioRecurringRouteUpdateInput,
 		ScenarioResult,
 		ScenarioRun,
 		ScenarioRunStatus
@@ -2354,8 +2356,10 @@
 		return gameRouteController.dispatchManualTransfer(input);
 	}
 
-	function createRecurringRoute(input: RecurringRouteInput): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.manageLogistics) {
+	function createRecurringRoute(
+		input: RecurringRouteInput | ScenarioRecurringRouteInput
+	): Promise<GameRouteCommitResult> {
+		if (!game || !mutationAvailability.createRecurringRoute) {
 			return Promise.resolve({ status: 'unavailable' });
 		}
 		return gameRouteController.createRecurringRoute(input);
@@ -2363,23 +2367,23 @@
 
 	function updateRecurringRoute(
 		routeId: string,
-		input: RecurringRouteUpdateInput
+		input: RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput
 	): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.manageLogistics) {
+		if (!game || !mutationAvailability.updateRecurringRoute) {
 			return Promise.resolve({ status: 'unavailable' });
 		}
 		return gameRouteController.updateRecurringRoute(routeId, input);
 	}
 
 	function pauseRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.manageLogistics) {
+		if (!game || !mutationAvailability.pauseRecurringRoute) {
 			return Promise.resolve({ status: 'unavailable' });
 		}
 		return gameRouteController.pauseRecurringRoute(routeId);
 	}
 
 	function resumeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.manageLogistics) {
+		if (!game || !mutationAvailability.resumeRecurringRoute) {
 			return Promise.resolve({ status: 'unavailable' });
 		}
 		return gameRouteController.resumeRecurringRoute(routeId);
@@ -3363,7 +3367,6 @@
 			{focusedFinanceLoanId}
 			{focusedRetailSupplyCityId}
 			logisticsView={logisticsPanelView}
-			manageLogistics={mutationAvailability.manageLogistics}
 			{focusedLogisticsRouteId}
 			{logisticsRoutePreset}
 			{i18n}

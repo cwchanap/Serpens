@@ -1124,6 +1124,7 @@ export const en = {
 			recent: 'Recent',
 			routeSchedule: '{capacity} / trip · every {days}d · {cost} / unit',
 			quote: 'Quoted lead time: {leadTime} days · transport cost: {cost}.',
+			quoteLocked: 'Lead time and transport cost come from the official city-pair quote.',
 			transferSubmitted: 'Transfer dispatched.',
 			routeCreated: 'Recurring route created.',
 			routeUpdated: 'Recurring route updated.',

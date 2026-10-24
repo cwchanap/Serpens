@@ -1,5 +1,15 @@
 import { buildIndustrialBuilding, upgradeBuilding } from '$lib/game/industryPlacement';
 import {
+	createRecurringRoute as createRecurringRouteTransition,
+	updateRecurringRoute as updateRecurringRouteTransition,
+	pauseRecurringRoute as pauseRecurringRouteTransition,
+	resumeRecurringRoute as resumeRecurringRouteTransition,
+	quoteInterCityRates,
+	type InterCityRates,
+	type RecurringRouteFailure,
+	type RecurringRouteResult
+} from '$lib/game/interCityLogistics';
+import {
 	borrow,
 	payOffLoan,
 	refinanceLoan,
@@ -65,8 +75,22 @@ export type ExecuteScenarioCommandResult =
 			};
 			decisionFailure?: ScenarioDecisionFailure;
 			retailSupplyFailure?: { reason: RetailSupplyAssignmentFailure };
+			logisticsFailure?: { reason: RecurringRouteFailure };
 			decisionContext?: DecisionContext;
 	  };
+
+/**
+ * Canonical scenario route rates: the city-pair quote is the only source of
+ * lead times and transport costs in scenario mode; a null quote (unknown,
+ * non-industry, or same-city pair) rejects the command before any mutation.
+ */
+function quoteScenarioRouteRates(
+	originCityId: string,
+	destinationCityId: string
+): InterCityRates | RecurringRouteFailure {
+	if (originCityId === destinationCityId) return 'same-city';
+	return quoteInterCityRates(originCityId, destinationCityId) ?? 'invalid-destination';
+}
 
 /**
  * Outcome of applying one scenario command to a game without any scenario-run
@@ -85,6 +109,7 @@ export type ApplyGameCommandResult =
 			};
 			decisionFailure?: ScenarioDecisionFailure;
 			retailSupplyFailure?: { reason: RetailSupplyAssignmentFailure };
+			logisticsFailure?: { reason: RecurringRouteFailure };
 			decisionContext?: DecisionContext;
 	  };
 
@@ -236,7 +261,8 @@ type ScenarioDispatchResult =
 	| GameState
 	| FinanceActionFailure
 	| DecisionResolutionResult
-	| RetailSupplyAssignmentResult;
+	| RetailSupplyAssignmentResult
+	| RecurringRouteResult;
 
 function dispatchScenarioCommand(
 	game: GameState,
@@ -331,6 +357,29 @@ function dispatchScenarioCommand(
 			const result = financeIndustrialBuilding(game, command);
 			return result.ok ? result.game : result;
 		}
+		case 'createRecurringRoute': {
+			const rates = quoteScenarioRouteRates(
+				command.input.originCityId,
+				command.input.destinationCityId
+			);
+			if (typeof rates === 'string') return { ok: false, reason: rates };
+			return createRecurringRouteTransition(game, { ...command.input, ...rates });
+		}
+		case 'updateRecurringRoute': {
+			const rates = quoteScenarioRouteRates(
+				command.input.originCityId,
+				command.input.destinationCityId
+			);
+			if (typeof rates === 'string') return { ok: false, reason: rates };
+			return updateRecurringRouteTransition(game, command.routeId, {
+				...command.input,
+				...rates
+			});
+		}
+		case 'pauseRecurringRoute':
+			return pauseRecurringRouteTransition(game, command.routeId);
+		case 'resumeRecurringRoute':
+			return resumeRecurringRouteTransition(game, command.routeId);
 	}
 }
 
@@ -352,11 +401,24 @@ export function applyGameCommand(
 		if ('ok' in dispatched) {
 			if (!dispatched.ok) {
 				if ('reason' in dispatched) {
-					return {
-						ok: false,
-						code: 'invalid-command',
-						retailSupplyFailure: { reason: dispatched.reason }
-					};
+					return command.kind === 'createRecurringRoute' ||
+						command.kind === 'updateRecurringRoute' ||
+						command.kind === 'pauseRecurringRoute' ||
+						command.kind === 'resumeRecurringRoute'
+						? {
+								ok: false,
+								code: 'invalid-command',
+								logisticsFailure: {
+									reason: dispatched.reason as RecurringRouteFailure
+								}
+							}
+						: {
+								ok: false,
+								code: 'invalid-command',
+								retailSupplyFailure: {
+									reason: dispatched.reason as RetailSupplyAssignmentFailure
+								}
+							};
 				}
 				if (isDecisionFailureCode(dispatched.code)) {
 					const decisionFailure = dispatched as Extract<DecisionResolutionResult, { ok: false }>;
@@ -490,6 +552,7 @@ export function executeScenarioCommand(
 			financeFailure: applied.financeFailure,
 			decisionFailure: applied.decisionFailure,
 			retailSupplyFailure: applied.retailSupplyFailure,
+			logisticsFailure: applied.logisticsFailure,
 			decisionContext: applied.decisionContext
 		};
 	}

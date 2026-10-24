@@ -83,6 +83,39 @@ function wholeDollar(value: number, minimum = 0): boolean {
 	return Number.isSafeInteger(value) && value >= minimum;
 }
 
+function positiveCount(value: unknown): value is number {
+	return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function routeExists(run: ScenarioRun, routeId: string): boolean {
+	return run.game.logistics.recurringRoutes.some((route) => route.id === routeId);
+}
+
+function validScenarioRouteShape(input: { capacity: number; frequencyDays: number }): boolean {
+	return positiveCount(input.capacity) && positiveCount(input.frequencyDays);
+}
+
+function validScenarioRouteEndpoints(
+	definition: ScenarioDefinition,
+	input: { originCityId: WorldCityId; destinationCityId: WorldCityId; materialId: MaterialId },
+	pathPrefix: string
+): ScenarioCapabilityResult {
+	if (!isWorldCityId(input.originCityId)) return invalidCommand(`${pathPrefix}.originCityId`);
+	if (!isWorldCityId(input.destinationCityId))
+		return invalidCommand(`${pathPrefix}.destinationCityId`);
+	if (
+		!isScenarioContentAllowed(definition, { kind: 'city', cityId: input.originCityId }) ||
+		!isScenarioContentAllowed(definition, { kind: 'city', cityId: input.destinationCityId })
+	)
+		return forbiddenContent(`${pathPrefix}.originCityId`);
+	if (
+		typeof input.materialId !== 'string' ||
+		!isScenarioContentAllowed(definition, { kind: 'material', materialId: input.materialId })
+	)
+		return forbiddenContent(`${pathPrefix}.materialId`);
+	return { allowed: true };
+}
+
 function supportedTerm(value: number): boolean {
 	return value === 28 || value === 56 || value === 84;
 }
@@ -249,6 +282,33 @@ export function isScenarioCommandAllowed(
 				isScenarioContentAllowed(definition, { kind: 'city', cityId: command.cityId })
 				? { allowed: true }
 				: forbiddenContent(`command.${command.kind}.cityId`);
+		case 'createRecurringRoute': {
+			if (!validScenarioRouteShape(command.input))
+				return invalidCommand('command.createRecurringRoute.input');
+			if (!wholeDollar(command.input.priority))
+				return invalidCommand('command.createRecurringRoute.input.priority');
+			return validScenarioRouteEndpoints(
+				definition,
+				command.input,
+				'command.createRecurringRoute.input'
+			);
+		}
+		case 'updateRecurringRoute': {
+			if (!nonEmptyString(command.routeId) || !routeExists(run, command.routeId))
+				return invalidCommand('command.updateRecurringRoute.routeId');
+			if (!validScenarioRouteShape(command.input))
+				return invalidCommand('command.updateRecurringRoute.input');
+			return validScenarioRouteEndpoints(
+				definition,
+				command.input,
+				'command.updateRecurringRoute.input'
+			);
+		}
+		case 'pauseRecurringRoute':
+		case 'resumeRecurringRoute':
+			return nonEmptyString(command.routeId) && routeExists(run, command.routeId)
+				? { allowed: true }
+				: invalidCommand(`command.${command.kind}.routeId`);
 		case 'advanceDay':
 		case 'resolveDecision':
 		case 'updatePolicy':

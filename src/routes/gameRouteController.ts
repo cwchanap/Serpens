@@ -101,6 +101,8 @@ import {
 import type {
 	ScenarioCommand,
 	ScenarioCommitOutcome,
+	ScenarioRecurringRouteInput,
+	ScenarioRecurringRouteUpdateInput,
 	ScenarioDefinition,
 	ScenarioDefinitionRef,
 	ScenarioId,
@@ -157,7 +159,12 @@ export interface MutationAvailability {
 	delegation: boolean;
 	openWorldCity: boolean;
 	setRetailSupplySource: boolean;
+	/** Sandbox-only logistics actions: manual dispatch, route remove, reprioritize. */
 	manageLogistics: boolean;
+	createRecurringRoute: boolean;
+	updateRecurringRoute: boolean;
+	pauseRecurringRoute: boolean;
+	resumeRecurringRoute: boolean;
 	openStore: boolean;
 	upgradeStore: boolean;
 	hireStaff: boolean;
@@ -202,6 +209,10 @@ export function createMutationAvailability(input: {
 		openWorldCity: available('openWorldCity'),
 		setRetailSupplySource: available('setRetailSupplySource'),
 		manageLogistics: input.playMode === 'sandbox',
+		createRecurringRoute: available('createRecurringRoute'),
+		updateRecurringRoute: available('updateRecurringRoute'),
+		pauseRecurringRoute: available('pauseRecurringRoute'),
+		resumeRecurringRoute: available('resumeRecurringRoute'),
 		openStore: available('openStore'),
 		upgradeStore: available('upgradeStore'),
 		hireStaff: available('hireStaff'),
@@ -1375,24 +1386,43 @@ export class GameRouteController {
 		});
 	}
 
-	createRecurringRoute(input: RecurringRouteInput): Promise<GameRouteCommitResult> {
+	createRecurringRoute(
+		input: RecurringRouteInput | ScenarioRecurringRouteInput
+	): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
 			transition: (game) => {
+				if (!('leadTimeDays' in input && 'transportCostPerUnit' in input)) {
+					// Scenario-shaped input reached the sandbox path; the base rates
+					// are mandatory there and only the canonical quote supplies them
+					// in scenario mode.
+					return { ok: false, logisticsFailure: 'invalid-lead-time-days' as const };
+				}
 				const result = createRecurringRouteTransition(game!, input);
 				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
-			}
+			},
+			scenarioCommand:
+				'leadTimeDays' in input || 'transportCostPerUnit' in input
+					? undefined
+					: { kind: 'createRecurringRoute', input }
 		});
 	}
 
 	updateRecurringRoute(
 		routeId: string,
-		input: RecurringRouteUpdateInput
+		input: RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput
 	): Promise<GameRouteCommitResult> {
 		return this.commitMutation({
 			transition: (game) => {
+				if (!('leadTimeDays' in input && 'transportCostPerUnit' in input)) {
+					return { ok: false, logisticsFailure: 'invalid-lead-time-days' as const };
+				}
 				const result = updateRecurringRouteTransition(game!, routeId, input);
 				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
-			}
+			},
+			scenarioCommand:
+				'leadTimeDays' in input || 'transportCostPerUnit' in input
+					? undefined
+					: { kind: 'updateRecurringRoute', routeId, input }
 		});
 	}
 
@@ -1401,7 +1431,8 @@ export class GameRouteController {
 			transition: (game) => {
 				const result = pauseRecurringRouteTransition(game!, routeId);
 				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
-			}
+			},
+			scenarioCommand: { kind: 'pauseRecurringRoute', routeId }
 		});
 	}
 
@@ -1410,7 +1441,8 @@ export class GameRouteController {
 			transition: (game) => {
 				const result = resumeRecurringRouteTransition(game!, routeId);
 				return result.ok ? result.game : { ok: false, logisticsFailure: result.reason };
-			}
+			},
+			scenarioCommand: { kind: 'resumeRecurringRoute', routeId }
 		});
 	}
 
@@ -1691,6 +1723,7 @@ export class GameRouteController {
 			value: Extract<DecisionResolutionResult, { ok: false }> | null;
 		} = { value: null };
 		const retailSupplyRejection: { value: RetailSupplyAssignmentFailure | null } = { value: null };
+		const logisticsRejection: { value: LogisticsFailureCode | null } = { value: null };
 		let attemptedRun: ScenarioRun | null = null;
 		let preparedRun: ScenarioRun | null = null;
 		let terminalScenarioId: ScenarioId | null = null;
@@ -1745,6 +1778,9 @@ export class GameRouteController {
 							}
 							if (execution.retailSupplyFailure) {
 								retailSupplyRejection.value = execution.retailSupplyFailure.reason;
+							}
+							if (execution.logisticsFailure) {
+								logisticsRejection.value = execution.logisticsFailure.reason;
 							}
 							rejectedCode = execution.code;
 							rejectedDecisionContext = execution.decisionContext;
@@ -1951,6 +1987,12 @@ export class GameRouteController {
 				return {
 					status: 'retail-supply-rejected',
 					reason: retailSupplyRejection.value
+				};
+			}
+			if (result.status === 'rejected' && logisticsRejection.value) {
+				return {
+					status: 'logistics-rejected',
+					reason: logisticsRejection.value
 				};
 			}
 			if (result.status === 'rejected' && rejectedCode) {

@@ -1115,6 +1115,7 @@ export const ja = {
 			recent: '最近',
 			routeSchedule: '1便 {capacity} · {days}日ごと · 1個 {cost}',
 			quote: '所要日数: {leadTime} 日 · 輸送費: {cost}。',
+			quoteLocked: '所要日数と輸送費は公式の都市間レートで決まります。',
 			transferSubmitted: '輸送を開始しました。',
 			routeCreated: '定期航路を作成しました。',
 			routeUpdated: '定期航路を更新しました。',
