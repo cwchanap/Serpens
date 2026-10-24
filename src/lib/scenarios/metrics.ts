@@ -55,6 +55,7 @@ interface ProductContribution {
 	warehouseUnits: number;
 	unitsSold: number;
 	demandMissed: number;
+	wasteUnits: number;
 }
 
 const CURRENT = new Set<WindowKind>(['current']);
@@ -143,7 +144,8 @@ function productContributions(context: MetricContext): ProductContribution[] {
 					importedUnits: productReport.importedUnits,
 					warehouseUnits: productReport.warehouseUnits,
 					unitsSold: productReport.unitsSold,
-					demandMissed: productReport.demandMissed
+					demandMissed: productReport.demandMissed,
+					wasteUnits: productReport.wasteUnits
 				});
 			}
 		}
@@ -326,6 +328,36 @@ export const METRIC_REGISTRY = {
 		neutral: 0,
 		isComplete: reportMetricComplete,
 		evaluate: (context) => sumProductMetric(context, (contribution) => contribution.demandMissed)
+	},
+	'product-waste-units': {
+		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: reportMetricComplete,
+		evaluate: (context) => sumProductMetric(context, (contribution) => contribution.wasteUnits)
+	},
+	'product-waste-share': {
+		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'percent',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: reportMetricComplete,
+		evaluate: (context) => {
+			const contributions = productContributions(context);
+			const wasteUnits = contributions.reduce((sum, item) => sum + item.wasteUnits, 0);
+			const unitsSold = contributions.reduce((sum, item) => sum + item.unitsSold, 0);
+			const outflow = unitsSold + wasteUnits;
+			// Outflow denominator (sold + wasted) includes day-0 opening stock once
+			// it spoils or sells. Zero outflow stays 0, so scenarios must pair this
+			// metric with a positive units-sold objective to prevent no-trade wins.
+			return {
+				actual: outflow === 0 ? 0 : wasteUnits / outflow,
+				contributingIds: contributions.map((contribution) => contribution.id)
+			};
+		}
 	},
 	scorecard: {
 		supportedWindows: CURRENT,

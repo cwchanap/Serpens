@@ -285,7 +285,8 @@ function metricGame(): GameState {
 			imported: 2,
 			local: 3,
 			sold: 4,
-			missed: 1
+			missed: 1,
+			waste: 1
 		},
 		{
 			day: 2,
@@ -295,7 +296,8 @@ function metricGame(): GameState {
 			imported: 4,
 			local: 1,
 			sold: 5,
-			missed: 2
+			missed: 2,
+			waste: 2
 		},
 		{
 			day: 7,
@@ -305,7 +307,8 @@ function metricGame(): GameState {
 			imported: 6,
 			local: 6,
 			sold: 7,
-			missed: 3
+			missed: 3,
+			waste: 3
 		},
 		{
 			day: 8,
@@ -315,7 +318,8 @@ function metricGame(): GameState {
 			imported: 8,
 			local: 10,
 			sold: 9,
-			missed: 4
+			missed: 4,
+			waste: 4
 		}
 	];
 	const reports = rows.map((row) =>
@@ -326,9 +330,15 @@ function metricGame(): GameState {
 					importedUnits: row.imported,
 					warehouseUnits: row.local,
 					unitsSold: row.sold,
-					demandMissed: row.missed
+					demandMissed: row.missed,
+					wasteUnits: row.waste
 				}),
-				product({ productId: 'snacks', name: 'Snacks', unitsSold: 100 })
+				product({
+					productId: 'snacks',
+					name: 'Snacks',
+					unitsSold: 100,
+					wasteUnits: 50
+				})
 			])
 		])
 	);
@@ -557,6 +567,22 @@ describe('registered scenario metrics', () => {
 		[{ metric: 'retail-local-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }, 0.5],
 		[{ metric: 'units-sold', productIds: ['bottled-water'] }, { kind: 'run-to-date' }, 25],
 		[{ metric: 'demand-missed', productIds: ['bottled-water'] }, { kind: 'run-to-date' }, 10],
+		[
+			{ metric: 'product-waste-units', productIds: ['bottled-water'] },
+			{ kind: 'run-to-date' },
+			10,
+			[
+				'report:1/store:store%3Az/product:bottled-water',
+				'report:2/store:store%3Aa/product:bottled-water',
+				'report:7/store:store%2Fa/product:bottled-water',
+				'report:8/store:store%3AB/product:bottled-water'
+			]
+		],
+		[
+			{ metric: 'product-waste-share', productIds: ['bottled-water'] },
+			{ kind: 'run-to-date' },
+			10 / 35
+		],
 		[{ metric: 'scorecard', score: 'profit' }, { kind: 'current' }, 61, []],
 		[{ metric: 'store-count' }, { kind: 'current' }, 3],
 		[
@@ -590,7 +616,9 @@ describe('registered scenario metrics', () => {
 		[{ metric: 'retail-local-units', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
 		[{ metric: 'retail-local-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
 		[{ metric: 'units-sold', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
-		[{ metric: 'demand-missed', productIds: ['bottled-water'] }, { kind: 'run-to-date' }]
+		[{ metric: 'demand-missed', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[{ metric: 'product-waste-units', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[{ metric: 'product-waste-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }]
 	] as const)('uses zero and no IDs for an empty report window: $0', (query, window) => {
 		expect(evaluateMetric(game(), query, window)).toEqual({
 			actual: 0,
@@ -689,6 +717,79 @@ describe('registered scenario metrics', () => {
 		expect(evaluateMetric(state, { metric: 'cash' }, { kind: 'current' }).actual).toBe(777);
 	});
 
+	it('keeps product waste scoped to the allowlisted product IDs', () => {
+		const state = metricGame();
+
+		// Every daily report carries a snacks row with 50 wasted and 100 sold
+		// units (200/400 across four reports) that must stay out of every
+		// produce-scoped query.
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'product-waste-units', productIds: ['snacks'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(200);
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'product-waste-share', productIds: ['snacks'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBeCloseTo(200 / 600, 15);
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'product-waste-units', productIds: ['bottled-water', 'snacks'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(210);
+	});
+
+	it('returns zero product waste share when nothing was sold or wasted, keeping row evidence', () => {
+		const state = game({
+			reports: [report(1, 0, [storeReport('store/a', [product({ unitsSold: 0, wasteUnits: 0 })])])]
+		});
+
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'product-waste-share', productIds: ['bottled-water'] },
+				{ kind: 'run-to-date' }
+			)
+		).toEqual({
+			actual: 0,
+			contributingIds: ['report:1/store:store%2Fa/product:bottled-water'],
+			windowComplete: true
+		});
+	});
+
+	it('counts spoilage of opening stock in the waste share outflow denominator', () => {
+		// A pure-spoilage day (no sales, all outflow wasted) reports share 1:
+		// the denominator includes stock wasted from before the window started,
+		// unlike receipts-based waste ratios.
+		const state = game({
+			reports: [
+				report(11, 0, [storeReport('store/a', [product({ unitsSold: 0, wasteUnits: 12 })])])
+			]
+		});
+
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'product-waste-share', productIds: ['bottled-water'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(1);
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'product-waste-units', productIds: ['bottled-water'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(12);
+	});
+
 	it('returns zero local share when selected local and imported units are both zero', () => {
 		const state = game({
 			reports: [
@@ -765,6 +866,20 @@ describe('registered scenario metrics', () => {
 				{ kind: 'trailing-reports', count: 3 }
 			)
 		).toThrow('Metric missed-loan-payments does not support trailing-reports.');
+		expect(() =>
+			evaluateMetric(
+				metricGame(),
+				{ metric: 'product-waste-units', productIds: ['bottled-water'] },
+				{ kind: 'current' }
+			)
+		).toThrow('Metric product-waste-units does not support current.');
+		expect(() =>
+			evaluateMetric(
+				metricGame(),
+				{ metric: 'product-waste-share', productIds: ['bottled-water'] },
+				{ kind: 'current' }
+			)
+		).toThrow('Metric product-waste-share does not support current.');
 	});
 
 	it('substitutes the metric neutral value when the evaluated actual is not finite', () => {
