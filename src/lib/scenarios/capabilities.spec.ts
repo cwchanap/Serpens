@@ -5,6 +5,7 @@ import {
 	SCENARIO_COMMAND_KINDS,
 	type ScenarioCommand,
 	type ScenarioDefinition,
+	type ScenarioRecurringRouteInput,
 	type ScenarioRun
 } from './types';
 import {
@@ -626,7 +627,7 @@ describe('scenario recurring-route command capabilities', () => {
 		expect(
 			isScenarioCommandAllowed(routeScenario, run(), {
 				kind: 'createRecurringRoute',
-				input: { ...routeInput, priority: 1, ...patch }
+				input: { ...routeInput, priority: 1, ...patch } as ScenarioRecurringRouteInput
 			})
 		).toMatchObject({ allowed: false, code });
 	});
