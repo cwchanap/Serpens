@@ -79,7 +79,7 @@
 
 - [x] Accepted `main@5fc0ccf` as HPA-511's calibration baseline on 2026-10-22 (HPA-502 still owns future tuning).
 - [x] Adopted registry consolidation, outflow-based waste share, destination/material-scoped deliveries, runtime-quoted routes and per-scenario vertical slices.
-- [ ] Implement registry-only refactor; old scenario tests unchanged.
-- [ ] Each vertical scenario slice reaches Gold with a real reference trace; no-action below Silver.
-- [ ] Confirm rival actually sells target product and scenario quote is displayed read-only in the panel.
-- [ ] Full check/lint/unit/E2E and copy parity before marking ready.
+- [x] Implement registry-only refactor; old scenario tests unchanged.
+- [x] Each vertical scenario slice reaches Gold with a real reference trace; no-action below Silver.
+- [x] Confirm rival actually sells target product and scenario quote is displayed read-only in the panel.
+- [x] Full check/lint/unit/E2E and copy parity before marking ready.
