@@ -1941,6 +1941,29 @@ describe('scenario recurring-route commands', { timeout: 30_000 }, () => {
 		expect(result).toMatchObject({ ok: false, code: 'invalid-command' });
 		expect(run.game.logistics.recurringRoutes).toHaveLength(0);
 	});
+
+	it('overwrites slipped-in freight rates with the canonical quote', () => {
+		const run = startedRun();
+
+		// A hostile or buggy caller cannot smuggle base rates past the runtime:
+		// the city-pair quote is spread last, so even a rate-bearing payload
+		// yields a route carrying the canonical quote.
+		const result = applyGameCommand(run.game, {
+			kind: 'createRecurringRoute',
+			input: {
+				...createInput,
+				leadTimeDays: 99,
+				transportCostPerUnit: 99
+			} as never
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('route create rejected');
+		expect(result.game.logistics.recurringRoutes[0]).toMatchObject({
+			leadTimeDays: 2,
+			transportCostPerUnit: 2
+		});
+	});
 });
 
 describe('scenario runtime lifecycle order', { timeout: 30_000 }, () => {
