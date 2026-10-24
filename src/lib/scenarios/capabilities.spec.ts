@@ -561,3 +561,110 @@ describe('scenario content capabilities', () => {
 		});
 	});
 });
+
+describe('scenario recurring-route command capabilities', () => {
+	const routeScenario = definition({
+		content: {
+			...definition().content,
+			cityIds: ['harbor-city', 'industry-city', 'breadbasket-basin']
+		}
+	});
+	const routeInput = {
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 30,
+		frequencyDays: 3
+	} as const;
+	const existingRoute = {
+		id: 'route-1',
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 30,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 1,
+		state: 'active',
+		nextDispatchOnDay: 3
+	} as const;
+	function runWithRoute(): ScenarioRun {
+		const base = createNewGame('convenience', 280_001);
+		return run({
+			logistics: { ...base.logistics, recurringRoutes: [{ ...existingRoute }] }
+		});
+	}
+
+	it('allows a well-formed create against allowlisted endpoints', () => {
+		expect(
+			isScenarioCommandAllowed(routeScenario, run(), {
+				kind: 'createRecurringRoute',
+				input: { ...routeInput, priority: 1 }
+			})
+		).toEqual({ allowed: true });
+	});
+
+	it.each([
+		['capacity', { capacity: 0 }],
+		['frequencyDays', { frequencyDays: -1 }],
+		['priority', { priority: 1.5 }]
+	] as const)('rejects a create with an invalid %s', (_label, patch) => {
+		expect(
+			isScenarioCommandAllowed(routeScenario, run(), {
+				kind: 'createRecurringRoute',
+				input: { ...routeInput, priority: 1, ...patch }
+			})
+		).toMatchObject({ allowed: false, code: 'invalid-command' });
+	});
+
+	it.each([
+		['unknown origin', { originCityId: 'atlantis' }, 'invalid-command'],
+		['non-allowlisted destination', { destinationCityId: 'quarry-works' }, 'forbidden-content'],
+		['non-allowlisted material', { materialId: 'grain' }, 'forbidden-content']
+	] as const)('rejects a create with a %s', (_label, patch, code) => {
+		expect(
+			isScenarioCommandAllowed(routeScenario, run(), {
+				kind: 'createRecurringRoute',
+				input: { ...routeInput, priority: 1, ...patch }
+			})
+		).toMatchObject({ allowed: false, code });
+	});
+
+	it('allows an update against an existing route and rejects unknown routes', () => {
+		expect(
+			isScenarioCommandAllowed(routeScenario, runWithRoute(), {
+				kind: 'updateRecurringRoute',
+				routeId: 'route-1',
+				input: routeInput
+			})
+		).toEqual({ allowed: true });
+		expect(
+			isScenarioCommandAllowed(routeScenario, runWithRoute(), {
+				kind: 'updateRecurringRoute',
+				routeId: 'route-404',
+				input: routeInput
+			})
+		).toEqual({
+			allowed: false,
+			code: 'invalid-command',
+			path: 'command.updateRecurringRoute.routeId'
+		});
+	});
+
+	it.each(['pauseRecurringRoute', 'resumeRecurringRoute'] as const)(
+		'%s checks the route exists before allowing',
+		(kind) => {
+			expect(
+				isScenarioCommandAllowed(routeScenario, runWithRoute(), { kind, routeId: 'route-1' })
+			).toEqual({ allowed: true });
+			expect(
+				isScenarioCommandAllowed(routeScenario, runWithRoute(), { kind, routeId: 42 as never })
+			).toMatchObject({
+				allowed: false,
+				code: 'invalid-command',
+				path: `command.${kind}.routeId`
+			});
+		}
+	);
+});
