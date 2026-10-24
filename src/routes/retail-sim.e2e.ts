@@ -2904,6 +2904,55 @@ test('challenge completes the deterministic reference run and persists its ranke
 	});
 });
 
+test('challenge completes Two-City Supply Run through the scenario logistics panel', async ({
+	page
+}) => {
+	await page.goto('/');
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'Two-City Supply Run')
+		.getByRole('button', { name: 'Start Two-City Supply Run', exact: true })
+		.click();
+	await pauseActiveSimulation(page);
+	await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'scenario');
+	await expect(challengeStatus(page)).toContainText('Two-City Supply Run · Ranked');
+	await expect(challengeStatus(page)).toContainText('Day 1 of 21');
+
+	const panel = await openManagementPanel(page, /logistics/i);
+	await panel.getByTestId('route-editor-toggle').click();
+	const form = panel.locator('#logistics-route-form');
+	await expect(form).toBeVisible();
+	// Scenario mode derives route rates from the canonical city-pair quote:
+	// the lead-time and cost inputs are read-only displays.
+	await expect(form.getByLabel('Lead time (days)')).toHaveAttribute('aria-readonly', 'true');
+	await expect(form.getByLabel('Transport cost per unit')).toHaveAttribute('aria-readonly', 'true');
+	await panel.getByLabel('Origin city').nth(1).selectOption('industry-city');
+	await panel.getByLabel('Destination city').nth(1).selectOption('breadbasket-basin');
+	await panel.getByLabel('Material').nth(1).selectOption('water');
+	await panel.getByLabel('Capacity per dispatch').fill('120');
+	await panel.getByRole('button', { name: /create route/i }).click();
+	await expect(panel.getByRole('status')).toContainText(/route created/i);
+	await panel.getByRole('button', { name: /close logistics/i }).click();
+
+	await advanceChallengeDay(page);
+	await advanceChallengeDay(page);
+	await advanceChallengeDay(page);
+	await advanceChallengeDay(page);
+
+	const results = page.getByRole('dialog', { name: 'Challenge results' });
+	await expect(results).toBeVisible();
+	await expect(results.getByRole('heading', { name: 'Challenge completed' })).toBeVisible();
+	await expect(results).toContainText('Gold · 960 points');
+	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-result', 'completed');
+	const snapshot = await readChallengeSnapshot(page);
+	expect(snapshot.activeRunsByScenarioId['two-city-supply-run']).toBeUndefined();
+	expect(snapshot.bestResultsByDefinitionKey['two-city-supply-run@1']?.result).toMatchObject({
+		outcome: 'completed',
+		eligibility: 'ranked',
+		score: 960,
+		medal: 'gold'
+	});
+});
+
 test('challenge fails at the deadline and shows objective evidence', async ({ page }) => {
 	const activeRun = advanceActiveChallengeToDay(startChallengeRun('local-lifeline'), 20);
 	await installChallengeSnapshot(page, challengeSnapshot({ activeRun }));
