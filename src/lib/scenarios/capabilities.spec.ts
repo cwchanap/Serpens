@@ -621,6 +621,7 @@ describe('scenario recurring-route command capabilities', () => {
 
 	it.each([
 		['unknown origin', { originCityId: 'atlantis' }, 'invalid-command'],
+		['unknown destination', { destinationCityId: 'atlantis' }, 'invalid-command'],
 		['non-allowlisted destination', { destinationCityId: 'quarry-works' }, 'forbidden-content'],
 		['non-allowlisted material', { materialId: 'grain' }, 'forbidden-content']
 	] as const)('rejects a create with a %s', (_label, patch, code) => {
@@ -650,6 +651,20 @@ describe('scenario recurring-route command capabilities', () => {
 			allowed: false,
 			code: 'invalid-command',
 			path: 'command.updateRecurringRoute.routeId'
+		});
+	});
+
+	it('rejects an update of an existing route with an invalid shape', () => {
+		expect(
+			isScenarioCommandAllowed(routeScenario, runWithRoute(), {
+				kind: 'updateRecurringRoute',
+				routeId: 'route-1',
+				input: { ...routeInput, capacity: 0 }
+			})
+		).toEqual({
+			allowed: false,
+			code: 'invalid-command',
+			path: 'command.updateRecurringRoute.input'
 		});
 	});
 

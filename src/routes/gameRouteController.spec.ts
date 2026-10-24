@@ -2353,6 +2353,32 @@ describe('GameRouteController', () => {
 			});
 		});
 
+		it('maps a scenario route quote rejection to a typed logistics rejection without persisting', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			const definition = currentScenarioDefinition('two-city-supply-run');
+			if (!definition) throw new Error('two-city-supply-run definition missing from catalog');
+			await startScenario(harness.controller, definition);
+			const before = harness.controller.state.activeScenarioRun;
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+
+			// Allowlisted endpoints pass the capability gate; the runtime quote
+			// rejects the same-city pair.
+			expect(
+				await harness.controller.createRecurringRoute({
+					originCityId: 'industry-city',
+					destinationCityId: 'industry-city',
+					materialId: 'water',
+					capacity: 120,
+					frequencyDays: 1,
+					priority: 0
+				})
+			).toEqual({ status: 'logistics-rejected', reason: 'same-city' });
+			expect(harness.controller.state.activeScenarioRun).toBe(before);
+			expect(harness.controller.state.retryScenarioOperation).toBeNull();
+			expect(saveSpy).not.toHaveBeenCalled();
+		});
+
 		it('maps a scenario finance domain rejection without persisting or advancing the run', async () => {
 			const base = firstProfitDefinition();
 			const definition = { ...base, allowedCommands: ['repayLoan'] as const };
