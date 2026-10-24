@@ -249,6 +249,46 @@ const FRESH_MARKET_REFERENCE_SCHEDULE: readonly {
 	] as const satisfies readonly ScenarioCommand[]
 ).map((command) => ({ day: 1, command }));
 
+/**
+ * Scheduled reference trace for rival-next-door: day-1 discount/generous
+ * service policy (drives reputation, and therefore market attraction, to its
+ * ceiling fast), premium produce pricing that stays operating-positive
+ * against the grocery rival, and a reorder window sized to one service-policy
+ * week so the opening lot bridges to the day-7 replenishment without
+ * stockouts. The trailing 14-report share window completes on day 15 and the
+ * run completes that day.
+ */
+const RIVAL_NEXT_DOOR_REFERENCE_SCHEDULE: readonly {
+	day: number;
+	command: ScenarioCommand;
+}[] = (
+	[
+		{
+			kind: 'updatePolicy',
+			patch: {
+				pricing: 'discount',
+				inventory: 'generous',
+				staffing: 'service',
+				marketing: 'none',
+				service: 'highTouch'
+			}
+		},
+		{
+			kind: 'updateStoreSellingPrice',
+			storeId: 'store-1',
+			productId: 'produce',
+			sellingPrice: 7
+		},
+		{
+			kind: 'updateStoreInventoryTargets',
+			storeId: 'store-1',
+			productId: 'produce',
+			reorderThreshold: 40,
+			targetStock: 320
+		}
+	] as const satisfies readonly ScenarioCommand[]
+).map((command) => ({ day: 1, command }));
+
 const ALL_CITY_IDS = [
 	'harbor-city',
 	'campus-junction',
@@ -1613,6 +1653,70 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 				{ kind: 'run-to-date' }
 			).actual
 		).toBe(0);
+		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual(['inactive']);
+	});
+
+	it('rival-next-door no-action trace fails at the day-21 deadline below Silver', () => {
+		const run = replayScheduledCalibration('rival-next-door', []);
+
+		expect(run.status).toBe('failed');
+		expect(run.result).toMatchObject({
+			outcome: 'failed',
+			completionDay: 21,
+			score: 621,
+			medal: null
+		});
+		// Passive reputation growth alone never reaches the share floor on the
+		// complete trailing window, and the undersized default pipeline keeps
+		// operating income negative all run.
+		const share = evaluateMetric(
+			run.game,
+			{ metric: 'player-market-share', productIds: ['produce'] },
+			{ kind: 'trailing-reports', count: 14 },
+			true
+		);
+		expect(share.windowComplete).toBe(true);
+		expect(share.actual).toBeCloseTo(0.4882903981264637, 15);
+		expect(
+			evaluateMetric(run.game, { metric: 'cumulative-net-income' }, { kind: 'run-to-date' }).actual
+		).toBeLessThanOrEqual(0);
+		expect(run.evaluation.required.map((objective) => objective.status)).toEqual([
+			'missed',
+			'missed'
+		]);
+	});
+
+	it('rival-next-door scheduled reference trace completes on day 15 with gold', () => {
+		const run = replayScheduledCalibration('rival-next-door', RIVAL_NEXT_DOOR_REFERENCE_SCHEDULE);
+
+		expect(run.status).toBe('completed');
+		expect(run.result).toMatchObject({
+			outcome: 'completed',
+			completionDay: 15,
+			score: 941,
+			medal: 'gold'
+		});
+		// The authored grocery rival (competitor-harbor-city-2) genuinely
+		// competes on produce: its rows appear in every daily market report.
+		const day14 = run.game.reports.find((report) => report.day === 14);
+		const produceMarket = day14?.marketReports.find((row) => row.productId === 'produce');
+		expect(produceMarket?.competitors.map((competitor) => competitor.competitorId)).toEqual([
+			'competitor-harbor-city-2'
+		]);
+		// Day-1 service policy reaches the reputation ceiling before the trailing
+		// window completes, so the weighted share clears the floor on day 15 with
+		// positive operating performance intact.
+		expect(
+			evaluateMetric(
+				run.game,
+				{ metric: 'player-market-share', productIds: ['produce'] },
+				{ kind: 'trailing-reports', count: 14 },
+				true
+			)
+		).toMatchObject({ actual: 0.5263466042154566, windowComplete: true });
+		expect(
+			evaluateMetric(run.game, { metric: 'cumulative-net-income' }, { kind: 'run-to-date' }).actual
+		).toBe(85);
 		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual(['inactive']);
 	});
 });

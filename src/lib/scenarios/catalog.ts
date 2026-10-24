@@ -659,6 +659,104 @@ const freshMarket = {
 	medalThresholds: { silver: 700, gold: 850 }
 } as const satisfies ScenarioDefinition;
 
+const rivalNextDoor = {
+	id: 'rival-next-door',
+	version: 1,
+	titleKey: 'scenarioDefinitions.rivalNextDoor.title',
+	summaryKey: 'scenarioDefinitions.rivalNextDoor.summary',
+	briefingKey: 'scenarioDefinitions.rivalNextDoor.briefing',
+	strategyHintKey: 'scenarioDefinitions.rivalNextDoor.strategyHint',
+	officialSeed: 280_006,
+	dayLimit: 21,
+	start: {
+		foundingStore: {
+			ref: 'founding-store',
+			archetypeId: 'grocery',
+			cityId: 'harbor-city',
+			tileId: 'harbor-city-29-35'
+		},
+		industrialBuildings: [],
+		rails: [],
+		overrides: {
+			cash: 12_000,
+			debt: 0,
+			storeCap: 1,
+			competitorCityIds: ['harbor-city'],
+			stores: [
+				{
+					storeRef: 'founding-store',
+					targetLevel: 1,
+					products: [
+						{
+							// Opening stock bridges the first week, including the early
+							// reputation ramp, until the day-7 replenishment tops up
+							// toward the authored targets.
+							productId: 'produce',
+							stock: 320,
+							reorderThreshold: 25,
+							targetStock: 90,
+							sellingPrice: 4
+						}
+					]
+				}
+			]
+		}
+	},
+	content: {
+		cityIds: ['harbor-city', 'industry-city'],
+		archetypeIds: ['grocery'],
+		productIds: ['produce'],
+		materialIds: [],
+		buildingTypeIds: [],
+		retailPlacements: [],
+		industrialPlacements: []
+	},
+	allowedCommands: [...STANDARD_RETAIL_COMMANDS],
+	modifiers: [],
+	requiredObjectives: [
+		{
+			id: 'market-share-floor',
+			labelKey: 'scenarioDefinitions.rivalNextDoor.objectives.marketShareFloor',
+			query: { metric: 'player-market-share', productIds: ['produce'] },
+			comparator: 'gte',
+			target: 0.51,
+			window: { kind: 'trailing-reports', count: 14 },
+			requiresCompleteWindow: true
+		},
+		{
+			id: 'positive-operating-performance',
+			labelKey: 'scenarioDefinitions.rivalNextDoor.objectives.positiveOperatingPerformance',
+			query: { metric: 'cumulative-net-income' },
+			comparator: 'gt',
+			target: 0,
+			window: { kind: 'run-to-date' }
+		}
+	],
+	optionalObjectives: [],
+	failures: [
+		{
+			id: 'negative-cash',
+			labelKey: 'scenarioDefinitions.rivalNextDoor.failures.negativeCash',
+			query: { metric: 'cash' },
+			comparator: 'lt',
+			target: 0,
+			window: { kind: 'current' }
+		}
+	],
+	scoreComponents: [
+		{
+			kind: 'metric',
+			query: { metric: 'player-market-share', productIds: ['produce'] },
+			window: { kind: 'trailing-reports', count: 14 },
+			zeroBonusAt: 0.45,
+			fullBonusAt: 0.545,
+			points: 300
+		},
+		{ kind: 'remaining-days', zeroBonusAt: 0, fullBonusAt: 4, points: 200 }
+	],
+	medalThresholds: { silver: 700, gold: 850 }
+} as const satisfies ScenarioDefinition;
+
 function deepFreeze<T>(value: T): T {
 	if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
 	Object.freeze(value);
@@ -678,7 +776,8 @@ const ALL_DEFINITIONS: readonly ScenarioDefinition[] = deepFreeze([
 	importSqueeze,
 	localLifeline,
 	debtTurnaround,
-	freshMarket
+	freshMarket,
+	rivalNextDoor
 ]);
 
 function buildDefinitionByKey(
