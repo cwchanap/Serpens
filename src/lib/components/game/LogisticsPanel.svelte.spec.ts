@@ -26,7 +26,12 @@ function renderPanel(overrides: Record<string, unknown> = {}) {
 		game,
 		view: buildLogisticsPanelView(game, i18n),
 		i18n,
-		canMutate: true,
+		availability: {
+			sandboxActions: true,
+			createRoute: true,
+			updateRoute: true,
+			pauseResumeRoute: true
+		},
 		disabledReason: null,
 		focusedRouteId: null,
 		onDispatchManualTransfer: vi.fn(
@@ -196,6 +201,86 @@ describe('LogisticsPanel', () => {
 			leadTimeDays: 2,
 			transportCostPerUnit: 2,
 			priority: 0
+		});
+	});
+
+	it('locks quote fields read-only and strips them from scenario route creates', async () => {
+		expect.assertions(7);
+		const game = createTwoIndustryCityGame();
+		const i18n = createI18n('en');
+		const onCreateRecurringRoute = vi.fn(async () => ({ status: 'committed' }) as const);
+		renderPanel({
+			game,
+			view: buildLogisticsPanelView(game, i18n),
+			i18n,
+			availability: {
+				sandboxActions: false,
+				createRoute: true,
+				updateRoute: true,
+				pauseResumeRoute: false
+			},
+			onCreateRecurringRoute
+		});
+		await openRouteEditor();
+
+		const leadTime = page.getByLabelText(/lead time/i);
+		const cost = page.getByLabelText(/cost per unit/i);
+		await expect.element(leadTime).toHaveValue(2);
+		await expect.element(cost).toHaveValue(2);
+		expect((leadTime.element() as HTMLInputElement).readOnly).toBe(true);
+		expect((cost.element() as HTMLInputElement).readOnly).toBe(true);
+		// Manual dispatch is a sandbox-only action and stays locked.
+		await expect.element(page.getByRole('button', { name: /dispatch transfer/i })).toBeDisabled();
+
+		await page.getByLabelText('Origin city').nth(1).selectOptions('industry-city');
+		await page.getByLabelText('Destination city').nth(1).selectOptions('breadbasket-basin');
+		await page.getByLabelText('Material').nth(1).selectOptions('water');
+		await page.getByLabelText('Capacity per dispatch').fill('120');
+		await page.getByRole('button', { name: /create route/i }).click();
+
+		expect(onCreateRecurringRoute).toHaveBeenCalledOnce();
+		expect(onCreateRecurringRoute).toHaveBeenCalledWith({
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 120,
+			frequencyDays: 1,
+			priority: 0
+		});
+	});
+
+	it('seeds scenario route edits from the current quote and strips rates on update', async () => {
+		expect.assertions(5);
+		const fixture = routePanelFixture();
+		const onUpdateRecurringRoute = vi.fn(async () => ({ status: 'committed' }) as const);
+		renderPanel({
+			game: fixture.game,
+			view: fixture.view,
+			i18n: fixture.i18n,
+			availability: {
+				sandboxActions: false,
+				createRoute: true,
+				updateRoute: true,
+				pauseResumeRoute: false
+			},
+			onUpdateRecurringRoute
+		});
+
+		await page.getByRole('button', { name: /edit route/i }).click();
+		const leadTime = page.getByLabelText(/lead time/i);
+		expect((leadTime.element() as HTMLInputElement).readOnly).toBe(true);
+		// The editor shows the current city-pair quote, not stored route rates.
+		await expect.element(leadTime).toHaveValue(2);
+		await expect.element(page.getByRole('button', { name: /pause route/i })).toBeDisabled();
+
+		await page.getByRole('button', { name: /save route changes/i }).click();
+		expect(onUpdateRecurringRoute).toHaveBeenCalledOnce();
+		expect(onUpdateRecurringRoute).toHaveBeenCalledWith(fixture.route.id, {
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 12,
+			frequencyDays: 3
 		});
 	});
 
@@ -602,7 +687,12 @@ describe('LogisticsPanel', () => {
 			game,
 			view: buildLogisticsPanelView(game, i18n),
 			i18n,
-			canMutate: false,
+			availability: {
+				sandboxActions: false,
+				createRoute: false,
+				updateRoute: false,
+				pauseResumeRoute: false
+			},
 			disabledReason: 'Logistics are locked in this challenge.'
 		});
 
@@ -610,7 +700,7 @@ describe('LogisticsPanel', () => {
 		await expect.element(page.getByRole('button', { name: /dispatch transfer/i })).toBeDisabled();
 	});
 
-	it('does not dispatch when canMutate is false even if the form is submitted', async () => {
+	it('does not dispatch when logistics actions are unavailable even if the form is submitted', async () => {
 		expect.assertions(1);
 		const onDispatchManualTransfer = vi.fn(
 			async () => ({ status: 'sandbox-committed', changed: true }) as const
@@ -621,7 +711,12 @@ describe('LogisticsPanel', () => {
 			game,
 			view: buildLogisticsPanelView(game, i18n),
 			i18n,
-			canMutate: false,
+			availability: {
+				sandboxActions: false,
+				createRoute: false,
+				updateRoute: false,
+				pauseResumeRoute: false
+			},
 			disabledReason: 'Locked.',
 			onDispatchManualTransfer
 		});
