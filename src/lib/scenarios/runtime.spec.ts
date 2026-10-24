@@ -41,7 +41,7 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from '$lib/game/storeFootprint';
-import type { GameState, ProductId } from '$lib/game/types';
+import type { GameState, ProductId, WorldCityId } from '$lib/game/types';
 import {
 	financeWorldCityOpening,
 	getWorldCityDefinition,
@@ -1817,8 +1817,10 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 });
 
 describe('scenario recurring-route commands', { timeout: 30_000 }, () => {
-	const definition = currentScenarioDefinition('two-city-supply-run');
-	if (!definition) throw new Error('two-city-supply-run definition missing from catalog');
+	const catalogDefinition = currentScenarioDefinition('two-city-supply-run');
+	if (!catalogDefinition) throw new Error('two-city-supply-run definition missing from catalog');
+	// Captured narrowed const so nested helpers keep the non-undefined type.
+	const definition: ScenarioDefinition = catalogDefinition;
 
 	function startedRun(): ScenarioRun {
 		const started = startScenario(definition, 280_007);
@@ -1870,16 +1872,20 @@ describe('scenario recurring-route commands', { timeout: 30_000 }, () => {
 			id: 'quarry-works',
 			tiles: []
 		};
+		const quarryOpenedCityIds: WorldCityId[] = [
+			...created.run.game.world.openedCityIds,
+			'quarry-works'
+		];
 		const opened = {
 			...created.run.game,
 			industryCities: [...created.run.game.industryCities, quarryStub],
 			world: {
 				...created.run.game.world,
-				openedCityIds: [...created.run.game.world.openedCityIds, 'quarry-works']
+				openedCityIds: quarryOpenedCityIds
 			},
 			cityInventories: [
 				...created.run.game.cityInventories,
-				{ cityId: 'quarry-works', materials: {} }
+				{ cityId: 'quarry-works' as WorldCityId, materials: {} }
 			]
 		};
 
