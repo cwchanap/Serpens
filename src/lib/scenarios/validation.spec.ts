@@ -1025,6 +1025,78 @@ describe('validateScenarioDefinition', () => {
 		);
 	});
 
+	it('validates delivered-transfer-units destination and material references', () => {
+		const definition = cityInventoryDefinition();
+		definition.requiredObjectives = [
+			{
+				...definition.requiredObjectives[0]!,
+				query: {
+					metric: 'delivered-transfer-units',
+					destinationCityId: 'industry-city',
+					materialId: 'water'
+				},
+				window: { kind: 'run-to-date' }
+			}
+		];
+		expect(codes(definition)).toEqual([]);
+
+		const malformed = cityInventoryDefinition() as unknown as MalformedDefinition;
+		malformed.requiredObjectives[0].query = {
+			metric: 'delivered-transfer-units',
+			destinationCityId: 'harbor-city',
+			materialId: 'missing-material',
+			extra: true
+		};
+		malformed.requiredObjectives[0].window = { kind: 'current' };
+		expect(codes(malformed)).toEqual(
+			expect.arrayContaining([
+				{
+					path: 'requiredObjectives[0].query.destinationCityId',
+					code: 'invalid-delivered-transfer-city'
+				},
+				{ path: 'requiredObjectives[0].query.extra', code: 'unknown-key' },
+				{ path: 'requiredObjectives[0].query.materialId', code: 'invalid-reference' },
+				{ path: 'requiredObjectives[0].window.kind', code: 'unsupported-window' }
+			])
+		);
+
+		const missingFields = cityInventoryDefinition() as unknown as MalformedDefinition;
+		missingFields.requiredObjectives[0].query = { metric: 'delivered-transfer-units' };
+		expect(codes(missingFields)).toEqual(
+			expect.arrayContaining([
+				{ path: 'requiredObjectives[0].query.destinationCityId', code: 'missing-key' },
+				{ path: 'requiredObjectives[0].query.materialId', code: 'missing-key' }
+			])
+		);
+
+		const closed = cityInventoryDefinition() as unknown as MalformedDefinition;
+		closed.start.overrides.world = {
+			revealedCityIds: ['harbor-city', 'industry-city'],
+			openedCityIds: ['harbor-city', 'industry-city'],
+			activeRetailCityId: 'harbor-city',
+			activeIndustryCityId: 'industry-city'
+		};
+		closed.start.industrialBuildings = [];
+		closed.start.overrides.cityInventoryMaterials = [
+			{ cityId: 'industry-city', materials: { water: 1 } }
+		];
+		closed.content.industrialPlacements = [];
+		closed.content.cityIds = ['harbor-city', 'industry-city', 'breadbasket-basin'];
+		closed.requiredObjectives[0].query = {
+			metric: 'delivered-transfer-units',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water'
+		};
+		expect(codes(closed)).toEqual(
+			expect.arrayContaining([
+				{
+					path: 'requiredObjectives[0].query.destinationCityId',
+					code: 'delivered-transfer-city-closed'
+				}
+			])
+		);
+	});
+
 	it('validates supported commands and modifier variants', () => {
 		const definition = malformedDefinition();
 		definition.allowedCommands = [...SCENARIO_COMMAND_KINDS, 'teleport'];

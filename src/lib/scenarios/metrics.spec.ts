@@ -28,6 +28,7 @@ import {
 	marketEvidenceId,
 	METRIC_REGISTRY,
 	productEvidenceId,
+	transferArrivalEvidenceId,
 	validateScenarioReportInvariants
 } from './metrics';
 import { METRIC_WINDOWS } from './validation/shared';
@@ -561,6 +562,10 @@ describe('scenario metric evidence IDs', () => {
 			'report:8/store:store%3AB/product:bottled-water'
 		]);
 	});
+
+	it('scopes transfer arrival evidence to the day and transfer order ID', () => {
+		expect(transferArrivalEvidenceId(7, 'transfer/a')).toBe('report:7/transfer:transfer%2Fa');
+	});
 });
 
 describe('registered scenario metrics', () => {
@@ -659,6 +664,159 @@ describe('registered scenario metrics', () => {
 		}
 	);
 
+	function arrivalGame(): GameState {
+		const arrivals = [
+			{
+				day: 2,
+				rows: [
+					{
+						transferOrderId: 'transfer-2',
+						originCityId: 'industry-city' as const,
+						destinationCityId: 'breadbasket-basin' as const,
+						materialId: 'water' as const,
+						quantity: 40
+					},
+					{
+						transferOrderId: 'transfer-3',
+						originCityId: 'industry-city' as const,
+						destinationCityId: 'breadbasket-basin' as const,
+						materialId: 'grain' as const,
+						quantity: 90
+					},
+					{
+						transferOrderId: 'transfer-4',
+						originCityId: 'industry-city' as const,
+						destinationCityId: 'quarry-works' as const,
+						materialId: 'water' as const,
+						quantity: 70
+					}
+				]
+			},
+			{
+				day: 7,
+				rows: [
+					{
+						transferOrderId: 'transfer-9',
+						originCityId: 'industry-city' as const,
+						destinationCityId: 'breadbasket-basin' as const,
+						materialId: 'water' as const,
+						quantity: 60
+					}
+				]
+			}
+		];
+		const arrivalByDay = new Map(arrivals.map((entry) => [entry.day, entry.rows]));
+		return game({
+			reports: [1, 2, 7, 8].map((day) =>
+				report(day, 5, [], {
+					logistics: {
+						...emptyLogisticsReport(),
+						arrivals: arrivalByDay.get(day) ?? []
+					}
+				})
+			)
+		});
+	}
+
+	it('sums only destination-and-material matching arrivals across reports', () => {
+		const query = {
+			metric: 'delivered-transfer-units',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water'
+		} as const;
+
+		expect(evaluateMetric(arrivalGame(), query, { kind: 'run-to-date' })).toEqual({
+			actual: 100,
+			contributingIds: ['report:2/transfer:transfer-2', 'report:7/transfer:transfer-9'],
+			windowComplete: true
+		});
+		expect(
+			evaluateMetric(arrivalGame(), query, { kind: 'trailing-reports', count: 1 }).actual
+		).toBe(0);
+		expect(
+			evaluateMetric(arrivalGame(), query, { kind: 'fixed-report-days', startDay: 1, endDay: 2 })
+				.actual
+		).toBe(40);
+		// Wrong destination and wrong material stay excluded from the sum.
+		expect(
+			evaluateMetric(
+				arrivalGame(),
+				{ ...query, destinationCityId: 'quarry-works' },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(70);
+		expect(
+			evaluateMetric(arrivalGame(), { ...query, materialId: 'grain' }, { kind: 'run-to-date' })
+				.actual
+		).toBe(90);
+	});
+
+	it('ignores in-transit transfers until their arrival-day report', () => {
+		const state = game({
+			reports: [report(1, 5), report(2, 5)],
+			logistics: {
+				transferOrders: [
+					{
+						id: 'transfer-1',
+						source: { kind: 'recurring-route', routeId: 'route-1' },
+						originCityId: 'industry-city',
+						destinationCityId: 'breadbasket-basin',
+						materialId: 'water',
+						quantity: 55,
+						createdOnDay: 1,
+						dispatchedOnDay: 1,
+						arrivalOnDay: 3,
+						transportCost: 110,
+						status: 'in-transit'
+					}
+				],
+				recurringRoutes: [],
+				nextTransferSequence: 2,
+				nextRouteSequence: 1
+			}
+		});
+		const query = {
+			metric: 'delivered-transfer-units',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water'
+		} as const;
+
+		expect(evaluateMetric(state, query, { kind: 'run-to-date' })).toEqual({
+			actual: 0,
+			contributingIds: [],
+			windowComplete: true
+		});
+		const arrived = game({
+			...state,
+			reports: [
+				report(1, 5),
+				report(2, 5),
+				report(3, 5, [], {
+					logistics: {
+						...emptyLogisticsReport(),
+						arrivals: [
+							{
+								transferOrderId: 'transfer-1',
+								originCityId: 'industry-city',
+								destinationCityId: 'breadbasket-basin',
+								materialId: 'water',
+								quantity: 55
+							}
+						]
+					}
+				})
+			]
+		});
+
+		expect(
+			evaluateMetric(arrived, query, { kind: 'fixed-report-days', startDay: 3, endDay: 3 })
+		).toEqual({
+			actual: 55,
+			contributingIds: ['report:3/transfer:transfer-1'],
+			windowComplete: true
+		});
+	});
+
 	it.each([
 		[{ metric: 'daily-net-income' }, { kind: 'current' }],
 		[{ metric: 'cumulative-net-income' }, { kind: 'run-to-date' }],
@@ -672,7 +830,15 @@ describe('registered scenario metrics', () => {
 		[{ metric: 'demand-missed', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
 		[{ metric: 'product-waste-units', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
 		[{ metric: 'product-waste-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
-		[{ metric: 'player-market-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }]
+		[{ metric: 'player-market-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[
+			{
+				metric: 'delivered-transfer-units',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water'
+			},
+			{ kind: 'run-to-date' }
+		]
 	] as const)('uses zero and no IDs for an empty report window: $0', (query, window) => {
 		expect(evaluateMetric(game(), query, window)).toEqual({
 			actual: 0,

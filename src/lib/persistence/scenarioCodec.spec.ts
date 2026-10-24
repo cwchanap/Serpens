@@ -309,6 +309,88 @@ function financeMetricDefinition(): ScenarioDefinition {
 	};
 }
 
+function transferMetricDefinition(): ScenarioDefinition {
+	const definition = fixtureDefinition({ scenarioId: 'first-profit', version: 1 });
+	const query = {
+		metric: 'delivered-transfer-units' as const,
+		destinationCityId: 'breadbasket-basin' as const,
+		materialId: 'water' as const
+	};
+	return {
+		...definition,
+		requiredObjectives: [
+			{
+				id: 'deliver-water',
+				labelKey: 'store.defaultName',
+				query,
+				comparator: 'gte',
+				// Above the injected 30-unit arrival so the run stays active.
+				target: 60,
+				window: { kind: 'run-to-date' }
+			}
+		],
+		optionalObjectives: [],
+		failures: [],
+		scoreComponents: [
+			{
+				kind: 'metric',
+				query,
+				window: { kind: 'run-to-date' },
+				zeroBonusAt: 30,
+				fullBonusAt: 60,
+				points: 500
+			}
+		]
+	};
+}
+
+function transferMetricRun(definition: ScenarioDefinition): ScenarioRun {
+	let game = createNewGame('convenience', definition.officialSeed);
+	game = simulateDay(game);
+	const withArrivals: GameState = {
+		...game,
+		reports: game.reports.map((report, index) =>
+			index === game.reports.length - 1
+				? {
+						...report,
+						logistics: {
+							...report.logistics,
+							// deliveredUnits must equal the sum of all arrival
+							// quantities or saveCodec drops the report as malformed.
+							deliveredUnits: 70,
+							arrivals: [
+								{
+									transferOrderId: 'transfer-7',
+									originCityId: 'industry-city',
+									destinationCityId: 'breadbasket-basin',
+									materialId: 'water',
+									quantity: 30
+								},
+								{
+									transferOrderId: 'transfer-8',
+									originCityId: 'industry-city',
+									destinationCityId: 'breadbasket-basin',
+									materialId: 'grain',
+									quantity: 40
+								}
+							]
+						}
+					}
+				: report
+		)
+	};
+	return {
+		runId: crypto.randomUUID(),
+		definition: { scenarioId: definition.id, version: definition.version },
+		seed: definition.officialSeed,
+		eligibility: 'ranked',
+		status: 'active',
+		game: withArrivals,
+		evaluation: evaluateScenario(definition, withArrivals, false),
+		result: null
+	};
+}
+
 function createCityInventoryMetricRun(definition: ScenarioDefinition): ScenarioRun {
 	const game = createCityInventoryMetricGame(definition.officialSeed);
 	return {
@@ -1627,6 +1709,33 @@ describe('scenario codec', () => {
 		expect(
 			decoded.snapshot.activeRunsByScenarioId['first-profit']?.run.evaluation.required[0]?.evidence
 		).toMatchObject({ metric: 'total-debt', actual: 8_000 });
+	});
+
+	it('accepts delivered-transfer-units evidence and round-trips transfer arrival IDs', () => {
+		const definition = transferMetricDefinition();
+		const run = transferMetricRun(definition);
+		const resolver: ScenarioDefinitionResolver = (ref) =>
+			ref.scenarioId === definition.id && ref.version === definition.version
+				? definition
+				: undefined;
+
+		expect(run.evaluation.required[0]?.evidence).toMatchObject({
+			metric: 'delivered-transfer-units',
+			actual: 30,
+			contributingIds: [`report:${run.game.reports.at(-1)?.day}/transfer:transfer-7`]
+		});
+		expect(run.evaluation.projection.componentEvidence[0]).toMatchObject({ actual: 30 });
+
+		const encodedSnapshot = snapshot({ 'first-profit': runRecord(run) });
+		const decoded = decodeScenarioStoreSnapshot(encodedSnapshot, resolver);
+		expect(decoded.diagnostics).toEqual([]);
+		const decodedRun = decoded.snapshot.activeRunsByScenarioId['first-profit']?.run;
+		expect(decodedRun?.evaluation.required[0]?.evidence).toMatchObject({
+			metric: 'delivered-transfer-units',
+			actual: 30,
+			contributingIds: [`report:${run.game.reports.at(-1)?.day}/transfer:transfer-7`]
+		});
+		expect(decodedRun?.evaluation.projection.componentEvidence[0]).toMatchObject({ actual: 30 });
 	});
 });
 

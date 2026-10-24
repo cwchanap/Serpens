@@ -125,6 +125,8 @@ function validateMetricQuery(
 	else if (metric === 'scorecard') allowedKeys = ['metric', 'score'];
 	else if (metric === 'industrial-building-count') allowedKeys = ['metric', 'buildingTypeIds'];
 	else if (metric === 'city-inventory-quantity') allowedKeys = ['metric', 'cityId', 'materialId'];
+	else if (metric === 'delivered-transfer-units')
+		allowedKeys = ['metric', 'destinationCityId', 'materialId'];
 	const query = closedObject(context, value, path, allowedKeys);
 	if (!query) return metric;
 	if (PRODUCT_METRICS.has(metric)) {
@@ -203,6 +205,51 @@ function validateMetricQuery(
 				);
 			}
 			validateIncluded(context, query.cityId, `${path}.cityId`, context.content.cities);
+		}
+		if (
+			validateKnownReference(
+				context,
+				query.materialId,
+				`${path}.materialId`,
+				KNOWN_MATERIAL_IDS,
+				'material'
+			)
+		)
+			validateIncluded(context, query.materialId, `${path}.materialId`, context.content.materials);
+	} else if (metric === 'delivered-transfer-units') {
+		if (
+			validateKnownReference(
+				context,
+				query.destinationCityId,
+				`${path}.destinationCityId`,
+				KNOWN_CITY_IDS,
+				'city'
+			)
+		) {
+			const city = getWorldCityDefinition(query.destinationCityId);
+			if (city?.kind !== 'industry') {
+				diagnostic(
+					context,
+					`${path}.destinationCityId`,
+					'invalid-delivered-transfer-city',
+					query.destinationCityId,
+					'Delivered transfer metrics require an industry destination city.'
+				);
+			} else if (!context.openedCityIds.has(query.destinationCityId)) {
+				diagnostic(
+					context,
+					`${path}.destinationCityId`,
+					'delivered-transfer-city-closed',
+					query.destinationCityId,
+					'Delivered transfer metrics require an opened industry destination city.'
+				);
+			}
+			validateIncluded(
+				context,
+				query.destinationCityId,
+				`${path}.destinationCityId`,
+				context.content.cities
+			);
 		}
 		if (
 			validateKnownReference(
