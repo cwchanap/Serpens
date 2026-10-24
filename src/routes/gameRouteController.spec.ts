@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
+import { currentScenarioDefinition, resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import type {
 	ManualTransferInput,
 	RecurringRouteInput,
@@ -2266,6 +2266,63 @@ describe('GameRouteController', () => {
 				status: 'rejected'
 			});
 			expect(saveSpy).not.toHaveBeenCalled();
+		});
+
+		it('commits scenario route commands with canonical quotes through the persistence gate', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			const definition = currentScenarioDefinition('two-city-supply-run');
+			if (!definition) throw new Error('two-city-supply-run definition missing from catalog');
+			await startScenario(harness.controller, definition);
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+
+			const create = await harness.controller.createRecurringRoute({
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 120,
+				frequencyDays: 1,
+				priority: 0
+			});
+			expect(create).toEqual({ status: 'committed' });
+			const run = harness.controller.state.activeScenarioRun;
+			if (!run) throw new Error('scenario run not active after route create');
+			const route = run.game.logistics.recurringRoutes[0];
+			// The command supplies no freight rates; the route carries the
+			// canonical city-pair quote the runtime injected.
+			expect(route).toMatchObject({
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 120,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2,
+				state: 'active'
+			});
+
+			const update = await harness.controller.updateRecurringRoute(route.id, {
+				originCityId: 'industry-city',
+				destinationCityId: 'breadbasket-basin',
+				materialId: 'water',
+				capacity: 60,
+				frequencyDays: 2
+			});
+			expect(update).toEqual({ status: 'committed' });
+			expect(saveSpy).toHaveBeenCalled();
+			const updatedRun = harness.controller.state.activeScenarioRun;
+			expect(updatedRun?.game.logistics.recurringRoutes[0]).toMatchObject({
+				capacity: 60,
+				frequencyDays: 2,
+				leadTimeDays: 2,
+				transportCostPerUnit: 2
+			});
+
+			expect(await harness.controller.pauseRecurringRoute(route.id)).toEqual({
+				status: 'committed'
+			});
+			expect(await harness.controller.resumeRecurringRoute(route.id)).toEqual({
+				status: 'committed'
+			});
 		});
 
 		it('maps a scenario finance domain rejection without persisting or advancing the run', async () => {
