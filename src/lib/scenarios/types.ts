@@ -201,6 +201,7 @@ export type ScenarioMetricQuery =
 	| { metric: 'demand-missed'; productIds: readonly ProductId[] }
 	| { metric: 'product-waste-units'; productIds: readonly ProductId[] }
 	| { metric: 'product-waste-share'; productIds: readonly ProductId[] }
+	| { metric: 'player-market-share'; productIds: readonly ProductId[] }
 	| { metric: 'scorecard'; score: ScoreKey }
 	| { metric: 'store-count' }
 	| { metric: 'industrial-building-count'; buildingTypeIds: readonly IndustrialBuildingTypeId[] }

@@ -154,6 +154,32 @@ function productContributions(context: MetricContext): ProductContribution[] {
 	return contributions.sort((first, second) => compareScenarioEvidenceIds(first.id, second.id));
 }
 
+function marketContributions(context: MetricContext): Array<{
+	id: string;
+	playerDemandPool: number;
+	cityDemandPool: number;
+}> {
+	const included = productIds(context.query);
+	const contributions: Array<{
+		id: string;
+		playerDemandPool: number;
+		cityDemandPool: number;
+	}> = [];
+
+	for (const report of context.reports) {
+		for (const marketReport of report.marketReports) {
+			if (!included.has(marketReport.productId)) continue;
+			contributions.push({
+				id: marketEvidenceId(report.day, marketReport.cityId, marketReport.productId),
+				playerDemandPool: marketReport.playerDemandPool,
+				cityDemandPool: marketReport.cityDemandPool
+			});
+		}
+	}
+
+	return contributions.sort((first, second) => compareScenarioEvidenceIds(first.id, second.id));
+}
+
 function sumProductMetric(
 	context: MetricContext,
 	getValue: (contribution: ProductContribution) => number
@@ -359,6 +385,32 @@ export const METRIC_REGISTRY = {
 			};
 		}
 	},
+	'player-market-share': {
+		supportedWindows: AGGREGATE_REPORT_WINDOWS,
+		productScoped: true,
+		format: 'percent',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: reportMetricComplete,
+		evaluate: (context) => {
+			const contributions = marketContributions(context);
+			// Demand-weighted share: sum the STORED simulation numerator
+			// (already rounded per day) over the pooled city demand; never
+			// re-round from `playerShare`.
+			const cityDemandPool = contributions.reduce(
+				(sum, contribution) => sum + contribution.cityDemandPool,
+				0
+			);
+			const playerDemandPool = contributions.reduce(
+				(sum, contribution) => sum + contribution.playerDemandPool,
+				0
+			);
+			return {
+				actual: cityDemandPool === 0 ? 0 : playerDemandPool / cityDemandPool,
+				contributingIds: contributions.map((contribution) => contribution.id)
+			};
+		}
+	},
 	scorecard: {
 		supportedWindows: CURRENT,
 		productScoped: false,
@@ -457,6 +509,10 @@ export function storeReportEvidenceId(day: number, storeId: string): string {
 
 export function productEvidenceId(day: number, storeId: string, productId: ProductId): string {
 	return `${storeReportEvidenceId(day, storeId)}/product:${encodeEvidenceSegment(productId)}`;
+}
+
+export function marketEvidenceId(day: number, cityId: string, productId: ProductId): string {
+	return `${reportEvidenceId(day)}/market:${encodeEvidenceSegment(cityId)}/product:${encodeEvidenceSegment(productId)}`;
 }
 
 export function cityInventoryEvidenceId(cityId: string, materialId: string): string {

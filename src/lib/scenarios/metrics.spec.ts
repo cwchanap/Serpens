@@ -25,6 +25,7 @@ import {
 	encodeEvidenceSegment,
 	evaluateMetric,
 	evaluateScenarioConditions,
+	marketEvidenceId,
 	METRIC_REGISTRY,
 	productEvidenceId,
 	validateScenarioReportInvariants
@@ -286,7 +287,8 @@ function metricGame(): GameState {
 			local: 3,
 			sold: 4,
 			missed: 1,
-			waste: 1
+			waste: 1,
+			market: { pool: 100, playerPool: 20, share: 0.5 }
 		},
 		{
 			day: 2,
@@ -297,7 +299,8 @@ function metricGame(): GameState {
 			local: 1,
 			sold: 5,
 			missed: 2,
-			waste: 2
+			waste: 2,
+			market: { pool: 300, playerPool: 210, share: 0.4 }
 		},
 		{
 			day: 7,
@@ -308,7 +311,8 @@ function metricGame(): GameState {
 			local: 6,
 			sold: 7,
 			missed: 3,
-			waste: 3
+			waste: 3,
+			market: { pool: 100, playerPool: 50, share: 0.1 }
 		},
 		{
 			day: 8,
@@ -319,28 +323,60 @@ function metricGame(): GameState {
 			local: 10,
 			sold: 9,
 			missed: 4,
-			waste: 4
+			waste: 4,
+			market: { pool: 200, playerPool: 150, share: 0.9 }
 		}
 	];
 	const reports = rows.map((row) =>
-		report(row.day, row.netIncome, [
-			storeReport(row.storeId, [
-				product({
-					importSpend: row.importSpend,
-					importedUnits: row.imported,
-					warehouseUnits: row.local,
-					unitsSold: row.sold,
-					demandMissed: row.missed,
-					wasteUnits: row.waste
-				}),
-				product({
-					productId: 'snacks',
-					name: 'Snacks',
-					unitsSold: 100,
-					wasteUnits: 50
-				})
-			])
-		])
+		report(
+			row.day,
+			row.netIncome,
+			[
+				storeReport(row.storeId, [
+					product({
+						importSpend: row.importSpend,
+						importedUnits: row.imported,
+						warehouseUnits: row.local,
+						unitsSold: row.sold,
+						demandMissed: row.missed,
+						wasteUnits: row.waste
+					}),
+					product({
+						productId: 'snacks',
+						name: 'Snacks',
+						unitsSold: 100,
+						wasteUnits: 50
+					})
+				])
+			],
+			{
+				// Stored pools are the canonical scenario metric inputs; each
+				// stored playerShare deliberately disagrees with the pool ratio
+				// so re-rounding from the share would fail these fixtures.
+				marketReports: [
+					{
+						cityId: 'harbor-city',
+						productId: 'bottled-water',
+						cityDemandPool: row.market.pool,
+						playerDemandPool: row.market.playerPool,
+						playerShare: row.market.share,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: []
+					},
+					{
+						cityId: 'harbor-city',
+						productId: 'produce',
+						cityDemandPool: 500,
+						playerDemandPool: 500,
+						playerShare: 1,
+						playerShareDelta: null,
+						playerAttractionScore: 100,
+						competitors: []
+					}
+				]
+			}
+		)
 	);
 
 	return game({
@@ -484,6 +520,12 @@ describe('scenario metric evidence IDs', () => {
 		);
 	});
 
+	it('scopes market evidence to the day, city, and product triple', () => {
+		expect(marketEvidenceId(7, 'harbor/city', 'water/large' as ProductId)).toBe(
+			'report:7/market:harbor%2Fcity/product:water%2Flarge'
+		);
+	});
+
 	it('scopes inventory evidence to the city and material pair', () => {
 		expect(cityInventoryEvidenceId('industry/city', 'water/large')).toBe(
 			'city-inventory:industry%2Fcity/material:water%2Flarge'
@@ -583,6 +625,17 @@ describe('registered scenario metrics', () => {
 			{ kind: 'run-to-date' },
 			10 / 35
 		],
+		[
+			{ metric: 'player-market-share', productIds: ['bottled-water'] },
+			{ kind: 'run-to-date' },
+			430 / 700,
+			[
+				'report:1/market:harbor-city/product:bottled-water',
+				'report:2/market:harbor-city/product:bottled-water',
+				'report:7/market:harbor-city/product:bottled-water',
+				'report:8/market:harbor-city/product:bottled-water'
+			]
+		],
 		[{ metric: 'scorecard', score: 'profit' }, { kind: 'current' }, 61, []],
 		[{ metric: 'store-count' }, { kind: 'current' }, 3],
 		[
@@ -618,7 +671,8 @@ describe('registered scenario metrics', () => {
 		[{ metric: 'units-sold', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
 		[{ metric: 'demand-missed', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
 		[{ metric: 'product-waste-units', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
-		[{ metric: 'product-waste-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }]
+		[{ metric: 'product-waste-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }],
+		[{ metric: 'player-market-share', productIds: ['bottled-water'] }, { kind: 'run-to-date' }]
 	] as const)('uses zero and no IDs for an empty report window: $0', (query, window) => {
 		expect(evaluateMetric(game(), query, window)).toEqual({
 			actual: 0,
@@ -788,6 +842,111 @@ describe('registered scenario metrics', () => {
 				{ kind: 'run-to-date' }
 			).actual
 		).toBe(12);
+	});
+
+	it('weights player market share by pooled demand across reports, not the mean of daily shares', () => {
+		const state = metricGame();
+
+		// Trailing 2 pools 100@20% (day 7) and 200@75% (day 8): pooled weighting
+		// gives 200/300, while the mean of daily shares would be 47.5%.
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'player-market-share', productIds: ['bottled-water'] },
+				{ kind: 'trailing-reports', count: 2 }
+			)
+		).toEqual({
+			actual: 200 / 300,
+			contributingIds: [
+				'report:7/market:harbor-city/product:bottled-water',
+				'report:8/market:harbor-city/product:bottled-water'
+			],
+			windowComplete: true
+		});
+	});
+
+	it('sums the stored player demand pool instead of re-rounding from playerShare', () => {
+		// Every metricGame row stores a playerShare that disagrees with its pool
+		// ratio, so only the stored pools can produce 430/700.
+		expect(
+			evaluateMetric(
+				metricGame(),
+				{ metric: 'player-market-share', productIds: ['bottled-water'] },
+				{ kind: 'run-to-date' }
+			).actual
+		).toBe(430 / 700);
+	});
+
+	it('returns zero player market share on zero demand while keeping the row evidence', () => {
+		const state = game({
+			reports: [
+				report(1, 0, [], {
+					marketReports: [
+						{
+							cityId: 'harbor-city',
+							productId: 'bottled-water',
+							cityDemandPool: 0,
+							playerDemandPool: 0,
+							playerShare: 0,
+							playerShareDelta: null,
+							playerAttractionScore: 0,
+							competitors: []
+						}
+					]
+				})
+			]
+		});
+
+		expect(
+			evaluateMetric(
+				state,
+				{ metric: 'player-market-share', productIds: ['bottled-water'] },
+				{ kind: 'run-to-date' }
+			)
+		).toEqual({
+			actual: 0,
+			contributingIds: ['report:1/market:harbor-city/product:bottled-water'],
+			windowComplete: true
+		});
+	});
+
+	it('keeps player market share scoped to the allowlisted product IDs', () => {
+		// Every report also carries a produce market row pooled at 500/500 that
+		// must stay out of the bottled-water query (and vice versa).
+		expect(
+			evaluateMetric(
+				metricGame(),
+				{ metric: 'player-market-share', productIds: ['produce'] },
+				{ kind: 'run-to-date' }
+			)
+		).toEqual({
+			actual: 1,
+			contributingIds: [
+				'report:1/market:harbor-city/product:produce',
+				'report:2/market:harbor-city/product:produce',
+				'report:7/market:harbor-city/product:produce',
+				'report:8/market:harbor-city/product:produce'
+			],
+			windowComplete: true
+		});
+		expect(
+			evaluateMetric(
+				metricGame(),
+				{ metric: 'player-market-share', productIds: ['bottled-water'] },
+				{ kind: 'fixed-report-days', startDay: 2, endDay: 7 }
+			).actual
+		).toBe(260 / 400);
+	});
+
+	it('cannot qualify player market share before the trailing window completes', () => {
+		expect(
+			evaluateMetric(
+				metricGame(),
+				{ metric: 'player-market-share', productIds: ['bottled-water'] },
+				{ kind: 'trailing-reports', count: 5 },
+				true
+			)
+		).toMatchObject({ actual: 430 / 700, windowComplete: false });
 	});
 
 	it('returns zero local share when selected local and imported units are both zero', () => {
