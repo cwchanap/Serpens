@@ -109,6 +109,14 @@ export interface RunMeasurement {
 	stockoutShare: number | null;
 	wasteUnits: number;
 	wasteValue: number;
+	/** Largest |cash| over the founding baseline and every daily cashAfter. */
+	maxAbsCash: number;
+	/** Largest outstanding loan principal across daily reports (no founding-debt recorder exists). */
+	maxOutstandingPrincipal: number;
+	/** Sum of the daily report's importSpend (retail + industrial) over the whole run. */
+	cumulativeImportSpend: number;
+	/** Sum of operatingIncome over report days 61–90 inclusive (partial when the run ends earlier). */
+	operatingIncomeDays61To90: number;
 	forecastOutcomes: OpeningForecastOutcome[];
 	forecastByArchetype: Record<string, ForecastGroupStat>;
 	forecastByNeighborhood: Record<string, ForecastGroupStat>;
@@ -327,8 +335,18 @@ export function measureRun(game: Pick<GameState, 'reports'>, ledger: BotLedger):
 	let stockoutProductDays = 0;
 	let wasteUnits = 0;
 	let wasteValue = 0;
+	let maxAbsCash = Math.abs(foundingCash);
+	let maxOutstandingPrincipal = 0;
+	let cumulativeImportSpend = 0;
+	let operatingIncomeDays61To90 = 0;
 	for (const report of reports) {
 		if (report.cashAfter < 0 && firstNegativeCashDay === null) firstNegativeCashDay = report.day;
+		maxAbsCash = Math.max(maxAbsCash, Math.abs(report.cashAfter));
+		maxOutstandingPrincipal = Math.max(maxOutstandingPrincipal, report.outstandingPrincipalAfter);
+		cumulativeImportSpend += report.importSpend;
+		// The agreed Gate A comparison window (days 61–90 inclusive); fixed by
+		// the field's definition, independent of any threshold value.
+		if (report.day >= 61 && report.day <= 90) operatingIncomeDays61To90 += report.operatingIncome;
 		if (minimumCash === null || report.cashAfter < minimumCash) {
 			minimumCash = report.cashAfter;
 			minimumCashDay = report.day;
@@ -377,11 +395,232 @@ export function measureRun(game: Pick<GameState, 'reports'>, ledger: BotLedger):
 		stockoutShare: productDays === 0 ? null : stockoutProductDays / productDays,
 		wasteUnits,
 		wasteValue,
+		maxAbsCash,
+		maxOutstandingPrincipal,
+		cumulativeImportSpend,
+		operatingIncomeDays61To90,
 		forecastOutcomes,
 		forecastByArchetype: groupBy(forecastOutcomes, (outcome) => outcome.archetypeId),
 		forecastByNeighborhood: groupBy(forecastOutcomes, (outcome) => outcome.neighborhood),
 		advisorRepeatedNoOp: findRepeatedAdvisorNoOp(ledger),
 		producerStall: findProducerStall(reports, ledger)
+	};
+}
+
+/** Gate A thresholds, approved verbatim 2026-10-25 (design doc, "Gate A decision record"). */
+export interface GateAThresholds {
+	/** Full positive operating-income window length that counts as viable. */
+	viabilityWindowDays: number;
+	/** Viable = the window completes on or before this day. */
+	viabilityByDay: number;
+	/** Required share of viable retail-steady seeds. Gate A's single 80% bar — also
+	 * the managed-vs-idle win bar and the forecast pass share. */
+	viabilitySeedShare: number;
+	/** Every measured |value| must stay strictly below this (design: "below 1,000,000,000"). */
+	absCeiling: number;
+	/** Inclusive operating-income comparison window, retail-steady vs idle. */
+	incomePairDays: [number, number];
+	/** Per-opening forecast tolerance (same band as FORECAST_ERROR_BAND). */
+	forecastTolerance: number;
+	/** Required share of clean advisor runs. */
+	advisorSeedShare: number;
+}
+
+export const GATE_A_THRESHOLDS: GateAThresholds = {
+	viabilityWindowDays: 30,
+	viabilityByDay: 90,
+	viabilitySeedShare: 0.8,
+	absCeiling: 1_000_000_000,
+	incomePairDays: [61, 90],
+	forecastTolerance: 0.25,
+	advisorSeedShare: 0.8
+};
+
+export type GateAItemId = 'viability' | 'boundedness' | 'managed-vs-idle' | 'forecast' | 'advisor';
+
+export interface GateAItemVerdict {
+	id: GateAItemId;
+	passed: boolean;
+	detail: string;
+}
+
+export interface GateAVerdict {
+	items: GateAItemVerdict[];
+	/** Scenario guardrails are measured by scenario tests (Step 5), not here. */
+	scenarioGuardrails: 'out of scope (scenario tests)';
+	allPassed: boolean;
+}
+
+function fmtShare(share: number): string {
+	return `${(share * 100).toFixed(1)}%`;
+}
+
+/**
+ * Pure Gate A evaluation over a finished sweep report (design doc Gate A
+ * items 1–4; item 5 scenarios are scenario-test scope, item 6 is the
+ * determinism spec). The forecast and advisor items compute from whatever the
+ * report already carries and are expected to fail until Steps 3–4 fix them —
+ * informative, not a blocker. Mutates nothing.
+ */
+export function evaluateGateA(
+	report: SweepReport,
+	thresholds: GateAThresholds = GATE_A_THRESHOLDS
+): GateAVerdict {
+	const items: GateAItemVerdict[] = [];
+
+	// Item 1 — retail viability: per archetype, the share of retail-steady
+	// seeds whose first full positive window completes by viabilityByDay.
+	{
+		const parts: string[] = [];
+		let passed = true;
+		for (const archetypeId of SWEEP_ARCHETYPES) {
+			const runs = report.runs.filter(
+				(run) => run.archetypeId === archetypeId && run.bot === 'retail-steady'
+			);
+			if (runs.length === 0) continue;
+			const viable = runs.filter(
+				(run) =>
+					run.firstPositiveWindow30 !== null &&
+					run.firstPositiveWindow30.endDay <= thresholds.viabilityByDay
+			).length;
+			const share = viable / runs.length;
+			if (share < thresholds.viabilitySeedShare) passed = false;
+			parts.push(`${archetypeId} ${viable}/${runs.length} (${fmtShare(share)})`);
+		}
+		items.push({
+			id: 'viability',
+			passed,
+			detail: `${thresholds.viabilityWindowDays}d window complete by day ${thresholds.viabilityByDay} (retail-steady): ${parts.join(', ') || 'no runs'}`
+		});
+	}
+
+	// Item 2 — boundedness: strict |value| < absCeiling across all runs for
+	// daily cash (incl. founding), outstanding principal, cumulative import
+	// spend, and waste units/value.
+	{
+		const maxima: Record<string, number> = {
+			cash: 0,
+			principal: 0,
+			'cumulative imports': 0,
+			'waste units': 0,
+			'waste value': 0
+		};
+		let worstRun: RunMeasurement | null = null;
+		let worstMetric = 'none';
+		let globalMax = 0;
+		for (const run of report.runs) {
+			const candidates: [string, number][] = [
+				['cash', run.maxAbsCash],
+				['principal', run.maxOutstandingPrincipal],
+				['cumulative imports', run.cumulativeImportSpend],
+				['waste units', run.wasteUnits],
+				['waste value', run.wasteValue]
+			];
+			for (const [metric, value] of candidates) {
+				if (value > maxima[metric]) maxima[metric] = value;
+				if (value > globalMax) {
+					globalMax = value;
+					worstMetric = metric;
+					worstRun = run;
+				}
+			}
+		}
+		items.push({
+			id: 'boundedness',
+			passed: globalMax < thresholds.absCeiling,
+			detail: `max |cash| ${maxima.cash}, max principal ${maxima.principal}, max cumulative imports ${maxima['cumulative imports']}, max waste ${maxima['waste units']}u/${maxima['waste value']} over ${report.runs.length} runs; ceiling ${thresholds.absCeiling}${worstRun ? `; worst: ${worstMetric} on seed ${worstRun.seed} ${worstRun.archetypeId}/${worstRun.bot}` : ''}`
+		});
+	}
+
+	// Item 3 — managed-vs-idle: per archetype, retail-steady must beat idle
+	// (strictly) on days 61–90 operating income in the required share of paired
+	// seeds; seeds without both runs are excluded from the denominator.
+	{
+		const parts: string[] = [];
+		let passed = true;
+		for (const archetypeId of SWEEP_ARCHETYPES) {
+			const managedBySeed = new Map<number, RunMeasurement>();
+			const idleBySeed = new Map<number, RunMeasurement>();
+			for (const run of report.runs) {
+				if (run.archetypeId !== archetypeId) continue;
+				if (run.bot === 'retail-steady') managedBySeed.set(run.seed, run);
+				else if (run.bot === 'idle') idleBySeed.set(run.seed, run);
+			}
+			const pairedSeeds = [...managedBySeed.keys()]
+				.filter((seed) => idleBySeed.has(seed))
+				.sort((a, b) => a - b);
+			if (pairedSeeds.length === 0) continue;
+			let wins = 0;
+			for (const seed of pairedSeeds) {
+				if (
+					managedBySeed.get(seed)!.operatingIncomeDays61To90 >
+					idleBySeed.get(seed)!.operatingIncomeDays61To90
+				) {
+					wins += 1;
+				}
+			}
+			const share = wins / pairedSeeds.length;
+			if (share < thresholds.viabilitySeedShare) passed = false;
+			parts.push(`${archetypeId} ${wins}/${pairedSeeds.length} (${fmtShare(share)})`);
+		}
+		const [startDay, endDay] = thresholds.incomePairDays;
+		items.push({
+			id: 'managed-vs-idle',
+			passed,
+			detail: `days ${startDay}-${endDay} operating income, retail-steady > idle per seed: ${parts.join(', ') || 'no pairs'}`
+		});
+	}
+
+	// Item 4 — opening forecast: share of complete eligible openings within
+	// the tolerance. Eligible = replenishing bots (retail-steady/advisor,
+	// founding + expansion); idle openings and incomplete windows are
+	// excluded but counted in the detail. Recomputed from relativeError so
+	// the thresholds parameter is honored (null errors never count).
+	{
+		const outcomes = report.runs
+			.filter((run) => run.bot !== 'idle')
+			.flatMap((run) => run.forecastOutcomes);
+		const complete = outcomes.filter((outcome) => outcome.complete);
+		const within = complete.filter(
+			(outcome) =>
+				outcome.relativeError !== null &&
+				Math.abs(outcome.relativeError) <= thresholds.forecastTolerance
+		).length;
+		const incomplete = outcomes.length - complete.length;
+		const idleOpenings = report.runs
+			.filter((run) => run.bot === 'idle')
+			.reduce((total, run) => total + run.forecastOutcomes.length, 0);
+		const share = complete.length === 0 ? null : within / complete.length;
+		items.push({
+			id: 'forecast',
+			passed: share !== null && share >= thresholds.viabilitySeedShare,
+			detail: `${within}/${complete.length}/${outcomes.length} eligible openings within ±${thresholds.forecastTolerance * 100}% (share ${share === null ? 'n/a' : fmtShare(share)}); excluded-and-counted: ${incomplete} incomplete, ${idleOpenings} idle openings`
+		});
+	}
+
+	// Item 5 — advisor: clean = no ≥7-day producer stall after the first
+	// applied build AND no repeated rejected recommendation. The harness's
+	// coarse served-chain proxy — runs that never build also count as clean;
+	// refine in Step 4 if that proves misleading.
+	{
+		const advisorRuns = report.runs.filter((run) => run.bot === 'advisor');
+		const clean = advisorRuns.filter(
+			(run) => run.producerStall === null && run.advisorRepeatedNoOp === null
+		).length;
+		const share = advisorRuns.length === 0 ? null : clean / advisorRuns.length;
+		const stalls = advisorRuns.filter((run) => run.producerStall !== null).length;
+		const noOps = advisorRuns.filter((run) => run.advisorRepeatedNoOp !== null).length;
+		items.push({
+			id: 'advisor',
+			passed: share !== null && share >= thresholds.advisorSeedShare,
+			detail: `${clean}/${advisorRuns.length} advisor runs without a ≥7d producer stall or repeated rejected recommendation (share ${share === null ? 'n/a' : fmtShare(share)}; ${stalls} stalled, ${noOps} repeated no-ops)`
+		});
+	}
+
+	return {
+		items,
+		scenarioGuardrails: 'out of scope (scenario tests)',
+		allPassed: items.every((item) => item.passed)
 	};
 }
 
@@ -523,20 +762,31 @@ export function renderSweepMarkdown(report: SweepReport): string {
 		);
 	}
 	lines.push('');
+	const verdict = evaluateGateA(report);
+	lines.push('## Gate A verdict');
+	lines.push('');
+	for (const item of verdict.items) {
+		lines.push(`- ${item.id}: ${item.passed ? 'PASS' : 'FAIL'} — ${item.detail}`);
+	}
+	lines.push(`- scenario guardrails: ${verdict.scenarioGuardrails}`);
+	lines.push(
+		`- overall: ${verdict.allPassed ? 'PASS' : 'FAIL'} (${verdict.items.filter((item) => item.passed).length}/${verdict.items.length} items passed)`
+	);
+	lines.push('');
 	lines.push('## Per-run results');
 	lines.push('');
 	lines.push(
-		'| seed | archetype | bot | pos7 | pos30 | negCash | minCash (day) | d30 cash | d90 cash | d365 cash | missed | stockout | waste | forecast in±25% |'
+		'| seed | archetype | bot | pos7 | pos30 | negCash | minCash (day) | d30 cash | d90 cash | d365 cash | missed | stockout | waste | forecast in±25% | maxAbs | maxDebt | cumImports | d61-90 inc |'
 	);
 	lines.push(
-		'| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+		'| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
 	);
 	for (const run of report.runs) {
 		const at = (day: (typeof CHECKPOINT_DAYS)[number]) =>
 			run.checkpoints.find((checkpoint) => checkpoint.day === day)?.cash ?? null;
 		const overall = groupStat(run.forecastOutcomes);
 		lines.push(
-			`| ${run.seed} | ${run.archetypeId} | ${run.bot} | ${fmtWindow(run.firstPositiveWindow7)} | ${fmtWindow(run.firstPositiveWindow30)} | ${run.firstNegativeCashDay ?? '-'} | ${fmtCash(run.minimumCash)} (${run.minimumCashDay ?? '-'}) | ${fmtCash(at(30))} | ${fmtCash(at(90))} | ${fmtCash(at(365))} | ${fmtPct(run.missedDemandShare)} | ${fmtPct(run.stockoutShare)} | ${run.wasteUnits}u/${fmtCash(run.wasteValue)} | ${fmtErrorStat(overall)} |`
+			`| ${run.seed} | ${run.archetypeId} | ${run.bot} | ${fmtWindow(run.firstPositiveWindow7)} | ${fmtWindow(run.firstPositiveWindow30)} | ${run.firstNegativeCashDay ?? '-'} | ${fmtCash(run.minimumCash)} (${run.minimumCashDay ?? '-'}) | ${fmtCash(at(30))} | ${fmtCash(at(90))} | ${fmtCash(at(365))} | ${fmtPct(run.missedDemandShare)} | ${fmtPct(run.stockoutShare)} | ${run.wasteUnits}u/${fmtCash(run.wasteValue)} | ${fmtErrorStat(overall)} | ${fmtCash(run.maxAbsCash)} | ${fmtCash(run.maxOutstandingPrincipal)} | ${fmtCash(run.cumulativeImportSpend)} | ${fmtCash(run.operatingIncomeDays61To90)} |`
 		);
 	}
 	lines.push('');
