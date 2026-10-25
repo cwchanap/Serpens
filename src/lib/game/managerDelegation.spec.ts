@@ -1110,3 +1110,112 @@ describe('manager delegation edge cases', () => {
 		expect(result.game).toBe(game);
 	});
 });
+
+describe('protect-availability inventory growth (HPA-502)', () => {
+	// HPA-502 step 1: a staff-limited store with full shelves loses demand to
+	// sales capacity, not to empty shelves (`stockoutLostDemand = 0`), so more
+	// inventory can never solve it and must not receive an inventory proposal.
+	// RED by design against current code: `hasAvailabilityPressure` treats any
+	// `demandMissed > 0` as availability pressure (managerDelegation.ts:368).
+	test('capacity-lost demand with full shelves receives no inventory proposal', () => {
+		const base = createNewGame('convenience', 140);
+		const game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: [product('bottled-water', { lots: [{ receivedDay: 1, quantity: 20 }] })]
+				})),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 10, demandMissed: 25, stockoutLostDemand: 0 })
+				])
+			]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records.filter((record) => record.change.kind === 'inventory-targets')).toEqual(
+			[]
+		);
+		const after = result.game.stores[0]!.products[0]!;
+		expect(after.targetStock).toBe(20);
+		expect(after.reorderThreshold).toBe(10);
+	});
+
+	// HPA-502 step 1: sustained availability pressure must not compound
+	// targetStock/reorderThreshold beyond a 7-day bound of sellable demand
+	// (`unitsSold + stockoutLostDemand`). RED by design: the protect-availability
+	// playbook grows both by max(value + 1, ceil(value * 1.1)) on every pressured
+	// day (managerDelegation.ts:376), so 30 pressured days compound 20 -> 419.
+	test('sustained availability pressure bounds inventory targets to 7-day sellable demand', () => {
+		const base = createNewGame('convenience', 141);
+		let game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: [product('bottled-water')]
+				})),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 10, demandMissed: 2, stockoutLostDemand: 2 })
+				])
+			]
+		);
+
+		for (let iteration = 0; iteration < 30; iteration += 1) {
+			game = applyManagerDelegations(game).game;
+		}
+
+		const bound = 7 * (10 + 2);
+		const after = game.stores[0]!.products[0]!;
+		expect(after.targetStock).toBeLessThanOrEqual(bound);
+		expect(after.reorderThreshold).toBeLessThanOrEqual(bound);
+	});
+
+	// HPA-502 step 1 regression (passing): city-scoped delegation must keep
+	// covering stores opened after the delegation was created, matching the
+	// balance-harness bot's city scope (tests/balance/bots.ts).
+	test('city-scoped protect-availability covers stores opened later', () => {
+		let game = addStore(createNewGame('convenience', 142), 'store-2');
+		game = {
+			...game,
+			stores: game.stores.map((store) => ({
+				...store,
+				products: [product('bottled-water')]
+			}))
+		};
+		game = withLatestReport(
+			{
+				...game,
+				managerDelegations: [
+					delegation({
+						scope: { kind: 'city', cityId: 'harbor-city' },
+						playbook: 'protect-availability',
+						authority: authority({ pricing: false, staffing: false, supply: false })
+					})
+				]
+			},
+			[
+				storeReport('store-1', {}, [productReport('bottled-water', { stockoutLostDemand: 3 })]),
+				storeReport('store-2', {}, [productReport('bottled-water', { stockoutLostDemand: 1 })])
+			]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records.map((record) => record.conflictKey)).toEqual([
+			'inventory:store-1:bottled-water',
+			'inventory:store-2:bottled-water'
+		]);
+		expect(result.records.every((record) => record.outcome === 'applied')).toBe(true);
+		for (const store of result.game.stores) {
+			expect(store.products[0]!.targetStock).toBeGreaterThan(20);
+		}
+	});
+});
