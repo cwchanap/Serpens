@@ -5,7 +5,7 @@
 **Starting point:** Serpens `main@4cc858e` (after merged PRs #65 and #66)  
 **Companion plan:** `docs/superpowers/plans/2026-10-24-economy-tuning-followup.md`  
 **Prior design:** `docs/superpowers/specs/2026-10-20-balance-harness-design.md`  
-**Status:** proposed; Gate A approval has **not** been established
+**Status:** approved (Gate A)
 
 ## Why this follow-up PR exists
 
@@ -81,3 +81,13 @@ Use the current scenario catalog and official seeds: First Profit, Import Squeez
 ## Evidence to require at completion
 
 Retain an unchanged-baseline vs after comparison by archetype/bot with all 50 seeds, forecast-error breakdowns by archetype/district/strategy (with idle/incomplete exclusions counted), daily and cumulative boundedness exceptions with traced causes, and stalls; record before/after rationale for every economy constant/formula touched and seven scenario advance-only/reference outcomes. Include focused deterministic regression tests, `bun run check`, `bun run lint`, `bun run test:coverage`, and affected retail/scenario Playwright flows. Test results are claims only after they are actually run.
+
+## Gate A decision record
+
+**Approved 2026-10-25** (session ledger Ruling 1; full-plan execution dispatched on this PR). The Gate A items 1–6 above are approved **as proposed with no numeric changes**.
+
+- Low-price demand-volume calibration for convenience/grocery is **authorized in scope** (per item 1), sequenced after the manager fix and before forecast validation.
+- Forecast eligibility confirmed: **founding + expansion** openings of replenishing strategies (`retail-steady`/`advisor`) count; idle and incomplete windows are excluded and counted.
+- The days 61–90 operating-income **vs-idle pairing** is confirmed as the managed-viability comparison.
+- The boundedness ceiling is a **measurement target, not an engine clamp**; breaches are traced per seed/archetype/strategy.
+- Baseline provenance re-verified 2026-10-25: a 120-day seed-20260503 spot-check reproduces the committed baseline exactly on all shared day≤120 metrics; HPA-511 owns the four newer scenario catalog entries (all seven stay in this PR for calibration).
