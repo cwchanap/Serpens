@@ -338,7 +338,13 @@ describe('manager proposals', () => {
 						...withProducts(createNewGame('convenience', 59), [product()]),
 						managerDelegations: [delegation({ playbook: 'protect-availability' })]
 					},
-					[storeReport('store-1', {}, [productReport('bottled-water', { stockoutLostDemand: 3 })])]
+					// HPA-502: sellable demand 6/day → cap 42, so the default target
+					// of 20 still grows one step to 22 within the bound.
+					[
+						storeReport('store-1', {}, [
+							productReport('bottled-water', { unitsSold: 3, stockoutLostDemand: 3 })
+						])
+					]
 				),
 				change: 'inventory-targets',
 				assertion: (result) =>
@@ -462,7 +468,11 @@ describe('manager authority', () => {
 			playbook: 'protect-availability',
 			authority: authority({ inventory: false }),
 			game: withLatestReport(withProducts(createNewGame('convenience', 71), [product()]), [
-				storeReport('store-1', {}, [productReport('bottled-water', { stockoutLostDemand: 2 })])
+				// HPA-502: sellable demand 4/day → cap 28 keeps the default target
+				// of 20 eligible for a (here authority-blocked) proposal.
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 2, stockoutLostDemand: 2 })
+				])
 			])
 		},
 		{
@@ -609,7 +619,12 @@ describe('truthful manager application', () => {
 				...withProducts(createNewGame('convenience', 90), [product()]),
 				managerDelegations: [delegation({ playbook: 'protect-availability' })]
 			},
-			[storeReport('store-1', {}, [productReport('bottled-water', { stockoutLostDemand: 1 })])]
+			// HPA-502: sellable demand 6/day → cap 42 above the default target 20.
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 3, stockoutLostDemand: 3 })
+				])
+			]
 		);
 
 		const result = applyManagerDelegations(game);
@@ -628,7 +643,12 @@ describe('truthful manager application', () => {
 				]),
 				managerDelegations: [delegation({ playbook: 'protect-availability' })]
 			},
-			[storeReport('store-1', {}, [productReport('bottled-water', { stockoutLostDemand: 1 })])]
+			// HPA-502: sellable demand 6/day → cap 42 above target 10.
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 3, stockoutLostDemand: 3 })
+				])
+			]
 		);
 
 		const result = applyManagerDelegations(game);
@@ -648,7 +668,16 @@ describe('truthful manager application', () => {
 				]),
 				managerDelegations: [delegation({ playbook: 'protect-availability' })]
 			},
-			[storeReport('store-1', {}, [productReport('bottled-water', { stockoutLostDemand: 1 })])]
+			// HPA-502: demand cap must exceed the max target so the proposal is
+			// still built (and rejected by the inventory transition, not the cap).
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', {
+						unitsSold: Number.MAX_SAFE_INTEGER,
+						stockoutLostDemand: 1
+					})
+				])
+			]
 		);
 
 		const result = applyManagerDelegations(game);
@@ -1052,7 +1081,8 @@ describe('manager delegation edge cases', () => {
 			[
 				storeReport('store-1', {}, [
 					{ productId: 'bottled-water' } as DailyProductReport,
-					{ productId: 'snacks', stockoutLostDemand: 1 } as DailyProductReport
+					// HPA-502: sellable demand 3/day → cap 21 above target 10.
+					{ productId: 'snacks', unitsSold: 2, stockoutLostDemand: 1 } as DailyProductReport
 				])
 			]
 		);
@@ -1203,7 +1233,11 @@ describe('protect-availability inventory growth (HPA-502)', () => {
 			},
 			[
 				storeReport('store-1', {}, [productReport('bottled-water', { stockoutLostDemand: 3 })]),
-				storeReport('store-2', {}, [productReport('bottled-water', { stockoutLostDemand: 1 })])
+				// HPA-502: sellable demand 3/day → cap 21, so both stores grow one
+				// step to 21 — later stores covered and bounded per store.
+				storeReport('store-2', {}, [
+					productReport('bottled-water', { unitsSold: 2, stockoutLostDemand: 1 })
+				])
 			]
 		);
 
@@ -1216,6 +1250,157 @@ describe('protect-availability inventory growth (HPA-502)', () => {
 		expect(result.records.every((record) => record.outcome === 'applied')).toBe(true);
 		for (const store of result.game.stores) {
 			expect(store.products[0]!.targetStock).toBeGreaterThan(20);
+			expect(store.products[0]!.targetStock).toBeLessThanOrEqual(21);
 		}
+	});
+
+	// HPA-502 rule: a true stockout (empty shelves, `stockoutLostDemand > 0`)
+	// still earns a proposal — bounded by 7 × sellable demand, threshold ≤ target.
+	test('a true stockout on empty shelves receives a bounded proposal', () => {
+		const base = createNewGame('convenience', 143);
+		const game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: [product('bottled-water', { lots: [{ receivedDay: 1, quantity: 0 }] })]
+				})),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 4, stockoutLostDemand: 5 })
+				])
+			]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records.map((record) => record.change.kind)).toEqual(['inventory-targets']);
+		expect(result.records[0]?.outcome).toBe('applied');
+		const after = result.game.stores[0]!.products[0]!;
+		expect(after.targetStock).toBeLessThanOrEqual(7 * (4 + 5));
+		expect(after.targetStock).toBeGreaterThan(20);
+		expect(after.reorderThreshold).toBeLessThanOrEqual(after.targetStock);
+	});
+
+	// HPA-502 rule: 90 pressured days must converge on the demand bound and stay
+	// there — no compounding, no oscillation, and once converged the pressured
+	// day produces no proposal at all (idempotent).
+	test('90 days of sustained pressure converge on the bound and stay put', () => {
+		const base = createNewGame('convenience', 144);
+		let game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: [product('bottled-water')]
+				})),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 10, demandMissed: 2, stockoutLostDemand: 2 })
+				])
+			]
+		);
+
+		for (let iteration = 0; iteration < 90; iteration += 1) {
+			game = applyManagerDelegations(game).game;
+		}
+
+		const bound = 7 * (10 + 2);
+		const after = game.stores[0]!.products[0]!;
+		expect(after.targetStock).toBeLessThanOrEqual(bound);
+		expect(after.reorderThreshold).toBeLessThanOrEqual(bound);
+		expect(after.targetStock).toBeGreaterThan(20);
+
+		const converged = applyManagerDelegations(game);
+		expect(converged.records).toEqual([]);
+		expect(converged.game.stores[0]!.products[0]!.targetStock).toBe(after.targetStock);
+		expect(converged.game.stores[0]!.products[0]!.reorderThreshold).toBe(after.reorderThreshold);
+	});
+
+	// HPA-502 rule: a legacy-inflated target above the bound holds — growth is
+	// bounded, never shrunk, and no proposal/record is produced.
+	test('a legacy-inflated target above the bound holds instead of growing or shrinking', () => {
+		const base = createNewGame('convenience', 145);
+		const game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: [product('bottled-water', { reorderThreshold: 100, targetStock: 500 })]
+				})),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 10, demandMissed: 40, stockoutLostDemand: 2 })
+				])
+			]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game.stores[0]!.products[0]!.targetStock).toBe(500);
+		expect(result.game.stores[0]!.products[0]!.reorderThreshold).toBe(100);
+	});
+
+	// HPA-502 rule: short report history averages the available days (2 here).
+	test('short report history bounds using the available days', () => {
+		const base = createNewGame('convenience', 146);
+		const latest = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: [product('bottled-water')]
+				})),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 6, stockoutLostDemand: 2 })
+				])
+			]
+		);
+		const game = {
+			...latest,
+			reports: [
+				{
+					day: base.day - 2,
+					operatingCashFlow: 100,
+					storeReports: [
+						storeReport('store-1', {}, [
+							productReport('bottled-water', { unitsSold: 4, stockoutLostDemand: 2 })
+						])
+					]
+				} as DailyReport,
+				...latest.reports
+			]
+		};
+
+		const result = applyManagerDelegations(game);
+
+		// avg sellable (6 + 8) / 2 = 7 → cap 49 above the default target 20.
+		expect(result.records[0]?.outcome).toBe('applied');
+		const after = result.game.stores[0]!.products[0]!;
+		expect(after.targetStock).toBeLessThanOrEqual(49);
+		expect(after.targetStock).toBeGreaterThan(20);
+	});
+
+	// HPA-502 rule: with no reports at all there is no proposal and no change.
+	test('a game with no reports receives no proposal', () => {
+		const game = {
+			...createNewGame('convenience', 147),
+			managerDelegations: [delegation({ playbook: 'protect-availability' })]
+		};
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records).toEqual([]);
+		expect(result.game).toBe(game);
 	});
 });
