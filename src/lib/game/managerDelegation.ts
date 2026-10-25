@@ -3,7 +3,7 @@ import { compareWorldCityIds, getCityInventory } from './cityInventory';
 import { appendBoundedHistory } from './eventHistory';
 import { getProductDefinition } from './products';
 import { resolveEffectivePolicy, setPolicyOverride, stepPolicyValue } from './policyInheritance';
-import { setRetailSupplySource } from './retailSupply';
+import { REPLENISHMENT_INTERVAL_DAYS, setRetailSupplySource } from './retailSupply';
 import { updateStoreProduct } from './stock';
 import { getWorldCityDefinition } from './worldCatalog';
 import type {
@@ -204,11 +204,15 @@ function buildStoreProposal(
 			if (selected && hasAvailabilityPressure(selected)) {
 				const before = findProduct(game, storeId, selected.productId);
 				if (!before) return null;
+				// HPA-502: proposals are bounded by recent sellable demand. Without
+				// report history — or when the current target already exceeds the
+				// bound — no proposal is made: growth is bounded, never shrunk.
+				const demandCap = getSellableDemandCap(game, storeId, selected.productId);
+				if (demandCap === null || before.targetStock > demandCap) return null;
 				const proposed = {
-					reorderThreshold: increaseStockValue(before.reorderThreshold),
-					targetStock: increaseStockValue(before.targetStock)
+					reorderThreshold: Math.min(demandCap, increaseStockValue(before.reorderThreshold)),
+					targetStock: Math.min(demandCap, increaseStockValue(before.targetStock))
 				};
-				/* c8 ignore next */
 				if (sameInventoryValues(before, proposed)) return null;
 				return {
 					delegation,
@@ -365,8 +369,45 @@ function selectLowestUnitsSoldProduct(
 	);
 }
 
+// HPA-502: availability pressure is empty-shelf loss only. `demandMissed`
+// also contains staff/sales-capacity loss that more inventory cannot fix;
+// that belongs to the staffing fallback below, never an inventory proposal.
 function hasAvailabilityPressure(product: DailyProductReport): boolean {
-	return (product.stockoutLostDemand ?? 0) > 0 || (product.demandMissed ?? 0) > 0;
+	return (product.stockoutLostDemand ?? 0) > 0;
+}
+
+/**
+ * HPA-502: ceil(7 × average recent daily sellable demand) for one store
+ * product, from the retained daily reports. Sellable demand is
+ * `unitsSold + stockoutLostDemand` (never `demandMissed`). Seven days matches
+ * the replenishment cadence, so the bound covers one full order cycle; the
+ * ceil's fractional rounding is the entire stock margin (flat 12/day demand
+ * caps at exactly 84) — no additive margin is added on top. Short history
+ * averages the available days; no report entry for the product returns null
+ * (no proposal).
+ */
+function getSellableDemandCap(
+	game: GameState,
+	storeId: string,
+	productId: ProductId
+): number | null {
+	const sellableByDay = game.reports
+		.slice(-REPLENISHMENT_INTERVAL_DAYS)
+		.flatMap((report) =>
+			(report.storeReports ?? [])
+				.filter((storeReport) => storeReport.storeId === storeId)
+				.flatMap((storeReport) =>
+					(storeReport.productReports ?? [])
+						.filter((productReport) => productReport.productId === productId)
+						.map(
+							(productReport) =>
+								(productReport.unitsSold ?? 0) + (productReport.stockoutLostDemand ?? 0)
+						)
+				)
+		);
+	if (sellableByDay.length === 0) return null;
+	const totalSellable = sellableByDay.reduce((total, sellable) => total + sellable, 0);
+	return Math.ceil((REPLENISHMENT_INTERVAL_DAYS * totalSellable) / sellableByDay.length);
 }
 
 function hasNearStaffCapacity(report: DailyStoreReport): boolean {
