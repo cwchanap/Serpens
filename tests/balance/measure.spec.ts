@@ -14,11 +14,17 @@ import { runBot } from './bots';
 import type { BotLedger, OpeningRecord } from './bots';
 import {
 	buildSweepReport,
+	evaluateGateA,
 	FORECAST_ERROR_BAND,
 	FORECAST_OBSERVATION_DAYS,
+	GATE_A_THRESHOLDS,
 	measureRun,
 	mergeSweepReports,
-	renderSweepMarkdown
+	renderSweepMarkdown,
+	type GateAItemVerdict,
+	type OpeningForecastOutcome,
+	type RunMeasurement,
+	type SweepReport
 } from './measure';
 
 const SEED = 424_242;
@@ -609,5 +615,305 @@ describe('deterministic serialization (HPA-502 Stage 3)', () => {
 		expect(renderSweepMarkdown(merged)).toBe(
 			renderSweepMarkdown(buildSweepReport([1, 2], 3, results))
 		);
+	});
+});
+
+describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
+	function gateRun(
+		overrides: Partial<RunMeasurement> & Pick<RunMeasurement, 'seed' | 'archetypeId' | 'bot'>
+	): RunMeasurement {
+		return {
+			foundingTileId: 'tile-a1',
+			daysSimulated: 365,
+			foundingCash: 20_000,
+			firstPositiveWindow7: null,
+			firstPositiveWindow30: null,
+			firstNegativeCashDay: null,
+			minimumCash: 1_000,
+			minimumCashDay: 10,
+			checkpoints: [],
+			missedDemandShare: null,
+			stockoutShare: null,
+			wasteUnits: 0,
+			wasteValue: 0,
+			maxAbsCash: 20_000,
+			maxOutstandingPrincipal: 8_000,
+			cumulativeImportSpend: 1_000,
+			operatingIncomeDays61To90: 0,
+			forecastOutcomes: [],
+			forecastByArchetype: {},
+			forecastByNeighborhood: {},
+			advisorRepeatedNoOp: null,
+			producerStall: null,
+			...overrides
+		};
+	}
+
+	function gateReport(runs: RunMeasurement[]): SweepReport {
+		return {
+			config: { seeds: [...new Set(runs.map((run) => run.seed))].sort((a, b) => a - b), days: 365 },
+			runs
+		};
+	}
+
+	function item(report: SweepReport, id: string): GateAItemVerdict {
+		const match = evaluateGateA(report).items.find((candidate) => candidate.id === id);
+		expect(match).toBeDefined();
+		return match!;
+	}
+
+	it('locks the approved Gate A threshold values verbatim', () => {
+		expect(GATE_A_THRESHOLDS).toEqual({
+			viabilityWindowDays: 30,
+			viabilityByDay: 90,
+			viabilitySeedShare: 0.8,
+			absCeiling: 1_000_000_000,
+			incomePairDays: [61, 90],
+			forecastTolerance: 0.25,
+			advisorSeedShare: 0.8
+		});
+		expect(GATE_A_THRESHOLDS.forecastTolerance).toBe(FORECAST_ERROR_BAND);
+	});
+
+	it('viability: 4/5 seeds with a day-80 completion passes at exactly the 80% bar; 3/5 and day-91 completions fail', () => {
+		const viable = (seed: number, endDay: number): RunMeasurement =>
+			gateRun({
+				seed,
+				archetypeId: 'boutique',
+				bot: 'retail-steady',
+				firstPositiveWindow30: {
+					startDay: endDay - 29,
+					endDay,
+					operatingIncome: 10,
+					operatingCashFlow: 5
+				}
+			});
+		const atBar = [1, 2, 3, 4]
+			.map((seed) => viable(seed, 80))
+			.concat(gateRun({ seed: 5, archetypeId: 'boutique', bot: 'retail-steady' }));
+		expect(item(gateReport(atBar), 'viability').passed).toBe(true);
+		expect(item(gateReport(atBar), 'viability').detail).toContain('boutique 4/5 (80.0%)');
+
+		// Day-90 completions count (at the by-day bar); day-91 completions do
+		// not (over it): otherwise-identical 5-seed reports flip PASS → FAIL.
+		const atByDay = [1, 2, 3]
+			.map((seed) => viable(seed, 80))
+			.concat([4, 5].map((seed) => viable(seed, 90)));
+		expect(item(gateReport(atByDay), 'viability').passed).toBe(true);
+		const overByDay = [1, 2, 3]
+			.map((seed) => viable(seed, 80))
+			.concat([4, 5].map((seed) => viable(seed, 91)));
+		expect(item(gateReport(overByDay), 'viability').passed).toBe(false);
+
+		const threeFifths = [1, 2, 3]
+			.map((seed) => viable(seed, 80))
+			.concat(
+				[4, 5].map((seed) => gateRun({ seed, archetypeId: 'boutique', bot: 'retail-steady' }))
+			);
+		expect(item(gateReport(threeFifths), 'viability').passed).toBe(false);
+	});
+
+	it('boundedness: strictly below the ceiling passes; at-ceiling fails and traces the worst metric/run', () => {
+		const under = gateReport([
+			gateRun({
+				seed: 1,
+				archetypeId: 'grocery',
+				bot: 'retail-steady',
+				maxAbsCash: GATE_A_THRESHOLDS.absCeiling - 1
+			})
+		]);
+		expect(item(under, 'boundedness').passed).toBe(true);
+
+		const atCeiling = gateReport([
+			gateRun({
+				seed: 2,
+				archetypeId: 'electronics',
+				bot: 'idle',
+				maxOutstandingPrincipal: GATE_A_THRESHOLDS.absCeiling
+			})
+		]);
+		const boundedness = item(atCeiling, 'boundedness');
+		expect(boundedness.passed).toBe(false);
+		expect(boundedness.detail).toContain('max principal 1000000000');
+		expect(boundedness.detail).toContain('worst: principal on seed 2 electronics/idle');
+	});
+
+	it('managed-vs-idle: 4/5 wins passes at the bar, ties and idle wins are losses, unpaired seeds are excluded', () => {
+		const managed = (seed: number, income: number): RunMeasurement =>
+			gateRun({
+				seed,
+				archetypeId: 'convenience',
+				bot: 'retail-steady',
+				operatingIncomeDays61To90: income
+			});
+		const idle = (seed: number, income: number): RunMeasurement =>
+			gateRun({ seed, archetypeId: 'convenience', bot: 'idle', operatingIncomeDays61To90: income });
+
+		// Seeds 1-4: managed wins. Seed 5: tie (100 vs 100) — not a win. Seed 6
+		// has no idle pair, so it is excluded from the denominator: 4/5 = 80%.
+		const paired = [
+			...[1, 2, 3, 4].map((seed) => managed(seed, 300)),
+			managed(5, 100),
+			...[1, 2, 3, 4].map((seed) => idle(seed, 50)),
+			idle(5, 100),
+			managed(6, 500)
+		];
+		const atBar = item(gateReport(paired), 'managed-vs-idle');
+		expect(atBar.passed).toBe(true);
+		expect(atBar.detail).toContain('convenience 4/5 (80.0%)');
+		expect(atBar.detail).toContain('days 61-90');
+
+		// Idle strictly better on every seed: managed wins 0/5.
+		const idleWins = gateReport([
+			...[1, 2, 3, 4, 5].map((seed) => managed(seed, 100)),
+			...[1, 2, 3, 4, 5].map((seed) => idle(seed, 200))
+		]);
+		const loss = item(idleWins, 'managed-vs-idle');
+		expect(loss.passed).toBe(false);
+		expect(loss.detail).toContain('convenience 0/5 (0.0%)');
+	});
+
+	it('forecast: idle openings and incomplete windows are excluded-and-counted around the 80% share bar', () => {
+		const outcome = (overrides: Partial<OpeningForecastOutcome>): OpeningForecastOutcome => ({
+			storeId: 'store-x',
+			openedOnDay: 1,
+			neighborhood: 'downtown',
+			archetypeId: 'convenience',
+			forecastDailyRevenue: 100,
+			observedMeanDailyRevenue: null,
+			relativeError: null,
+			withinBand: false,
+			complete: false,
+			...overrides
+		});
+		const complete = (relativeError: number): OpeningForecastOutcome =>
+			outcome({
+				observedMeanDailyRevenue: 100 * (1 + relativeError),
+				relativeError,
+				withinBand: Math.abs(relativeError) <= FORECAST_ERROR_BAND,
+				complete: true
+			});
+		const managed = (seed: number, outcomes: OpeningForecastOutcome[]): RunMeasurement =>
+			gateRun({
+				seed,
+				archetypeId: 'convenience',
+				bot: 'retail-steady',
+				forecastOutcomes: outcomes
+			});
+
+		// Eligible complete = 3 (2 in band); excluded-and-counted: 1 incomplete
+		// eligible + 1 complete idle opening. 2/3 ≈ 67% < 80%.
+		const below = gateReport([
+			managed(1, [complete(0.1), complete(0.6), outcome({})]),
+			gateRun({
+				seed: 1,
+				archetypeId: 'convenience',
+				bot: 'advisor',
+				forecastOutcomes: [complete(-0.2)]
+			}),
+			gateRun({
+				seed: 1,
+				archetypeId: 'convenience',
+				bot: 'idle',
+				forecastOutcomes: [complete(0)]
+			})
+		]);
+		const failing = item(below, 'forecast');
+		expect(failing.passed).toBe(false);
+		expect(failing.detail).toContain('2/3/4 eligible openings within ±25%');
+		expect(failing.detail).toContain('share 66.7%');
+		expect(failing.detail).toContain('1 incomplete, 1 idle openings');
+
+		// 4 of 5 complete eligible in band = exactly 80% → passes.
+		const atBar = gateReport([
+			managed(1, [complete(0.1), complete(-0.2)]),
+			managed(2, [complete(0.05), complete(0.9)]),
+			gateRun({
+				seed: 2,
+				archetypeId: 'convenience',
+				bot: 'advisor',
+				forecastOutcomes: [complete(-0.1)]
+			})
+		]);
+		expect(item(atBar, 'forecast').passed).toBe(true);
+		expect(item(atBar, 'forecast').detail).toContain('4/5/5');
+	});
+
+	it('advisor: 4/5 clean runs passes at the bar; a stall or repeated no-op disqualifies its run', () => {
+		const advisor = (seed: number, overrides: Partial<RunMeasurement> = {}): RunMeasurement =>
+			gateRun({ seed, archetypeId: 'convenience', bot: 'advisor', ...overrides });
+
+		const atBar = [1, 2, 3, 4]
+			.map((seed) => advisor(seed))
+			.concat(advisor(5, { producerStall: { startDay: 100, endDay: 110, days: 11 } }));
+		const passing = item(gateReport(atBar), 'advisor');
+		expect(passing.passed).toBe(true);
+		expect(passing.detail).toContain('4/5 advisor runs');
+		expect(passing.detail).toContain('1 stalled, 0 repeated no-ops');
+
+		const below = [1, 2, 3]
+			.map((seed) => advisor(seed))
+			.concat(
+				advisor(4, {
+					advisorRepeatedNoOp: { startDay: 8, streak: 3, action: 'advisor:plan', detail: 'blocked' }
+				}),
+				advisor(5, { producerStall: { startDay: 50, endDay: 60, days: 11 } })
+			);
+		expect(item(gateReport(below), 'advisor').passed).toBe(false);
+	});
+
+	it('renders the Gate A section, is pure, and computes a stable overall verdict', () => {
+		const runs = [1, 2, 3, 4, 5]
+			.map((seed) =>
+				gateRun({
+					seed,
+					archetypeId: 'boutique',
+					bot: 'retail-steady',
+					operatingIncomeDays61To90: 300,
+					forecastOutcomes: [
+						{
+							storeId: `store-${seed}`,
+							openedOnDay: 1,
+							neighborhood: 'downtown',
+							archetypeId: 'boutique',
+							forecastDailyRevenue: 100,
+							observedMeanDailyRevenue: 110,
+							relativeError: 0.1,
+							withinBand: true,
+							complete: true
+						}
+					]
+				})
+			)
+			.concat(
+				[1, 2, 3, 4, 5].map((seed) =>
+					gateRun({ seed, archetypeId: 'boutique', bot: 'idle', operatingIncomeDays61To90: 50 })
+				)
+			)
+			.concat([gateRun({ seed: 1, archetypeId: 'convenience', bot: 'advisor' })]);
+		const report = gateReport(runs);
+		const before = JSON.stringify(report);
+		const verdict = evaluateGateA(report);
+		expect(JSON.stringify(report)).toBe(before);
+		expect(JSON.stringify(evaluateGateA(report))).toBe(JSON.stringify(verdict));
+		expect(verdict.scenarioGuardrails).toBe('out of scope (scenario tests)');
+		// No boutique retail-steady window → viability fails; the other four
+		// items pass on this fixture (idle always loses the 61–90 pairing, all
+		// forecasts in band, advisor clean).
+		expect(verdict.allPassed).toBe(false);
+		expect(verdict.items.filter((entry) => entry.passed).map((entry) => entry.id)).toEqual([
+			'boundedness',
+			'managed-vs-idle',
+			'forecast',
+			'advisor'
+		]);
+
+		const markdown = renderSweepMarkdown(report);
+		expect(markdown).toContain('## Gate A verdict');
+		expect(markdown).toContain(
+			'- viability: FAIL — 30d window complete by day 90 (retail-steady): boutique 0/5 (0.0%)'
+		);
+		expect(markdown).toContain('- scenario guardrails: out of scope (scenario tests)');
+		expect(markdown).toMatch(/^- overall: FAIL \(4\/5 items passed\)$/m);
 	});
 });
