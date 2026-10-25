@@ -11,7 +11,7 @@
 - [ ] Review `docs/balance/baseline.md` (50 seeds × 365 days × nine strategy/archetype combinations, 450 runs). Confirm no `after.md` exists and that the bot, founding selection, rail correction and command normalization already merged.
 - [ ] Re-run a **small current-main seed sample** with the existing `bun run balance --seeds 20260503 --days 120 --bots idle,retail-steady,advisor --output docs/balance/generated/spot-check`. Compare same-duration measurements carefully; this is a provenance smoke check, **not** a replacement for the committed 365-day baseline.
 - [ ] Review known anomalies: no profitable convenience/electronics/grocery managed cohort, runaway manager targets/debt/waste, forecast errors, city-level producer stall and the First Profit / Import Squeeze medal discrepancies. Confirm that HPA-511 now owns four additional catalog entries, not a separate calibration task.
-- [ ] Obtain explicit human **Gate A** approval in this PR for the design's numerical acceptance criteria, including the 80%-per-archetype viability and advisor success proposals. **Do not begin engine/economy changes without that approval.** If changed, record agreed targets in both docs before continuing.
+- [ ] Obtain explicit human **Gate A** approval in this PR for the design's numerical acceptance criteria, including the 80%-per-archetype viability, forecast eligibility limited to replenishing bots (`retail-steady`/`advisor`), the proposed <1e9 daily/cumulative boundedness ceiling, and advisor success proposals. **Do not begin engine/economy changes without that approval.** If changed, record agreed targets in both docs before continuing.
 
 ## Step 1 — targeted reproducibility and root-cause tests (no new harness)
 
@@ -32,8 +32,9 @@
 2. Stop daily exponential growth. Bound both targets, keep `reorderThreshold <= targetStock`, and avoid oscillating or abruptly resetting a healthy store when a day has zero demand.
 3. Verify receipts and player updates still pass through existing delegation/inventory transitions. Cover no-report state, sustained pressure for 90 days, multi-store city delegation, stockouts and repeated idempotent updates.
 4. Run a 20260503 120-day local smoke sweep and compare inventory targets/import spend and operating-income trends. If convenience/grocery still collapse, diagnose demand, costs and waste using the actual reports before changing further values.
+5. **Before moving to forecast work**, run the unchanged full **50-seed × 365-day** matrix as a boundedness checkpoint. Inspect daily cash and debt, cumulative import spend/waste units/waste value and demand-bounded inventory targets; derive missing sums or extrema from the existing `DailyReport` history without new engine fields. Check the proposed **absolute <1e9** numerical ceiling and count any breaches by seed/archetype/bot. Keep artifacts local; no additional committed report or runner.
 
-**Gate:** no target or waste blowup in the small sweep and no stock-policy regression. Preserve actual player semantics (not just bot behavior).
+**Gate:** behavior is bounded **through day 365** on the full matrix, not merely a 120-day single-seed smoke check. Investigate every exception or revisit the proposed threshold at Gate A; preserve actual player semantics (not just bot behavior).
 
 ## Step 3 — replace the mismatched opening revenue estimate
 
@@ -43,7 +44,7 @@
 2. Build a synchronous, pure `GameState`-aware revenue estimate from city demand/product supply, expected entrant market allocation, policy/price, stock/replenishment limit and sales capacity. Do not duplicate the entire sales simulator or mutate active state. Call out approximations explicitly.
 3. Continue using `getExpansionSetupCost` for setup price; display base operating rent (from the production `getArchetype(...).baseRent` rule) truthfully, not tile rent. Keep nullable `game` supported for founding preview; do not promise a calibrated preview without game context.
 4. Verify number formatting and forecast language in EN, JA and zh-Hant. Add per-opening seed fixtures against **14 complete days**, plus game-null and no-side-effects tests.
-5. Re-run the small matrix and compare forecast coverage. If the 80% target is missed, use an archetype/district breakdown to correct the narrowest real cause—not a global magic multiplier.
+5. Re-run the small matrix and compare forecast coverage **only for fully observed retail-steady/advisor openings**. Count idle-strategy openings and incomplete windows as excluded, preserve idle as the negative control, and break down included forecast errors by **archetype, district and bot/strategy**. If the 80% target is missed, correct the narrowest real cause—not a global magic multiplier.
 
 **Gate:** projection is directionally grounded in the same market model as gameplay and does not regress pre-founding or placement affordances.
 
@@ -55,8 +56,9 @@
 2. For advisor: first make the documented local water chain possible with existing warehouse/rail/production actions. If a producer buffer is merely full because nothing consumes it, improve the planner's next feasible action or clarify the stall measurement; if a production capacity/buffer defect genuinely blocks connected demand, fix that smallest engine rule and test it.
 3. When changing an economic constant, rerun targeted simulation + regression specs and record the change's intended and observed impact for the final changelog.
 4. Avoid changing the harness bot policy or metric definitions. If correcting a proved harness measurement bug is unavoidable, preserve/label comparability and remeasure both baseline and after with the **same** corrected definition.
+5. Repeat the **full 50-seed × 365-day boundedness checkpoint** after the remaining economy/industry changes; explicitly check the numeric cash/debt/import-spend/waste ceiling, demand-bounded inventory targets and adverse long-run trends before calibrating scenario medals. Reuse the existing reports/CLI, keep intermediate artifacts local, and trace every exception.
 
-**Gate:** viability, boundedness and local-supply targets approved at Gate A are evidenced on small seeds before spending time on the full sweep.
+**Gate:** viability and local-supply targets are supported by focused seed runs, and boundedness is independently checked through **day 365** across the full sweep—not deferred until Step 6.
 
 ## Step 5 — replay and recalibrate **all seven** scenarios
 
@@ -71,7 +73,7 @@
 ## Step 6 — full measured comparison, verification and review
 
 1. Run exactly the baseline's documented 50 seeds, 365 days, four archetypes × idle/retail-steady and convenience × advisor. Use `bun run balance` with the committed seed range and `--output docs/balance/generated/after-sweep`. Generated JSON stays ignored; repeat and compare byte-for-byte output.
-2. Commit `docs/balance/after.md` containing per-archetype/strategy summaries, Gate A target pass/fail, error distributions, advisor completion, exceptions, and strict baseline comparability notes. Add `docs/balance/tuning-changelog.md` describing each production change and why it affected results.
+2. Commit `docs/balance/after.md` containing per-archetype/strategy summaries, Gate A target pass/fail, forecast errors by archetype/district/strategy (with excluded idle/incomplete counts), daily/cumulative boundedness ceiling breaches, advisor completion, exceptions, and strict baseline comparability notes. Add `docs/balance/tuning-changelog.md` describing each production change and why it affected results.
 3. Verify that idle still behaves as an honest negative control and that profitable boutique runs have not regressed. If any target fails, document and resolve the cause instead of declaring an arbitrary successful sweep.
 4. Run and record: `bun run check`, `bun run lint`, `bun run test:unit -- --run`, `bun run test:coverage`, and affected Playwright `retail-sim.e2e.ts` and scenario flows. No tests are claimed passed in this planning-only commit.
 5. Review final diff for speculative abstraction, duplicated market formulas, misleading copy and unrelated scope. Complete tuning, reports, scenario calibration and review **inside this PR**, then mark ready and close HPA-502 only after acceptance is verified. HPA-318 stays blocked until then.
@@ -87,8 +89,8 @@
 
 - [ ] Gate A explicitly approved and threshold decisions preserved in PR.
 - [ ] Retail-steady viability meets agreed full 30-day income criteria across each archetype.
-- [ ] Stock targets, import spend, waste and finance remain numerically bounded; policy is shared with live play.
-- [ ] At least agreed fraction of fully observed opening forecasts is within ±25%.
+- [ ] Stock targets stay demand-bounded and all daily/cumulative cash, debt, import spend and waste values meet the approved explicit numerical ceiling through day 365 for the full matrix; policy is shared with live play.
+- [ ] At least the agreed fraction of fully observed **retail-steady/advisor** opening forecasts is within ±25%; idle/incomplete exclusions are counted and archetype/district/strategy breakdowns are provided.
 - [ ] Advisor accomplishes meaningful local supply without repeated rejected recommendations; stalls correctly classified.
 - [ ] Seven official-seed scenarios: advance-only below Silver, legal reference Gold.
 - [ ] Identical, reproducible baseline/after definitions and committed after-report/changelog.
