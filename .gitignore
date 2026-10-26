@@ -37,3 +37,4 @@ test-results
 
 # Balance harness sweep artifacts (JSON stays local, only curated baseline.md is committed)
 docs/balance/generated/
+.superpowers/sdd/2026-10-24-economy-tuning-followup/scratch/

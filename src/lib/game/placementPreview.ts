@@ -18,6 +18,7 @@ import {
 	type OpeningEstimate
 } from './placement';
 import { getExpansionSetupCost } from './state';
+import { buildCityDemandPools } from './stock';
 import {
 	assessCredit,
 	FOUNDING_LOAN_TERM_DAYS,
@@ -43,6 +44,7 @@ import type {
 	IndustrialBuildingTypeId,
 	IndustryCity,
 	IndustryResourceId,
+	RetailDemandProfile,
 	Store
 } from './types';
 
@@ -319,6 +321,24 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	// market estimate repeat per tile.
 	const foundingBases = new Map<ArchetypeId, FoundingBase>();
 	const foundingSeed = input.seed ?? 0;
+	// Demand pools depend only on the archetype's carried products + world
+	// modifiers, never on the entrant's tile, so compute them once per
+	// archetype per menu build. Recomputing per tile made the menu an
+	// O(cityTiles × archetypes) city scan (HPA-502 fix round 1).
+	const demandPoolsByArchetype = new Map<ArchetypeId, RetailDemandProfile>();
+	const demandPoolsFor = (
+		archetypeId: ArchetypeId,
+		entrantGame: GameState
+	): RetailDemandProfile => {
+		let pools = demandPoolsByArchetype.get(archetypeId);
+
+		if (!pools) {
+			pools = buildCityDemandPools(entrantGame, input.city);
+			demandPoolsByArchetype.set(archetypeId, pools);
+		}
+
+		return pools;
+	};
 	const estimateForTile = (tile: CityTile, archetypeId: ArchetypeId): OpeningEstimate => {
 		if (context.game === null) {
 			let base = foundingBases.get(archetypeId);
@@ -329,13 +349,15 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 			}
 
 			const entrant = placeStoreOnTile(base.baseStore, tile);
+			const entrantGame = { ...base.game, stores: [entrant] };
 
 			return estimateOpeningForEntrant({
-				entrantGame: { ...base.game, stores: [entrant] },
+				entrantGame,
 				entrant,
 				city: input.city,
 				tile,
-				archetypeId
+				archetypeId,
+				pools: demandPoolsFor(archetypeId, entrantGame)
 			});
 		}
 
@@ -345,7 +367,8 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 			...projected,
 			city: input.city,
 			tile,
-			archetypeId
+			archetypeId,
+			pools: demandPoolsFor(archetypeId, projected.entrantGame)
 		});
 	};
 
