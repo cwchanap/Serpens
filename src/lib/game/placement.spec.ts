@@ -1,13 +1,18 @@
 import { describe, expect, test } from 'vitest';
 import { generateCity, isTileBuildable } from './city';
 import { deeplyEqual } from './equality';
+import { buildCityDemandPools } from './stock';
 import {
 	createFoundingGameAtTile,
+	deriveFoundingBase,
+	estimateOpeningForEntrant,
 	estimateOpeningRevenue,
 	financeRetailStoreOpening,
 	forecastOpening,
 	getRecommendedArchetypes,
-	openStoreAtTile
+	openStoreAtTile,
+	placeStoreOnTile,
+	projectExpansionEntrant
 } from './placement';
 import { simulateDay } from './simulateDay';
 import { assignStaffToStore, getStaffingRequirement, hireCandidate } from './staffing';
@@ -953,5 +958,63 @@ describe('estimateOpeningRevenue', () => {
 			baseline.perProduct[0]!.desiredUnitsPerDay
 		);
 		expect(contested.projectedDailyRevenue).toBeLessThan(baseline.projectedDailyRevenue);
+	});
+});
+
+describe('estimateOpeningForEntrant', () => {
+	const SEED = 20260503;
+
+	test('accepts precomputed demand pools and returns bit-identical estimates', () => {
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: SEED
+		});
+		// Deterministic sample across the map: pools must not depend on the
+		// entrant's tile, so the parametrized path equals the self-computing
+		// path on every tile.
+		const tiles = city.tiles.filter(isTileBuildable).filter((_, index) => index % 7 === 0);
+		expect(tiles.length).toBeGreaterThan(8);
+
+		// Founding base and an existing game are tile-independent; derive once.
+		const base = deriveFoundingBase({ archetypeId: 'boutique', city, seed: SEED });
+		const founded = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: tiles[0]!.id,
+			seed: SEED
+		});
+
+		for (const tile of tiles) {
+			// Founding path: entrant derived from the tile-independent base.
+			const entrant = placeStoreOnTile(base.baseStore, tile);
+			const entrantGame = { ...base.game, stores: [entrant] };
+			expect(
+				estimateOpeningForEntrant({
+					entrantGame,
+					entrant,
+					city,
+					tile,
+					archetypeId: 'boutique',
+					pools: buildCityDemandPools(entrantGame, city)
+				})
+			).toEqual(
+				estimateOpeningForEntrant({ entrantGame, entrant, city, tile, archetypeId: 'boutique' })
+			);
+
+			// Expansion path: entrant projected from an existing game.
+			const projected = projectExpansionEntrant(founded, tile, 'grocery');
+			expect(
+				estimateOpeningForEntrant({
+					...projected,
+					city,
+					tile,
+					archetypeId: 'grocery',
+					pools: buildCityDemandPools(projected.entrantGame, city)
+				})
+			).toEqual(estimateOpeningForEntrant({ ...projected, city, tile, archetypeId: 'grocery' }));
+		}
 	});
 });

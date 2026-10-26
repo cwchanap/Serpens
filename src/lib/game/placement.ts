@@ -48,6 +48,7 @@ import type {
 	ProductDefinition,
 	ProductId,
 	ProductStockLot,
+	RetailDemandProfile,
 	Store,
 	StoreLocation,
 	StoreProduct
@@ -236,6 +237,11 @@ export function estimateOpeningRevenue(input: {
  * Core estimator over a preassembled entrant state (entrant already included
  * in `entrantGame`'s stores exactly once). Exposed for callers that derive
  * many entrants from one expensive founding base (placement previews).
+ *
+ * `pools` accepts a precomputed `buildCityDemandPools(entrantGame, city)`
+ * result. Pools depend only on carried products + world modifiers (never the
+ * entrant's tile), so menu builders estimating many tiles per archetype pass
+ * the pools once instead of recomputing the city scan per tile.
  */
 export function estimateOpeningForEntrant(input: {
 	entrantGame: GameState;
@@ -243,6 +249,7 @@ export function estimateOpeningForEntrant(input: {
 	city: City;
 	tile: CityTile;
 	archetypeId: ArchetypeId;
+	pools?: RetailDemandProfile;
 }): OpeningEstimate {
 	const { entrantGame, entrant, city } = input;
 	const windowStart = entrantGame.day;
@@ -251,7 +258,7 @@ export function estimateOpeningForEntrant(input: {
 		storeId: entrant.id
 	}).values;
 	const capacityUnitsPerDay = resolveEntrantSalesCapacity(entrantGame, entrant, policy);
-	const pools = buildCityDemandPools(entrantGame, city);
+	const pools = input.pools ?? buildCityDemandPools(entrantGame, city);
 	const cityCompetitors = entrantGame.competitors.filter(
 		(competitor) => competitor.cityId === city.id
 	);
