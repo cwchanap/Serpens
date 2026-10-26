@@ -572,20 +572,26 @@ export function evaluateGateA(
 	}
 
 	// Item 4 — opening forecast: share of complete eligible openings within
-	// the tolerance. Eligible = replenishing bots (retail-steady/advisor,
+	// the tolerance, measured as |forecast − realized| / realized (Gate A
+	// criterion: relative to the OBSERVED mean revenue; the stored
+	// relativeError keeps its forecast-denominator definition and is not
+	// reused here). Eligible = replenishing bots (retail-steady/advisor,
 	// founding + expansion); idle openings and incomplete windows are
-	// excluded but counted in the detail. Recomputed from relativeError so
-	// the thresholds parameter is honored (null errors never count).
+	// excluded but counted in the detail. Observed revenue of 0 (or less)
+	// can never lie within tolerance of a positive forecast, so such
+	// openings deterministically fail the band.
 	{
 		const outcomes = report.runs
 			.filter((run) => run.bot !== 'idle')
 			.flatMap((run) => run.forecastOutcomes);
 		const complete = outcomes.filter((outcome) => outcome.complete);
-		const within = complete.filter(
-			(outcome) =>
-				outcome.relativeError !== null &&
-				Math.abs(outcome.relativeError) <= thresholds.forecastTolerance
-		).length;
+		const within = complete.filter((outcome) => {
+			const observed = outcome.observedMeanDailyRevenue;
+			if (observed === null || observed <= 0) return false;
+			return (
+				Math.abs(outcome.forecastDailyRevenue - observed) / observed <= thresholds.forecastTolerance
+			);
+		}).length;
 		const incomplete = outcomes.length - complete.length;
 		const idleOpenings = report.runs
 			.filter((run) => run.bot === 'idle')
@@ -594,7 +600,7 @@ export function evaluateGateA(
 		items.push({
 			id: 'forecast',
 			passed: share !== null && share >= thresholds.viabilitySeedShare,
-			detail: `${within}/${complete.length}/${outcomes.length} eligible openings within ±${thresholds.forecastTolerance * 100}% (share ${share === null ? 'n/a' : fmtShare(share)}); excluded-and-counted: ${incomplete} incomplete, ${idleOpenings} idle openings`
+			detail: `${within}/${complete.length}/${outcomes.length} eligible openings within ±${thresholds.forecastTolerance * 100}% of realized (share ${share === null ? 'n/a' : fmtShare(share)}); excluded-and-counted: ${incomplete} incomplete, ${idleOpenings} idle openings`
 		});
 	}
 

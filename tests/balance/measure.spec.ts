@@ -839,6 +839,47 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 		expect(item(atBar, 'forecast').detail).toContain('4/5/5');
 	});
 
+	it('forecast tolerance: ±0.25 is measured against realized revenue — at the boundary passes, just over fails, observed 0 fails', () => {
+		// Realized mean 100: ±0.25 of REALIZED is forecasts 75–125 inclusive.
+		const opening = (
+			forecastDailyRevenue: number,
+			observedMeanDailyRevenue: number | null
+		): OpeningForecastOutcome => ({
+			storeId: 'store-x',
+			openedOnDay: 1,
+			neighborhood: 'downtown',
+			archetypeId: 'convenience',
+			forecastDailyRevenue,
+			observedMeanDailyRevenue,
+			relativeError: null,
+			withinBand: false,
+			complete: true
+		});
+		const run = (outcomes: OpeningForecastOutcome[]): SweepReport =>
+			gateReport([
+				gateRun({
+					seed: 1,
+					archetypeId: 'convenience',
+					bot: 'retail-steady',
+					forecastOutcomes: outcomes
+				})
+			]);
+
+		const at = item(run([opening(75, 100), opening(125, 100)]), 'forecast');
+		expect(at.passed).toBe(true);
+		expect(at.detail).toContain('2/2/2 eligible openings within ±25% of realized');
+
+		const over = item(run([opening(74, 100), opening(126, 100)]), 'forecast');
+		expect(over.passed).toBe(false);
+		expect(over.detail).toContain('0/2/2 eligible openings within ±25% of realized');
+
+		// An observed revenue of 0 cannot be within tolerance of any positive
+		// forecast — deterministic fail, never a divide-by-zero pass.
+		const zero = item(run([opening(100, 0)]), 'forecast');
+		expect(zero.passed).toBe(false);
+		expect(zero.detail).toContain('0/1/1 eligible openings within ±25% of realized');
+	});
+
 	it('advisor: 4/5 clean runs passes at the bar; a stall or repeated no-op disqualifies its run', () => {
 		const advisor = (seed: number, overrides: Partial<RunMeasurement> = {}): RunMeasurement =>
 			gateRun({ seed, archetypeId: 'convenience', bot: 'advisor', ...overrides });
