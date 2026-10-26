@@ -1,4 +1,5 @@
 import { ARCHETYPES, getArchetype } from './archetypes';
+import { brandedSellerScore, resolveBrandEconomics } from './brands';
 import {
 	computeStoreLocalDemand,
 	getTileById,
@@ -8,7 +9,27 @@ import {
 import { clampScore } from './reports';
 import { runExpansionPurchase } from './expansionFinancing';
 import type { FinanceActionResult, FinancedPurchaseReceipt } from './finance';
-import { createNewGame, getExpansionSetupCost, openStore } from './state';
+import { getStoreRevenueMultiplier } from './leveling';
+import { resolveProductMarketShare } from './marketCompetition';
+import {
+	getOldestSellableAgeDays,
+	resolveMarkdownMultiplier,
+	resolveObsolescenceMultiplier,
+	resolveTrendMultiplier
+} from './productDynamics';
+import { resolveEffectivePolicy } from './policyInheritance';
+import { getProductDefinition } from './products';
+import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
+import {
+	buildCityDemandPools,
+	getEligibleProductSellers,
+	getStoreProductStock,
+	priceDemandMultiplier,
+	sellerPolicyDemand
+} from './stock';
+import { POLICY_PRICING_TABLE, projectStoreSalesCapacity } from './simulateDay';
+import { summarizeStoreStaffing } from './staffing';
+import { buildStore, createNewGame, getExpansionSetupCost, openStore } from './state';
 import { decisionContextLocationBlocked, decisionContextLocationGeneric } from './decisionContext';
 import {
 	createCityTileLookup,
@@ -20,11 +41,16 @@ import type {
 	ArchetypeId,
 	City,
 	CityTile,
+	CompanyPolicy,
 	DecisionItem,
 	GameState,
 	OpeningForecast,
+	ProductDefinition,
+	ProductId,
+	ProductStockLot,
 	Store,
-	StoreLocation
+	StoreLocation,
+	StoreProduct
 } from './types';
 import type { TilePlacementBlockReason } from './city';
 
@@ -87,6 +113,13 @@ export function getRecommendedArchetypes(tile: CityTile): ArchetypeId[] {
 		.map((recommendation) => recommendation.id);
 }
 
+/**
+ * Legacy tile-only opening heuristic. It ignores the city-wide demand pool,
+ * competitor market share, and stock/sales-capacity limits, so it
+ * overestimates first-14-day revenue by 60–98% (see docs/balance/baseline.md).
+ * @deprecated Use {@link estimateOpeningRevenue}. Kept exported only for the
+ * remaining `+page.svelte`/e2e callers until Task 4b removes them.
+ */
 export function forecastOpening(tile: CityTile, archetypeId: ArchetypeId): OpeningForecast {
 	const archetype = getArchetype(archetypeId);
 	const fitScore = scoreTileForArchetype(tile, archetypeId);
@@ -106,6 +139,435 @@ export function forecastOpening(tile: CityTile, archetypeId: ArchetypeId): Openi
 	};
 }
 
+/** Observation window the estimator forecasts: the store's first 14 complete trading days. */
+export const OPENING_ESTIMATE_DAYS = 14;
+
+export interface OpeningEstimateProduct {
+	productId: ProductId;
+	/** Per-unit revenue basis: brand shelf price × policy pricing multiplier. */
+	sellingPrice: number;
+	/** The entrant's share of the city-wide product pool (0..1). */
+	entrantShare: number;
+	/** Window-mean desired units/day before capacity and stock caps. */
+	desiredUnitsPerDay: number;
+	/** Opening shelf stock in units. */
+	initialStockUnits: number;
+	/** 14-day totals across the observation window. */
+	unitsSold: number;
+	revenue: number;
+}
+
+export interface OpeningEstimate extends OpeningForecast {
+	archetypeId: ArchetypeId;
+	/** Store-wide daily unit sales ceiling, shared across products. */
+	capacityUnitsPerDay: number;
+	perProduct: OpeningEstimateProduct[];
+}
+
+/**
+ * One shared market-based opening estimate for a prospective store on `tile`,
+ * serving founding (`game === null` + explicit `seed`, mirroring the inputs
+ * the real founding command will use) and expansion (pre-command game; the
+ * prospective entrant is counted in the market exactly once; no state is
+ * mutated or returned). Pure: deterministic in its inputs, no rng draws.
+ *
+ * Model (mirrors the measured demand chain — see task-3-report PHASE 1):
+ *
+ * 1. Demand: `buildCityDemandPools` over the city with the entrant included,
+ *    per-day product trend applied, then the entrant-counted-once market
+ *    share (`resolveProductMarketShare`), seller share, and effective-policy
+ *    multiplier (`sellerPolicyDemand`), brand demand, obsolescence, and price
+ *    multipliers — the exact chain `simulateProductSalesForCity` runs.
+ * 2. Caps: units/day = min(desired, sales capacity, shelf stock). Capacity is
+ *    `projectStoreSalesCapacity` at the jitter's expectation; staffing uses
+ *    the founding derivation's real starter staff, or full requirement
+ *    coverage at starter-grade skill/morale (65/68, the generation
+ *    midpoints) for a prospective expansion entrant.
+ * 3. Stock: the store opens with `createStoreProduct`'s initial lot; each day
+ *    applies shelf-life waste and shrink before sales; on engine
+ *    replenishment days (day % 7 === 0, `REPLENISHMENT_INTERVAL_DAYS`) stock
+ *    below the reorder threshold tops up to target — imports are assumed
+ *    available (the engine's weekly replenishment never partially fills by
+ *    default; it draws cash negative instead).
+ *
+ * Documented simplifications: transient event modifiers are excluded (they
+ * are day-scoped and unknowable at planning time); the per-day demand jitter
+ * (±6%) and capacity jitter (±4%) sit at their 1.0 expectation; the
+ * prospective expansion store's zero-mean creation noise (reputation ±4,
+ * staff capacity ±5) is folded to its midpoint.
+ */
+export function estimateOpeningRevenue(input: {
+	game: GameState | null;
+	city: City;
+	tileId: string;
+	archetypeId: ArchetypeId;
+	seed: number;
+}): OpeningEstimate {
+	const tile = getAvailableTileOrThrow(input.city, input.tileId);
+
+	if (input.game === null) {
+		const base = deriveFoundingBase({
+			archetypeId: input.archetypeId,
+			city: input.city,
+			seed: input.seed
+		});
+		const entrant = placeStoreOnTile(base.baseStore, tile);
+
+		return estimateOpeningForEntrant({
+			entrantGame: { ...base.game, stores: [entrant] },
+			entrant,
+			city: input.city,
+			tile,
+			archetypeId: input.archetypeId
+		});
+	}
+
+	const projected = projectExpansionEntrant(input.game, tile, input.archetypeId);
+
+	return estimateOpeningForEntrant({
+		...projected,
+		city: input.city,
+		tile,
+		archetypeId: input.archetypeId
+	});
+}
+
+/**
+ * Core estimator over a preassembled entrant state (entrant already included
+ * in `entrantGame`'s stores exactly once). Exposed for callers that derive
+ * many entrants from one expensive founding base (placement previews).
+ */
+export function estimateOpeningForEntrant(input: {
+	entrantGame: GameState;
+	entrant: Store;
+	city: City;
+	tile: CityTile;
+	archetypeId: ArchetypeId;
+}): OpeningEstimate {
+	const { entrantGame, entrant, city } = input;
+	const windowStart = entrantGame.day;
+	const policy = resolveEffectivePolicy(entrantGame, {
+		kind: 'store',
+		storeId: entrant.id
+	}).values;
+	const capacityUnitsPerDay = resolveEntrantSalesCapacity(entrantGame, entrant, policy);
+	const pools = buildCityDemandPools(entrantGame, city);
+	const cityCompetitors = entrantGame.competitors.filter(
+		(competitor) => competitor.cityId === city.id
+	);
+
+	interface EntrantProductModel {
+		product: StoreProduct;
+		definition: ProductDefinition;
+		/** The entrant's share of the city product pool (playerShare × seller split). */
+		entrantShare: number;
+		playerShare: number;
+		/** The entrant's split of the company pool across its own sellers. */
+		sellerSplit: number;
+		brandDemand: number;
+		basePrice: number;
+		priceMultiplier: number;
+	}
+
+	const models = new Map<ProductId, EntrantProductModel>();
+
+	for (const product of entrant.products) {
+		const definition = getProductDefinition(product.productId);
+		const sellers = getEligibleProductSellers(entrantGame, city.id, product.productId);
+		const totalScore = sellers.reduce(
+			(sum, seller) => sum + brandedSellerScore(seller, product.productId),
+			0
+		);
+
+		if (totalScore <= 0) continue;
+
+		const market = resolveProductMarketShare(
+			cityCompetitors,
+			[],
+			definition,
+			totalScore,
+			windowStart
+		);
+		const brandEconomics = resolveBrandEconomics(definition, product.brandId);
+		const basePrice = product.sellingPrice * POLICY_PRICING_TABLE[policy.pricing].price;
+
+		const sellerSplit = brandedSellerScore(entrant, product.productId) / totalScore;
+
+		models.set(product.productId, {
+			product,
+			definition,
+			entrantShare: market.playerShare * sellerSplit,
+			playerShare: market.playerShare,
+			sellerSplit,
+			brandDemand: brandEconomics.demandMultiplier,
+			basePrice,
+			priceMultiplier: priceDemandMultiplier(definition, basePrice)
+		});
+	}
+
+	// The daily simulation sells products in ascending product id order and
+	// shares one capacity budget across them; mirror that ordering here.
+	const orderedModels = entrant.products
+		.map((product) => models.get(product.productId))
+		.filter((model): model is EntrantProductModel => model !== undefined)
+		.sort((left, right) =>
+			left.product.productId < right.product.productId
+				? -1
+				: left.product.productId > right.product.productId
+					? 1
+					: 0
+		);
+	const lotsByProduct = new Map<ProductId, ProductStockLot[]>(
+		orderedModels.map((model) => [
+			model.product.productId,
+			model.product.lots.map((lot) => ({ ...lot }))
+		])
+	);
+	const revenueMultiplier = getStoreRevenueMultiplier(entrant.level);
+	const perProduct = new Map<ProductId, OpeningEstimateProduct>(
+		orderedModels.map((model) => [
+			model.product.productId,
+			{
+				productId: model.product.productId,
+				sellingPrice: model.basePrice,
+				entrantShare: model.entrantShare,
+				desiredUnitsPerDay: 0,
+				initialStockUnits: getStoreProductStock(model.product),
+				unitsSold: 0,
+				revenue: 0
+			}
+		])
+	);
+
+	for (let dayOffset = 0; dayOffset < OPENING_ESTIMATE_DAYS; dayOffset += 1) {
+		const day = windowStart + dayOffset;
+		let capacityRemaining = capacityUnitsPerDay;
+
+		for (const model of orderedModels) {
+			const lots = lotsByProduct.get(model.product.productId)!;
+			const shelfLifeDays = model.definition.dynamics.shelfLifeDays;
+
+			// Pre-sales inventory aging, mirroring applyProductInventoryAging:
+			// shelf-life waste first, then shrink on the surviving units.
+			let available = 0;
+			const unshrunkLots: ProductStockLot[] = [];
+
+			for (const lot of lots) {
+				if (lot.quantity <= 0) continue;
+				if (shelfLifeDays !== undefined && day - lot.receivedDay >= shelfLifeDays) continue;
+				unshrunkLots.push(lot);
+				available += lot.quantity;
+			}
+
+			const shrinkUnits = Math.min(
+				available,
+				Math.floor(available * (model.definition.dynamics.shrinkRate ?? 0))
+			);
+			let shrinkRemaining = shrinkUnits;
+			const survivingLots: ProductStockLot[] = [];
+
+			for (const lot of unshrunkLots) {
+				if (shrinkRemaining <= 0) {
+					survivingLots.push(lot);
+					continue;
+				}
+				const removed = Math.min(lot.quantity, shrinkRemaining);
+
+				shrinkRemaining -= removed;
+				if (lot.quantity > removed)
+					survivingLots.push({ ...lot, quantity: lot.quantity - removed });
+			}
+
+			const stockAfterAging = available - shrinkUnits;
+			const trendMultiplier = resolveTrendMultiplier(model.definition.dynamics.trend, day);
+			const cityPool = Math.max(
+				0,
+				Math.round((pools[model.product.productId] ?? 0) * trendMultiplier)
+			);
+			const playerPool = Math.round(cityPool * model.playerShare);
+			const oldestSellableAge = getOldestSellableAgeDays(
+				{ lots: survivingLots },
+				day,
+				shelfLifeDays
+			);
+			const obsolescenceMultiplier = resolveObsolescenceMultiplier(
+				oldestSellableAge,
+				model.definition.dynamics.obsolescence
+			);
+			const markdownMultiplier = resolveMarkdownMultiplier(
+				oldestSellableAge,
+				model.definition.dynamics.markdown
+			);
+			const desiredUnits = Math.max(
+				0,
+				Math.round(
+					sellerPolicyDemand(playerPool, model.sellerSplit, policy) *
+						model.brandDemand *
+						obsolescenceMultiplier *
+						model.priceMultiplier
+				)
+			);
+			const unitsSold = Math.min(desiredUnits, capacityRemaining, stockAfterAging);
+
+			capacityRemaining -= unitsSold;
+
+			const revenue = Math.round(
+				unitsSold * (model.basePrice * markdownMultiplier) * revenueMultiplier
+			);
+			// Consume the sold units oldest-first, mirroring
+			// consumeStoreProductStock's lot removal.
+			let soldRemaining = unitsSold;
+			const remainingLots: ProductStockLot[] = [];
+
+			for (const lot of survivingLots) {
+				if (soldRemaining <= 0) {
+					remainingLots.push(lot);
+					continue;
+				}
+				const removed = Math.min(lot.quantity, soldRemaining);
+
+				soldRemaining -= removed;
+				if (lot.quantity > removed)
+					remainingLots.push({ ...lot, quantity: lot.quantity - removed });
+			}
+
+			// End-of-day engine replenishment: below the reorder threshold on a
+			// 7th-day check, the stock tops up to target before tomorrow.
+			const stockAfterSales = stockAfterAging - unitsSold;
+
+			if (
+				day % REPLENISHMENT_INTERVAL_DAYS === 0 &&
+				stockAfterSales < model.product.reorderThreshold
+			) {
+				const neededUnits = Math.max(0, model.product.targetStock - stockAfterSales);
+
+				if (neededUnits > 0) remainingLots.push({ receivedDay: day, quantity: neededUnits });
+			}
+
+			lotsByProduct.set(model.product.productId, remainingLots);
+
+			const stats = perProduct.get(model.product.productId)!;
+
+			stats.desiredUnitsPerDay += desiredUnits;
+			stats.unitsSold += unitsSold;
+			stats.revenue += revenue;
+		}
+	}
+
+	const totalRevenue = [...perProduct.values()].reduce((sum, stats) => sum + stats.revenue, 0);
+	const fitScore = scoreTileForArchetype(input.tile, input.archetypeId);
+	const demandScore = clampScore((input.tile.demand + input.tile.footTraffic + fitScore) / 3);
+
+	return {
+		tileId: input.tile.id,
+		archetypeId: input.archetypeId,
+		setupCost: getExpansionSetupCost(input.tile, input.archetypeId),
+		projectedDailyRevenue: Math.round(totalRevenue / OPENING_ESTIMATE_DAYS),
+		projectedDailyRent: input.tile.rent,
+		demandScore,
+		customerFit: fitScore,
+		capacityUnitsPerDay,
+		perProduct: [...perProduct.values()].map((stats) => ({
+			...stats,
+			desiredUnitsPerDay: Math.round(stats.desiredUnitsPerDay / OPENING_ESTIMATE_DAYS)
+		})),
+		risks: getOpeningRisks(input.tile, fitScore, demandScore)
+	};
+}
+
+/**
+ * Pure prospective-expansion projection: the store `openStoreAtTile` would
+ * create on `tile`, derived WITHOUT calling the transition (which is gated
+ * on affordability and mutates state). Base stats sit at `createStore`'s
+ * zero-mean rng midpoints; the tile-adjusted reputation/staffCapacity come
+ * from the same `placeStoreOnTile` formula the real command applies.
+ */
+export function projectExpansionEntrant(
+	game: GameState,
+	tile: CityTile,
+	archetypeId: ArchetypeId
+): { entrantGame: GameState; entrant: Store } {
+	const archetype = getArchetype(archetypeId);
+	const base = buildStore({
+		id: `store-${game.stores.length + 1}`,
+		name: '',
+		archetypeId,
+		location: formatLocation(tile),
+		daysOpen: 0,
+		day: game.day,
+		reputation: archetype.customerExpectation,
+		staffMorale: 60,
+		staffCapacity: 64,
+		localDemand: archetype.baseTraffic,
+		managerQuality: 58
+	});
+	const entrant = placeStoreOnTile(base, tile);
+
+	return { entrantGame: { ...game, stores: [...game.stores, entrant] }, entrant };
+}
+
+/** Starter-grade staffing quality midpoints for a prospective entrant (see module doc). */
+const PROSPECTIVE_STAFF_SKILL = 65;
+const PROSPECTIVE_STAFF_MORALE = 68;
+
+function resolveEntrantSalesCapacity(
+	entrantGame: GameState,
+	entrant: Store,
+	policy: CompanyPolicy
+): number {
+	if (entrantGame.staff.some((member) => member.assignedStoreId === entrant.id)) {
+		const summary = summarizeStoreStaffing(entrantGame, entrant);
+
+		return projectStoreSalesCapacity({
+			staffCapacity: entrant.staffCapacity,
+			staffMorale: entrant.staffMorale,
+			coverage: summary.coverage,
+			averageSkill: summary.averageSkill,
+			averageMorale: summary.averageMorale,
+			policy
+		});
+	}
+
+	return projectStoreSalesCapacity({
+		staffCapacity: entrant.staffCapacity,
+		staffMorale: entrant.staffMorale,
+		coverage: 100,
+		averageSkill: PROSPECTIVE_STAFF_SKILL,
+		averageMorale: PROSPECTIVE_STAFF_MORALE,
+		policy
+	});
+}
+
+/**
+ * Tile-independent founding derivation: the state `createNewGame` produces for
+ * `seed`, with `city` swapped in as the only/active city, and the founding
+ * store still unplaced (reputation/staffCapacity not yet tile-adjusted).
+ * Exported so callers that project many founding tiles (placement previews)
+ * can derive the expensive part once and place the base store per tile.
+ */
+export interface FoundingBase {
+	game: GameState;
+	baseStore: Store;
+}
+
+export function deriveFoundingBase(input: {
+	archetypeId: ArchetypeId;
+	city: City;
+	seed: number;
+}): FoundingBase {
+	const game = createNewGame(input.archetypeId, input.seed);
+	const baseStore = game.stores[0];
+
+	if (!baseStore) {
+		throw new Error('Founding store was not created');
+	}
+
+	return {
+		game: { ...game, cities: [input.city], activeCityId: input.city.id },
+		baseStore
+	};
+}
+
 export function createFoundingGameAtTile(input: {
 	archetypeId: ArchetypeId;
 	city: City;
@@ -113,19 +575,11 @@ export function createFoundingGameAtTile(input: {
 	seed: number;
 }): GameState {
 	const tile = getAvailableTileOrThrow(input.city, input.tileId);
-	const game = createNewGame(input.archetypeId, input.seed);
-	const foundingStore = game.stores[0];
-
-	if (!foundingStore) {
-		throw new Error('Founding store was not created');
-	}
-
-	const placedStore = placeStoreOnTile(foundingStore, tile);
+	const { game, baseStore } = deriveFoundingBase(input);
+	const placedStore = placeStoreOnTile(baseStore, tile);
 
 	return {
 		...game,
-		cities: [input.city],
-		activeCityId: input.city.id,
 		stores: [placedStore],
 		scorecard: {
 			...game.scorecard,
@@ -186,7 +640,7 @@ export function financeRetailStoreOpening(
 			const occupiedTileIds = getOccupiedStoreTileIds(city, candidate.stores, tileLookup);
 			return getStoreFootprintPlacementBlockReason(tileLookup, tile, occupiedTileIds)
 				? null
-				: forecastOpening(tile, input.archetypeId).setupCost;
+				: getExpansionSetupCost(tile, input.archetypeId);
 		},
 		cashOnlyPurchase: (candidate) => openStoreAtTile(candidate, input),
 		postcondition: (candidate) =>
@@ -263,7 +717,12 @@ function toTilePlacementDecisionReason(
 	return reason === 'occupied' ? null : reason;
 }
 
-function placeStoreOnTile(store: Store, tile: CityTile): Store {
+/**
+ * Tile-adjusted store placement projection shared by the real founding and
+ * expansion commands (`createFoundingGameAtTile`, `openStoreAtTile`) and the
+ * opening estimator's prospective-entrant projection. Pure.
+ */
+export function placeStoreOnTile(store: Store, tile: CityTile): Store {
 	const fitScore = scoreTileForArchetype(tile, store.archetypeId);
 
 	return {

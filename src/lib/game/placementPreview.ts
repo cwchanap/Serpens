@@ -9,7 +9,15 @@ import {
 	getIndustrialPlacementBlockReasonWithContext,
 	type IndustrialPlacementContext
 } from './industryPlacement';
-import { forecastOpening } from './placement';
+import {
+	deriveFoundingBase,
+	estimateOpeningForEntrant,
+	placeStoreOnTile,
+	projectExpansionEntrant,
+	type FoundingBase,
+	type OpeningEstimate
+} from './placement';
+import { getExpansionSetupCost } from './state';
 import {
 	assessCredit,
 	FOUNDING_LOAN_TERM_DAYS,
@@ -110,6 +118,12 @@ interface RetailBuildMenuInput {
 	city: City;
 	cashCommandAvailable?: boolean;
 	financeCommandAvailable?: boolean;
+	/**
+	 * Explicit founding seed used when `game` is null, so founding previews
+	 * derive the same hypothetical founding store the real command will. The
+	 * UI threads its starter seed here; omitted defaults to 0.
+	 */
+	seed?: number;
 }
 
 interface RetailPlacementContext {
@@ -258,7 +272,7 @@ function getRetailTilePlacementBlockReason(
 		return { code: 'retail.storeLimitReached' };
 	}
 
-	const setupCost = forecastOpening(input.tile, input.archetypeId).setupCost;
+	const setupCost = getExpansionSetupCost(input.tile, input.archetypeId);
 
 	if (input.context.cash === null) {
 		return input.context.cashCommandAvailable
@@ -299,6 +313,41 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	// cash-short archetype re-ran assessCredit's principal scan through
 	// getExpansionFinanceOffer.
 	const getAssessment = createLazyCreditAssessment(context.game, financeCommandAvailable);
+	// Founding previews (game === null) need the tile-independent founding
+	// derivation per archetype; the expensive part (city generation,
+	// competitors, starter staff) runs once and only the tile placement and
+	// market estimate repeat per tile.
+	const foundingBases = new Map<ArchetypeId, FoundingBase>();
+	const foundingSeed = input.seed ?? 0;
+	const estimateForTile = (tile: CityTile, archetypeId: ArchetypeId): OpeningEstimate => {
+		if (context.game === null) {
+			let base = foundingBases.get(archetypeId);
+
+			if (!base) {
+				base = deriveFoundingBase({ archetypeId, city: input.city, seed: foundingSeed });
+				foundingBases.set(archetypeId, base);
+			}
+
+			const entrant = placeStoreOnTile(base.baseStore, tile);
+
+			return estimateOpeningForEntrant({
+				entrantGame: { ...base.game, stores: [entrant] },
+				entrant,
+				city: input.city,
+				tile,
+				archetypeId
+			});
+		}
+
+		const projected = projectExpansionEntrant(context.game, tile, archetypeId);
+
+		return estimateOpeningForEntrant({
+			...projected,
+			city: input.city,
+			tile,
+			archetypeId
+		});
+	};
 
 	// Footprint block reasons are archetype-independent (they depend only on
 	// terrain, locked state, edge-of-map, and existing occupancy), so compute
@@ -315,7 +364,7 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	}));
 
 	return ARCHETYPES.map((archetype) => {
-		const validForecasts: ReturnType<typeof forecastOpening>[] = [];
+		const validEstimates: OpeningEstimate[] = [];
 		const footprintReasons = new Set<StoreFootprintPlacementBlockReason>();
 
 		for (const { tile, footprintReason } of tileFootprintReasons) {
@@ -332,12 +381,10 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 				continue;
 			}
 
-			const forecast = forecastOpening(tile, archetype.id);
-
-			validForecasts.push(forecast);
+			validEstimates.push(estimateForTile(tile, archetype.id));
 		}
 
-		if (validForecasts.length === 0) {
+		if (validEstimates.length === 0) {
 			return {
 				archetypeId: archetype.id,
 				setupCostRange: { min: 0, max: 0 },
@@ -348,7 +395,7 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 			};
 		}
 
-		const minimumSetupCost = Math.min(...validForecasts.map((forecast) => forecast.setupCost));
+		const minimumSetupCost = Math.min(...validEstimates.map((estimate) => estimate.setupCost));
 		const cashCovered = context.cash === null || context.cash >= minimumSetupCost;
 		// Only pull the (memoized) assessment when this archetype is actually
 		// cash-short — cash-covered archetypes never trigger the principal scan.
@@ -361,11 +408,11 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 
 		return {
 			archetypeId: archetype.id,
-			setupCostRange: rangeFrom(validForecasts.map((forecast) => forecast.setupCost)),
+			setupCostRange: rangeFrom(validEstimates.map((estimate) => estimate.setupCost)),
 			projectedDailyRevenueRange: rangeFrom(
-				validForecasts.map((forecast) => forecast.projectedDailyRevenue)
+				validEstimates.map((estimate) => estimate.projectedDailyRevenue)
 			),
-			validTileCount: validForecasts.length,
+			validTileCount: validEstimates.length,
 			disabledReason: fundingUnavailable
 				? { code: 'retail.requiresCash', amount: minimumSetupCost }
 				: null,

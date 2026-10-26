@@ -1,18 +1,31 @@
 import { describe, expect, test } from 'vitest';
 import { generateCity, isTileBuildable } from './city';
+import { deeplyEqual } from './equality';
 import {
 	createFoundingGameAtTile,
-	forecastOpening,
+	estimateOpeningRevenue,
 	financeRetailStoreOpening,
+	forecastOpening,
 	getRecommendedArchetypes,
 	openStoreAtTile
 } from './placement';
+import { simulateDay } from './simulateDay';
+import { assignStaffToStore, getStaffingRequirement, hireCandidate } from './staffing';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from './storeFootprint';
-import type { City, CityTile, Store } from './types';
+import type {
+	ArchetypeId,
+	City,
+	CityTile,
+	GameState,
+	MarketCompetitor,
+	NeighborhoodId,
+	Store,
+	TerrainId
+} from './types';
 import { systemDecision } from './testHelpers';
 
 describe('tile placement', () => {
@@ -652,3 +665,293 @@ function isRetailFootprintAvailable(
 
 	return getStoreFootprintPlacementBlockReason(lookup, tile, occupiedTileIds) === null;
 }
+
+describe('estimateOpeningRevenue', () => {
+	const SEED = 20260503;
+
+	function makeCity(seed = SEED): City {
+		return generateCity({ id: 'harbor-city', name: 'Harbor City', width: 20, height: 20, seed });
+	}
+
+	function foundingTileFor(city: City): CityTile {
+		// Mirrors the harness founding rule: max demand + footTraffic over legal
+		// tiles, lowest tile id breaks ties.
+		return city.tiles
+			.filter((tile) => isRetailFootprintAvailable(city, tile))
+			.reduce((best, tile) => {
+				const bestScore = best.demand + best.footTraffic;
+				const score = tile.demand + tile.footTraffic;
+				if (score > bestScore) return tile;
+				if (score === bestScore && tile.id < best.id) return best;
+				return best;
+			});
+	}
+
+	function found(archetypeId: ArchetypeId, city: City = makeCity()): GameState {
+		return createFoundingGameAtTile({
+			archetypeId,
+			city,
+			tileId: foundingTileFor(city).id,
+			seed: SEED
+		});
+	}
+
+	function advanceDays(game: GameState, days: number): GameState {
+		let next = game;
+		for (let index = 0; index < days; index += 1) {
+			next = simulateDay(next);
+		}
+		return next;
+	}
+
+	function observedMeanDailyRevenue(
+		game: GameState,
+		storeId: string,
+		startDay: number
+	): number | null {
+		const reports = game.reports.filter(
+			(report) => report.day >= startDay && report.day < startDay + 14
+		);
+		if (reports.length !== 14 || reports[0]!.day !== startDay) return null;
+		return (
+			reports.reduce(
+				(total, report) =>
+					total + report.storeReports.find((entry) => entry.storeId === storeId)!.revenue,
+				0
+			) / 14
+		);
+	}
+
+	/**
+	 * All-tile-uniform low-demand city: fresh-store 14-day revenue is stock
+	 * capped whenever desired demand exceeds the ~14 units/day the opening
+	 * stock can serve, so tile/competitor effects are asserted in this
+	 * deliberately demand-bound regime where they can express at all.
+	 */
+	function makeDemandBoundCity(tileProfile: {
+		demand: number;
+		footTraffic: number;
+		customerFit: number;
+	}): City {
+		const tiles = Array.from({ length: 16 }, (_, index) => {
+			const x = index % 4;
+			const y = Math.floor(index / 4);
+			const tile: CityTile = {
+				id: `synthetic-${x}-${y}`,
+				cityId: 'harbor-city',
+				x,
+				y,
+				neighborhood: 'downtown' as NeighborhoodId,
+				terrain: 'commercial' as TerrainId,
+				feature: null,
+				demand: tileProfile.demand,
+				rent: 800,
+				footTraffic: tileProfile.footTraffic,
+				customerFit: tileProfile.customerFit,
+				locked: false
+			};
+			return tile;
+		});
+		return { id: 'harbor-city', name: 'Harbor City', width: 4, height: 4, tiles };
+	}
+
+	test('is pure over the pre-command game and deterministic per seed', () => {
+		const city = makeCity();
+		const game = found('convenience', city);
+		const expansionTile = city.tiles.find(
+			(tile) =>
+				tile.id !== game.stores[0]!.tileId && isRetailFootprintAvailable(city, tile, game.stores)
+		)!;
+		const snapshot = JSON.parse(JSON.stringify(game));
+
+		const first = estimateOpeningRevenue({
+			game,
+			city,
+			tileId: expansionTile.id,
+			archetypeId: 'convenience',
+			seed: SEED
+		});
+		const second = estimateOpeningRevenue({
+			game,
+			city,
+			tileId: expansionTile.id,
+			archetypeId: 'convenience',
+			seed: SEED
+		});
+
+		expect(deeplyEqual(game, snapshot)).toBe(true);
+		expect(first).toEqual(second);
+
+		// Founding path (game null): same seed -> identical estimate; a
+		// different seed shifts the founder's rng-drawn staff capacity, which
+		// the estimate carries in its capacity intermediate.
+		const sameSeed = () =>
+			estimateOpeningRevenue({
+				game: null,
+				city,
+				tileId: foundingTileFor(city).id,
+				archetypeId: 'convenience',
+				seed: SEED
+			});
+		expect(sameSeed()).toEqual(sameSeed());
+		expect(
+			estimateOpeningRevenue({
+				game: null,
+				city,
+				tileId: foundingTileFor(city).id,
+				archetypeId: 'convenience',
+				seed: 90210
+			}).capacityUnitsPerDay
+		).not.toEqual(sameSeed().capacityUnitsPerDay);
+	});
+
+	test('founding estimates track the simulated first-14-day mean (±15%)', () => {
+		for (const archetypeId of ['convenience', 'boutique'] as const) {
+			const game = found(archetypeId);
+			const storeId = game.stores[0]!.id;
+			const estimate = estimateOpeningRevenue({
+				game: null,
+				city: game.cities[0]!,
+				tileId: game.stores[0]!.tileId,
+				archetypeId,
+				seed: SEED
+			});
+
+			const finalGame = advanceDays(game, 14);
+			const actual = observedMeanDailyRevenue(finalGame, storeId, 1);
+
+			expect(actual).not.toBeNull();
+			expect(estimate.perProduct).toHaveLength(1);
+			expect(estimate.projectedDailyRevenue).toBeGreaterThan(0);
+			// Measured within ±0.3% across archetypes and seeds (the estimator
+			// mirrors the demand chain and the 7-day import cadence); ±15% also
+			// absorbs the excluded per-day demand/capacity jitter.
+			expect(
+				Math.abs((actual! - estimate.projectedDailyRevenue) / estimate.projectedDailyRevenue)
+			).toBeLessThanOrEqual(0.15);
+		}
+	});
+
+	test('expansion estimates track the simulated first-14-day mean (±15%)', () => {
+		const game = found('convenience');
+		const preCommand = advanceDays(game, 7);
+		const city = preCommand.cities.find((candidate) => candidate.id === preCommand.activeCityId)!;
+		const tile = city.tiles.find(
+			(candidate) =>
+				candidate.id !== preCommand.stores[0]!.tileId &&
+				isRetailFootprintAvailable(city, candidate, preCommand.stores)
+		)!;
+		const estimate = estimateOpeningRevenue({
+			game: preCommand,
+			city,
+			tileId: tile.id,
+			archetypeId: 'convenience',
+			seed: preCommand.seed
+		});
+
+		const opened = openStoreAtTile(preCommand, { tileId: tile.id, archetypeId: 'convenience' });
+		expect(opened.stores).toHaveLength(preCommand.stores.length + 1);
+		const storeId = opened.stores.at(-1)!.id;
+
+		// Staff the entrant to requirement before its first tick so the
+		// estimator's full-coverage staffing assumption holds exactly.
+		let staffed = opened;
+		for (const role of ['manager', 'general'] as const) {
+			for (let hired = 0; hired < getStaffingRequirement('convenience')[role]; hired += 1) {
+				const candidateId = staffed.hiringCandidates.find(
+					(candidate) =>
+						candidate.role === role &&
+						!staffed.staff.some((member) => member.id === `staff-${candidate.id}`)
+				)!.id;
+				staffed = hireCandidate(staffed, candidateId);
+				staffed = assignStaffToStore(staffed, `staff-${candidateId}`, storeId);
+			}
+		}
+
+		const finalGame = advanceDays(staffed, 14);
+		const actual = observedMeanDailyRevenue(finalGame, storeId, 8);
+
+		expect(actual).not.toBeNull();
+		expect(
+			Math.abs((actual! - estimate.projectedDailyRevenue) / estimate.projectedDailyRevenue)
+		).toBeLessThanOrEqual(0.15);
+	});
+
+	test('higher foot traffic tiles project higher capacity and revenue', () => {
+		// Demand-bound boutique cities (fresh-store revenue is stock capped at
+		// ~11 units/day, so only sub-ceiling demand can express tile effects).
+		const busyCity = makeDemandBoundCity({ demand: 0, footTraffic: 10, customerFit: 5 });
+		const quietCity = makeDemandBoundCity({ demand: 0, footTraffic: 1, customerFit: 0 });
+		const busyTile = busyCity.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+		const quietTile = quietCity.tiles.find((tile) => tile.x === 1 && tile.y === 1)!;
+
+		const busy = estimateOpeningRevenue({
+			game: null,
+			city: busyCity,
+			tileId: busyTile.id,
+			archetypeId: 'boutique',
+			seed: SEED
+		});
+		const quiet = estimateOpeningRevenue({
+			game: null,
+			city: quietCity,
+			tileId: quietTile.id,
+			archetypeId: 'boutique',
+			seed: SEED
+		});
+
+		// placeStoreOnTile: staffCapacity += round((footTraffic - 55) / 10).
+		expect(busy.capacityUnitsPerDay).toBeGreaterThan(quiet.capacityUnitsPerDay);
+		const busyDesired = busy.perProduct[0]!.desiredUnitsPerDay;
+		const quietDesired = quiet.perProduct[0]!.desiredUnitsPerDay;
+		expect(busyDesired).toBeGreaterThan(quietDesired);
+		expect(busy.projectedDailyRevenue).toBeGreaterThan(quiet.projectedDailyRevenue);
+	});
+
+	test('stronger competitors lower the entrant share and the estimate', () => {
+		const city = makeDemandBoundCity({ demand: 1, footTraffic: 60, customerFit: 60 });
+		const game = found('convenience', city);
+		const tile = city.tiles.find(
+			(candidate) =>
+				candidate.id !== game.stores[0]!.tileId &&
+				isRetailFootprintAvailable(city, candidate, game.stores)
+		)!;
+		const strongRival = (id: string): MarketCompetitor => ({
+			id,
+			name: `Strong Rival ${id}`,
+			cityId: 'harbor-city',
+			location: { neighborhoodId: 'downtown', x: 0, y: 0 },
+			archetypeId: 'convenience',
+			reputation: 95,
+			pricePosture: 'discount',
+			productFocus: ['beverages'],
+			brandIds: ['budget-bay'],
+			status: 'active'
+		});
+		const baseline = estimateOpeningRevenue({
+			game,
+			city,
+			tileId: tile.id,
+			archetypeId: 'convenience',
+			seed: SEED
+		});
+		const contested = estimateOpeningRevenue({
+			game: {
+				...game,
+				competitors: [strongRival('rival-strong-1'), strongRival('rival-strong-2')]
+			},
+			city,
+			tileId: tile.id,
+			archetypeId: 'convenience',
+			seed: SEED
+		});
+
+		expect(contested.perProduct[0]!.entrantShare).toBeLessThan(
+			baseline.perProduct[0]!.entrantShare
+		);
+		expect(contested.perProduct[0]!.desiredUnitsPerDay).toBeLessThan(
+			baseline.perProduct[0]!.desiredUnitsPerDay
+		);
+		expect(contested.projectedDailyRevenue).toBeLessThan(baseline.projectedDailyRevenue);
+	});
+});
