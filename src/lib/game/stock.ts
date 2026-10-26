@@ -676,7 +676,16 @@ function cloneStoreForStock(store: Store): Store {
 	};
 }
 
-function getEligibleProductSellers(game: GameState, cityId: string, productId: ProductId): Store[] {
+/**
+ * Player stores in `cityId` that can sell `productId`, strongest category
+ * score first. Exported for the opening estimator, which projects a
+ * prospective entrant through the same seller set as the daily simulation.
+ */
+export function getEligibleProductSellers(
+	game: GameState,
+	cityId: string,
+	productId: ProductId
+): Store[] {
 	return game.stores
 		.filter(
 			(store) =>
@@ -707,7 +716,8 @@ function compareCodeUnitStrings(left: string, right: string): number {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function priceDemandMultiplier(product: ProductDefinition, sellingPrice: number): number {
+/** Exported for the opening estimator's demand-chain projection. */
+export function priceDemandMultiplier(product: ProductDefinition, sellingPrice: number): number {
 	const ratio = sellingPrice / Math.max(1, product.defaultSellingPrice);
 	const penalty = (ratio - 1) * product.priceSensitivity;
 

@@ -20,8 +20,8 @@ import {
 	resolveRetailPlacementAnchorTileId,
 	resolveSelectionAnchorTileId
 } from './placementPreview';
-import { createFoundingGameAtTile, forecastOpening } from './placement';
-import { createNewGame } from './state';
+import { createFoundingGameAtTile, estimateOpeningRevenue } from './placement';
+import { createNewGame, getExpansionSetupCost } from './state';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -88,7 +88,7 @@ describe('retail placement preview', () => {
 		const expansionTile = buildableTiles.find((tile) =>
 			isRetailFootprintAvailable(city, tile, game.stores)
 		)!;
-		const expansionSetupCost = forecastOpening(expansionTile, 'electronics').setupCost;
+		const expansionSetupCost = getExpansionSetupCost(expansionTile, 'electronics');
 		const cappedGame = {
 			...game,
 			stores: Array.from({ length: game.storeCap }, (_, index) => ({
@@ -207,9 +207,19 @@ describe('retail placement preview', () => {
 					archetypeId: 'boutique'
 				}) === null
 		);
-		const forecasts = validTiles.map((tile) => forecastOpening(tile, 'boutique'));
-		const setupCosts = forecasts.map((forecast) => forecast.setupCost);
-		const projectedDailyRevenue = forecasts.map((forecast) => forecast.projectedDailyRevenue);
+		// Menu revenue/setup ranges must be derived by the shared opening
+		// estimator (founding path, default seed 0 — no explicit seed passed).
+		const estimates = validTiles.map((tile) =>
+			estimateOpeningRevenue({
+				game: null,
+				city,
+				tileId: tile.id,
+				archetypeId: 'boutique',
+				seed: 0
+			})
+		);
+		const setupCosts = estimates.map((estimate) => estimate.setupCost);
+		const projectedDailyRevenue = estimates.map((estimate) => estimate.projectedDailyRevenue);
 
 		const options = getRetailBuildMenuOptions({ game: null, city });
 		const boutique = options.find((option) => option.archetypeId === 'boutique')!;
@@ -225,6 +235,64 @@ describe('retail placement preview', () => {
 			max: Math.max(...projectedDailyRevenue)
 		});
 		expect(boutique.disabledReason).toBeNull();
+	});
+
+	test('founding build menu ranges match the estimator at the threaded seed', () => {
+		expect.assertions(2);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const validTiles = city.tiles.filter(
+			(tile) =>
+				getRetailPlacementBlockReason({
+					game: null,
+					city,
+					tileId: tile.id,
+					archetypeId: 'convenience'
+				}) === null
+		);
+		const estimatorRange = (seed: number) => {
+			const estimates = validTiles.map((tile) =>
+				estimateOpeningRevenue({
+					game: null,
+					city,
+					tileId: tile.id,
+					archetypeId: 'convenience',
+					seed
+				})
+			);
+			return {
+				setupCostRange: {
+					min: Math.min(...estimates.map((estimate) => estimate.setupCost)),
+					max: Math.max(...estimates.map((estimate) => estimate.setupCost))
+				},
+				projectedDailyRevenueRange: {
+					min: Math.min(...estimates.map((estimate) => estimate.projectedDailyRevenue)),
+					max: Math.max(...estimates.map((estimate) => estimate.projectedDailyRevenue))
+				}
+			};
+		};
+
+		// The menu must feed its seed into the founding derivation: the ranges
+		// equal the estimator's at the seed actually passed (7), and the no-seed
+		// call documents the default (0). Note: with current game content the
+		// fresh-store 14-day window is stock-capped, so revenue ranges are
+		// numerically seed-invariant — seed sensitivity of the estimate itself
+		// is asserted in placement.spec (capacity intermediates).
+		expect(
+			getRetailBuildMenuOptions({ game: null, city, seed: 7 }).find(
+				(option) => option.archetypeId === 'convenience'
+			)
+		).toMatchObject(estimatorRange(7));
+		expect(
+			getRetailBuildMenuOptions({ game: null, city }).find(
+				(option) => option.archetypeId === 'convenience'
+			)
+		).toMatchObject(estimatorRange(0));
 	});
 
 	test('does not rescan the retail city tiles while building preview summaries', () => {
@@ -322,7 +390,7 @@ describe('retail placement preview', () => {
 			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
 		);
 		const cheapestElectronicsSetupCost = Math.min(
-			...availableTiles.map((tile) => forecastOpening(tile, 'electronics').setupCost)
+			...availableTiles.map((tile) => getExpansionSetupCost(tile, 'electronics'))
 		);
 
 		const electronicsOption = getRetailBuildMenuOptions({
@@ -358,7 +426,7 @@ describe('retail placement preview', () => {
 			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
 		);
 		const cheapestElectronicsSetupCost = Math.min(
-			...availableTiles.map((tile) => forecastOpening(tile, 'electronics').setupCost)
+			...availableTiles.map((tile) => getExpansionSetupCost(tile, 'electronics'))
 		);
 
 		const electronicsOption = getRetailBuildMenuOptions({
@@ -396,7 +464,7 @@ describe('retail placement preview', () => {
 			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
 		);
 		const cheapestBoutiqueSetupCost = Math.min(
-			...availableTiles.map((tile) => forecastOpening(tile, 'boutique').setupCost)
+			...availableTiles.map((tile) => getExpansionSetupCost(tile, 'boutique'))
 		);
 
 		const boutiqueOption = getRetailBuildMenuOptions({
@@ -600,7 +668,7 @@ describe('retail placement preview', () => {
 		const targetTile = city.tiles.find(
 			(tile) => tile.id !== foundingTile.id && isRetailFootprintAvailable(city, tile, game.stores)
 		)!;
-		const setupCost = forecastOpening(targetTile, 'electronics').setupCost;
+		const setupCost = getExpansionSetupCost(targetTile, 'electronics');
 		const cashShortGame = { ...game, cash: setupCost - 100 };
 
 		const unavailablePreview = createRetailPlacementPreview({

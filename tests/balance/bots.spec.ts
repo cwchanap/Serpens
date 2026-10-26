@@ -8,7 +8,14 @@ import { describe, expect, it } from 'vitest';
 import { isTileBuildable } from '$lib/game/city';
 import { deeplyEqual } from '$lib/game/equality';
 import { getIndustrialPlacementBlockReason } from '$lib/game/industryPlacement';
-import { forecastOpening } from '$lib/game/placement';
+import {
+	deriveFoundingBase,
+	estimateOpeningForEntrant,
+	estimateOpeningRevenue,
+	placeStoreOnTile
+} from '$lib/game/placement';
+import { getExpansionSetupCost } from '$lib/game/state';
+import type { CityTile } from '$lib/game/types';
 import {
 	createCityTileLookup,
 	getStoreFootprintPlacementBlockReason
@@ -51,12 +58,26 @@ describe('balance harness founding (HPA-502 Stage 2)', () => {
 		let forecastDiverged = 0;
 		for (const seed of [424_242, 280_001, 90_210, 7, 313_131]) {
 			const { city, ruleTile } = expectRuleFounding('convenience', seed);
-			// Meta-check: ranking by forecastOpening really would pick a different
-			// tile for at least one seed — proving the founding rule does not ride
-			// on forecast weights (a forecast tuning change must not move it).
+			// Meta-check: ranking by the opening estimator really would pick a
+			// different tile for at least one seed — proving the founding rule
+			// does not ride on forecast weights (a forecast tuning change must
+			// never move it). The tile-independent founding base is derived once
+			// per seed; only the per-tile placement + estimate repeat.
+			const base = deriveFoundingBase({ archetypeId: 'convenience', city, seed });
+			const score = (tile: CityTile) => {
+				const entrant = placeStoreOnTile(base.baseStore, tile);
+
+				return estimateOpeningForEntrant({
+					entrantGame: { ...base.game, stores: [entrant] },
+					entrant,
+					city,
+					tile,
+					archetypeId: 'convenience'
+				}).projectedDailyRevenue;
+			};
 			const forecastTop = legalTiles(city).reduce((best, candidate) => {
-				const bestRevenue = forecastOpening(best, 'convenience').projectedDailyRevenue;
-				const revenue = forecastOpening(candidate, 'convenience').projectedDailyRevenue;
+				const bestRevenue = score(best);
+				const revenue = score(candidate);
 				if (revenue > bestRevenue) return candidate;
 				if (revenue === bestRevenue && candidate.id < best.id) return candidate;
 				return best;
@@ -74,6 +95,61 @@ describe('balance harness bots (HPA-502 Stage 2)', () => {
 
 		expect(first.ledger).toEqual(second.ledger);
 		expect(deeplyEqual(first.game, second.game)).toBe(true);
+	});
+
+	it("records the founding forecast from the estimator's founding derivation", () => {
+		const { game, ledger } = runBot('idle', 'convenience', SEED, 1);
+		const founding = ledger.openings[0]!;
+		const expected = estimateOpeningRevenue({
+			game: null,
+			city: game.cities[0]!,
+			tileId: founding.tileId,
+			archetypeId: 'convenience',
+			seed: SEED
+		});
+
+		// The recorded forecast is exactly the shared estimator's founding
+		// projection for the same city/tile/seed the real founding used.
+		expect(founding.forecast).toEqual({
+			tileId: expected.tileId,
+			setupCost: expected.setupCost,
+			projectedDailyRevenue: expected.projectedDailyRevenue,
+			projectedDailyRent: expected.projectedDailyRent,
+			demandScore: expected.demandScore,
+			customerFit: expected.customerFit,
+			risks: expected.risks
+		});
+	});
+
+	it('records an expansion forecast for every opened store from its pre-command game', () => {
+		const { game: finalGame, ledger } = runBot('retail-steady', 'convenience', SEED, 30);
+		const expansions = ledger.openings.slice(1);
+
+		expect(expansions.length).toBeGreaterThan(0);
+
+		for (const opening of expansions) {
+			const city = finalGame.cities.find((candidate) => candidate.id === finalGame.activeCityId)!;
+			// Post-hoc computation on the final game: the store now exists in
+			// game.stores, so an estimate built NOW would count it as an extra
+			// competitor — the ledger value must differ, proving it was
+			// recorded on the pre-command state before openStore ran.
+			const postHoc = estimateOpeningRevenue({
+				game: finalGame,
+				city,
+				tileId: opening.tileId,
+				archetypeId: opening.archetypeId,
+				seed: SEED
+			});
+
+			expect(opening.forecast.projectedDailyRevenue).toBeGreaterThan(0);
+			expect(opening.forecast.setupCost).toBe(
+				getExpansionSetupCost(
+					city.tiles.find((tile) => tile.id === opening.tileId)!,
+					opening.archetypeId
+				)
+			);
+			expect(opening.forecast.projectedDailyRevenue).not.toBe(postHoc.projectedDailyRevenue);
+		}
 	});
 
 	it('runs the idle bot without taking any action beyond advancing days', () => {

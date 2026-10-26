@@ -15,7 +15,6 @@ import { borrow, payOffLoan, refinanceLoan, repayLoan } from '$lib/game/finance'
 import {
 	createFoundingGameAtTile,
 	financeRetailStoreOpening,
-	forecastOpening,
 	openStoreAtTile
 } from '$lib/game/placement';
 import { buildRailNetwork, deriveRailSegments } from '$lib/game/rail';
@@ -34,7 +33,12 @@ import { simulateDay } from '$lib/game/simulateDay';
 import { resolveImportCostMultiplier } from '$lib/game/simulationRules';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
 import { assignStaffToStore, hireCandidate, promoteStaff, unassignStaff } from '$lib/game/staffing';
-import { resolveDecision, updatePolicy, upgradeStore } from '$lib/game/state';
+import {
+	resolveDecision,
+	updatePolicy,
+	upgradeStore,
+	getExpansionSetupCost
+} from '$lib/game/state';
 import { updateStoreProduct } from '$lib/game/stock';
 import {
 	createCityTileLookup,
@@ -1111,7 +1115,7 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 	it('replays financed purchases with their exact expected-cost payloads', () => {
 		const city = getWorldCityDefinition('campus-junction')!;
 		const retailTile = findExpansionTile(foundingGame());
-		const retailCost = forecastOpening(retailTile, 'convenience').setupCost;
+		const retailCost = getExpansionSetupCost(retailTile, 'convenience');
 		const industry = grainBuildFixture();
 
 		// Each game is genuinely cash-short so the finance command borrows a
@@ -1214,7 +1218,7 @@ describe('executeScenarioCommand dispatch', { timeout: 30_000 }, () => {
 	it('rejects a finance-only command when cash covers the purchase instead of falling back to the cash command', () => {
 		const city = getWorldCityDefinition('campus-junction')!;
 		const retailTile = findExpansionTile(foundingGame());
-		const retailCost = forecastOpening(retailTile, 'convenience').setupCost;
+		const retailCost = getExpansionSetupCost(retailTile, 'convenience');
 		const industry = grainBuildFixture();
 
 		// foundingGame() has $1,000,000 cash — more than enough for every

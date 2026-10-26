@@ -415,16 +415,24 @@ export function upgradeStore(game: GameState, storeId: string): GameState {
 	};
 }
 
-function createStore(input: {
+/**
+ * Deterministic store construction shared by `createStore` (live rng draws)
+ * and the opening estimator's zero-noise prospective entrant. Product
+ * initialization and defaults live here so the two callers cannot drift.
+ */
+export function buildStore(input: {
 	id: string;
 	name: string;
 	archetypeId: ArchetypeId;
 	location: StoreLocation;
 	daysOpen: number;
 	day: number;
-	rng: ReturnType<typeof createRng>;
+	reputation: number;
+	staffMorale: number;
+	staffCapacity: number;
+	localDemand: number;
+	managerQuality: number;
 }): Store {
-	const archetype = getArchetype(input.archetypeId);
 	const products = initializeStoreProducts(input.archetypeId, 1, input.day);
 
 	return {
@@ -438,14 +446,41 @@ function createStore(input: {
 		mapX: 0,
 		mapY: 0,
 		daysOpen: input.daysOpen,
-		reputation: clampScore(archetype.customerExpectation + randomInt(input.rng, -4, 4)),
+		reputation: clampScore(input.reputation),
 		stockHealth: calculateStockHealth(products),
 		products,
-		staffMorale: clampScore(60 + randomInt(input.rng, -6, 6)),
-		staffCapacity: clampScore(64 + randomInt(input.rng, -5, 5)),
-		localDemand: Math.max(0, archetype.baseTraffic + randomInt(input.rng, -8, 8)),
-		managerQuality: clampScore(58 + randomInt(input.rng, -7, 7))
+		staffMorale: clampScore(input.staffMorale),
+		staffCapacity: clampScore(input.staffCapacity),
+		localDemand: Math.max(0, input.localDemand),
+		managerQuality: clampScore(input.managerQuality)
 	};
+}
+
+function createStore(input: {
+	id: string;
+	name: string;
+	archetypeId: ArchetypeId;
+	location: StoreLocation;
+	daysOpen: number;
+	day: number;
+	rng: ReturnType<typeof createRng>;
+}): Store {
+	const archetype = getArchetype(input.archetypeId);
+
+	// Draw order matters: these randomInt calls define the game rng sequence.
+	return buildStore({
+		id: input.id,
+		name: input.name,
+		archetypeId: input.archetypeId,
+		location: input.location,
+		daysOpen: input.daysOpen,
+		day: input.day,
+		reputation: archetype.customerExpectation + randomInt(input.rng, -4, 4),
+		staffMorale: 60 + randomInt(input.rng, -6, 6),
+		staffCapacity: 64 + randomInt(input.rng, -5, 5),
+		localDemand: archetype.baseTraffic + randomInt(input.rng, -8, 8),
+		managerQuality: 58 + randomInt(input.rng, -7, 7)
+	});
 }
 
 function getExpansionTile(

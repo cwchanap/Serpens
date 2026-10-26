@@ -15,7 +15,11 @@ import { isTileBuildable } from '$lib/game/city';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { getIndustrialPlacementBlockReason } from '$lib/game/industryPlacement';
 import { setManagerDelegation } from '$lib/game/managerDelegation';
-import { createFoundingGameAtTile, forecastOpening } from '$lib/game/placement';
+import {
+	createFoundingGameAtTile,
+	estimateOpeningRevenue,
+	type OpeningEstimate
+} from '$lib/game/placement';
 import { buildRailPreview } from '$lib/game/railPlacement';
 import {
 	buildSupplyPlan,
@@ -120,6 +124,22 @@ export function selectFoundingTile(city: City): CityTile {
 }
 
 /**
+ * Projects an estimate onto the ledger's legacy `OpeningForecast` shape so
+ * `measure.ts` keeps reading the same fields it always has.
+ */
+function openingForecastFrom(estimate: OpeningEstimate): OpeningForecast {
+	return {
+		tileId: estimate.tileId,
+		setupCost: estimate.setupCost,
+		projectedDailyRevenue: estimate.projectedDailyRevenue,
+		projectedDailyRent: estimate.projectedDailyRent,
+		demandScore: estimate.demandScore,
+		customerFit: estimate.customerFit,
+		risks: estimate.risks
+	};
+}
+
+/**
  * Repeatable founding: generate the city with an explicit seed, select the
  * rule tile, and hand city + seed to the real founding transition.
  */
@@ -145,6 +165,15 @@ export function runBot(
 	days: number
 ): { game: GameState; ledger: BotLedger } {
 	const { game: founded, tile } = createFoundingGame(archetypeId, seed);
+	// Founding forecast: the shared estimator's founding derivation (game
+	// null + the same seed the real founding command consumes).
+	const foundingEstimate = estimateOpeningRevenue({
+		game: null,
+		city: founded.cities[0]!,
+		tileId: tile.id,
+		archetypeId,
+		seed
+	});
 	const ledger: BotLedger = {
 		seed,
 		archetypeId,
@@ -159,7 +188,7 @@ export function runBot(
 				archetypeId,
 				neighborhood: tile.neighborhood,
 				level: founded.stores[0]!.level,
-				forecast: forecastOpening(tile, archetypeId)
+				forecast: openingForecastFrom(foundingEstimate)
 			}
 		],
 		actions: []
@@ -329,6 +358,16 @@ function runExpansionPlaybook(game: GameState, ledger: BotLedger, day: number): 
 		record(ledger, day, 'openStore', 'no-op', `cash ${game.cash} below setup cost ${cost}`);
 		return game;
 	}
+	// Expansion forecast is recorded on the PRE-COMMAND game, before
+	// openStore competes for the pool — the prospective entrant is counted
+	// exactly once and the command's own state changes cannot leak in.
+	const expansionEstimate = estimateOpeningRevenue({
+		game,
+		city,
+		tileId: candidate.id,
+		archetypeId: game.stores[0]!.archetypeId,
+		seed: game.seed
+	});
 	const result = applyGameCommand(game, {
 		kind: 'openStore',
 		tileId: candidate.id,
@@ -357,7 +396,7 @@ function runExpansionPlaybook(game: GameState, ledger: BotLedger, day: number): 
 		archetypeId: store.archetypeId,
 		neighborhood: candidate.neighborhood,
 		level: store.level,
-		forecast: forecastOpening(candidate, store.archetypeId)
+		forecast: openingForecastFrom(expansionEstimate)
 	});
 	return result.game;
 }

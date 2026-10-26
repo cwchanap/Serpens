@@ -80,6 +80,13 @@ const PRICING = {
 	premium: { price: 1.24, demand: 0.82, margin: 0.09, satisfaction: -3 }
 } as const;
 
+/**
+ * Policy pricing table (price multipliers apply to the day's sold units).
+ * Exported for the opening estimator, which prices a prospective store's
+ * revenue through the same policy table as the daily simulation.
+ */
+export const POLICY_PRICING_TABLE = PRICING;
+
 const INVENTORY = {
 	lean: { capacity: 0.78, cost: 0.86, recovery: 3, stockStress: 1.24, satisfaction: -3 },
 	balanced: { capacity: 1, cost: 1, recovery: 7, stockStress: 1, satisfaction: 0 },
@@ -515,36 +522,80 @@ function getNextLoanPaymentSnapshot(
 	);
 }
 
+/**
+ * Deterministic (jitter-free) staff-limit arithmetic shared by the daily
+ * operation profile and the opening estimator's sales-capacity projection.
+ */
+function resolveStaffLimit(input: {
+	staffCapacity: number;
+	staffMorale: number;
+	coverage: number;
+	averageSkill: number;
+	averageMorale: number;
+	policy: Pick<CompanyPolicy, 'staffing' | 'service'>;
+}): number {
+	const staffing = STAFFING[input.policy.staffing];
+	const service = SERVICE[input.policy.service];
+	const staffingCoverageRatio = Math.max(0.22, input.coverage / 100);
+	const skillMultiplier = 0.82 + input.averageSkill / 250;
+	const moraleMultiplier = 0.82 + input.averageMorale / 260;
+
+	return (
+		input.staffCapacity *
+		staffing.capacity *
+		service.throughput *
+		(0.72 + input.staffMorale / 220) *
+		staffingCoverageRatio *
+		skillMultiplier *
+		moraleMultiplier
+	);
+}
+
+/**
+ * Planning-time sales capacity (units/day) for a store staffed per `summary`
+ * under `policy`, at the jitter's expectation (no per-day rng draw). The
+ * daily profile applies the same formula with a ±4% live jitter. The unfloored
+ * limit multiplies the inventory capacity before the single floor, matching
+ * the daily profile's arithmetic exactly.
+ */
+export function projectStoreSalesCapacity(input: {
+	staffCapacity: number;
+	staffMorale: number;
+	coverage: number;
+	averageSkill: number;
+	averageMorale: number;
+	policy: Pick<CompanyPolicy, 'staffing' | 'inventory' | 'service'>;
+}): number {
+	return Math.max(
+		0,
+		Math.floor(resolveStaffLimit(input) * INVENTORY[input.policy.inventory].capacity)
+	);
+}
+
 function buildStoreOperationProfile(
 	store: Store,
 	game: GameState,
 	rng: ReturnType<typeof createRngFromState>,
 	policy: CompanyPolicy
 ): StoreOperationProfile {
-	const staffing = STAFFING[policy.staffing];
-	const inventory = INVENTORY[policy.inventory];
 	const marketing = MARKETING[policy.marketing];
-	const service = SERVICE[policy.service];
 	const staffingSummary = summarizeStoreStaffing(game, store);
-	const staffingCoverageRatio = Math.max(0.22, staffingSummary.coverage / 100);
-	const skillMultiplier = 0.82 + staffingSummary.averageSkill / 250;
-	const moraleMultiplier = 0.82 + staffingSummary.averageMorale / 260;
 	const staffLimit =
-		store.staffCapacity *
-		staffing.capacity *
-		service.throughput *
-		(0.72 + store.staffMorale / 220) *
-		staffingCoverageRatio *
-		skillMultiplier *
-		moraleMultiplier *
-		randomBetween(rng, 0.96, 1.04);
+		resolveStaffLimit({
+			staffCapacity: store.staffCapacity,
+			staffMorale: store.staffMorale,
+			coverage: staffingSummary.coverage,
+			averageSkill: staffingSummary.averageSkill,
+			averageMorale: staffingSummary.averageMorale,
+			policy
+		}) * randomBetween(rng, 0.96, 1.04);
 	const managerPenalty = staffingSummary.shortage.manager > 0 ? 5 : 0;
 	const generalPenalty = staffingSummary.shortage.general * 2;
 	const assignedMoraleDelta = (staffingSummary.averageMorale - 60) / 18;
 	const staffMorale = clampScore(
 		store.staffMorale +
-			staffing.morale +
-			service.morale +
+			STAFFING[policy.staffing].morale +
+			SERVICE[policy.service].morale +
 			store.managerQuality / 40 -
 			managerPenalty -
 			generalPenalty +
@@ -554,9 +605,9 @@ function buildStoreOperationProfile(
 	);
 	const reputation = clampScore(
 		store.reputation +
-			inventory.satisfaction +
-			staffing.satisfaction +
-			service.satisfaction +
+			INVENTORY[policy.inventory].satisfaction +
+			STAFFING[policy.staffing].satisfaction +
+			SERVICE[policy.service].satisfaction +
 			marketing.reputation -
 			managerPenalty +
 			(staffingSummary.coverage < 80 ? -2 : 1)
@@ -569,7 +620,7 @@ function buildStoreOperationProfile(
 	return {
 		store,
 		staffLimit: Math.max(0, Math.floor(staffLimit)),
-		salesCapacity: Math.max(0, Math.floor(staffLimit * inventory.capacity)),
+		salesCapacity: Math.max(0, Math.floor(staffLimit * INVENTORY[policy.inventory].capacity)),
 		staffingCoverage: staffingSummary.coverage,
 		staffingShortage: staffingSummary.shortage,
 		staffMorale,
@@ -577,7 +628,7 @@ function buildStoreOperationProfile(
 		marketPosition,
 		operatingCosts,
 		startingStockHealth: store.stockHealth,
-		stockPressureThreshold: 25 * inventory.stockStress
+		stockPressureThreshold: 25 * INVENTORY[policy.inventory].stockStress
 	};
 }
 
