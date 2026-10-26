@@ -114,32 +114,6 @@ export function getRecommendedArchetypes(tile: CityTile): ArchetypeId[] {
 		.map((recommendation) => recommendation.id);
 }
 
-/**
- * Legacy tile-only opening heuristic. It ignores the city-wide demand pool,
- * competitor market share, and stock/sales-capacity limits, so it
- * overestimates first-14-day revenue by 60–98% (see docs/balance/baseline.md).
- * @deprecated Use {@link estimateOpeningRevenue}. Kept exported only for the
- * remaining `+page.svelte`/e2e callers until Task 4b removes them.
- */
-export function forecastOpening(tile: CityTile, archetypeId: ArchetypeId): OpeningForecast {
-	const archetype = getArchetype(archetypeId);
-	const fitScore = scoreTileForArchetype(tile, archetypeId);
-	const demandScore = clampScore((tile.demand + tile.footTraffic + fitScore) / 3);
-	const projectedDailyRevenue = Math.round(
-		(archetype.baseTraffic * 7 + tile.demand * 10 + tile.footTraffic * 6) * (fitScore / 100)
-	);
-
-	return {
-		tileId: tile.id,
-		setupCost: getExpansionSetupCost(tile, archetypeId),
-		projectedDailyRevenue,
-		projectedDailyRent: tile.rent,
-		demandScore,
-		customerFit: fitScore,
-		risks: getOpeningRisks(tile, fitScore, demandScore)
-	};
-}
-
 /** Observation window the estimator forecasts: the store's first 14 complete trading days. */
 export const OPENING_ESTIMATE_DAYS = 14;
 

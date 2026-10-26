@@ -19,11 +19,11 @@ import {
 	getIndustrialPlacementBlockReason
 } from '../lib/game/industryPlacement';
 import { createRecurringRoute } from '../lib/game/interCityLogistics';
-import { forecastOpening, openStoreAtTile } from '../lib/game/placement';
+import { openStoreAtTile } from '../lib/game/placement';
 import { buildDailyResultView } from '../lib/game/reports';
 import { buildRail, buildRailPreview } from '../lib/game/railPlacement';
 import { simulateDay } from '../lib/game/simulateDay';
-import { createNewGame, upgradeStore } from '../lib/game/state';
+import { createNewGame, getExpansionSetupCost, upgradeStore } from '../lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '../lib/game/stock';
 import { openWorldCity } from '../lib/game/world';
 import type {
@@ -3252,7 +3252,7 @@ test('financed store opening writes a map activity batch that names the new stor
 		}
 	});
 	if (!tile) throw new Error('Seeded city has no tile that opens a convenience store');
-	const cost = forecastOpening(tile, 'convenience').setupCost;
+	const cost = getExpansionSetupCost(tile, 'convenience');
 	const shortCash = cost - 1_000;
 	expect(getExpansionFinanceOffer({ ...seeded, cash: shortCash }, cost)).not.toBeNull();
 	await installSandboxAutoSave(page, { ...seeded, cash: shortCash });

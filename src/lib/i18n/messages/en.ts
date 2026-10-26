@@ -62,7 +62,7 @@ export const en = {
 		},
 		retail: {
 			buildArchetype: 'Build {name}',
-			setupRevenue: 'Setup {setup} | Revenue {revenue}/day',
+			setupRevenue: 'Setup {setup} | Rent {rent}/day | Revenue {revenue}/day',
 			rangeFormat: '{min}–{max}',
 			validTiles: {
 				one: '{count} valid tile',

@@ -8,7 +8,6 @@ import {
 	estimateOpeningForEntrant,
 	estimateOpeningRevenue,
 	financeRetailStoreOpening,
-	forecastOpening,
 	getRecommendedArchetypes,
 	openStoreAtTile,
 	placeStoreOnTile,
@@ -21,6 +20,7 @@ import {
 	getOccupiedStoreTileIds,
 	getStoreFootprintPlacementBlockReason
 } from './storeFootprint';
+import { getExpansionSetupCost } from './state';
 import type {
 	ArchetypeId,
 	City,
@@ -55,7 +55,7 @@ describe('tile placement', () => {
 				candidate.id !== foundingTile.id &&
 				isRetailFootprintAvailable(city, candidate, base.stores)
 		)!;
-		const cost = forecastOpening(tile, 'boutique').setupCost;
+		const cost = getExpansionSetupCost(tile, 'boutique');
 		const game = { ...base, cash: cost - 250 };
 
 		const result = financeRetailStoreOpening(game, {
@@ -96,7 +96,7 @@ describe('tile placement', () => {
 				candidate.id !== foundingTile.id &&
 				isRetailFootprintAvailable(city, candidate, base.stores)
 		)!;
-		const cost = forecastOpening(tile, 'boutique').setupCost;
+		const cost = getExpansionSetupCost(tile, 'boutique');
 		const game = { ...base, cash: cost };
 
 		const result = financeRetailStoreOpening(game, {
@@ -132,7 +132,7 @@ describe('tile placement', () => {
 				candidate.id !== foundingTile.id &&
 				isRetailFootprintAvailable(city, candidate, base.stores)
 		)!;
-		const actualCost = forecastOpening(tile, 'boutique').setupCost;
+		const actualCost = getExpansionSetupCost(tile, 'boutique');
 		const game = { ...base, cash: 0 };
 
 		const result = financeRetailStoreOpening(game, {
@@ -163,25 +163,6 @@ describe('tile placement', () => {
 		expect(recommendations).toContain('electronics');
 	});
 
-	test('forecasts opening economics deterministically', () => {
-		expect.assertions(4);
-		const city = generateCity({
-			id: 'harbor-city',
-			name: 'Harbor City',
-			width: 20,
-			height: 20,
-			seed: 77
-		});
-		const tile = city.tiles.find(isTileBuildable)!;
-		const first = forecastOpening(tile, 'grocery');
-		const second = forecastOpening(tile, 'grocery');
-
-		expect(first).toEqual(second);
-		expect(first.setupCost).toBeGreaterThan(0);
-		expect(first.projectedDailyRent).toBe(tile.rent);
-		expect(first.risks.length).toBeGreaterThanOrEqual(0);
-	});
-
 	test('keeps residential and commercial tiles buildable with setup cost premiums', () => {
 		expect.assertions(6);
 		const city = generateCity({
@@ -209,16 +190,16 @@ describe('tile placement', () => {
 
 		expect(isTileBuildable(residentialTile)).toBe(true);
 		expect(isTileBuildable(commercialTile)).toBe(true);
-		expect(forecastOpening(residentialTile, 'grocery').setupCost).toBeGreaterThan(
-			forecastOpening(neutralTile, 'grocery').setupCost
+		expect(getExpansionSetupCost(residentialTile, 'grocery')).toBeGreaterThan(
+			getExpansionSetupCost(neutralTile, 'grocery')
 		);
-		expect(forecastOpening(commercialTile, 'boutique').setupCost).toBeGreaterThan(
-			forecastOpening(neutralTile, 'boutique').setupCost
+		expect(getExpansionSetupCost(commercialTile, 'boutique')).toBeGreaterThan(
+			getExpansionSetupCost(neutralTile, 'boutique')
 		);
 		// Pin the commercial > residential premium ordering so swapping the two
 		// constants in TERRAIN_SETUP_COST_PREMIUM would fail the test.
-		expect(forecastOpening(commercialTile, 'grocery').setupCost).toBeGreaterThan(
-			forecastOpening(residentialTile, 'grocery').setupCost
+		expect(getExpansionSetupCost(commercialTile, 'grocery')).toBeGreaterThan(
+			getExpansionSetupCost(residentialTile, 'grocery')
 		);
 		expect(() =>
 			createFoundingGameAtTile({
@@ -461,7 +442,7 @@ describe('tile placement', () => {
 				candidate.id !== foundingTile.id &&
 				isRetailFootprintAvailable(city, candidate, game.stores)
 		)!;
-		const forecast = forecastOpening(expansionTile, 'grocery');
+		const expectedCost = getExpansionSetupCost(expansionTile, 'grocery');
 
 		const result = openStoreAtTile(game, {
 			tileId: expansionTile.id,
@@ -469,27 +450,11 @@ describe('tile placement', () => {
 		});
 
 		expect(result.stores).toHaveLength(2);
-		expect(result.cash).toBe(game.cash - forecast.setupCost);
+		expect(result.cash).toBe(game.cash - expectedCost);
 		expect(result.stores.at(-1)?.tileId).toBe(expansionTile.id);
 		expect(result.stores.at(-1)?.archetypeId).toBe('grocery');
 		expect(result.stores.at(-1)?.products.map((product) => product.productId)).toEqual(['produce']);
 		expect(result.decisions).toHaveLength(0);
-	});
-
-	test('forecastOpening flags a locked tile as a risk', () => {
-		expect.assertions(1);
-		const city = generateCity({
-			id: 'harbor-city',
-			name: 'Harbor City',
-			width: 20,
-			height: 20,
-			seed: 202
-		});
-		const lockedTile = city.tiles.find((tile) => tile.locked)!;
-
-		const forecast = forecastOpening(lockedTile, 'grocery');
-
-		expect(forecast.risks).toContain('Location is locked');
 	});
 
 	test('createFoundingGameAtTile throws on an unknown tile id', () => {

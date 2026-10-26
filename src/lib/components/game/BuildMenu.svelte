@@ -6,7 +6,7 @@
 		getStoreArt,
 		getProductArt
 	} from '$lib/assets/gameArt';
-	import { ARCHETYPES } from '$lib/game/archetypes';
+	import { ARCHETYPES, getArchetype } from '$lib/game/archetypes';
 	import {
 		INDUSTRIAL_BUILDING_TYPES,
 		PRODUCTION_RECIPES,
@@ -361,6 +361,7 @@
 							<small>
 								{i18n.t('buildMenu.retail.setupRevenue' as never, {
 									setup: formatRange(option.setupCostRange),
+									rent: i18n.format.currency(getArchetype(option.archetypeId).baseRent),
 									revenue: formatRange(option.projectedDailyRevenueRange)
 								})}
 							</small>
