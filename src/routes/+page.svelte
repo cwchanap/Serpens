@@ -103,7 +103,6 @@
 	} from '$lib/game/finance';
 	import { isSandboxOpeningWindow, selectOpeningGuidance } from '$lib/game/openingGuidance';
 	import { selectCashRecovery, type CashRecoveryStep } from '$lib/game/cashRecovery';
-	import { forecastOpening } from '$lib/game/placement';
 	import type {
 		ManualTransferInput,
 		RecurringRouteInput,
@@ -116,7 +115,7 @@
 	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
 	import { nextMapActivityBatch, type MapActivityBatch } from '$lib/game/mapActivityFeedback';
-	import { DEFAULT_POLICY } from '$lib/game/state';
+	import { DEFAULT_POLICY, getExpansionSetupCost } from '$lib/game/state';
 	import { getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
 	import {
@@ -892,7 +891,8 @@
 			game,
 			city: activeCity,
 			cashCommandAvailable: mutationAvailability.openStore,
-			financeCommandAvailable: mutationAvailability.financeRetailStore
+			financeCommandAvailable: mutationAvailability.financeRetailStore,
+			seed: starterMapState.seed
 		})
 	);
 	let industrialBuildOptions = $derived(
@@ -2566,7 +2566,7 @@
 				playSfx('sfx.build.invalid');
 				return;
 			}
-			const expectedCost = forecastOpening(tile, archetypeId).setupCost;
+			const expectedCost = getExpansionSetupCost(tile, archetypeId);
 			const paymentPath = resolveExpansionPurchasePaymentPath({
 				cashCommandAvailable: mutationAvailability.openStore,
 				financeCommandAvailable: mutationAvailability.financeRetailStore,
@@ -2688,7 +2688,7 @@
 			);
 			const tile = city ? getTileById(city, purchase.tileId) : undefined;
 			if (!tile) return { ...purchase, offer: null };
-			const expectedCost = forecastOpening(tile, purchase.archetypeId).setupCost;
+			const expectedCost = getExpansionSetupCost(tile, purchase.archetypeId);
 			const offer = getExpansionFinanceOffer(currentGame, expectedCost);
 			return { ...purchase, expectedCost, offer };
 		}
