@@ -40,15 +40,20 @@ export function isMilestoneLevel(level: number): boolean {
  * milestone level (and the corresponding capacity / product-unlock rules)
  * stays in lockstep with the rest of the leveling model. Milestones are
  * evaluated in descending order so the highest matching milestone wins
- * (e.g. level 10 unlocks 4 products, not 2).
+ * (e.g. level 10 unlocks 5 products, not 2).
+ *
+ * Founding breadth is 2 (HPA-502 Step 4 round 2): one founding product cannot
+ * clear the low-price archetypes' unit-economics bar — a single category
+ * leaves the shared sales capacity idle whenever its margin mix is weak, and
+ * the milestone curve shifts up by one category accordingly.
  */
 export function getUnlockedProductCount(level: number): number {
 	for (let index = STORE_MILESTONE_LEVELS.length - 1; index >= 0; index--) {
 		if (level >= STORE_MILESTONE_LEVELS[index]!) {
-			return index + 2;
+			return index + 3;
 		}
 	}
-	return 1;
+	return 2;
 }
 
 export function getStoreRevenueMultiplier(level: number): number {

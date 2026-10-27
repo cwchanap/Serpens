@@ -88,9 +88,13 @@ const PRICING = {
 export const POLICY_PRICING_TABLE = PRICING;
 
 const INVENTORY = {
-	lean: { capacity: 0.78, cost: 0.86, recovery: 3, stockStress: 1.24, satisfaction: -3 },
-	balanced: { capacity: 1, cost: 1, recovery: 7, stockStress: 1, satisfaction: 0 },
-	generous: { capacity: 1.18, cost: 1.12, recovery: 11, stockStress: 0.82, satisfaction: 2 }
+	// HPA-502 Step 4 round 2: founding sales capacity (≈72 u/d) left low-price
+	// archetypes structurally below costs even at the capacity-bound ceiling.
+	// Doubling the capacity column (ordering and relative policy gaps kept)
+	// lets shared capacity absorb the breadth-2 founding mix.
+	lean: { capacity: 1.56, cost: 0.86, recovery: 3, stockStress: 1.24, satisfaction: -3 },
+	balanced: { capacity: 2, cost: 1, recovery: 7, stockStress: 1, satisfaction: 0 },
+	generous: { capacity: 2.36, cost: 1.12, recovery: 11, stockStress: 0.82, satisfaction: 2 }
 } as const;
 
 const STAFFING = {

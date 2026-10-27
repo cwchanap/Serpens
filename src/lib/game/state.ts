@@ -356,10 +356,14 @@ export function previewStoreUpgrade(store: Store): StoreUpgradePreview | null {
 	// product is the authored entry at (unlockedCount - 1).
 	if (nextMilestoneLevel !== undefined) {
 		const productIndex = getUnlockedProductCount(nextMilestoneLevel) - 1;
-		nextProductMilestone = {
-			level: nextMilestoneLevel,
-			productId: archetype.startingProductIds[productIndex]!
-		};
+		// Founding breadth is 2, so the L10 budget (5) can exceed an archetype's
+		// authored catalog (4) — no further product exists to preview then.
+		nextProductMilestone = archetype.startingProductIds[productIndex]
+			? {
+					level: nextMilestoneLevel,
+					productId: archetype.startingProductIds[productIndex]!
+				}
+			: null;
 	}
 
 	return {
