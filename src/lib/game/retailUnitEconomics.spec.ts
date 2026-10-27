@@ -18,7 +18,13 @@
  *   the ruling explicitly allows);
  * - electronics single-store viability stays above the 1.2× bar (the
  *   expansion-pairing demand-split is a documented diagnosis, re-measured in
- *   the round-2 replay, not asserted here).
+ *   the round-2 replay, not asserted here);
+ * - Ruling 13 (task 5d): the electronics-family demandWeight step (games 1 →
+ *   1.08, accessories 0.9 → 0.972 — exact family ratio preserved) is pinned
+ *   by a 3-store-band regression: ≥6 of the 16 weak-demand seeds documented
+ *   in task-5c-report §5 must complete a positive 30d window by day 90
+ *   (measured 7 → 41/50 total viability), while the passing seeds' d61–90
+ *   income headroom stays ≤ ~2× their pre-change baseline (hard cap).
  *
  * The arithmetic mirrors the daily resolution in stock.ts (trended city pool →
  * market share → price multiplier → shared-capacity fill in sorted-id order)
@@ -26,6 +32,7 @@
  */
 import { describe, expect, test } from 'vitest';
 
+import { runBot } from '../../../tests/balance/bots';
 import { getArchetype } from './archetypes';
 import { brandedSellerScore, resolveBrandEconomics } from './brands';
 import { isTileBuildable } from './city';
@@ -186,6 +193,61 @@ describe('repaired founding unit economics (HPA-502 Step 4 round 2)', () => {
 		}));
 		for (const row of rows) {
 			expect(row.ratio).toBeGreaterThanOrEqual(SIZING_BAR);
+		}
+	});
+});
+
+describe('electronics 3-store band under the Ruling 13 demand weights (HPA-502 task 5d)', () => {
+	// The 16 seeds that failed retail viability 34/50 at the pre-change
+	// weights (task-5c-report §5: identical structure — 2 expansions by d90,
+	// 3-store gross 54.3–60.3k vs ≈61.3k fixed cost base).
+	const WEAK_DEMAND_SEEDS = [
+		20260504, 20260509, 20260510, 20260514, 20260516, 20260518, 20260519, 20260520, 20260524,
+		20260526, 20260529, 20260534, 20260539, 20260544, 20260545, 20260549
+	] as const;
+
+	/** First positive 30d operating-income window completing by day 90. */
+	function viableByDay90(seed: number): boolean {
+		const { game } = runBot('retail-steady', 'electronics', seed, 91);
+		const reports = game.reports;
+		for (let end = 29; end < reports.length; end += 1) {
+			const start = end - 29;
+			if (reports[end]!.day !== end + 1) continue;
+			let sum = 0;
+			for (let index = start; index <= end; index += 1) sum += reports[index]!.operatingIncome;
+			if (sum > 0) return true;
+		}
+		return false;
+	}
+
+	function incomeDays61To90(seed: number): number {
+		const { game } = runBot('retail-steady', 'electronics', seed, 365);
+		let income = 0;
+		for (const report of game.reports) {
+			if (report.day >= 61 && report.day <= 90) income += report.operatingIncome;
+		}
+		return income;
+	}
+
+	test('≥6 of the 16 weak-demand seeds complete a positive 30d window by day 90', () => {
+		const viable = WEAK_DEMAND_SEEDS.filter((seed) => viableByDay90(seed));
+		// Measured 7/16 at games 1.08 / accessories 0.972 → 41/50 total viability
+		// (pre-change: 0/16 — the sizing evidence the ×1.08 step was chosen for).
+		expect(viable.length).toBeGreaterThanOrEqual(6);
+	});
+
+	test('passing seeds keep d61–90 income headroom ≤ ~2× their pre-change baseline', () => {
+		// Pre-change d61–90 incomes from the 5c checkpoint artifacts (weakest
+		// and strongest passing seeds); the ×1.08 step must strengthen, never
+		// double, them (brief hard cap; measured 12,381 and 20,924).
+		const cases = [
+			{ seed: 20260548, baseline: 6_717 },
+			{ seed: 20260532, baseline: 14_932 }
+		];
+		for (const { seed, baseline } of cases) {
+			const income = incomeDays61To90(seed);
+			expect(income).toBeGreaterThanOrEqual(baseline);
+			expect(income).toBeLessThanOrEqual(2 * baseline);
 		}
 	});
 });

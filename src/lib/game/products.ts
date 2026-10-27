@@ -123,7 +123,13 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		familyId: 'electronics',
 		defaultBrandId: 'common-ground',
 		name: 'Games',
-		demandWeight: 1,
+		// HPA-502 Ruling 13 (task 5d): electronics-family demandWeight ×1.08 —
+		// the smallest two-decimal step that moves ≥6 of the 16 weak-demand
+		// seeds (task-5c-report §5) over the 3-store cost line (measured: 7
+		// flips, viability 34→41/50) while every passing seed's d61–90 income
+		// stays ≤ ~2× its pre-change baseline (worst 1.84×). Prices untouched;
+		// exact family ratio games:accessories preserved (1 : 0.9).
+		demandWeight: 1.08,
 		importCost: 32,
 		defaultSellingPrice: 48,
 		priceSensitivity: 0.75,
@@ -135,7 +141,8 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		familyId: 'electronics',
 		defaultBrandId: 'common-ground',
 		name: 'Accessories',
-		demandWeight: 0.9,
+		// Ruling 13: 0.9 × 1.08, the same family step as games (ratio intact).
+		demandWeight: 0.972,
 		importCost: 11,
 		defaultSellingPrice: 22,
 		priceSensitivity: 0.9,

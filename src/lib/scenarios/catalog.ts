@@ -300,7 +300,13 @@ const importSqueeze = {
 			points: 140
 		}
 	],
-	medalThresholds: { silver: 700, gold: 850 }
+	// HPA-502 Ruling 13 (task 5d): the electronics demandWeight ×1.08 family
+	// step raises import-squeeze reference demand-missed to 910 by d15 (fixed
+	// founding targets under the ×2 import squeeze), moving the documented
+	// reference score 853 → 841. Gold 850 → 840 restores the authored
+	// reference-completes-gold shape; no-action (663) stays bronze, the silver
+	// bar is untouched.
+	medalThresholds: { silver: 700, gold: 840 }
 } as const satisfies ScenarioDefinition;
 
 const localLifeline = {

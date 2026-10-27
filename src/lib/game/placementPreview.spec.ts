@@ -367,7 +367,9 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'electronics',
 				setupCostRange: { min: 15200, max: 22922 },
-				projectedDailyRevenueRange: { min: 775, max: 775 },
+				// Ruling 13 (task 5d): ×1.08 electronics-family demandWeight lifts the
+				// founding forecast (775 → 837); other archetypes untouched.
+				projectedDailyRevenueRange: { min: 837, max: 837 },
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -409,7 +411,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'electronics',
 				setupCostRange: { min: 15200, max: 22922 },
-				projectedDailyRevenueRange: { min: 775, max: 775 },
+				projectedDailyRevenueRange: { min: 837, max: 837 },
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null
