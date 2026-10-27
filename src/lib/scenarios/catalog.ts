@@ -164,8 +164,16 @@ const firstProfit = {
 			kind: 'metric',
 			query: { metric: 'cumulative-net-income' },
 			window: { kind: 'run-to-date' },
-			zeroBonusAt: 450,
-			fullBonusAt: 500,
+			// HPA-502 task 6 (settled-economy recalibration): this band was authored
+			// when the no-action baseline earned <$450 cumulative income (paying 0).
+			// The tuned economy lifts the passive run to 1306 by its day-4 completion,
+			// switching the component on and awarding no-action Gold (862). Re-banding
+			// to 1400→1600 restores the authored shape on the official seed: the
+			// passive baseline pays 0 (682 bronze, below Silver) while the documented
+			// reference play (1660) pays full (862 gold). Completion days, objectives
+			// and medal thresholds are untouched.
+			zeroBonusAt: 1_400,
+			fullBonusAt: 1_600,
 			points: 180
 		},
 		{

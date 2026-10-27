@@ -1889,7 +1889,8 @@ export const zhHant = {
 			title: '首次獲利',
 			summary: '將小商店轉為獲利：累計淨收入高於零，並連續三份正收益報告。',
 			briefing: '累計淨收入必須以正數作結，且最近三份報告連續為正收益。現金低於零即失敗。',
-			strategyHint: '以已完成結果與目前警告作為證據檢視，官方種子下無需更改設定。',
+			strategyHint:
+				'以已完成結果與目前警告作為證據檢視，官方種子下須將價格與服務調整至高於不作為基準，方能獲得金牌。',
 			objectives: { cumulativeNetIncome: '賺取累計淨收入', positiveIncomeStreak: '維持連續正收益' },
 			failures: { negativeCash: '避免現金為負' }
 		},
