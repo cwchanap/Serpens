@@ -579,10 +579,18 @@ function managerLifecycleGame(): GameState {
 
 	return {
 		...base,
-		stores: base.stores.map((store) => ({
-			...store,
-			products: store.products.map((product) => ({ ...product, sellingPrice: 2 }))
-		})),
+		stores: base.stores.map((store) => {
+			const products = store.products.map((product) => ({
+				...product,
+				sellingPrice: 2,
+				// HPA-502 5d doubled founding sales capacity, so the starter stock
+				// sold out on day 1 and starved the day-3 protect-margin evaluation
+				// of a proposal. 84 units/product keeps days 1–2 selling with the
+				// sub-0.3 margin ratio both manager proposals need.
+				lots: [{ receivedDay: 1, quantity: 84 }]
+			}));
+			return { ...store, products, stockHealth: calculateStockHealth(products) };
+		}),
 		managerDelegations: [
 			{
 				managerId: manager.id,
@@ -1977,7 +1985,9 @@ test('living market sandbox persists a brand edit and reports market evidence', 
 			const savedProduct = getSavedProduct(await readAutoSaveGame(page), 'bottled-water');
 			return { brandId: savedProduct.brandId, sellingPrice: savedProduct.sellingPrice };
 		})
-		.toEqual({ brandId: 'budget-bay', sellingPrice: 3 });
+		// HPA-502 5a doubled the bottled-water table price (3→6); Budget Bay's
+		// ×0.9 price multiplier re-seats the brand default at round(6 × 0.9) = 5.
+		.toEqual({ brandId: 'budget-bay', sellingPrice: 5 });
 
 	await storeDetails.getByRole('button', { name: /close store details/i }).click();
 	await page.reload();
@@ -1996,7 +2006,7 @@ test('living market sandbox persists a brand edit and reports market evidence', 
 	).toHaveValue('budget-bay');
 	await expect(
 		reloadedDetails.getByRole('spinbutton', { name: 'Selling price for Bottled Water' })
-	).toHaveValue('3');
+	).toHaveValue('5');
 	await reloadedDetails.getByRole('button', { name: /close store details/i }).click();
 
 	await advanceSimulationDay(page);
@@ -2229,12 +2239,15 @@ test('production supplier bulk discount stays active through its final import an
 	expect(saved.events.activeModifiers).toEqual([]);
 	expect(finalReport.day).toBe(7);
 	expect(finalReport.modifierImpacts).toEqual([
+		// HPA-502 5d founding breadth-2 widens the retail-product discount scope
+		// to the store's first two sorted products (bottled-water + snacks), so
+		// the expiry-day impact reports both ids and two applications.
 		expect.objectContaining({
 			modifierId,
 			effectKind: 'import-cost-multiplier',
-			affectedIds: ['bottled-water'],
+			affectedIds: ['bottled-water', 'snacks'],
 			multiplier: 0.9,
-			applicationCount: 1
+			applicationCount: 2
 		})
 	]);
 	expect(finalReport.modifierImpacts[0]?.baselineCost).toBeGreaterThan(0);
@@ -4025,11 +4038,18 @@ test('player builds convenience production and refills from city inventory', asy
 	await expect(
 		productSources.getByText(`${bottledWaterReport.importedUnits} external imports`)
 	).toBeVisible();
+	// HPA-502 5d founding breadth-2 stocks Snacks alongside Bottled Water, so
+	// the store card's External imports figure is the store-wide weekly spend
+	// across both products, not the Bottled Water line alone.
+	const storeExternalImportSpend = storeReport.productReports.reduce(
+		(total, report) => total + report.importSpend,
+		0
+	);
 	await expect(
 		storesPanel.locator('article').filter({
 			hasText: new RegExp(
 				`^Store #1[\\s\\S]*External imports\\s+\\$${escapeRegExp(
-					bottledWaterReport.importSpend.toLocaleString('en-US')
+					storeExternalImportSpend.toLocaleString('en-US')
 				)}`
 			)
 		})
@@ -4062,7 +4082,9 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 	const staffDialog = await openManagementPanel(page, /staff/i);
 
 	const staffPanel = staffDialog.getByRole('region', { name: 'Staff' });
-	await expect(staffDialog.getByText('1/1 mgr, 2/2 gen')).toBeVisible();
+	// HPA-502 5d founding breadth-2 raises the L1 product-unlock curve by one
+	// category, so the boutique roster requirement is 1 mgr + 3 generals.
+	await expect(staffDialog.getByText('1/1 mgr, 3/3 gen')).toBeVisible();
 	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
 	const generalCandidate = candidatesSection
 		.locator('article')
@@ -4082,7 +4104,7 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 		.getByLabel(new RegExp(`^Assign ${candidateNamePattern},`))
 		.selectOption({ label: 'Store #1' });
 
-	await expect(staffDialog.getByText('1/1 mgr, 3/2 gen')).toBeVisible();
+	await expect(staffDialog.getByText('1/1 mgr, 4/3 gen')).toBeVisible();
 });
 
 test('locked map tiles still show inspector feedback', async ({ page }) => {
@@ -4824,12 +4846,14 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 	await upgradeButton.click();
 	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 3 / 10');
 
-	// The 3 → 4 milestone preview is visible and advertises the Snacks unlock.
+	// The 3 → 4 milestone preview is visible and advertises the next unlock.
+	// HPA-502 5d founding breadth-2 already includes Snacks at founding, so the
+	// L4 milestone unlock moves one category later to Soft Drinks.
 	const upgradeCard = inspector.getByTestId('upgrade-card');
 	await expect(upgradeCard).toBeVisible();
 	const unlockRow = upgradeCard.getByTestId('upgrade-unlock');
-	await expect(unlockRow).toContainText('Unlocks Snacks');
-	await expect(unlockRow.getByRole('img', { name: 'Snacks' })).toBeVisible();
+	await expect(unlockRow).toContainText('Unlocks Soft Drinks');
+	await expect(unlockRow.getByRole('img', { name: 'Soft Drinks' })).toBeVisible();
 
 	await upgradeButton.click();
 
@@ -4837,36 +4861,36 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 4 / 10');
 	await expect(inspector.getByTestId('upgrade-status')).toContainText('Upgrade complete.');
 
-	// The milestone CTA hands off to Store Detail focused on the Snacks row.
-	await expect(inspector.getByTestId('upgrade-review-stock-supply')).toContainText('Snacks');
+	// The milestone CTA hands off to Store Detail focused on the Soft Drinks row.
+	await expect(inspector.getByTestId('upgrade-review-stock-supply')).toContainText('Soft Drinks');
 	await inspector.getByTestId('upgrade-review-stock-supply').click();
 	const storeModal = page.locator('[role="dialog"][aria-modal="true"]');
 	await expect(storeModal.getByRole('tab', { name: /stock/i })).toHaveAttribute(
 		'aria-selected',
 		'true'
 	);
-	const snacksRow = storeModal.getByTestId('store-product-row-snacks');
-	await expect(snacksRow).toBeFocused();
+	const softDrinksRow = storeModal.getByTestId('store-product-row-soft-drinks');
+	await expect(softDrinksRow).toBeFocused();
 
 	// The existing threshold/target controls stay usable for the new category.
-	const snacksReorder = storeModal.getByRole('spinbutton', {
-		name: /reorder threshold for snacks/i
+	const softDrinksReorder = storeModal.getByRole('spinbutton', {
+		name: /reorder threshold for soft drinks/i
 	});
-	await expect(snacksReorder).toBeVisible();
-	await expect(snacksReorder).toBeEnabled();
+	await expect(softDrinksReorder).toBeVisible();
+	await expect(softDrinksReorder).toBeEnabled();
 	await expect(
-		storeModal.getByRole('spinbutton', { name: /target stock for snacks/i })
+		storeModal.getByRole('spinbutton', { name: /target stock for soft drinks/i })
 	).toBeVisible();
 
-	// The existing Plan Supply handoff for Snacks is enabled and usable.
+	// The existing Plan Supply handoff for Soft Drinks is enabled and usable.
 	const planSupply = storeModal
-		.getByTestId('store-recovery-actions-snacks')
+		.getByTestId('store-recovery-actions-soft-drinks')
 		.getByRole('button', { name: 'Plan supply' });
 	await expect(planSupply).toBeEnabled();
 	await planSupply.click();
 	const advisor = page.getByRole('dialog', { name: /supply advisor/i });
 	await expect(advisor).toBeVisible();
-	await expect(advisor.getByRole('combobox', { name: 'Category' })).toHaveValue('snacks');
+	await expect(advisor.getByRole('combobox', { name: 'Category' })).toHaveValue('soft-drinks');
 });
 
 test('store card Open Details stays reachable above the control desk on a narrow viewport', async ({
@@ -5510,12 +5534,22 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 		warehouseUnits: 6,
 		warehouseValue: 12,
 		importedUnits: 4,
-		importCost: 2,
-		importSpend: 8
+		// HPA-502 5a halved the bottled-water import cost (2→1), so the 4-unit
+		// shortfall costs 4 instead of 8.
+		importCost: 1,
+		importSpend: 4
 	});
+	// HPA-502 5d founding breadth-2 gives every convenience store a second
+	// founding category (Snacks), so both cities' stores carry and refill it.
 	expect(harborStore.products).toMatchObject([
 		{
 			productId: 'bottled-water',
+			lots: [{ receivedDay: 7, quantity: 10 }],
+			reorderThreshold: 1,
+			targetStock: 10
+		},
+		{
+			productId: 'snacks',
 			lots: [{ receivedDay: 7, quantity: 10 }],
 			reorderThreshold: 1,
 			targetStock: 10
@@ -5527,11 +5561,20 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 			lots: [{ receivedDay: 1, quantity: 50 }],
 			reorderThreshold: 1,
 			targetStock: 50
+		},
+		{
+			productId: 'snacks',
+			lots: [{ receivedDay: 1, quantity: 50 }],
+			reorderThreshold: 1,
+			targetStock: 50
 		}
 	]);
+	// HPA-502 breadth-2: the day-7 pull pass now also queries Snacks against
+	// Industry City (0 available), recording the empty key alongside the
+	// drawn-down bottled-water position.
 	expect(getSavedCityInventory(postCycle, 'industry-city')).toEqual({
 		cityId: 'industry-city',
-		materials: { 'bottled-water': 0 }
+		materials: { 'bottled-water': 0, snacks: 0 }
 	});
 	expect(getSavedCityInventory(postCycle, 'breadbasket-basin')).toEqual({
 		cityId: 'breadbasket-basin',
@@ -5578,8 +5621,10 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 			exact: true
 		})
 	).toBeVisible();
+	// Snacks has no Industry City stock, so the store-wide external imports
+	// total is Bottled Water's 4 units plus Snacks' 10 imported units.
 	await expect(
-		cityAttributedMovements.getByText('External imports — Harbor City: 4 units', { exact: true })
+		cityAttributedMovements.getByText('External imports — Harbor City: 14 units', { exact: true })
 	).toBeVisible();
 	await reports.getByRole('button', { name: 'Close Reports' }).click();
 
@@ -5602,7 +5647,9 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 	]);
 	expect(getSavedCityInventory(savedManualSlot.game, 'industry-city')).toEqual({
 		cityId: 'industry-city',
-		materials: { 'bottled-water': 0 }
+		// Same post-cycle shape as the live auto-save: the breadth-2 pull pass
+		// records the queried-but-empty Snacks key.
+		materials: { 'bottled-water': 0, snacks: 0 }
 	});
 	expect(getSavedCityInventory(savedManualSlot.game, 'breadbasket-basin')).toEqual({
 		cityId: 'breadbasket-basin',
