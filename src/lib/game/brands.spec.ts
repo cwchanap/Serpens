@@ -130,14 +130,15 @@ describe('brand catalog', () => {
 		expect.assertions(2);
 
 		expect(getBrandDefaultSellingPrice(PRODUCTS.apparel, 'northstar-select')).toBe(45);
-		expect(getBrandDefaultSellingPrice(PRODUCTS['bottled-water'], 'common-ground')).toBe(3);
+		expect(getBrandDefaultSellingPrice(PRODUCTS['bottled-water'], 'common-ground')).toBe(6);
 	});
 
 	test('resolves unit cost, demand, and market attraction without a customer price', () => {
 		expect.assertions(5);
 
 		expect(resolveBrandEconomics(PRODUCTS.snacks, 'budget-bay')).toEqual({
-			unitCost: 2.52,
+			// Snacks importCost is 2 since HPA-502 Step 4 round 2 (2 × 0.84).
+			unitCost: 1.68,
 			demandMultiplier: 1.1,
 			marketAttractionMultiplier: 1.026
 		});

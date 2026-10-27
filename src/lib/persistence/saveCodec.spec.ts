@@ -6386,7 +6386,13 @@ describe('saveCodec', () => {
 	test('strict validation rejects a locked product category substituted at the same count', () => {
 		const store = createGame().stores[0]!;
 		const products = initializeStoreProducts('boutique', 4);
-		const lockedSubstitution = [products[0]!, { ...products[1]!, productId: 'gifts' as const }];
+		// Founding-breadth-2 curve (HPA-502 round 2): level 4 unlocks three
+		// boutique categories, so the locked substitution is the level-7 product.
+		const lockedSubstitution = [
+			products[0]!,
+			products[1]!,
+			{ ...products[2]!, productId: 'fashion-accessories' as const }
+		];
 
 		expect(() =>
 			validateCurrentGameState(
@@ -6401,7 +6407,7 @@ describe('saveCodec', () => {
 					]
 				})
 			)
-		).toThrow('products[1] productId must be unlocked at level 4');
+		).toThrow('products[2] productId must be unlocked at level 4');
 	});
 
 	test('current schema save record rejects stale stock health rather than recalculating it', () => {

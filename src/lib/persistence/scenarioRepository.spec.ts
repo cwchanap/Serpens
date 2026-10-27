@@ -61,7 +61,9 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productIds: ['bottled-water'],
+			// Founding breadth 2 (HPA-502 round 2) materializes snacks alongside
+			// bottled water in the founding store, so the allowlist needs both.
+			productIds: ['bottled-water', 'snacks'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [],
@@ -135,6 +137,11 @@ function fixtureRun(
 		seed?: number;
 		score?: number;
 		advanceDays?: number;
+		// Round-2 economics (HPA-502) turn a convenience profit on day 1, so a
+		// simulated-day advanced run can satisfy the fixture's cash objective
+		// and stop being canonically 'active'. CAS tests pass a negative cash
+		// to keep advanced runs mid-play.
+		cash?: number;
 	} = {}
 ): ScenarioRun {
 	const definition = fixtureDefinition(ref);
@@ -144,7 +151,7 @@ function fixtureRun(
 	for (let day = 0; day < (options.advanceDays ?? 0); day += 1) game = simulateDay(game);
 	game = {
 		...game,
-		cash: Math.max(0, Math.min(1000, (options.score ?? 500) - 500) * 2),
+		cash: options.cash ?? Math.max(0, Math.min(1000, (options.score ?? 500) - 500) * 2),
 		scorecard: status === 'failed' ? { ...game.scorecard, profit: -1 } : game.scorecard
 	};
 	const eligibility =
@@ -841,7 +848,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		// revision guard refuses the delete and surfaces the stored run.
 		const driver = new CountingDriver();
 		const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
-		const run = fixtureRun();
+		const run = fixtureRun(undefined, { cash: -50_000 });
 		await repository.saveActiveRun(run);
 		const loaded = await repository.loadActiveRunWithRevision('first-profit');
 		expect(loaded).not.toBeNull();
@@ -961,7 +968,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 			// revision guard refuses the write and surfaces the stored run.
 			const driver = new CountingDriver();
 			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
-			const run = fixtureRun();
+			const run = fixtureRun(undefined, { cash: -50_000 });
 			await repository.saveActiveRun(run);
 			const loaded = await repository.loadActiveRunWithRevision('first-profit');
 			expect(loaded).not.toBeNull();
@@ -998,7 +1005,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		it('accepts a same-runId save whose expectedRevision matches', async () => {
 			const driver = new CountingDriver();
 			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
-			const run = fixtureRun();
+			const run = fixtureRun(undefined, { cash: -50_000 });
 			await repository.saveActiveRun(run);
 			const loaded = await repository.loadActiveRunWithRevision('first-profit');
 			expect(loaded!.revision).toBe(1);
@@ -1018,7 +1025,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		it('increments revision on each same-runId save', async () => {
 			const driver = new CountingDriver();
 			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
-			const run = fixtureRun();
+			const run = fixtureRun(undefined, { cash: -50_000 });
 			await repository.saveActiveRun(run);
 
 			for (let i = 1; i <= 3; i++) {
@@ -1041,7 +1048,7 @@ describe('scenario repository', { timeout: 30_000 }, () => {
 		it('commitTerminalRun refuses when expectedRevision is stale', async () => {
 			const driver = new CountingDriver();
 			const repository = new ScenarioRepositoryFromDriver(driver, resolveFixtureDefinition);
-			const run = fixtureRun();
+			const run = fixtureRun(undefined, { cash: -50_000 });
 			await repository.saveActiveRun(run);
 			const loaded = await repository.loadActiveRunWithRevision('first-profit');
 			expect(loaded!.revision).toBe(1);

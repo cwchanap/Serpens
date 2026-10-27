@@ -350,7 +350,7 @@ describe('weekly retail replenishment', () => {
 				warehouseUnits: 21,
 				warehouseValue: 168,
 				importedUnits: 0,
-				importCost: 3,
+				importCost: 2,
 				importSpend: 0,
 				remainingSnacks: 0,
 				context: {
@@ -368,8 +368,8 @@ describe('weekly retail replenishment', () => {
 				warehouseUnits: 12,
 				warehouseValue: 96,
 				importedUnits: 9,
-				importCost: 3,
-				importSpend: 27,
+				importCost: 2,
+				importSpend: 18,
 				remainingSnacks: 0,
 				context: {
 					retailCityId: 'harbor-city',
@@ -386,8 +386,8 @@ describe('weekly retail replenishment', () => {
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: 21,
-				importCost: 3,
-				importSpend: 63,
+				importCost: 2,
+				importSpend: 42,
 				remainingSnacks: 0,
 				context: {
 					retailCityId: 'harbor-city',
@@ -404,8 +404,8 @@ describe('weekly retail replenishment', () => {
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: 21,
-				importCost: 3,
-				importSpend: 63,
+				importCost: 2,
+				importSpend: 42,
 				remainingSnacks: 21,
 				context: {
 					retailCityId: 'harbor-city',
@@ -422,8 +422,8 @@ describe('weekly retail replenishment', () => {
 				warehouseUnits: 0,
 				warehouseValue: 0,
 				importedUnits: 21,
-				importCost: 3,
-				importSpend: 63,
+				importCost: 2,
+				importSpend: 42,
 				remainingSnacks: 21,
 				context: {
 					retailCityId: 'harbor-city',
@@ -557,8 +557,8 @@ describe('weekly retail replenishment', () => {
 		expect(report.warehouseUnits).toBe(12);
 		expect(report.warehouseValue).toBe(96);
 		expect(report.importedUnits).toBe(9);
-		expect(report.importCost).toBe(3);
-		expect(report.importSpend).toBe(27);
+		expect(report.importCost).toBe(2);
+		expect(report.importSpend).toBe(18);
 		expect(result.stores[0]!.products[0]!.lots).toEqual([{ receivedDay: 1, quantity: 25 }]);
 		expect(report).not.toHaveProperty('replenishmentOutcome');
 	});
@@ -591,16 +591,17 @@ describe('weekly retail replenishment', () => {
 		expect(report.warehouseUnits).toBe(12);
 		expect(report.warehouseValue).toBe(96);
 		expect(report.importedUnits).toBe(9);
-		expect(report.importCost).toBe(3);
-		expect(report.importSpend).toBe(49);
-		expect(result.importSpend).toBe(49);
+		expect(report.importCost).toBe(2);
+		// 9 × cost 2 × scenario ×2 × event ×0.9 = 32.4 → 32 (round-2 snacks cost 2)
+		expect(report.importSpend).toBe(32);
+		expect(result.importSpend).toBe(32);
 		expect(result.importCostApplications).toEqual([
 			{
 				scope: 'retail-product',
 				targetId: 'snacks',
-				baselineCost: 27,
+				baselineCost: 18,
 				resolvedMultiplier: 1.8,
-				actualCost: 49,
+				actualCost: 32,
 				contributions: [
 					{ source: eventSource, multiplier: 0.9 },
 					{ source: scenarioSource, multiplier: 2 }
@@ -654,13 +655,14 @@ describe('weekly retail replenishment', () => {
 		const report = result.productReports.get(game.stores[0]!.id)![0]!;
 
 		expect(report.brandId).toBe('budget-bay');
-		expect(report.importCost).toBe(2.52);
+		expect(report.importCost).toBe(1.68);
 		expect(report.warehouseUnits).toBe(12);
 		expect(report.warehouseValue).toBe(96);
 		expect(report.importedUnits).toBe(9);
-		expect(report.importSpend).toBe(41);
-		expect(result.importCostApplications[0]!.baselineCost).toBe(22.68);
-		expect(result.importCostApplications[0]!.actualCost).toBe(41);
+		// 9 × 1.68 × scenario ×2 × event ×0.9 = 27.2 → 27 (round-2 snacks cost 2)
+		expect(report.importSpend).toBe(27);
+		expect(result.importCostApplications[0]!.baselineCost).toBe(15.12);
+		expect(result.importCostApplications[0]!.actualCost).toBe(27);
 	});
 
 	test('keeps omitted and explicit default modifiers deeply equal', () => {

@@ -24,9 +24,13 @@ describe('staffing rules', () => {
 	test('returns staffing requirements by archetype', () => {
 		expect.assertions(4);
 
-		expect(getStaffingRequirement('convenience')).toEqual({ manager: 1, general: 1 });
-		expect(getStaffingRequirement('boutique')).toEqual({ manager: 1, general: 2 });
-		expect(getStaffingRequirement('electronics')).toEqual({ manager: 1, general: 2 });
+		// Founding breadth 2 (HPA-502 Step 4 round 2) adds one milestone general
+		// to every archetype's base requirement at level 1; Ruling 8 lever (v)
+		// takes grocery's base from 3 to 2 generals (payroll relief — the replay
+		// windows were still short after the demand lever).
+		expect(getStaffingRequirement('convenience')).toEqual({ manager: 1, general: 2 });
+		expect(getStaffingRequirement('boutique')).toEqual({ manager: 1, general: 3 });
+		expect(getStaffingRequirement('electronics')).toEqual({ manager: 1, general: 3 });
 		expect(getStaffingRequirement('grocery')).toEqual({ manager: 1, general: 3 });
 	});
 
@@ -130,10 +134,10 @@ describe('staffing rules', () => {
 
 		const summary = summarizeStoreStaffing({ staff }, store);
 
-		expect(summary.requirement).toEqual({ manager: 1, general: 2 });
+		expect(summary.requirement).toEqual({ manager: 1, general: 3 });
 		expect(summary.assigned).toEqual({ manager: 3, general: 0 });
-		expect(summary.shortage).toEqual({ manager: 0, general: 2 });
-		expect(summary.coverage).toBe(33);
+		expect(summary.shortage).toEqual({ manager: 0, general: 3 });
+		expect(summary.coverage).toBe(25);
 	});
 
 	test('hires a candidate as an unassigned staff member', () => {
@@ -255,10 +259,12 @@ describe('staffing rules', () => {
 
 	test('staffing requirement grows by one general per milestone level', () => {
 		expect.assertions(4);
-		expect(getStaffingRequirement('convenience', 1)).toEqual({ manager: 1, general: 1 });
-		expect(getStaffingRequirement('convenience', 4)).toEqual({ manager: 1, general: 2 });
-		expect(getStaffingRequirement('convenience', 7)).toEqual({ manager: 1, general: 3 });
-		expect(getStaffingRequirement('convenience', 10)).toEqual({ manager: 1, general: 4 });
+		// Founding breadth 2 (HPA-502 Step 4 round 2) shifts the curve up one
+		// general; the +1-per-milestone growth is unchanged.
+		expect(getStaffingRequirement('convenience', 1)).toEqual({ manager: 1, general: 2 });
+		expect(getStaffingRequirement('convenience', 4)).toEqual({ manager: 1, general: 3 });
+		expect(getStaffingRequirement('convenience', 7)).toEqual({ manager: 1, general: 4 });
+		expect(getStaffingRequirement('convenience', 10)).toEqual({ manager: 1, general: 5 });
 	});
 
 	test('starter staff and hired candidates begin at level 1 with zero xp', () => {

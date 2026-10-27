@@ -344,14 +344,14 @@ describe('retail placement preview', () => {
 			seed: 20260503
 		});
 
-		// Golden values captured before demand pools were memoized per
-		// archetype inside the menu build; the memoization must not move
-		// any estimate.
+		// Golden values re-captured after the HPA-502 round-2 economy change
+		// (founding breadth 2, capacity ×2, product data); the memoization must
+		// not move any estimate.
 		expect(getRetailBuildMenuOptions({ game: null, city })).toEqual([
 			{
 				archetypeId: 'convenience',
 				setupCostRange: { min: 14570, max: 22292 },
-				projectedDailyRevenueRange: { min: 41, max: 41 },
+				projectedDailyRevenueRange: { min: 174, max: 174 },
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -359,7 +359,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'boutique',
 				setupCostRange: { min: 14930, max: 22652 },
-				projectedDailyRevenueRange: { min: 434, max: 434 },
+				projectedDailyRevenueRange: { min: 708, max: 708 },
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -367,7 +367,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'electronics',
 				setupCostRange: { min: 15200, max: 22922 },
-				projectedDailyRevenueRange: { min: 549, max: 549 },
+				projectedDailyRevenueRange: { min: 775, max: 775 },
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -375,7 +375,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'grocery',
 				setupCostRange: { min: 15470, max: 23192 },
-				projectedDailyRevenueRange: { min: 45, max: 45 },
+				projectedDailyRevenueRange: { min: 359, max: 359 },
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -393,7 +393,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'convenience',
 				setupCostRange: { min: 14570, max: 22292 },
-				projectedDailyRevenueRange: { min: 41, max: 41 },
+				projectedDailyRevenueRange: { min: 174, max: 174 },
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null
@@ -401,7 +401,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'boutique',
 				setupCostRange: { min: 14930, max: 22652 },
-				projectedDailyRevenueRange: { min: 434, max: 434 },
+				projectedDailyRevenueRange: { min: 708, max: 708 },
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null
@@ -409,7 +409,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'electronics',
 				setupCostRange: { min: 15200, max: 22922 },
-				projectedDailyRevenueRange: { min: 549, max: 549 },
+				projectedDailyRevenueRange: { min: 775, max: 775 },
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null
@@ -417,7 +417,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'grocery',
 				setupCostRange: { min: 15470, max: 23192 },
-				projectedDailyRevenueRange: { min: 45, max: 45 },
+				projectedDailyRevenueRange: { min: 359, max: 359 },
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null

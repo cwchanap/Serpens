@@ -78,12 +78,16 @@ describe('selectCashRecovery', () => {
 			[runway, stock]
 		);
 
+		// Founding breadth 2 (HPA-502 Step 4 round 2) makes store-1's requirement
+		// {manager:1, general:2}: the idle general fills the general shortage, and
+		// only the remaining idle hand is released.
 		expect(plan).toEqual({
 			alert: runway,
 			steps: [
 				{ kind: 'restock', alert: stock },
+				{ kind: 'assign-idle-staff', count: 1 },
 				{ kind: 'finance', alert: runway },
-				{ kind: 'release-idle-staff', count: 2 },
+				{ kind: 'release-idle-staff', count: 1 },
 				{ kind: 'pause-routes', count: 2 }
 			]
 		});
@@ -97,7 +101,8 @@ describe('selectCashRecovery', () => {
 	});
 
 	it('assigns idle staff who can fill a store shortage and releases only the surplus', () => {
-		// The fixture's store-1 needs one manager and one general hand.
+		// The fixture's store-1 needs one manager and, at founding breadth 2, one
+		// more general hand — both idle staff fill a shortage.
 		const plan = selectCashRecovery(
 			gameWith([
 				staffMember('a', 'store-1'),
@@ -108,9 +113,8 @@ describe('selectCashRecovery', () => {
 		);
 
 		expect(plan?.steps).toEqual([
-			{ kind: 'assign-idle-staff', count: 1 },
-			{ kind: 'finance', alert: runway },
-			{ kind: 'release-idle-staff', count: 1 }
+			{ kind: 'assign-idle-staff', count: 2 },
+			{ kind: 'finance', alert: runway }
 		]);
 	});
 

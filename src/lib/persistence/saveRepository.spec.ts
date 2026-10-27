@@ -350,6 +350,16 @@ function createDaySevenReplenishmentFromIndustryCity(): GameState {
 						reorderThreshold: 1,
 						targetStock: 20,
 						sellingPrice: 3
+					},
+					// Founding breadth 2 (HPA-502 round 2): validation requires the
+					// second unlocked category; it has no industry stock behind it.
+					{
+						productId: 'snacks' as const,
+						brandId: 'common-ground',
+						lots: [],
+						reorderThreshold: 1,
+						targetStock: 20,
+						sellingPrice: 5
 					}
 				]
 			}
@@ -1924,8 +1934,9 @@ describe('save records', () => {
 
 	test('rejects a save whose level disagrees with its product count (level↔products coupling check)', () => {
 		expect.assertions(2);
-		// A store claiming level 1 but carrying 4 products is not a valid shape
-		// in this codebase, so the current save must be rejected on load.
+		// A store claiming level 1 but carrying the full level-10 catalog is not
+		// a valid shape in this codebase, so the current save must be rejected
+		// on load. (Round-2 curve: level 10 budgets 5 categories, level 1 two.)
 		const game = createNewGame('convenience', 20260603);
 		const baseStore = game.stores[0]!;
 		const products: StoreProduct[] = initializeStoreProducts('convenience', 10);
@@ -1937,7 +1948,7 @@ describe('save records', () => {
 
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(SaveDataError);
 		expect(() => validateSaveStoreSnapshot(snapshot)).toThrow(
-			'products length (4) must equal unlocked product count (1) for level 1'
+			'products length (5) must equal unlocked product count (2) for level 1'
 		);
 	});
 

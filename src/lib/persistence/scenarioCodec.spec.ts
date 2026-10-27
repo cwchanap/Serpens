@@ -68,7 +68,9 @@ function fixtureDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition {
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productIds: ['bottled-water'],
+			// Founding breadth 2 (HPA-502 round 2) materializes snacks alongside
+			// bottled water in the founding store, so the allowlist needs both.
+			productIds: ['bottled-water', 'snacks'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [],

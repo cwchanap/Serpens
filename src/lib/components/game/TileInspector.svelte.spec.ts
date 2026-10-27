@@ -179,7 +179,7 @@ describe('TileInspector basic card', () => {
 		expect(
 			(page.getByRole('meter', { name: 'Store staffing' }).element() as HTMLMeterElement).value
 		).toBe(0);
-		await expect.element(page.getByText('0 / 2', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('0 / 3', { exact: true })).toBeVisible();
 	});
 	it('shows store identity, an out-of-stock attention flag, and opens details', async () => {
 		expect.assertions(4);
@@ -424,10 +424,10 @@ describe('TileInspector store upgrade', () => {
 		await expect.element(page.getByText(/Level 2 → 3/)).toBeVisible();
 		await expect.element(page.getByText('Cost $16,000')).toBeVisible();
 		await expect.element(page.getByText('Revenue ×1.1 → ×1.2')).toBeVisible();
-		await expect.element(page.getByText('Next milestone: Snacks at Level 4')).toBeVisible();
+		await expect.element(page.getByText('Next milestone: Soft Drinks at Level 4')).toBeVisible();
 	});
 
-	it('shows the milestone card with the Snacks unlock, capacity, and staffing changes (3 → 4)', async () => {
+	it('shows the milestone card with the Soft Drinks unlock, capacity, and staffing changes (3 → 4)', async () => {
 		expect.assertions(9);
 		const level3Store: Store = { ...store, id: 'store-milestone', level: 3 };
 		const richGame: GameState = {
@@ -441,13 +441,13 @@ describe('TileInspector store upgrade', () => {
 		await expect.element(page.getByTestId('upgrade-card')).toBeVisible();
 		await expect.element(page.getByText(/Level 3 → 4/)).toBeVisible();
 		await expect.element(page.getByText('Cost $24,000')).toBeVisible();
-		await expect.element(page.getByText('Unlocks Snacks')).toBeVisible();
+		await expect.element(page.getByText('Unlocks Soft Drinks')).toBeVisible();
 		const unlockImage = page.getByTestId('upgrade-unlock').getByRole('img');
-		await expect.element(unlockImage).toHaveAttribute('src', getProductArt('snacks').path);
-		await expect.element(unlockImage).toHaveAttribute('alt', 'Snacks');
+		await expect.element(unlockImage).toHaveAttribute('src', getProductArt('soft-drinks').path);
+		await expect.element(unlockImage).toHaveAttribute('alt', 'Soft Drinks');
 		await expect.element(page.getByText('Staff capacity 70 → 78')).toBeVisible();
 		await expect
-			.element(page.getByText('Staffing 1 manager + 1 general → 1 manager + 2 general'))
+			.element(page.getByText('Staffing 1 manager + 2 general → 1 manager + 3 general'))
 			.toBeVisible();
 		// Milestone levels are excluded from the revenue model — no increase is claimed.
 		await expect.element(page.getByTestId('upgrade-revenue')).not.toBeInTheDocument();
@@ -465,7 +465,7 @@ describe('TileInspector store upgrade', () => {
 		renderInspector({ game: richGame, store: level3Store, i18n: createI18n('ja') });
 
 		const unlockImage = page.getByTestId('upgrade-unlock').getByRole('img');
-		await expect.element(unlockImage).toHaveAttribute('alt', 'スナック');
+		await expect.element(unlockImage).toHaveAttribute('alt', 'ソフトドリンク');
 	});
 });
 
@@ -542,12 +542,12 @@ describe('TileInspector upgrade acknowledgement', () => {
 		await page.getByRole('button', { name: /Upgrade/i }).click();
 
 		await expect.element(page.getByTestId('upgrade-review-stock-supply')).toBeVisible();
-		const reviewCta = page.getByRole('button', { name: /Review Snacks stock & supply/ });
-		await expect.element(reviewCta).toHaveTextContent('Snacks');
+		const reviewCta = page.getByRole('button', { name: /Review Soft Drinks stock & supply/ });
+		await expect.element(reviewCta).toHaveTextContent('Soft Drinks');
 		await reviewCta.click();
 		expect(onOpenDetails).toHaveBeenCalledTimes(1);
 		// The milestone CTA deep-links the unlocked product row.
-		expect(onOpenDetails).toHaveBeenCalledWith('snacks');
+		expect(onOpenDetails).toHaveBeenCalledWith('soft-drinks');
 		await expect.element(page.getByTestId('upgrade-status')).toHaveTextContent('Upgrade complete.');
 	});
 

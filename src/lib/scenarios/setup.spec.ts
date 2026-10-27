@@ -153,7 +153,7 @@ function scenarioDefinition(): ScenarioDefinition {
 		content: {
 			cityIds: ['harbor-city', 'industry-city', 'campus-junction'],
 			archetypeIds: ['convenience'],
-			productIds: ['bottled-water'],
+			productIds: ['bottled-water', 'snacks'],
 			materialIds: ['water', 'bottled-water'],
 			buildingTypeIds: ['water-bottler', 'warehouse'],
 			retailPlacements: [
@@ -218,7 +218,7 @@ function importSqueezeFixture(): ScenarioDefinition {
 	};
 	definition.content.cityIds = ['harbor-city'];
 	definition.content.archetypeIds = ['electronics'];
-	definition.content.productIds = ['games', 'accessories'];
+	definition.content.productIds = ['games', 'accessories', 'devices'];
 	definition.content.materialIds = [];
 	definition.content.buildingTypeIds = [];
 	definition.content.retailPlacements = [
@@ -538,7 +538,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		definition.start.overrides.cash = 0;
 		definition.start.overrides.debt = 0;
 		definition.start.overrides.stores = [{ storeRef: 'founder', targetLevel: 4 }];
-		definition.content.productIds = ['bottled-water', 'snacks'];
+		definition.content.productIds = ['bottled-water', 'snacks', 'soft-drinks'];
 
 		const result = buildScenarioGame(definition, 280_002);
 
@@ -555,7 +555,7 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		delete definition.start.overrides.cash;
 		delete definition.start.overrides.debt;
 		definition.start.overrides.stores = [{ storeRef: 'founder', targetLevel: 4 }];
-		definition.content.productIds = ['bottled-water', 'snacks'];
+		definition.content.productIds = ['bottled-water', 'snacks', 'soft-drinks'];
 		const ordinary = createFoundingFixtureGame('convenience', 280_002);
 
 		const result = buildScenarioGame(definition, 280_002);
@@ -646,7 +646,8 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 		expect(scenarioStore.level).toBe(4);
 		expect(scenarioStore.products.map((product) => product.productId)).toEqual([
 			'games',
-			'accessories'
+			'accessories',
+			'devices'
 		]);
 		expect(scenarioStore.staffCapacity).toBe(ordinaryStore.staffCapacity);
 		expect(scenarioStore.stockHealth).toBe(ordinaryStore.stockHealth);

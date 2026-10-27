@@ -5,7 +5,7 @@ import {
 	encodeIndustrialPlacementKey,
 	getBuildFeasibility
 } from './supplyPlannerActions';
-import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from './industry';
 import type { RecurringRouteInput } from './interCityLogistics';
 import { createNewGame } from './state';
 import { openWorldCity } from './world';
@@ -147,7 +147,9 @@ function logisticsPlannerGame(overrides: Partial<RecurringRoute> = {}): GameStat
 		capacity: 10,
 		frequencyDays: 1,
 		leadTimeDays: 1,
-		transportCostPerUnit: 1,
+		// Round-2 water retail import cost is 1; a free-freight fixture keeps the
+		// route branches (resume/capacity/priority) value-positive under it.
+		transportCostPerUnit: 0,
 		nextDispatchOnDay: game.day,
 		...overrides
 	});
@@ -561,8 +563,9 @@ describe('supply planner actions', () => {
 		expect(candidate).toBeDefined();
 		if (!candidate || candidate.action.kind !== 'build-producer') return;
 		expect(candidate.comparison.importReduction30).toBe(300);
-		expect(candidate.comparison.importSpendReduction30).toBe(600);
-		expect(candidate.comparison.preRailNetCashBenefit30).toBe(-630);
+		// Water retail importCost is 1 since HPA-502 round 2 (was 2).
+		expect(candidate.comparison.importSpendReduction30).toBe(300);
+		expect(candidate.comparison.preRailNetCashBenefit30).toBe(-930);
 	});
 
 	it('does not mutate the game while evaluating candidates', () => {
@@ -1072,6 +1075,9 @@ describe('supply planner action noop branches', () => {
 				frequencyDays: 20,
 				leadTimeDays: 0,
 				priority: 0,
+				// Free freight keeps the frequency-raise projection positive at the
+				// round-2 halved pantry retail import cost (1.5, was 3).
+				transportCostPerUnit: 0,
 				nextDispatchOnDay: base.day
 			})
 		};
@@ -1106,6 +1112,23 @@ describe('supply planner action noop branches', () => {
 			// This logistics diagnosis fixture isolates route timing from the
 			// explicit market-share demand reduction covered by supplyPlanner.spec.ts.
 			competitors: [],
+			// The round-2 grocery-food demandWeight ×2 doubled this fixture's
+			// retail demand scale; halving the authored tile demand restores the
+			// pre-round-2 demand the route-timing diagnosis contract was
+			// calibrated against.
+			cities: base.cities.map((city) =>
+				city.id === 'harbor-city'
+					? {
+							...city,
+							tiles: city.tiles.map((tile) => ({
+								...tile,
+								demand: tile.demand * 0.5,
+								footTraffic: tile.footTraffic * 0.5,
+								customerFit: tile.customerFit * 0.5
+							}))
+						}
+					: city
+			),
 			industrialBuildings: [
 				...base.industrialBuildings,
 				...Array.from({ length: 5 }, (_, index) =>
@@ -1114,18 +1137,22 @@ describe('supply planner action noop branches', () => {
 			],
 			cityInventories: base.cityInventories.map((inventory) =>
 				inventory.cityId === 'industry-city'
-					? { ...inventory, materials: { pantry: 400 } }
+					? // Pre-stocked chain inputs keep the grain-rail alternative from
+						// outranking the route-frequency fix at the recalibrated demand.
+						{ ...inventory, materials: { pantry: 400, grain: 300, flour: 400 } }
 					: { ...inventory, materials: { pantry: 100_000, grain: 1_000 } }
 			),
 			industryCities: base.industryCities.map((city) =>
 				city.id === 'industry-city'
 					? {
 							...city,
-							rails: [
-								...verticalRails(2, 22, 2),
-								...verticalRails(2, 22, 32),
-								...horizontalRails(2, 54, 22)
-							]
+							// Round-2 (HPA-502 Step 4) doubled grocery-food retail demand;
+							// with the x=32 spur rail-connected, the flour-mill's local
+							// production absorbs the frequency fix's one-day-earlier
+							// delivery and the edit computes zero 30-day benefit. The
+							// two-segment rail restores the production mix this route
+							// timing contract was calibrated against.
+							rails: [...verticalRails(2, 22, 2), ...horizontalRails(2, 54, 22)]
 						}
 					: city
 			),
@@ -1140,6 +1167,19 @@ describe('supply planner action noop branches', () => {
 		const pantryRow = plan.baseline.materials.find((row) => row.materialId === 'pantry');
 
 		expect(pantryRow?.thirtyDay.projectedStockoutDay).toBeGreaterThan(0);
+		console.log(
+			'TIMING-DEBUG',
+			JSON.stringify({
+				action: plan.recommendation.action,
+				stockout: pantryRow?.thirtyDay.projectedStockoutDay,
+				alts: plan.alternatives.map((a) => [
+					a.action.kind,
+					a.action.kind === 'edit-route' ? a.action.field : null,
+					a.logisticsCause?.kind ?? null,
+					a.comparison.netCashBenefit30
+				])
+			})
+		);
 		expect(plan.recommendation.logisticsCause).toMatchObject({
 			kind: 'route-frequency',
 			routeId: 'route-pantry',
@@ -2102,16 +2142,26 @@ describe('supply planner actions patch coverage additions', () => {
 			dailyOperatingCost: bottler.dailyOperatingCost
 		};
 
+		const savedWater = {
+			importCost: MATERIALS.water.importCost,
+			localValue: MATERIALS.water.localValue
+		};
 		try {
 			bottler.buildCost = 1;
 			bottler.dailyOperatingCost = 0;
+			// The round-2 halved retail water price (1) no longer covers the
+			// water input's import value in the 30-day projection; zero the raw
+			// input value so the tested branch (positive producer economics)
+			// still fires.
+			MATERIALS.water.importCost = 0;
+			MATERIALS.water.localValue = 0;
 			const base = baseGame('bottled-water');
 			const game = {
 				...base,
 				industrialBuildings: [
 					building('water-pump', 'water-pump-1', 10, 2, 6),
 					building('water-bottler', 'water-bottler-1', 1, 6, 6),
-					building('warehouse', 'warehouse-1', 1, 10, 6)
+					building('warehouse', 'warehouse-1', 8, 10, 6)
 				],
 				industryCities: base.industryCities.map((city) =>
 					city.id === 'industry-city' ? { ...city, rails: horizontalRails(0, 55, 8) } : city
@@ -2119,7 +2169,7 @@ describe('supply planner actions patch coverage additions', () => {
 				stores: [
 					{
 						...base.stores[0]!,
-						products: [product('bottled-water', { targetStock: 700 })]
+						products: [product('bottled-water', { targetStock: 1400 })]
 					}
 				]
 			};
@@ -2134,6 +2184,8 @@ describe('supply planner actions patch coverage additions', () => {
 		} finally {
 			bottler.buildCost = originalCosts.buildCost;
 			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+			MATERIALS.water.importCost = savedWater.importCost;
+			MATERIALS.water.localValue = savedWater.localValue;
 		}
 	});
 
@@ -2144,16 +2196,26 @@ describe('supply planner actions patch coverage additions', () => {
 			dailyOperatingCost: bottler.dailyOperatingCost
 		};
 
+		const savedWater = {
+			importCost: MATERIALS.water.importCost,
+			localValue: MATERIALS.water.localValue
+		};
 		try {
 			bottler.buildCost = 1;
 			bottler.dailyOperatingCost = 0;
+			// The round-2 halved retail water price (1) no longer covers the
+			// water input's import value in the 30-day projection; zero the raw
+			// input value so the tested branch (positive producer economics)
+			// still fires.
+			MATERIALS.water.importCost = 0;
+			MATERIALS.water.localValue = 0;
 			const base = baseGame('bottled-water');
 			const game = {
 				...base,
 				industrialBuildings: [
 					building('water-pump', 'water-pump-1', 10, 2, 2),
 					building('water-bottler', 'water-bottler-1', 1, 6, 2),
-					building('warehouse', 'warehouse-1', 1, 10, 2)
+					building('warehouse', 'warehouse-1', 8, 10, 2)
 				],
 				industryCities: base.industryCities.map((city) =>
 					city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 10) } : city
@@ -2161,7 +2223,7 @@ describe('supply planner actions patch coverage additions', () => {
 				stores: [
 					{
 						...base.stores[0]!,
-						products: [product('bottled-water', { targetStock: 700 })]
+						products: [product('bottled-water', { targetStock: 1400 })]
 					}
 				]
 			};
@@ -2177,6 +2239,8 @@ describe('supply planner actions patch coverage additions', () => {
 		} finally {
 			bottler.buildCost = originalCosts.buildCost;
 			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+			MATERIALS.water.importCost = savedWater.importCost;
+			MATERIALS.water.localValue = savedWater.localValue;
 		}
 	});
 
@@ -2187,9 +2251,19 @@ describe('supply planner actions patch coverage additions', () => {
 			dailyOperatingCost: bottler.dailyOperatingCost
 		};
 
+		const savedWater = {
+			importCost: MATERIALS.water.importCost,
+			localValue: MATERIALS.water.localValue
+		};
 		try {
 			bottler.buildCost = 1;
 			bottler.dailyOperatingCost = 0;
+			// The round-2 halved retail water price (1) no longer covers the
+			// water input's import value in the 30-day projection; zero the raw
+			// input value so the tested branch (positive producer economics)
+			// still fires.
+			MATERIALS.water.importCost = 0;
+			MATERIALS.water.localValue = 0;
 			const base = baseGame('bottled-water');
 			const game = {
 				...base,
@@ -2199,7 +2273,10 @@ describe('supply planner actions patch coverage additions', () => {
 				],
 				industryCities: base.industryCities.map((city) =>
 					city.id === 'industry-city' ? { ...city, rails: horizontalRails(0, 55, 8) } : city
-				)
+				),
+				stores: [
+					{ ...base.stores[0]!, products: [product('bottled-water', { targetStock: 1400 })] }
+				]
 			};
 			const plan = readyPlan(game);
 
@@ -2211,6 +2288,8 @@ describe('supply planner actions patch coverage additions', () => {
 		} finally {
 			bottler.buildCost = originalCosts.buildCost;
 			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+			MATERIALS.water.importCost = savedWater.importCost;
+			MATERIALS.water.localValue = savedWater.localValue;
 		}
 	});
 
@@ -2221,9 +2300,19 @@ describe('supply planner actions patch coverage additions', () => {
 			dailyOperatingCost: bottler.dailyOperatingCost
 		};
 
+		const savedWater = {
+			importCost: MATERIALS.water.importCost,
+			localValue: MATERIALS.water.localValue
+		};
 		try {
 			bottler.buildCost = 1;
 			bottler.dailyOperatingCost = 0;
+			// The round-2 halved retail water price (1) no longer covers the
+			// water input's import value in the 30-day projection; zero the raw
+			// input value so the tested branch (positive producer economics)
+			// still fires.
+			MATERIALS.water.importCost = 0;
+			MATERIALS.water.localValue = 0;
 			const base = baseGame('bottled-water');
 			const game = {
 				...base,
@@ -2233,7 +2322,12 @@ describe('supply planner actions patch coverage additions', () => {
 				],
 				industryCities: base.industryCities.map((city) =>
 					city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 10) } : city
-				)
+				),
+				// Demand doubled to keep import savings positive at the
+				// round-2 halved water import cost (1, was 2).
+				stores: [
+					{ ...base.stores[0]!, products: [product('bottled-water', { targetStock: 1400 })] }
+				]
 			};
 			const plan = readyPlan(game);
 
@@ -2246,6 +2340,8 @@ describe('supply planner actions patch coverage additions', () => {
 		} finally {
 			bottler.buildCost = originalCosts.buildCost;
 			bottler.dailyOperatingCost = originalCosts.dailyOperatingCost;
+			MATERIALS.water.importCost = savedWater.importCost;
+			MATERIALS.water.localValue = savedWater.localValue;
 		}
 	});
 
@@ -2271,7 +2367,12 @@ describe('supply planner actions patch coverage additions', () => {
 				],
 				industryCities: base.industryCities.map((city) =>
 					city.id === 'industry-city' ? { ...city, rails: horizontalRails(2, 10) } : city
-				)
+				),
+				// Demand doubled to keep import savings positive at the
+				// round-2 halved water import cost (1, was 2).
+				stores: [
+					{ ...base.stores[0]!, products: [product('bottled-water', { targetStock: 1400 })] }
+				]
 			};
 			const plan = readyPlan(
 				game,

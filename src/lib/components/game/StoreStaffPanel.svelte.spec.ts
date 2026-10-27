@@ -120,7 +120,7 @@ describe('StoreStaffPanel', () => {
 		renderStaffPanel();
 
 		await expect.element(page.getByRole('heading', { name: 'Founding Store staff' })).toBeVisible();
-		await expect.element(page.getByText('1/1 managers, 1/2 general')).toBeVisible();
+		await expect.element(page.getByText('1/1 managers, 1/3 general')).toBeVisible();
 		await expect.element(page.getByText('Skill', { exact: true })).toBeVisible();
 		await expect.element(page.getByText('Morale', { exact: true })).toBeVisible();
 	});
