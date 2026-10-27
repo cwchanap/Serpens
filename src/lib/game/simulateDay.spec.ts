@@ -1501,10 +1501,12 @@ describe('daily simulation', () => {
 				}
 			],
 			electronics: [
+				// Electronics rows re-pinned for Ruling 13 (task 5d): the ×1.08
+				// family demandWeight deepens daily gross under seed 277_280.
 				{
 					day: 8,
-					cashBefore: 45_449,
-					cashAfter: 48_482,
+					cashBefore: 45_557,
+					cashAfter: 48_434,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1512,8 +1514,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 45_227,
-					cashAfter: 48_118,
+					cashBefore: 45_513,
+					cashAfter: 48_248,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1521,8 +1523,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 45_007,
-					cashAfter: 47_756,
+					cashBefore: 45_471,
+					cashAfter: 48_064,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
