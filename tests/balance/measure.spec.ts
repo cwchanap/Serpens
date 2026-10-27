@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type {
+	DailyMaterialMovement,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
@@ -21,6 +22,8 @@ import {
 	measureRun,
 	mergeSweepReports,
 	renderSweepMarkdown,
+	SWEEP_REGENERATION_COMMAND,
+	sweepRegenerationCommand,
 	type GateAItemVerdict,
 	type OpeningForecastOutcome,
 	type RunMeasurement,
@@ -459,36 +462,113 @@ describe('per-opening forecast attribution (HPA-502 Stage 3)', () => {
 });
 
 describe('advisor no-op repeats and producer stalls (HPA-502 Stage 3)', () => {
-	it('detects a weekly no-op recommendation repeated on consecutive planning days', () => {
-		const weeklyNoOp = (day: number): BotLedger['actions'] => [
-			{ day, bot: 'advisor', action: 'advisor:plan', outcome: 'no-op', detail: 'blocked: no rail' }
+	it('never counts honest planner declines — advisor:plan failures and advisor:none advices', () => {
+		const weeklyPlanBlock = (day: number): BotLedger['actions'] => [
+			{
+				day,
+				bot: 'advisor',
+				action: 'advisor:plan',
+				outcome: 'no-op',
+				detail: 'unavailable: supply-city-unavailable'
+			}
 		];
-		const repeated = measureRun(
+		const weeklyNone = (day: number, reason: string): BotLedger['actions'] => [
+			{ day, bot: 'advisor', action: 'advisor:none', outcome: 'no-op', detail: reason }
+		];
+		// Identical weekly plan failures propose nothing — not rejections.
+		const planOnly = measureRun(
 			{ reports: days(3) },
-			fakeLedger([fakeOpening()], [...weeklyNoOp(1), ...weeklyNoOp(8), ...weeklyNoOp(15)])
+			fakeLedger(
+				[fakeOpening()],
+				[...weeklyPlanBlock(1), ...weeklyPlanBlock(8), ...weeklyPlanBlock(15)]
+			)
 		);
-		expect(repeated.advisorRepeatedNoOp).toEqual({
-			startDay: 1,
-			streak: 3,
-			action: 'advisor:plan',
-			detail: 'blocked: no rail'
-		});
-		// Different reasons break the streak; single no-ops never count.
-		const notRepeated = measureRun(
+		expect(planOnly.advisorRepeatedNoOp).toBeNull();
+		// Identical weekly 'none' declines are honest feasibility answers.
+		const noneOnly = measureRun(
 			{ reports: days(3) },
 			fakeLedger(
 				[fakeOpening()],
 				[
-					...weeklyNoOp(1),
-					{
-						day: 8,
-						bot: 'advisor',
-						action: 'advisor:plan',
-						outcome: 'no-op',
-						detail: 'blocked: unaffordable'
-					}
+					...weeklyNone(1, 'unaffordable'),
+					...weeklyNone(8, 'unaffordable'),
+					...weeklyNone(15, 'unaffordable')
 				]
 			)
+		);
+		expect(noneOnly.advisorRepeatedNoOp).toBeNull();
+		// A mixed decline history never streaks either.
+		const mixed = measureRun(
+			{ reports: days(3) },
+			fakeLedger(
+				[fakeOpening()],
+				[...weeklyPlanBlock(1), ...weeklyNone(8, 'ineffective'), ...weeklyNone(15, 'unaffordable')]
+			)
+		);
+		expect(mixed.advisorRepeatedNoOp).toBeNull();
+	});
+
+	it('streaks proposed-but-not-applied recommendations, including rejected and unsupported commands', () => {
+		const weeklyRejected = (day: number, tileId: string): BotLedger['actions'] => [
+			{
+				day,
+				bot: 'advisor',
+				action: 'advisor:build-producer',
+				outcome: 'rejected',
+				detail: `water-plant on ${tileId}`
+			}
+		];
+		const rejected = measureRun(
+			{ reports: days(3) },
+			fakeLedger(
+				[fakeOpening()],
+				[...weeklyRejected(1, 'i-05'), ...weeklyRejected(8, 'i-05'), ...weeklyRejected(15, 'i-05')]
+			)
+		);
+		expect(rejected.advisorRepeatedNoOp).toEqual({
+			startDay: 1,
+			streak: 3,
+			action: 'advisor:build-producer',
+			detail: 'water-plant on i-05'
+		});
+		const weeklyUnsupported = (day: number): BotLedger['actions'] => [
+			{
+				day,
+				bot: 'advisor',
+				action: 'advisor:create-route',
+				outcome: 'unsupported',
+				detail: '{"kind":"create-route"}'
+			}
+		];
+		const unsupported = measureRun(
+			{ reports: days(3) },
+			fakeLedger([fakeOpening()], [...weeklyUnsupported(1), ...weeklyUnsupported(8)])
+		);
+		expect(unsupported.advisorRepeatedNoOp).toEqual({
+			startDay: 1,
+			streak: 2,
+			action: 'advisor:create-route',
+			detail: '{"kind":"create-route"}'
+		});
+		// Applied commands are not unapplied proposals — never count.
+		const weeklyApplied = (day: number): BotLedger['actions'] => [
+			{
+				day,
+				bot: 'advisor',
+				action: 'advisor:build-producer',
+				outcome: 'applied',
+				detail: 'water-plant on i-05'
+			}
+		];
+		const applied = measureRun(
+			{ reports: days(3) },
+			fakeLedger([fakeOpening()], [...weeklyApplied(1), ...weeklyApplied(8), ...weeklyApplied(15)])
+		);
+		expect(applied.advisorRepeatedNoOp).toBeNull();
+		// A different detail breaks the streak; single unapplied proposals never count.
+		const notRepeated = measureRun(
+			{ reports: days(3) },
+			fakeLedger([fakeOpening()], [...weeklyRejected(1, 'i-05'), ...weeklyRejected(8, 'i-09')])
 		);
 		expect(notRepeated.advisorRepeatedNoOp).toBeNull();
 	});
@@ -573,6 +653,72 @@ describe('advisor no-op repeats and producer stalls (HPA-502 Stage 3)', () => {
 		const noIndustry = measureRun({ reports: stallReports(10) }, fakeLedger([fakeOpening()], []));
 		expect(noIndustry.producerStall).toBeNull();
 	});
+
+	it('does not flag the buildout gap between the applied build and first nonzero output', () => {
+		const build = (day: number): BotLedger['actions'] => [
+			{
+				day,
+				bot: 'advisor',
+				action: 'advisor:build-producer',
+				outcome: 'applied',
+				detail: 'water-plant on i-05'
+			}
+		];
+		const producing = (): DailyMaterialMovement[] => [
+			{
+				cityId: 'industry-city',
+				materialId: 'filtered-water',
+				quantity: 4,
+				value: 8,
+				source: 'local'
+			}
+		];
+		// Build day 2, zero-output buildout days 2–9, first flow day 10: the
+		// gap between chain construction and first flow is not a stall.
+		const gap = measureRun(
+			{
+				reports: days(12, (day) => ({
+					productionReport: fakeProduction(day >= 10 ? producing() : [])
+				}))
+			},
+			fakeLedger([fakeOpening()], build(2))
+		);
+		expect(gap.producerStall).toBeNull();
+		// A zero run only counts after first flow: days 11–17 after output day
+		// 10 flags {11-17}; the excluded days 2–9 gap never inflates it.
+		const gapThenStall = measureRun(
+			{
+				reports: days(17, (day) => ({
+					productionReport: fakeProduction(day === 10 ? producing() : [])
+				}))
+			},
+			fakeLedger([fakeOpening()], build(2))
+		);
+		expect(gapThenStall.producerStall).toEqual({ startDay: 11, endDay: 17, days: 7 });
+	});
+
+	it('flags a chain that never produces at all, stalling from the producer-build day', () => {
+		const build = (day: number): BotLedger['actions'] => [
+			{
+				day,
+				bot: 'advisor',
+				action: 'advisor:build-producer',
+				outcome: 'applied',
+				detail: 'water-plant on i-05'
+			}
+		];
+		const allZero = measureRun(
+			{ reports: days(12, () => ({ productionReport: fakeProduction([]) })) },
+			fakeLedger([fakeOpening()], build(2))
+		);
+		expect(allZero.producerStall).toEqual({ startDay: 2, endDay: 12, days: 11 });
+		// Fewer than the threshold days since the build is not yet a stall.
+		const shortRun = measureRun(
+			{ reports: days(5, () => ({ productionReport: fakeProduction([]) })) },
+			fakeLedger([fakeOpening()], build(2))
+		);
+		expect(shortRun.producerStall).toBeNull();
+	});
 });
 
 describe('deterministic serialization (HPA-502 Stage 3)', () => {
@@ -615,6 +761,35 @@ describe('deterministic serialization (HPA-502 Stage 3)', () => {
 		expect(renderSweepMarkdown(merged)).toBe(
 			renderSweepMarkdown(buildSweepReport([1, 2], 3, results))
 		);
+	});
+
+	it('prints the actual invocation in the regeneration header, not the 50-seed constant', () => {
+		const report = buildSweepReport([7], 30, [
+			{
+				seed: 7,
+				archetypeId: 'convenience',
+				bot: 'idle' as const,
+				measurement: measureRun({ reports: days(3) }, { ...fakeLedger(), seed: 7, bot: 'idle' })
+			}
+		]);
+		const markdown = renderSweepMarkdown(
+			report,
+			sweepRegenerationCommand({
+				seeds: [7],
+				days: 30,
+				bots: ['idle'],
+				output: 'docs/balance/generated/scratch-5c'
+			})
+		);
+		expect(markdown).toContain(
+			'- Regenerate JSON/Markdown: `bun tests/balance/run.ts --seeds 7 --days 30 --bots idle --output docs/balance/generated/scratch-5c`'
+		);
+		// A missing --output falls back to the documented default artifact path.
+		expect(sweepRegenerationCommand({ seeds: [7], days: 30, bots: ['idle'] })).toContain(
+			'--output docs/balance/generated/balance-sweep'
+		);
+		// Without an invocation argument the documented full-sweep command is kept.
+		expect(renderSweepMarkdown(report)).toContain(SWEEP_REGENERATION_COMMAND);
 	});
 });
 
