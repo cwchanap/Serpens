@@ -1559,7 +1559,11 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	});
 
 	it.each([
-		['first-profit', [], 'completed', 4, 862, 'gold'],
+		// HPA-502 task 6: the tuned economy lifted the passive baseline income to
+		// 1306, switching the 450→500 income band on and awarding no-action Gold.
+		// The band recalibration (1400→1600) restores the authored shape: no-action
+		// completes d4 at 682 bronze, below Silver; reference stays 862 gold.
+		['first-profit', [], 'completed', 4, 682, 'bronze'],
 		['import-squeeze', [], 'completed', 15, 663, 'bronze'],
 		['local-lifeline', [], 'failed', 21, 500, null]
 	] as const)(
