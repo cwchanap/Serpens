@@ -194,17 +194,25 @@ function groupBy<T extends string>(
 	);
 }
 
-/** Longest run of weekly-cadence advisor no-ops with an identical outcome+reason. */
+/**
+ * Longest run of weekly-cadence advisor recommendations that PROPOSED a
+ * concrete action but were not applied, with an identical action+detail
+ * shape (Ruling 10b). Honest planner declines — `advisor:plan` failures and
+ * `advisor:none` advices — propose nothing and never count as violations;
+ * they are reported as counts in sweep analysis instead.
+ */
 function findRepeatedAdvisorNoOp(ledger: BotLedger): RepeatedNoOpMetric | null {
 	// Only the `advisor:`-prefixed planner records count: retail-steady no-ops
 	// (openStore/hireStaff/...) share the ledger's bot label during advisor runs
 	// and their daily cadence would otherwise reset the weekly streak.
-	const noOps = ledger.actions
+	const unapplied = ledger.actions
 		.filter(
 			(action) =>
 				action.bot === 'advisor' &&
 				action.action.startsWith('advisor:') &&
-				action.outcome === 'no-op'
+				action.action !== 'advisor:plan' &&
+				action.action !== 'advisor:none' &&
+				action.outcome !== 'applied'
 		)
 		.sort((a, b) => a.day - b.day);
 	let best: RepeatedNoOpMetric | null = null;
@@ -212,7 +220,7 @@ function findRepeatedAdvisorNoOp(ledger: BotLedger): RepeatedNoOpMetric | null {
 	let streak = 0;
 	let action = '';
 	let detail = '';
-	for (const record of noOps) {
+	for (const record of unapplied) {
 		const recordDetail = record.detail ?? '';
 		const continues =
 			streak > 0 &&
@@ -231,10 +239,12 @@ function findRepeatedAdvisorNoOp(ledger: BotLedger): RepeatedNoOpMetric | null {
 }
 
 /**
- * Longest run of consecutive days with zero total industrial output, counted
- * from the first applied producer build onward (so idle runs without industry
- * never count). Reports aggregate per city, not per building; a partial stall
- * alongside a producing building is invisible at this level.
+ * Longest run of ≥PRODUCER_STALL_DAYS consecutive zero-output days AFTER the
+ * first day with nonzero output (Ruling 10a: the buildout gap between chain
+ * construction and first flow is not a stall). A chain that never produces
+ * at all stalls from the producer-build day. Reports aggregate per city,
+ * not per building; a partial stall alongside a producing building is
+ * invisible at this level.
  */
 function findProducerStall(reports: DailyReport[], ledger: BotLedger): ProducerStallMetric | null {
 	const buildDays = ledger.actions
@@ -244,6 +254,7 @@ function findProducerStall(reports: DailyReport[], ledger: BotLedger): ProducerS
 	const firstBuildDay = buildDays[0];
 	if (firstBuildDay === undefined) return null;
 	let best: ProducerStallMetric | null = null;
+	let firstOutputDay = 0; // 0 = no nonzero-output day seen yet.
 	let startDay = 0;
 	let endDay = 0; // 0 = no open zero-output run.
 	for (const report of reports) {
@@ -253,6 +264,7 @@ function findProducerStall(reports: DailyReport[], ledger: BotLedger): ProducerS
 			0
 		);
 		if (produced === 0) {
+			if (firstOutputDay === 0) continue; // Still inside the buildout gap.
 			startDay = endDay !== 0 && report.day - endDay === 1 ? startDay : report.day;
 			endDay = report.day;
 			const days = endDay - startDay + 1;
@@ -260,8 +272,16 @@ function findProducerStall(reports: DailyReport[], ledger: BotLedger): ProducerS
 				best = { startDay, endDay, days };
 			}
 		} else {
+			if (firstOutputDay === 0) firstOutputDay = report.day;
 			endDay = 0;
 		}
+	}
+	// All-zero chain: never produced at all — stall runs from the build day.
+	if (firstOutputDay === 0) {
+		const lastDay = reports.length > 0 ? reports[reports.length - 1]!.day : null;
+		if (lastDay === null || lastDay < firstBuildDay) return null;
+		const days = lastDay - firstBuildDay + 1;
+		return days >= PRODUCER_STALL_DAYS ? { startDay: firstBuildDay, endDay: lastDay, days } : null;
 	}
 	return best;
 }
@@ -604,10 +624,12 @@ export function evaluateGateA(
 		});
 	}
 
-	// Item 5 — advisor: clean = no ≥7-day producer stall after the first
-	// applied build AND no repeated rejected recommendation. The harness's
-	// coarse served-chain proxy — runs that never build also count as clean;
-	// refine in Step 4 if that proves misleading.
+	// Item 5 — advisor: clean = no ≥7-day zero-output stall after the chain's
+	// first output (buildout gaps excluded, Ruling 10a) AND no repeated
+	// unapplied recommendation (Ruling 10b). Ruling 11's served-chain bar
+	// (chain built + connected + sustained production + weekly local
+	// deliveries) is verified from the sweep artifacts in the checkpoint
+	// report; runs that never build still count as clean here (coarse proxy).
 	{
 		const advisorRuns = report.runs.filter((run) => run.bot === 'advisor');
 		const clean = advisorRuns.filter(
@@ -703,7 +725,7 @@ function runExceptions(run: RunMeasurement): string[] {
 	}
 	if (run.advisorRepeatedNoOp !== null) {
 		exceptions.push(
-			`advisor no-op repeated ${run.advisorRepeatedNoOp.streak}x from day ${run.advisorRepeatedNoOp.startDay}: ${run.advisorRepeatedNoOp.action} (${run.advisorRepeatedNoOp.detail})`
+			`advisor recommendation unapplied, repeated ${run.advisorRepeatedNoOp.streak}x from day ${run.advisorRepeatedNoOp.startDay}: ${run.advisorRepeatedNoOp.action} (${run.advisorRepeatedNoOp.detail})`
 		);
 	}
 	const incomplete = run.forecastOutcomes.filter((outcome) => !outcome.complete);
@@ -728,8 +750,27 @@ const SWEEP_SEEDS = Array.from({ length: 50 }, (_, index) => 20260501 + index);
 
 export const SWEEP_REGENERATION_COMMAND = `bun tests/balance/run.ts --seeds ${SWEEP_SEEDS.join(',')} --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/balance-sweep`;
 
+/**
+ * The regeneration command rendered into artifact headers. Ruling 10c:
+ * artifacts must describe their OWN regeneration, so the runner passes the
+ * actual CLI invocation (seeds/days/bots/output as run); the documented
+ * full-sweep command remains the fallback for callers without one.
+ */
+export function sweepRegenerationCommand(invocation: {
+	seeds: number[];
+	days: number;
+	bots: string[];
+	output?: string;
+}): string {
+	const output = invocation.output ?? 'docs/balance/generated/balance-sweep';
+	return `bun tests/balance/run.ts --seeds ${invocation.seeds.join(',')} --days ${invocation.days} --bots ${invocation.bots.join(',')} --output ${output}`;
+}
+
 /** Deterministic Markdown rendering of a sweep report. */
-export function renderSweepMarkdown(report: SweepReport): string {
+export function renderSweepMarkdown(
+	report: SweepReport,
+	regenerationCommand: string = SWEEP_REGENERATION_COMMAND
+): string {
 	const lines: string[] = [];
 	lines.push('# HPA-502 balance sweep');
 	lines.push('');
@@ -738,14 +779,14 @@ export function renderSweepMarkdown(report: SweepReport): string {
 	lines.push(
 		`- Ordering: seed, then archetype (${SWEEP_ARCHETYPES.join(' < ')}), then bot (${SWEEP_BOTS.join(' < ')}).`
 	);
-	lines.push(`- Regenerate JSON/Markdown: \`${SWEEP_REGENERATION_COMMAND}\``);
+	lines.push(`- Regenerate JSON/Markdown: \`${regenerationCommand}\``);
 	for (const definition of BOT_DEFINITIONS) lines.push(`- Bot: ${definition}`);
 	lines.push(`- ${SWEEP_DISCLOSURE}`);
 	lines.push('');
 	lines.push('## Per-archetype × bot aggregates');
 	lines.push('');
 	lines.push(
-		'| archetype | bot | runs | positive 30d window by day 365 | first negative cash day | forecast within ±25% / complete / openings | stalls ≥7d | repeated advisor no-ops |'
+		'| archetype | bot | runs | positive 30d window by day 365 | first negative cash day | forecast within ±25% / complete / openings | stalls ≥7d | repeated unapplied advisor recommendations |'
 	);
 	lines.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
 	const groups = new Map<string, RunMeasurement[]>();

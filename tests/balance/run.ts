@@ -20,6 +20,7 @@ import {
 	measureRun,
 	renderSweepMarkdown,
 	SWEEP_BOTS,
+	sweepRegenerationCommand,
 	type SweepRunResult
 } from './measure';
 
@@ -112,7 +113,7 @@ export function main(argv: readonly string[]): number {
 	const outputBase = options.output ?? 'docs/balance/generated/balance-sweep';
 	mkdirSync(dirname(outputBase), { recursive: true });
 	writeFileSync(`${outputBase}.json`, `${JSON.stringify(report, null, 2)}\n`);
-	writeFileSync(`${outputBase}.md`, renderSweepMarkdown(report));
+	writeFileSync(`${outputBase}.md`, renderSweepMarkdown(report, sweepRegenerationCommand(options)));
 	console.log(
 		`balance: measured ${results.length} run(s) over ${options.seeds.length} seed(s) × ${options.days} days; wrote ${outputBase}.json and ${outputBase}.md`
 	);
