@@ -6,6 +6,7 @@ bun.lock
 bun.lockb
 
 # Miscellaneous
+scratch/
 /static/
 src-tauri/target/
 src-tauri/gen/
