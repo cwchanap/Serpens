@@ -1167,19 +1167,6 @@ describe('supply planner action noop branches', () => {
 		const pantryRow = plan.baseline.materials.find((row) => row.materialId === 'pantry');
 
 		expect(pantryRow?.thirtyDay.projectedStockoutDay).toBeGreaterThan(0);
-		console.log(
-			'TIMING-DEBUG',
-			JSON.stringify({
-				action: plan.recommendation.action,
-				stockout: pantryRow?.thirtyDay.projectedStockoutDay,
-				alts: plan.alternatives.map((a) => [
-					a.action.kind,
-					a.action.kind === 'edit-route' ? a.action.field : null,
-					a.logisticsCause?.kind ?? null,
-					a.comparison.netCashBenefit30
-				])
-			})
-		);
 		expect(plan.recommendation.logisticsCause).toMatchObject({
 			kind: 'route-frequency',
 			routeId: 'route-pantry',
