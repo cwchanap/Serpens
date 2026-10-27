@@ -270,7 +270,7 @@ describe('daily simulation', () => {
 
 		expect(projectOneCityParity(after)).toMatchInlineSnapshot(`
 			{
-			  "cash": 99775,
+			  "cash": 99780,
 			  "cityInventories": [
 			    {
 			      "cityId": "industry-city",
@@ -281,8 +281,8 @@ describe('daily simulation', () => {
 			    },
 			  ],
 			  "report": {
-			    "importSpend": 10,
-			    "netCashChange": -225,
+			    "importSpend": 5,
+			    "netCashChange": -220,
 			    "production": {
 			      "cityInventories": [
 			        {
@@ -367,7 +367,7 @@ describe('daily simulation', () => {
 			          "materialId": "bottled-water",
 			          "quantity": 5,
 			          "source": "import",
-			          "value": 10,
+			          "value": 5,
 			        },
 			      ],
 			      "warehouseCapacity": 200,
@@ -1027,12 +1027,13 @@ describe('daily simulation', () => {
 						effectKind: 'import-cost-multiplier',
 						explanation: modifier.explanation,
 						scope: 'retail-product',
-						affectedIds: ['bottled-water'],
+						affectedIds: ['bottled-water', 'snacks'],
 						multiplier: 0.9,
 						resolvedMultiplier: 0.9,
-						baselineCost: 20,
-						actualCost: 18,
-						applicationCount: 1
+						// Round-2 capacity/breadth pull both categories into the refill.
+						baselineCost: 30,
+						actualCost: 27,
+						applicationCount: 2
 					}
 				]);
 				expect(report.modifierLifecycle).toEqual([
@@ -1111,7 +1112,7 @@ describe('daily simulation', () => {
 		);
 		const report = result.reports.at(-1)!;
 
-		expect(report.importSpend).toBe(114);
+		expect(report.importSpend).toBe(72); // round-2 data/capacity shift the refill mix
 		expect(report.modifierImpacts).toEqual([
 			{
 				modifierId: 'modifier-a',
@@ -1126,9 +1127,9 @@ describe('daily simulation', () => {
 				scope: 'retail-product',
 				affectedIds: ['bottled-water', 'snacks'],
 				multiplier: 0.9,
-				resolvedMultiplier: 1.152,
-				baselineCost: 100,
-				actualCost: 114,
+				resolvedMultiplier: 1.2,
+				baselineCost: 60,
+				actualCost: 72,
 				applicationCount: 4
 			},
 			{
@@ -1144,9 +1145,9 @@ describe('daily simulation', () => {
 				scope: 'retail-product',
 				affectedIds: ['bottled-water', 'snacks'],
 				multiplier: 0.8,
-				resolvedMultiplier: 1.152,
-				baselineCost: 100,
-				actualCost: 114,
+				resolvedMultiplier: 1.2,
+				baselineCost: 60,
+				actualCost: 72,
 				applicationCount: 4
 			}
 		]);
@@ -1187,8 +1188,8 @@ describe('daily simulation', () => {
 				affectedIds: ['snacks'],
 				multiplier: 0.5,
 				resolvedMultiplier: 0.5,
-				baselineCost: 6,
-				actualCost: 4,
+				baselineCost: 4,
+				actualCost: 2,
 				applicationCount: 2
 			}
 		]);
@@ -1281,7 +1282,7 @@ describe('daily simulation', () => {
 
 		expect(productReport).toMatchObject({
 			wasteUnits: 4,
-			wasteValue: 8,
+			wasteValue: 4, // produce importCost 1 since HPA-502 round 2 (was 2)
 			stockoutLostDemand: 0,
 			oldestSellableAgeDays: 9
 		});
@@ -1444,8 +1445,8 @@ describe('daily simulation', () => {
 			convenience: [
 				{
 					day: 8,
-					cashBefore: 30_734,
-					cashAfter: 30_071,
+					cashBefore: 31_474,
+					cashAfter: 31_510,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1453,8 +1454,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 28_856,
-					cashAfter: 28_176,
+					cashBefore: 30_568,
+					cashAfter: 30_591,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1462,8 +1463,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 26_979,
-					cashAfter: 26_304,
+					cashBefore: 29_663,
+					cashAfter: 29_710,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1473,8 +1474,8 @@ describe('daily simulation', () => {
 			boutique: [
 				{
 					day: 8,
-					cashBefore: 37_612,
-					cashAfter: 39_251,
+					cashBefore: 38_214,
+					cashAfter: 41_367,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1482,8 +1483,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 37_471,
-					cashAfter: 39_300,
+					cashBefore: 39_151,
+					cashAfter: 42_834,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1491,8 +1492,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 37_330,
-					cashAfter: 39_047,
+					cashBefore: 40_088,
+					cashAfter: 43_299,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1502,8 +1503,8 @@ describe('daily simulation', () => {
 			electronics: [
 				{
 					day: 8,
-					cashBefore: 44_954,
-					cashAfter: 47_117,
+					cashBefore: 45_449,
+					cashAfter: 48_482,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1511,8 +1512,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 43_841,
-					cashAfter: 45_814,
+					cashBefore: 45_227,
+					cashAfter: 48_118,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1520,8 +1521,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 42_730,
-					cashAfter: 44_705,
+					cashBefore: 45_007,
+					cashAfter: 47_756,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1531,8 +1532,11 @@ describe('daily simulation', () => {
 			grocery: [
 				{
 					day: 8,
-					cashBefore: 40_472,
-					cashAfter: 39_314,
+					// Grocery rows re-pinned for the round-2 set: (v) staffing relief
+					// offsets the pantry 9 margin so cash tracks the old curve with
+					// higher per-unit margins (verified 1.47–1.86× sizing, 10/10).
+					cashBefore: 42_101,
+					cashAfter: 41_868,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1540,8 +1544,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 37_826,
-					cashAfter: 36_659,
+					cashBefore: 41_616,
+					cashAfter: 41_359,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1549,8 +1553,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 35_183,
-					cashAfter: 34_018,
+					cashBefore: 41_134,
+					cashAfter: 40_852,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -2172,7 +2176,7 @@ describe('daily simulation', () => {
 	});
 
 	test('keeps production-close pressure separate from post-replenishment inventory and report attribution', () => {
-		expect.assertions(15);
+		expect.assertions(16);
 		const startingCash = 50_000;
 		const baseGame = {
 			...createNewGame('convenience', 292_606),
@@ -2232,7 +2236,7 @@ describe('daily simulation', () => {
 		expect(result.cityInventories).toEqual([
 			{
 				cityId: 'industry-city',
-				materials: { snacks: 0 }
+				materials: { snacks: 0, 'bottled-water': 0 }
 			}
 		]);
 		expect(result).not.toHaveProperty('warehouse');
@@ -2240,7 +2244,7 @@ describe('daily simulation', () => {
 			warehouseUnits: 12,
 			warehouseValue: 96,
 			importedUnits: 8,
-			importSpend: 24
+			importSpend: 16
 		});
 		expect(snacks).not.toHaveProperty('replenishmentOutcome');
 		expect(bottledWater).not.toHaveProperty('replenishmentOutcome');
@@ -2256,15 +2260,24 @@ describe('daily simulation', () => {
 			value: 96,
 			source: 'warehouse'
 		});
+		// Round-2 founding capacity pulls the water refill into the same cycle.
+		expect(report.productionReport.shopImports).toContainEqual({
+			cityId: 'harbor-city',
+			materialId: 'bottled-water',
+			quantity: 100,
+			value: 100,
+			source: 'import'
+		});
 		expect(report.productionReport.shopImports).toContainEqual({
 			cityId: 'harbor-city',
 			materialId: 'snacks',
 			quantity: 8,
-			value: 24,
+			// Snacks importCost is 2 since HPA-502 round 2 (was 3).
+			value: 16,
 			source: 'import'
 		});
-		expect(report.importSpend).toBe(24);
-		expect(report.importSpend).toBe(snacks.importSpend);
+		expect(report.importSpend).toBe(116);
+		expect(report.importSpend).toBe(snacks.importSpend + bottledWater.importSpend);
 		expect(report.cashAfter).toBe(startingCash + report.netCashChange);
 	});
 
@@ -2361,7 +2374,7 @@ describe('daily simulation', () => {
 		expect(dailyReport.productionReport.warehousePulls).toHaveLength(0);
 		expect(productReport.warehouseUnits).toBe(0);
 		expect(productReport.importedUnits).toBe(20);
-		expect(productReport.importSpend).toBe(60);
+		expect(productReport.importSpend).toBe(40); // snacks cost 2 since HPA-502 round 2 (was 3)
 		expect(getStoreProductStock(result.stores[0]!.products[0]!)).toBe(20);
 		expect(
 			result.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials

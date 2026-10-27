@@ -120,7 +120,7 @@ describe('StaffPanel', () => {
 		await expect.element(page.getByRole('heading', { name: 'Candidates' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Casey Rivera' })).toBeVisible();
 		await expect.element(page.getByRole('heading', { name: 'Blair Kim' })).toBeVisible();
-		await expect.element(page.getByText('Founding Store: 1/1 managers, 0/2 general')).toBeVisible();
+		await expect.element(page.getByText('Founding Store: 1/1 managers, 0/3 general')).toBeVisible();
 		await expect.element(page.getByText('2 hired staff')).toBeVisible();
 	});
 
@@ -525,7 +525,7 @@ describe('StaffPanel', () => {
 		});
 
 		await expect.element(page.getByText('No assigned staff')).toBeVisible();
-		await expect.element(page.getByText('Mall Store: 0/1 managers, 0/2 general')).toBeVisible();
+		await expect.element(page.getByText('Mall Store: 0/1 managers, 0/3 general')).toBeVisible();
 	});
 
 	it('renders no store cards and only the Unassigned option when there are no stores', async () => {

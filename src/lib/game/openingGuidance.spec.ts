@@ -235,10 +235,13 @@ describe('opening guidance — First Profit walk', { timeout: 30_000 }, () => {
 		// Continue the no-action trace: guidance stays report-backed (never
 		// hijacked by the structural covenantRisk alert) until the scenario
 		// naturally terminates on day 4. No guidance is planned beyond it.
+		// Round-2 founding breadth sells enough to raise a real store-stock
+		// alert on day 3, and stock-recovery guidance then correctly answers it;
+		// only a cash-risk hijack stays forbidden.
 		while (run.status === 'active') {
 			const alerts = collectGameAlerts(run.game);
 			const guidance = selectOpeningGuidance(run.game, alerts);
-			expect(guidance?.kind === 'cash-risk' || guidance?.kind === 'stock-recovery').toBe(false);
+			expect(guidance?.kind === 'cash-risk').toBe(false);
 			const next = executeScenarioCommand(run, definition, { kind: 'advanceDay' });
 			if (!next.ok || !next.changed) throw new Error('no-action advance failed');
 			run = next.run;

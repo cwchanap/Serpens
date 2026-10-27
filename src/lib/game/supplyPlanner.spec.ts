@@ -532,7 +532,9 @@ describe('supply planner snapshot', () => {
 	it('uses retail category import price rather than finished material input price', () => {
 		const snapshot = readySnapshot(plannerGame());
 
-		expect(snapshot.finishedImportCostPerUnit).toBe(2);
+		// Round-2 (HPA-502 Step 4) halved the retail water importCost to 1; the
+		// material input price is unchanged, so the two tables still disagree.
+		expect(snapshot.finishedImportCostPerUnit).toBe(1);
 		expect(MATERIALS['bottled-water'].importCost).toBe(3);
 	});
 

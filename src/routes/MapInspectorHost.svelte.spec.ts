@@ -199,8 +199,8 @@ describe('MapInspectorHost', () => {
 
 		await page.getByRole('button', { name: /upgrade/i }).click();
 		await expect.element(page.getByTestId('upgrade-review-stock-supply')).toBeVisible();
-		await page.getByRole('button', { name: /review snacks stock & supply/i }).click();
-		expect(onOpenStoreDetails).toHaveBeenCalledWith('snacks');
+		await page.getByRole('button', { name: /review soft drinks stock & supply/i }).click();
+		expect(onOpenStoreDetails).toHaveBeenCalledWith('soft-drinks');
 	});
 
 	it('forwards Close once from the retail inspector', async () => {

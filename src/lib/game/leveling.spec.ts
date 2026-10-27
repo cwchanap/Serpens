@@ -38,11 +38,13 @@ describe('leveling math', () => {
 
 	test('unlocked category count steps at milestones', () => {
 		expect.assertions(5);
-		expect(getUnlockedProductCount(1)).toBe(1);
-		expect(getUnlockedProductCount(3)).toBe(1);
-		expect(getUnlockedProductCount(4)).toBe(2);
-		expect(getUnlockedProductCount(7)).toBe(3);
-		expect(getUnlockedProductCount(10)).toBe(4);
+		// Founding breadth is 2 since HPA-502 Step 4 round 2 (low-price founding
+		// economics); milestones still step one category at a time.
+		expect(getUnlockedProductCount(1)).toBe(2);
+		expect(getUnlockedProductCount(3)).toBe(2);
+		expect(getUnlockedProductCount(4)).toBe(3);
+		expect(getUnlockedProductCount(7)).toBe(4);
+		expect(getUnlockedProductCount(10)).toBe(5);
 	});
 
 	test('revenue multiplier adds 10% per non-milestone level', () => {
@@ -60,10 +62,12 @@ describe('leveling math', () => {
 
 	test('staff capacity bonus is 8 per milestone reached', () => {
 		expect.assertions(4);
-		expect(getStoreStaffCapacityBonus(1)).toBe(0);
-		expect(getStoreStaffCapacityBonus(4)).toBe(8);
-		expect(getStoreStaffCapacityBonus(7)).toBe(16);
-		expect(getStoreStaffCapacityBonus(10)).toBe(24);
+		// Founding breadth 2 (HPA-502 Step 4 round 2) makes the level-1 bonus 8;
+		// upgrade deltas stay +8 per milestone.
+		expect(getStoreStaffCapacityBonus(1)).toBe(8);
+		expect(getStoreStaffCapacityBonus(4)).toBe(16);
+		expect(getStoreStaffCapacityBonus(7)).toBe(24);
+		expect(getStoreStaffCapacityBonus(10)).toBe(32);
 	});
 
 	test('store upgrade cost scales with current level', () => {

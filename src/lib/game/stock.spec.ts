@@ -203,11 +203,12 @@ describe('stock rules', () => {
 
 	test('initializes a single product at level 1', () => {
 		expect.assertions(3);
+		// Founding breadth 2 since HPA-502 Step 4 round 2.
 		const products = initializeStoreProducts('convenience');
 
-		expect(products.map((product) => product.productId)).toEqual(['bottled-water']);
+		expect(products.map((product) => product.productId)).toEqual(['bottled-water', 'snacks']);
 		expect(products[0]!.brandId).toBe('common-ground');
-		expect(products[0]!.sellingPrice).toBe(3);
+		expect(products[0]!.sellingPrice).toBe(6);
 	});
 
 	test('createStoreProduct defaults receivedDay to 1 when omitted', () => {
@@ -266,7 +267,7 @@ describe('stock rules', () => {
 
 		expect(updated).toBe(game);
 		expect(updated.stores[0]!.products[0]!.brandId).toBe('common-ground');
-		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(3);
+		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(6);
 	});
 
 	test('applies non-brand edits and heals a missing brand identity through the product default', () => {
@@ -322,20 +323,25 @@ describe('stock rules', () => {
 
 	test('initializes unlocked categories for a given level', () => {
 		expect.assertions(3);
+		// Founding breadth 2 since HPA-502 Step 4 round 2: the whole unlock curve
+		// shifts one category up (L4:3, L7:4, L10:5).
 		expect(initializeStoreProducts('convenience', 4).map((p) => p.productId)).toEqual([
 			'bottled-water',
-			'snacks'
+			'snacks',
+			'soft-drinks'
 		]);
 		expect(initializeStoreProducts('convenience', 7).map((p) => p.productId)).toEqual([
 			'bottled-water',
 			'snacks',
-			'soft-drinks'
+			'soft-drinks',
+			'essentials'
 		]);
 		expect(initializeStoreProducts('convenience', 10).map((p) => p.productId)).toEqual([
 			'bottled-water',
 			'snacks',
 			'soft-drinks',
-			'essentials'
+			'essentials',
+			'household'
 		]);
 	});
 
@@ -619,7 +625,8 @@ describe('stock rules', () => {
 		expect(getStoreProductStock(product)).toBeGreaterThan(0);
 		expect(report).toMatchObject({
 			wasteUnits: 4,
-			wasteValue: 8,
+			// Produce importCost is 1 since HPA-502 Step 4 round 2 (was 2).
+			wasteValue: 4,
 			oldestSellableAgeDays: 9
 		});
 		expect(report.endingStock).toBeGreaterThan(0);
@@ -971,10 +978,11 @@ describe('stock rules', () => {
 
 		expect(budgetReport.brandId).toBe('budget-bay');
 		expect(budgetReport.unitsSold).toBeGreaterThan(commonReport.unitsSold);
-		expect(commonReport.importCost).toBe(3);
-		expect(budgetReport.importCost).toBe(2.52);
-		expect(commonReport.costOfGoods).toBe(Math.round(commonReport.unitsSold * 3));
-		expect(budgetReport.costOfGoods).toBe(Math.round(budgetReport.unitsSold * 2.52));
+		// Snacks importCost is 2 since HPA-502 Step 4 round 2 (was 3).
+		expect(commonReport.importCost).toBe(2);
+		expect(budgetReport.importCost).toBe(1.68);
+		expect(commonReport.costOfGoods).toBe(Math.round(commonReport.unitsSold * 2));
+		expect(budgetReport.costOfGoods).toBe(Math.round(budgetReport.unitsSold * 1.68));
 		expect(budgetReport.baseSellingPrice).toBe(5);
 		expect(budgetReport.effectiveSellingPrice).toBe(5);
 	});
@@ -1090,8 +1098,9 @@ describe('stock rules', () => {
 		// The legacy score orders store-a first, even though branded attraction gives store-b
 		// the larger share. The seed's first jitter draw must therefore stay with store-a.
 		expect({ first: firstReport.unitsSold, second: secondReport.unitsSold }).toEqual({
-			first: 73,
-			second: 85
+			// Units rose with the round-2 founding data (water price 6, cost 1).
+			first: 99,
+			second: 100
 		});
 	});
 
@@ -1368,10 +1377,11 @@ describe('stock rules', () => {
 });
 
 describe('tier 1 store products', () => {
-	test('gives a new level-1 convenience store only bottled water', () => {
+	test('gives a new level-1 convenience store bottled water and snacks', () => {
 		expect.assertions(1);
+		// Founding breadth 2 since HPA-502 Step 4 round 2.
 		const products = initializeStoreProducts('convenience');
-		expect(products.map((product) => product.productId)).toEqual(['bottled-water']);
+		expect(products.map((product) => product.productId)).toEqual(['bottled-water', 'snacks']);
 	});
 });
 

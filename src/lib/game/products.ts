@@ -194,7 +194,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		demandWeight: 2.2,
 		importCost: 1.5,
 		// Price 9 (×1.5, inside the ≤2× data cap): with Ruling 8 lever (v) the
-		// joint set measures 1.54–1.90× live across the 10 replay seeds — inside
+		// joint set measures 1.47–1.86× live across the 10 replay seeds — inside
 		// the 1.2–2.0× band (scratch/phase5a-r2-live.ts is the authoritative
 		// measurement; the HEAD-basis sizing probe reads ~13% high on payroll).
 		defaultSellingPrice: 9,

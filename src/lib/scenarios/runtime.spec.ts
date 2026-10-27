@@ -590,7 +590,8 @@ function startableDefinition(
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productIds: ['bottled-water'],
+			// Founding breadth 2 materializes snacks alongside bottled water.
+			productIds: ['bottled-water', 'snacks'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [
@@ -1553,13 +1554,13 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	it('keeps the first-profit calibration stable after instance-id resolution cutover', () => {
 		const run = replayLaunchCalibration('first-profit', FIRST_PROFIT_REFERENCE_OPENING, true);
 
-		expect(run.result).toMatchObject({ outcome: 'completed', completionDay: 4, score: 950 });
+		expect(run.result).toMatchObject({ outcome: 'completed', completionDay: 4, score: 862 });
 		expect(run.result?.medal).toBe('gold');
 	});
 
 	it.each([
 		['first-profit', [], 'completed', 4, 862, 'gold'],
-		['import-squeeze', [], 'completed', 18, 647, 'bronze'],
+		['import-squeeze', [], 'completed', 15, 663, 'bronze'],
 		['local-lifeline', [], 'failed', 21, 500, null]
 	] as const)(
 		'%s no-action trace ends %s on day %i with the calibrated score %i',
@@ -1573,7 +1574,7 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 
 	it.each([
 		['first-profit', FIRST_PROFIT_REFERENCE_OPENING, 4, 'gold'],
-		['import-squeeze', IMPORT_SQUEEZE_REFERENCE_OPENING, 15, 'silver'],
+		['import-squeeze', IMPORT_SQUEEZE_REFERENCE_OPENING, 15, 'gold'],
 		['local-lifeline', LOCAL_LIFELINE_REFERENCE_OPENING, 15, 'gold']
 	] as const)(
 		'%s documented reference trace completes on day %i with the expected medal',
@@ -1584,8 +1585,9 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 			expect(run.result?.medal).toBe(medal);
 			if (scenarioId === 'first-profit') {
 				// Rival generation consumes a derived seed and never advances the
-				// gameplay RNG, so this reference score is stable at 950.
-				expect(run.result?.score).toBe(950);
+				// gameplay RNG, so this reference score is stable at 862 (the
+				// round-2 founding economics re-seated it from 950).
+				expect(run.result?.score).toBe(862);
 			}
 		}
 	);
@@ -1620,40 +1622,39 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 		]);
 	});
 
-	it('fresh-market no-action trace fails at the day-15 deadline below Silver with real spoilage', () => {
+	it('fresh-market no-action trace fails at the day-15 deadline below Silver on volume', () => {
 		const run = replayScheduledCalibration('fresh-market', []);
 
 		expect(run.status).toBe('failed');
 		expect(run.result).toMatchObject({
 			outcome: 'failed',
 			completionDay: 15,
-			score: 676,
+			// Round-2 (v) grocery staffing relief trims the no-action loss score;
+			// the invariant holds — still fails at the day-15 deadline, no medal.
+			score: 992,
 			medal: null
 		});
-		// The oversized opening lot spoils inside the 14-report window: the
-		// day-11 report carries the expired produce while earlier days sold it.
-		const spoilDay = run.game.reports.find((report) => report.day === 11);
-		expect(spoilDay?.storeReports[0]?.productReports[0]).toMatchObject({
-			productId: 'produce',
-			wasteUnits: 148
-		});
+		// Round-2 economics (grocery-food demandWeight ×2) sell the oversized
+		// opening lot before its day-11 expiry, so the no-action run no longer
+		// spoils stock; it fails on the recalibrated volume floor instead.
 		const sold = evaluateMetric(
 			run.game,
 			{ metric: 'units-sold', productIds: ['produce'] },
 			{ kind: 'run-to-date' }
 		);
-		expect(sold.actual).toBe(736);
+		// 984: re-pinned after Ruling-8 (v) grocery staffing relief.
+		expect(sold.actual).toBe(984);
 		expect(
 			evaluateMetric(
 				run.game,
 				{ metric: 'product-waste-share', productIds: ['produce'] },
 				{ kind: 'run-to-date' }
 			).actual
-		).toBeCloseTo(148 / 884, 15);
-		// Both required objectives miss on the no-action run.
+		).toBe(0);
+		// Volume misses the 1,300 floor; waste stays inside its band.
 		expect(run.evaluation.required.map((objective) => objective.status)).toEqual([
 			'missed',
-			'missed'
+			'satisfied'
 		]);
 	});
 
@@ -1675,7 +1676,7 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 				{ metric: 'units-sold', productIds: ['produce'] },
 				{ kind: 'run-to-date' }
 			).actual
-		).toBe(1540);
+		).toBe(1653);
 		expect(
 			evaluateMetric(
 				run.game,
@@ -1693,12 +1694,12 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 		expect(run.result).toMatchObject({
 			outcome: 'failed',
 			completionDay: 21,
-			score: 621,
+			score: 651,
 			medal: null
 		});
 		// Passive reputation growth alone never reaches the share floor on the
-		// complete trailing window, and the undersized default pipeline keeps
-		// operating income negative all run.
+		// complete trailing window. Round-2 economics moved cumulative net
+		// income positive (was negative), but the share floor still fails the run.
 		const share = evaluateMetric(
 			run.game,
 			{ metric: 'player-market-share', productIds: ['produce'] },
@@ -1706,13 +1707,10 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 			true
 		);
 		expect(share.windowComplete).toBe(true);
-		expect(share.actual).toBeCloseTo(0.4882903981264637, 15);
-		expect(
-			evaluateMetric(run.game, { metric: 'cumulative-net-income' }, { kind: 'run-to-date' }).actual
-		).toBeLessThanOrEqual(0);
+		expect(share.actual).toBeCloseTo(0.4979508196721312, 15);
 		expect(run.evaluation.required.map((objective) => objective.status)).toEqual([
 			'missed',
-			'missed'
+			'satisfied'
 		]);
 	});
 
@@ -1723,7 +1721,7 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 		expect(run.result).toMatchObject({
 			outcome: 'completed',
 			completionDay: 15,
-			score: 941,
+			score: 949,
 			medal: 'gold'
 		});
 		// The authored grocery rival (competitor-harbor-city-2) genuinely
@@ -1743,10 +1741,10 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 				{ kind: 'trailing-reports', count: 14 },
 				true
 			)
-		).toMatchObject({ actual: 0.5263466042154566, windowComplete: true });
+		).toMatchObject({ actual: 0.5289812646370023, windowComplete: true });
 		expect(
 			evaluateMetric(run.game, { metric: 'cumulative-net-income' }, { kind: 'run-to-date' }).actual
-		).toBe(85);
+		).toBe(3208); // stable across the round-2 set: (v) payroll relief ≈ pantry 9 margin gain
 		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual(['inactive']);
 	});
 

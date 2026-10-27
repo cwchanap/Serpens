@@ -92,7 +92,7 @@ describe('StoreOverview', () => {
 		const storeRegion = page.getByRole('region', { name: 'Stores' });
 
 		await expect.element(storeRegion.getByText('100%', { exact: true })).not.toBeInTheDocument();
-		await expect.element(storeRegion.getByText('0/1 mgr, 0/2 gen')).toBeVisible();
+		await expect.element(storeRegion.getByText('0/1 mgr, 0/3 gen')).toBeVisible();
 		await expect.element(storeRegion.getByText('Stock')).toBeVisible();
 		await expect.element(storeRegion.getByText(/^External imports$/)).toBeVisible();
 		await expect.element(storeRegion.getByText('90')).toBeVisible();

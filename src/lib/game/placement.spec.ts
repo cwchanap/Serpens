@@ -453,7 +453,10 @@ describe('tile placement', () => {
 		expect(result.cash).toBe(game.cash - expectedCost);
 		expect(result.stores.at(-1)?.tileId).toBe(expansionTile.id);
 		expect(result.stores.at(-1)?.archetypeId).toBe('grocery');
-		expect(result.stores.at(-1)?.products.map((product) => product.productId)).toEqual(['produce']);
+		expect(result.stores.at(-1)?.products.map((product) => product.productId)).toEqual([
+			'produce',
+			'pantry'
+		]);
 		expect(result.decisions).toHaveLength(0);
 	});
 
@@ -791,7 +794,7 @@ describe('estimateOpeningRevenue', () => {
 			const actual = observedMeanDailyRevenue(finalGame, storeId, 1);
 
 			expect(actual).not.toBeNull();
-			expect(estimate.perProduct).toHaveLength(1);
+			expect(estimate.perProduct).toHaveLength(2); // founding breadth 2
 			expect(estimate.projectedDailyRevenue).toBeGreaterThan(0);
 			// Measured within ±0.3% across archetypes and seeds (the estimator
 			// mirrors the demand chain and the 7-day import cadence); ±15% also

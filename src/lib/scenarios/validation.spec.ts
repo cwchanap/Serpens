@@ -51,7 +51,7 @@ function validDefinition(): ScenarioDefinition {
 		content: {
 			cityIds: ['harbor-city'],
 			archetypeIds: ['convenience'],
-			productIds: ['bottled-water'],
+			productIds: ['bottled-water', 'snacks'],
 			materialIds: [],
 			buildingTypeIds: [],
 			retailPlacements: [
@@ -485,11 +485,12 @@ describe('validateScenarioDefinition', () => {
 			'snacks',
 			'soft-drinks',
 			'essentials',
+			'household',
 			'devices'
 		];
 		definition.allowedCommands = ['advanceDay', 'upgradeStore'];
 
-		expect(codes(definition)).toEqual([{ path: 'content.productIds[4]', code: 'product-locked' }]);
+		expect(codes(definition)).toEqual([{ path: 'content.productIds[5]', code: 'product-locked' }]);
 
 		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore'];
 		definition.start.overrides.storeCap = 2;
@@ -497,7 +498,7 @@ describe('validateScenarioDefinition', () => {
 			...definition.content.retailPlacements,
 			{ cityId: 'harbor-city', tileId: 'harbor-city-1-1', archetypeId: 'electronics' }
 		];
-		expect(codes(definition)).toEqual([{ path: 'content.productIds[4]', code: 'product-locked' }]);
+		expect(codes(definition)).toEqual([{ path: 'content.productIds[5]', code: 'product-locked' }]);
 	});
 
 	it('allows upgradeStore unlocks through an actually openable archetype placement', () => {
@@ -508,6 +509,7 @@ describe('validateScenarioDefinition', () => {
 			'snacks',
 			'soft-drinks',
 			'essentials',
+			'household',
 			'games',
 			'accessories',
 			'devices',
@@ -532,6 +534,7 @@ describe('validateScenarioDefinition', () => {
 			'snacks',
 			'soft-drinks',
 			'essentials',
+			'household',
 			'devices'
 		];
 		definition.content.retailPlacements = [
@@ -545,7 +548,7 @@ describe('validateScenarioDefinition', () => {
 		definition.allowedCommands = ['advanceDay', 'openStore', 'upgradeStore'];
 		definition.start.overrides.storeCap = 2;
 
-		expect(codes(definition)).toEqual([{ path: 'content.productIds[4]', code: 'product-locked' }]);
+		expect(codes(definition)).toEqual([{ path: 'content.productIds[5]', code: 'product-locked' }]);
 	});
 
 	it('accepts openable placements in opened or revealed retail cities with the matching command', () => {
@@ -557,6 +560,7 @@ describe('validateScenarioDefinition', () => {
 			'snacks',
 			'soft-drinks',
 			'essentials',
+			'household',
 			'games',
 			'accessories',
 			'devices',
@@ -590,7 +594,9 @@ describe('validateScenarioDefinition', () => {
 		definition.content.productIds = ['bottled-water'];
 		definition.allowedCommands = ['advanceDay', 'upgradeStore'];
 
+		// The breadth-2 curve materializes four upgrade categories by L10.
 		expect(codes(definition)).toEqual([
+			{ path: 'start.overrides.stores[0].targetLevel', code: 'product-not-allowlisted' },
 			{ path: 'start.overrides.stores[0].targetLevel', code: 'product-not-allowlisted' },
 			{ path: 'start.overrides.stores[0].targetLevel', code: 'product-not-allowlisted' },
 			{ path: 'start.overrides.stores[0].targetLevel', code: 'product-not-allowlisted' }
@@ -608,6 +614,7 @@ describe('validateScenarioDefinition', () => {
 			'snacks',
 			'soft-drinks',
 			'essentials',
+			'household',
 			'devices'
 		];
 		definition.content.retailPlacements = [
@@ -1163,7 +1170,8 @@ describe('validateScenarioDefinition', () => {
 
 	it('does not flag overlapping import-cost-multiplier targets across different scopes', () => {
 		const definition = malformedDefinition();
-		definition.content.productIds = ['bottled-water'];
+		// Founder materializes snacks at level 1 (breadth-2 curve).
+		definition.content.productIds = ['bottled-water', 'snacks'];
 		definition.content.materialIds = ['water'];
 		definition.modifiers = [
 			{
@@ -2776,14 +2784,16 @@ describe('validateScenarioDefinition coverage gaps', () => {
 
 	it('rejects a product override for a product not unlocked at target level', () => {
 		const definition = validDefinition();
-		definition.content.productIds = ['bottled-water', 'snacks'];
+		definition.content.productIds = ['bottled-water', 'snacks', 'soft-drinks'];
 		definition.start.overrides.stores = [
 			{
 				storeRef: 'founder',
 				targetLevel: 1,
 				products: [
 					{
-						productId: 'snacks',
+						// Founding breadth 2 unlocks snacks at level 1; soft-drinks
+						// stays above the level-1 budget.
+						productId: 'soft-drinks',
 						stock: 10,
 						reorderThreshold: 2,
 						targetStock: 12,

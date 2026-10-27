@@ -319,7 +319,11 @@ describe('StoreStockTable', () => {
 
 		await expect.element(page.getByRole('cell', { name: 'apparel' })).toBeVisible();
 		await expect.element(page.getByRole('cell', { name: '$0' })).toBeVisible();
-		await expect.element(page.getByText('No report')).toBeVisible();
+		// Scope to the unknown row: the breadth-2 founding catalog's snacks row
+		// has no report either.
+		await expect
+			.element(page.getByTestId('store-product-row-apparel').getByText('No report'))
+			.toBeVisible();
 	});
 
 	it('renders Traditional Chinese stock table headings', async () => {

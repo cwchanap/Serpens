@@ -38,7 +38,8 @@ describe('product dynamics', () => {
 		expect(result.product).not.toBe(product);
 		expect(result.product.lots).not.toBe(product.lots);
 		expect(result.wasteUnits).toBe(4);
-		expect(result.wasteValue).toBe(8);
+		// Produce importCost is 1 since HPA-502 Step 4 round 2 (was 2).
+		expect(result.wasteValue).toBe(4);
 		expect(product.lots).toEqual([
 			{ receivedDay: 1, quantity: 4 },
 			{ receivedDay: 2, quantity: 3 }
@@ -65,7 +66,8 @@ describe('product dynamics', () => {
 			{ receivedDay: 3, quantity: 6 }
 		]);
 		expect(result.shrinkUnits).toBe(3);
-		expect(result.shrinkValue).toBe(6);
+		// Produce importCost is 1 since HPA-502 Step 4 round 2 (was 2).
+		expect(result.shrinkValue).toBe(3);
 		expect(result.wasteUnits).toBe(0);
 	});
 

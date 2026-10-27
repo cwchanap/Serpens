@@ -49,7 +49,7 @@ describe('game state', () => {
 		expect(game.activeCityId).toBe(game.cities[0]?.id);
 		expect(foundingStore?.tileId).toBeTruthy();
 		expect(foundingStore?.mapX).toBeGreaterThanOrEqual(0);
-		expect(game.staff).toHaveLength(3);
+		expect(game.staff).toHaveLength(4); // boutique founding: 1 manager + 3 generals (breadth 2)
 		expect(game.staff.filter((staff) => staff.role === 'manager')).toHaveLength(1);
 		expect(game.staff.every((staff) => staff.assignedStoreId === foundingStore?.id)).toBe(true);
 		expect(game.hiringCandidates).toHaveLength(5);
@@ -126,7 +126,8 @@ describe('game state', () => {
 		const game = createNewGame('grocery', 20260508);
 		const store = game.stores[0]!;
 
-		expect(store.products.map((product) => product.productId)).toEqual(['produce']);
+		// Founding breadth 2 since HPA-502 Step 4 round 2.
+		expect(store.products.map((product) => product.productId)).toEqual(['produce', 'pantry']);
 		expect(store.products.every((product) => getStoreProductStock(product) > 0)).toBe(true);
 		expect(store.products[0]!.lots[0]!.receivedDay).toBe(game.day);
 		expect(store.stockHealth).toBe(calculateStockHealth(store.products));
@@ -282,7 +283,10 @@ describe('game state', () => {
 
 		expect(game.stores[0]?.archetypeId).toBe('boutique');
 		expect(result.stores.at(-1)?.archetypeId).toBe('electronics');
-		expect(result.stores.at(-1)?.products.map((product) => product.productId)).toEqual(['games']);
+		expect(result.stores.at(-1)?.products.map((product) => product.productId)).toEqual([
+			'games',
+			'accessories'
+		]);
 		expect(result.stores.at(-1)?.products[0]?.lots[0]?.receivedDay).toBe(game.day);
 	});
 
@@ -320,7 +324,7 @@ describe('game state', () => {
 
 		expect(next.stores[0]!.level).toBe(2);
 		expect(next.cash).toBe(100_000 - getStoreUpgradeCost(1));
-		expect(next.stores[0]!.products).toHaveLength(1); // no new product below level 4
+		expect(next.stores[0]!.products).toHaveLength(2); // founding breadth; no new product below level 4
 	});
 
 	test('upgradeStore at a milestone unlocks a product and raises capacity', () => {
@@ -334,7 +338,11 @@ describe('game state', () => {
 
 		const store = game.stores.find((candidate) => candidate.id === storeId)!;
 		expect(store.level).toBe(4);
-		expect(store.products.map((product) => product.productId)).toEqual(['bottled-water', 'snacks']);
+		expect(store.products.map((product) => product.productId)).toEqual([
+			'bottled-water',
+			'snacks',
+			'soft-drinks'
+		]);
 		expect(store.products[1]!.lots[0]!.receivedDay).toBe(game.day);
 		expect(store.staffCapacity).toBeGreaterThan(startCapacity);
 	});
@@ -367,7 +375,8 @@ describe('game state', () => {
 		expect.assertions(2);
 		const base = createNewGame('convenience', 20260603);
 		const store = base.stores[0]!;
-		const milestoneUnlockProductId = getArchetype('convenience').startingProductIds[1]!;
+		// Founding breadth 2: the level-4 unlock budget is 3 categories, so a
+		// level-3 store already holding 3 unlocks nothing at the milestone.
 		const game = {
 			...base,
 			cash: 1_000_000,
@@ -375,7 +384,11 @@ describe('game state', () => {
 				{
 					...store,
 					level: 3,
-					products: [store.products[0]!, createStoreProduct(milestoneUnlockProductId)]
+					products: [
+						store.products[0]!,
+						store.products[1]!,
+						createStoreProduct(getArchetype('convenience').startingProductIds[2]!)
+					]
 				}
 			]
 		};
@@ -383,7 +396,8 @@ describe('game state', () => {
 		const upgraded = result.stores[0]!;
 		expect(upgraded.products.map((product) => product.productId)).toEqual([
 			'bottled-water',
-			'snacks'
+			'snacks',
+			'soft-drinks'
 		]);
 		expect(upgraded.staffCapacity).toBeGreaterThan(store.staffCapacity);
 	});
@@ -403,12 +417,12 @@ describe('game state', () => {
 		const level4StoreReport = level4Report.storeReports[0]!;
 		const baselineStore = baselineStoreReport;
 
-		// Milestone grants a new product category.
-		expect(level4Report.storeReports[0]!.productReports).toHaveLength(2);
-		expect(baselineStore.productReports).toHaveLength(1);
+		// Milestone grants a new product category (founding breadth 2 → three at L4).
+		expect(level4Report.storeReports[0]!.productReports).toHaveLength(3);
+		expect(baselineStore.productReports).toHaveLength(2);
 
-		// Level 4 raises the general-staff requirement from 1 to 2. The store
-		// still only has the level-1 starter roster (1 general), so the daily
+		// Level 4 raises the general-staff requirement from 2 to 3. The store
+		// still only has the founding roster (2 generals), so the daily
 		// report must show a non-zero general shortage.
 		expect(level4StoreReport.staffingShortage.general).toBe(1);
 		expect(baselineStore.staffingShortage.general).toBe(0);
@@ -699,7 +713,15 @@ describe('game state', () => {
 
 			const productIds = game.stores[0]!.products.map((product) => product.productId);
 			expect(new Set(productIds).size).toBe(productIds.length);
-			expect(productIds).toEqual(['bottled-water', 'snacks', 'soft-drinks', 'essentials']);
+			// Founding breadth 2 (HPA-502 Step 4 round 2): all five authored
+			// convenience categories unlock by level 10.
+			expect(productIds).toEqual([
+				'bottled-water',
+				'snacks',
+				'soft-drinks',
+				'essentials',
+				'household'
+			]);
 		});
 	});
 
@@ -731,7 +753,7 @@ describe('game state', () => {
 			expect(preview.staffCapacityAfter).toBe(store.staffCapacity);
 			expect(preview.nextProductMilestone).toEqual({
 				level: 4,
-				productId: 'snacks'
+				productId: 'soft-drinks'
 			});
 		});
 
@@ -742,16 +764,16 @@ describe('game state', () => {
 
 			expect(preview.nextLevel).toBe(4);
 			expect(preview.cost).toBe(24_000);
-			expect(preview.unlockedProductId).toBe('snacks');
+			expect(preview.unlockedProductId).toBe('soft-drinks');
 			expect(preview.revenueMultiplierBefore).toBe(1.2);
 			expect(preview.revenueMultiplierAfter).toBe(1.2); // milestone excluded from revenue count
-			expect(preview.staffingRequirementBefore).toEqual({ manager: 1, general: 1 });
-			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 2 });
+			expect(preview.staffingRequirementBefore).toEqual({ manager: 1, general: 2 });
+			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 3 });
 			expect(preview.staffCapacityAfter - preview.staffCapacityBefore).toBe(8);
 			// Closed form keys off store.level (3), so the next milestone is 4 itself.
 			expect(preview.nextProductMilestone).toEqual({
 				level: 4,
-				productId: 'snacks'
+				productId: 'soft-drinks'
 			});
 		});
 
@@ -762,29 +784,32 @@ describe('game state', () => {
 
 			expect(store.products.map((product) => product.productId)).toEqual([
 				'bottled-water',
-				'snacks'
+				'snacks',
+				'soft-drinks'
 			]);
 			expect(preview.nextLevel).toBe(7);
-			expect(preview.unlockedProductId).toBe('soft-drinks');
+			expect(preview.unlockedProductId).toBe('essentials');
 			expect(preview.revenueMultiplierBefore).toBe(1.4);
 			expect(preview.revenueMultiplierAfter).toBe(1.4); // milestone excluded from revenue count
-			expect(preview.staffingRequirementBefore).toEqual({ manager: 1, general: 2 });
-			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 3 });
+			expect(preview.staffingRequirementBefore).toEqual({ manager: 1, general: 3 });
+			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 4 });
 			expect(preview.staffCapacityAfter - preview.staffCapacityBefore).toBe(8);
 		});
 
-		test('convenience 9 → 10 unlocks Essentials, never Household', () => {
-			expect.assertions(6);
+		test('convenience 9 → 10 unlocks Household, completing the authored catalog', () => {
+			expect.assertions(5);
 			const game = gameWithStoreUpgradedTo('convenience', 9);
 			const store = game.stores[0]!;
 			const preview = previewStoreUpgrade(store)!;
 
+			// Founding breadth 2 (HPA-502 Step 4 round 2) shifts the unlock curve
+			// up one, so the fifth authored category now arrives at level 10.
 			expect(preview.nextProductMilestone).toEqual({
 				level: 10,
-				productId: 'essentials'
+				productId: 'household'
 			});
-			expect(preview.unlockedProductId).toBe('essentials');
-			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 4 });
+			expect(preview.unlockedProductId).toBe('household');
+			expect(preview.staffingRequirementAfter).toEqual({ manager: 1, general: 5 });
 
 			const upgraded = upgradeStore(game, store.id).stores[0]!;
 			expect(upgraded.level).toBe(10);
@@ -792,9 +817,19 @@ describe('game state', () => {
 				'bottled-water',
 				'snacks',
 				'soft-drinks',
-				'essentials'
+				'essentials',
+				'household'
 			]);
-			expect(upgraded.products.some((product) => product.productId === 'household')).toBe(false);
+		});
+
+		test('four-product archetypes preview no further product past the L7 milestone', () => {
+			// The breadth-2 curve budgets 5 categories at level 10, but these
+			// archetypes author only 4 — the preview reports null rather than an
+			// undefined product id.
+			for (const archetypeId of ['boutique', 'electronics', 'grocery'] as const) {
+				const store = gameWithStoreUpgradedTo(archetypeId, 7).stores[0]!;
+				expect(previewStoreUpgrade(store)!.nextProductMilestone).toBeNull();
+			}
 		});
 
 		test('previewStoreUpgrade returns null at max level', () => {
@@ -823,10 +858,10 @@ describe('game state', () => {
 		test('preview parity holds for all four archetypes at the 3 → 4 milestone', () => {
 			expect.assertions(16);
 			const expectations: Array<[ArchetypeId, ProductId]> = [
-				['convenience', 'snacks'],
-				['boutique', 'home-goods'],
-				['electronics', 'accessories'],
-				['grocery', 'pantry']
+				['convenience', 'soft-drinks'],
+				['boutique', 'gifts'],
+				['electronics', 'devices'],
+				['grocery', 'prepared']
 			];
 
 			for (const [archetypeId, expectedProductId] of expectations) {
@@ -848,11 +883,11 @@ describe('game state', () => {
 			const milestoneAt = (level: number) =>
 				previewStoreUpgrade({ ...base.stores[0]!, level })?.nextProductMilestone ?? null;
 
-			expect(milestoneAt(1)).toEqual({ level: 4, productId: 'snacks' });
-			expect(milestoneAt(3)).toEqual({ level: 4, productId: 'snacks' });
-			expect(milestoneAt(4)).toEqual({ level: 7, productId: 'soft-drinks' });
-			expect(milestoneAt(6)).toEqual({ level: 7, productId: 'soft-drinks' });
-			expect(milestoneAt(7)).toEqual({ level: 10, productId: 'essentials' });
+			expect(milestoneAt(1)).toEqual({ level: 4, productId: 'soft-drinks' });
+			expect(milestoneAt(3)).toEqual({ level: 4, productId: 'soft-drinks' });
+			expect(milestoneAt(4)).toEqual({ level: 7, productId: 'essentials' });
+			expect(milestoneAt(6)).toEqual({ level: 7, productId: 'essentials' });
+			expect(milestoneAt(7)).toEqual({ level: 10, productId: 'household' });
 			expect(milestoneAt(10)).toBeNull();
 		});
 
