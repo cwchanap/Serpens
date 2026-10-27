@@ -90,6 +90,31 @@ export interface ProducerStallMetric {
 	days: number;
 }
 
+/**
+ * Ruling 11 served-chain composite legs, measured per advisor run (Ruling 12:
+ * the Gate A advisor item's verdict source). `served` is the conjunction of
+ * chain built (producer + warehouse applied), rails applied, no zero-output
+ * production day after the last applied rail, ≥1 local (warehouse) delivery
+ * to a store, and no repeated unapplied advisor recommendation.
+ */
+export interface AdvisorChainMetric {
+	producerBuilt: boolean;
+	warehouseBuilt: boolean;
+	railsApplied: boolean;
+	/** Day of the last applied connect-rail; null when none applied. */
+	lastRailDay: number | null;
+	/** Zero-output production days strictly after lastRailDay; null when no rail applied. */
+	zeroOutputDaysAfterLastRail: number | null;
+	/** Warehouse (local) units delivered to stores across the run. */
+	localDeliveryUnits: number;
+	/** Informational shape of the run's producer-stall window: buildout-shaped
+	 * windows (a build/rail action inside, production resumed and sustained to
+	 * end) are construction-sequencing pauses; every other shape stays a stall. */
+	stallShape: 'construction-sequencing pause' | 'producer stalled' | null;
+	/** The Ruling 11 composite verdict for this run. */
+	served: boolean;
+}
+
 export interface RunMeasurement {
 	seed: number;
 	archetypeId: ArchetypeId;
@@ -122,6 +147,8 @@ export interface RunMeasurement {
 	forecastByNeighborhood: Record<string, ForecastGroupStat>;
 	advisorRepeatedNoOp: RepeatedNoOpMetric | null;
 	producerStall: ProducerStallMetric | null;
+	/** Ruling 11 served-chain composite legs (Ruling 12: item-5 verdict source). */
+	advisorChain: AdvisorChainMetric;
 }
 
 export interface SweepRunResult {
@@ -286,6 +313,105 @@ function findProducerStall(reports: DailyReport[], ledger: BotLedger): ProducerS
 	return best;
 }
 
+function productionByDay(reports: DailyReport[]): { day: number; produced: number }[] {
+	return reports.map((report) => ({
+		day: report.day,
+		produced: report.productionReport.produced.reduce(
+			(total, movement) => total + movement.quantity,
+			0
+		)
+	}));
+}
+
+/**
+ * Informational stall-window shape (Ruling 12): a window with an applied
+ * advisor build/rail action inside it whose production resumes after the
+ * window and stays on through end-of-run is a construction-sequencing pause;
+ * every other window keeps the `producer stalled` label.
+ */
+function classifyStallShape(
+	reports: DailyReport[],
+	ledger: BotLedger,
+	stall: ProducerStallMetric
+): 'construction-sequencing pause' | 'producer stalled' {
+	const buildInside = ledger.actions.some(
+		(record) =>
+			record.bot === 'advisor' &&
+			record.outcome === 'applied' &&
+			(record.action === 'advisor:build-producer' ||
+				record.action === 'advisor:build-warehouse' ||
+				record.action === 'advisor:connect-rail') &&
+			record.day >= stall.startDay &&
+			record.day <= stall.endDay
+	);
+	let resumed = false;
+	let brokeAfterResume = false;
+	for (const entry of productionByDay(reports)) {
+		if (entry.day <= stall.endDay) continue;
+		if (entry.produced > 0) resumed = true;
+		else if (resumed) brokeAfterResume = true;
+	}
+	return buildInside && resumed && !brokeAfterResume
+		? 'construction-sequencing pause'
+		: 'producer stalled';
+}
+
+/**
+ * Ruling 11 composite legs for one run (Ruling 12). `advisorRepeatedNoOp`
+ * closes the last leg; a producer-stall window contributes only its
+ * informational shape, never the verdict.
+ */
+function measureAdvisorChain(
+	reports: DailyReport[],
+	ledger: BotLedger,
+	stall: ProducerStallMetric | null,
+	advisorRepeatedNoOp: RepeatedNoOpMetric | null
+): AdvisorChainMetric {
+	const appliedDays = (action: string): number[] =>
+		ledger.actions
+			.filter(
+				(record) =>
+					record.bot === 'advisor' && record.action === action && record.outcome === 'applied'
+			)
+			.map((record) => record.day)
+			.sort((a, b) => a - b);
+	const producerBuilt = appliedDays('advisor:build-producer').length > 0;
+	const warehouseBuilt = appliedDays('advisor:build-warehouse').length > 0;
+	const railDays = appliedDays('advisor:connect-rail');
+	const railsApplied = railDays.length > 0;
+	const lastRailDay = railsApplied ? railDays[railDays.length - 1]! : null;
+	const zeroOutputDaysAfterLastRail =
+		lastRailDay === null
+			? null
+			: productionByDay(reports).filter((entry) => entry.day > lastRailDay && entry.produced === 0)
+					.length;
+	let localDeliveryUnits = 0;
+	for (const report of reports) {
+		for (const store of report.storeReports) {
+			for (const product of store.productReports) {
+				localDeliveryUnits += product.warehouseUnits;
+			}
+		}
+	}
+	const served =
+		producerBuilt &&
+		warehouseBuilt &&
+		railsApplied &&
+		zeroOutputDaysAfterLastRail === 0 &&
+		localDeliveryUnits >= 1 &&
+		advisorRepeatedNoOp === null;
+	return {
+		producerBuilt,
+		warehouseBuilt,
+		railsApplied,
+		lastRailDay,
+		zeroOutputDaysAfterLastRail,
+		localDeliveryUnits,
+		stallShape: stall === null ? null : classifyStallShape(reports, ledger, stall),
+		served
+	};
+}
+
 /**
  * Per-opening forecast attribution against that store's first 14 COMPLETE
  * days of revenue. Short observations are incomplete — never silently passes.
@@ -396,6 +522,8 @@ export function measureRun(game: Pick<GameState, 'reports'>, ledger: BotLedger):
 	});
 
 	const forecastOutcomes = measureForecastOutcomes(reports, ledger);
+	const advisorRepeatedNoOp = findRepeatedAdvisorNoOp(ledger);
+	const producerStall = findProducerStall(reports, ledger);
 
 	return {
 		seed: ledger.seed,
@@ -422,8 +550,9 @@ export function measureRun(game: Pick<GameState, 'reports'>, ledger: BotLedger):
 		forecastOutcomes,
 		forecastByArchetype: groupBy(forecastOutcomes, (outcome) => outcome.archetypeId),
 		forecastByNeighborhood: groupBy(forecastOutcomes, (outcome) => outcome.neighborhood),
-		advisorRepeatedNoOp: findRepeatedAdvisorNoOp(ledger),
-		producerStall: findProducerStall(reports, ledger)
+		advisorRepeatedNoOp,
+		producerStall,
+		advisorChain: measureAdvisorChain(reports, ledger, producerStall, advisorRepeatedNoOp)
 	};
 }
 
@@ -624,24 +753,32 @@ export function evaluateGateA(
 		});
 	}
 
-	// Item 5 — advisor: clean = no ≥7-day zero-output stall after the chain's
-	// first output (buildout gaps excluded, Ruling 10a) AND no repeated
-	// unapplied recommendation (Ruling 10b). Ruling 11's served-chain bar
-	// (chain built + connected + sustained production + weekly local
-	// deliveries) is verified from the sweep artifacts in the checkpoint
-	// report; runs that never build still count as clean here (coarse proxy).
+	// Item 5 — advisor (Ruling 12): clean = the Ruling 11 served-chain
+	// composite (chain built + rails applied + no zero-output day after the
+	// last applied rail + ≥1 local delivery to a store + no repeated
+	// unapplied recommendation). Stall windows stay informational
+	// diagnostics: buildout-shaped windows render as construction-sequencing
+	// pauses, other shapes as producer stalls; neither fails the item.
 	{
 		const advisorRuns = report.runs.filter((run) => run.bot === 'advisor');
-		const clean = advisorRuns.filter(
-			(run) => run.producerStall === null && run.advisorRepeatedNoOp === null
-		).length;
-		const share = advisorRuns.length === 0 ? null : clean / advisorRuns.length;
-		const stalls = advisorRuns.filter((run) => run.producerStall !== null).length;
-		const noOps = advisorRuns.filter((run) => run.advisorRepeatedNoOp !== null).length;
+		const served = advisorRuns.filter((run) => run.advisorChain.served).length;
+		const share = advisorRuns.length === 0 ? null : served / advisorRuns.length;
+		const unapplied = advisorRuns.filter((run) => run.advisorRepeatedNoOp !== null).length;
+		const windows = new Map<string, number>();
+		for (const run of advisorRuns) {
+			if (run.producerStall === null) continue;
+			const label = run.advisorChain.stallShape ?? 'producer stalled';
+			const key = `${label} days ${run.producerStall.startDay}-${run.producerStall.endDay}`;
+			windows.set(key, (windows.get(key) ?? 0) + 1);
+		}
+		const windowSummary = [...windows.entries()]
+			.sort(([a], [b]) => (a < b ? -1 : 1))
+			.map(([key, count]) => `${count} ${key}`)
+			.join(', ');
 		items.push({
 			id: 'advisor',
 			passed: share !== null && share >= thresholds.advisorSeedShare,
-			detail: `${clean}/${advisorRuns.length} advisor runs without a ≥7d producer stall or repeated rejected recommendation (share ${share === null ? 'n/a' : fmtShare(share)}; ${stalls} stalled, ${noOps} repeated no-ops)`
+			detail: `${served}/${advisorRuns.length} advisor runs complete the served-chain composite (share ${share === null ? 'n/a' : fmtShare(share)}); stall windows (informational): ${windowSummary || 'none'}; ${unapplied} repeated unapplied`
 		});
 	}
 
@@ -719,8 +856,9 @@ function runExceptions(run: RunMeasurement): string[] {
 		exceptions.push(`negative cash from day ${run.firstNegativeCashDay}`);
 	}
 	if (run.producerStall !== null) {
+		const label = run.advisorChain.stallShape ?? 'producer stalled';
 		exceptions.push(
-			`producer stalled ${run.producerStall.days}d (days ${run.producerStall.startDay}-${run.producerStall.endDay})`
+			`${label} ${run.producerStall.days}d (days ${run.producerStall.startDay}-${run.producerStall.endDay})`
 		);
 	}
 	if (run.advisorRepeatedNoOp !== null) {

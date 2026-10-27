@@ -24,6 +24,7 @@ import {
 	renderSweepMarkdown,
 	SWEEP_REGENERATION_COMMAND,
 	sweepRegenerationCommand,
+	type AdvisorChainMetric,
 	type GateAItemVerdict,
 	type OpeningForecastOutcome,
 	type RunMeasurement,
@@ -200,6 +201,34 @@ function fakeLedger(
 		foundingCash: 100,
 		openings,
 		actions
+	};
+}
+
+/** Advisor ledger carrying the given advisor action records. */
+function advisorLedger(actions: BotLedger['actions']): BotLedger {
+	return { ...fakeLedger([fakeOpening()], actions), bot: 'advisor' };
+}
+
+function advisorAction(
+	day: number,
+	action: string,
+	outcome: BotLedger['actions'][number]['outcome'] = 'applied'
+): BotLedger['actions'][number] {
+	return { day, bot: 'advisor', action, outcome, detail: 'fixture' };
+}
+
+/** Every composite leg green — the Ruling 11 served chain (Ruling 12). */
+function servedChain(overrides: Partial<AdvisorChainMetric> = {}): AdvisorChainMetric {
+	return {
+		producerBuilt: true,
+		warehouseBuilt: true,
+		railsApplied: true,
+		lastRailDay: 29,
+		zeroOutputDaysAfterLastRail: 0,
+		localDeliveryUnits: 336,
+		stallShape: null,
+		served: true,
+		...overrides
 	};
 }
 
@@ -721,6 +750,179 @@ describe('advisor no-op repeats and producer stalls (HPA-502 Stage 3)', () => {
 	});
 });
 
+describe('advisor served-chain composite (HPA-502 Ruling 12)', () => {
+	// The real advisor chain shape: producer d1, warehouse d8, rails d22+d29;
+	// flow d1-17 (buildout pump/bottler fill), construction pause d18-29, flow
+	// from d30; weekly 7-unit warehouse restocks once connected.
+	const CHAIN_ACTIONS: BotLedger['actions'] = [
+		advisorAction(1, 'advisor:build-producer'),
+		advisorAction(8, 'advisor:build-warehouse'),
+		advisorAction(22, 'advisor:connect-rail'),
+		advisorAction(29, 'advisor:connect-rail')
+	];
+	const producing = (): DailyMaterialMovement[] => [
+		{
+			cityId: 'industry-city',
+			materialId: 'filtered-water',
+			quantity: 4,
+			value: 8,
+			source: 'local'
+		}
+	];
+	function chainReports(days: number, produceFrom: number, produceTo: number): DailyReport[] {
+		return Array.from({ length: days }, (_, index) => {
+			const day = index + 1;
+			const delivering = day >= 30;
+			return fakeReport(day, {
+				productionReport: fakeProduction(day >= produceFrom && day <= produceTo ? producing() : []),
+				storeReports: delivering
+					? [fakeStore({ productReports: [fakeProduct({ warehouseUnits: 7 })] })]
+					: []
+			});
+		});
+	}
+
+	it('measures every composite leg green on a served chain (pause is informational)', () => {
+		const measured = measureRun(
+			{
+				reports: chainReports(35, 1, 17).map((report, index) =>
+					index >= 29 ? { ...report, productionReport: fakeProduction(producing()) } : report
+				)
+			},
+			advisorLedger(CHAIN_ACTIONS)
+		);
+		expect(measured.producerStall).toEqual({ startDay: 18, endDay: 29, days: 12 });
+		expect(measured.advisorChain).toEqual({
+			producerBuilt: true,
+			warehouseBuilt: true,
+			railsApplied: true,
+			lastRailDay: 29,
+			zeroOutputDaysAfterLastRail: 0,
+			localDeliveryUnits: 42,
+			stallShape: 'construction-sequencing pause',
+			served: true
+		});
+	});
+
+	it('fails the composite leg when the producer or warehouse build never applied', () => {
+		const reports = chainReports(35, 1, 35);
+		const noProducer = measureRun(
+			{ reports },
+			advisorLedger(CHAIN_ACTIONS.filter((action) => action.action !== 'advisor:build-producer'))
+		);
+		expect(noProducer.advisorChain.producerBuilt).toBe(false);
+		expect(noProducer.advisorChain.served).toBe(false);
+
+		const noWarehouse = measureRun(
+			{ reports },
+			advisorLedger(CHAIN_ACTIONS.filter((action) => action.action !== 'advisor:build-warehouse'))
+		);
+		expect(noWarehouse.advisorChain.warehouseBuilt).toBe(false);
+		expect(noWarehouse.advisorChain.served).toBe(false);
+	});
+
+	it('fails the composite when no rail applied: no anchor day exists', () => {
+		const reports = chainReports(35, 1, 35);
+		const noRails = measureRun(
+			{ reports },
+			advisorLedger(CHAIN_ACTIONS.filter((action) => action.action !== 'advisor:connect-rail'))
+		);
+		expect(noRails.advisorChain.railsApplied).toBe(false);
+		expect(noRails.advisorChain.lastRailDay).toBeNull();
+		expect(noRails.advisorChain.zeroOutputDaysAfterLastRail).toBeNull();
+		expect(noRails.advisorChain.served).toBe(false);
+	});
+
+	it('counts zero-output days strictly after the last applied rail', () => {
+		// Flow stops on days 33-35 (3 zero-output days after rail day 29).
+		const measured = measureRun({ reports: chainReports(35, 1, 32) }, advisorLedger(CHAIN_ACTIONS));
+		expect(measured.advisorChain.zeroOutputDaysAfterLastRail).toBe(3);
+		expect(measured.advisorChain.served).toBe(false);
+	});
+
+	it('requires at least one local (warehouse) delivery to a store', () => {
+		const reports = chainReports(35, 1, 35).map((report) => ({
+			...report,
+			storeReports: []
+		}));
+		const measured = measureRun({ reports }, advisorLedger(CHAIN_ACTIONS));
+		expect(measured.advisorChain.localDeliveryUnits).toBe(0);
+		expect(measured.advisorChain.served).toBe(false);
+	});
+
+	it('keeps a repeated unapplied recommendation disqualifying inside the composite', () => {
+		const actions = [
+			...CHAIN_ACTIONS,
+			advisorAction(36, 'advisor:build-rail', 'rejected'),
+			advisorAction(43, 'advisor:build-rail', 'rejected')
+		];
+		const measured = measureRun({ reports: chainReports(50, 1, 50) }, advisorLedger(actions));
+		expect(measured.advisorRepeatedNoOp).not.toBeNull();
+		expect(measured.advisorChain.served).toBe(false);
+	});
+
+	it('labels mid-run stalls without in-window builds as `producer stalled`', () => {
+		// Build d2, flow d5-10, zero d11-20 (no build inside the window), flow after.
+		const actions = [advisorAction(2, 'advisor:build-producer')];
+		const measured = measureRun(
+			{
+				reports: chainReports(30, 5, 10).map((report) =>
+					report.day >= 21 ? { ...report, productionReport: fakeProduction(producing()) } : report
+				)
+			},
+			advisorLedger(actions)
+		);
+		expect(measured.producerStall).toEqual({ startDay: 11, endDay: 20, days: 10 });
+		expect(measured.advisorChain.stallShape).toBe('producer stalled');
+	});
+
+	it('labels resumption that later breaks again as `producer stalled` even with an in-window build', () => {
+		// Build d2 + warehouse d12 (inside the d11-20 window), flow d5-10,
+		// zero d11-20, flow d21-25, zero d26-30: resumed but not sustained.
+		const actions = [
+			advisorAction(2, 'advisor:build-producer'),
+			advisorAction(12, 'advisor:build-warehouse')
+		];
+		const reports = Array.from({ length: 30 }, (_, index) => {
+			const day = index + 1;
+			const produced = (day >= 5 && day <= 10) || (day >= 21 && day <= 25);
+			return fakeReport(day, { productionReport: fakeProduction(produced ? producing() : []) });
+		});
+		const measured = measureRun({ reports }, advisorLedger(actions));
+		expect(measured.producerStall).toEqual({ startDay: 11, endDay: 20, days: 10 });
+		expect(measured.advisorChain.stallShape).toBe('producer stalled');
+	});
+
+	it('labels stall windows in the markdown exceptions by their shape', () => {
+		// Real measured runs: a buildout pause (rails applied inside the window,
+		// flow sustained after) and a plain mid-run stall.
+		const pausedRun = measureRun(
+			{
+				reports: chainReports(35, 1, 17).map((report, index) =>
+					index >= 29 ? { ...report, productionReport: fakeProduction(producing()) } : report
+				)
+			},
+			advisorLedger(CHAIN_ACTIONS)
+		);
+		const stalledRun = measureRun(
+			{
+				reports: chainReports(30, 5, 10).map((report) =>
+					report.day >= 21 ? { ...report, productionReport: fakeProduction(producing()) } : report
+				)
+			},
+			advisorLedger([advisorAction(2, 'advisor:build-producer')])
+		);
+		expect(pausedRun.advisorChain.stallShape).toBe('construction-sequencing pause');
+		expect(stalledRun.advisorChain.stallShape).toBe('producer stalled');
+		const markdown = renderSweepMarkdown({
+			config: { seeds: [SEED], days: 35 },
+			runs: [pausedRun, stalledRun]
+		});
+		expect(markdown).toContain('construction-sequencing pause 12d (days 18-29)');
+		expect(markdown).toContain('producer stalled 10d (days 11-20)');
+	});
+});
+
 describe('deterministic serialization (HPA-502 Stage 3)', () => {
 	it('serializes the same seed/config byte-identically, twice, through real bot runs', () => {
 		const runSweep = (): string => {
@@ -820,6 +1022,7 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 			forecastByNeighborhood: {},
 			advisorRepeatedNoOp: null,
 			producerStall: null,
+			advisorChain: servedChain(),
 			...overrides
 		};
 	}
@@ -1055,27 +1258,109 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 		expect(zero.detail).toContain('0/1/1 eligible openings within ±25% of realized');
 	});
 
-	it('advisor: 4/5 clean runs passes at the bar; a stall or repeated no-op disqualifies its run', () => {
+	it('advisor (Ruling 12): 4/5 served-chain runs passes at the bar; each composite leg failure disqualifies its run', () => {
 		const advisor = (seed: number, overrides: Partial<RunMeasurement> = {}): RunMeasurement =>
 			gateRun({ seed, archetypeId: 'convenience', bot: 'advisor', ...overrides });
 
 		const atBar = [1, 2, 3, 4]
 			.map((seed) => advisor(seed))
-			.concat(advisor(5, { producerStall: { startDay: 100, endDay: 110, days: 11 } }));
+			.concat(
+				advisor(5, {
+					advisorChain: servedChain({
+						served: false,
+						railsApplied: false,
+						lastRailDay: null,
+						zeroOutputDaysAfterLastRail: null
+					})
+				})
+			);
 		const passing = item(gateReport(atBar), 'advisor');
 		expect(passing.passed).toBe(true);
-		expect(passing.detail).toContain('4/5 advisor runs');
-		expect(passing.detail).toContain('1 stalled, 0 repeated no-ops');
+		expect(passing.detail).toContain('4/5 advisor runs complete the served-chain composite');
+		expect(passing.detail).toContain('share 80.0%');
 
-		const below = [1, 2, 3]
+		// Each failure leg (Ruling 11 composite legs beyond the repeated-unapplied
+		// one, which has its own leg below) disqualifies exactly its run: with two
+		// leg-broken runs the served share is 3/5 = 60% < 80%.
+		const legs: Partial<AdvisorChainMetric>[] = [
+			{ producerBuilt: false, served: false },
+			{ warehouseBuilt: false, served: false },
+			{ railsApplied: false, lastRailDay: null, zeroOutputDaysAfterLastRail: null, served: false },
+			{ zeroOutputDaysAfterLastRail: 9, served: false },
+			{ localDeliveryUnits: 0, served: false }
+		];
+		for (const leg of legs) {
+			const runs = [1, 2, 3]
+				.map((seed) => advisor(seed))
+				.concat(
+					advisor(4, { advisorChain: servedChain(leg) }),
+					advisor(5, {
+						advisorChain: servedChain({
+							railsApplied: false,
+							lastRailDay: null,
+							zeroOutputDaysAfterLastRail: null,
+							served: false
+						})
+					})
+				);
+			const verdict = item(gateReport(runs), 'advisor');
+			expect(verdict.passed).toBe(false);
+			expect(verdict.detail).toContain('3/5 advisor runs');
+		}
+
+		// A repeated unapplied recommendation stays disqualifying (frozen leg):
+		// two noop runs leave 3/5 served, below the bar.
+		const noopChain = servedChain({ served: false });
+		const unapplied = [1, 2, 3]
 			.map((seed) => advisor(seed))
 			.concat(
 				advisor(4, {
-					advisorRepeatedNoOp: { startDay: 8, streak: 3, action: 'advisor:plan', detail: 'blocked' }
+					advisorRepeatedNoOp: {
+						startDay: 8,
+						streak: 3,
+						action: 'advisor:build-rail',
+						detail: 'blocked'
+					},
+					advisorChain: noopChain
 				}),
-				advisor(5, { producerStall: { startDay: 50, endDay: 60, days: 11 } })
+				advisor(5, {
+					advisorRepeatedNoOp: {
+						startDay: 8,
+						streak: 2,
+						action: 'advisor:upgrade-building',
+						detail: 'blocked'
+					},
+					advisorChain: noopChain
+				})
 			);
-		expect(item(gateReport(below), 'advisor').passed).toBe(false);
+		expect(item(gateReport(unapplied), 'advisor').passed).toBe(false);
+
+		// A construction-sequencing pause is informational: it labels the stall
+		// window in the detail but does NOT disqualify the run (Ruling 12).
+		const paused = [1, 2, 3, 4]
+			.map((seed) => advisor(seed))
+			.concat(
+				advisor(5, {
+					producerStall: { startDay: 18, endDay: 29, days: 12 },
+					advisorChain: servedChain({ stallShape: 'construction-sequencing pause' })
+				})
+			);
+		const pauseVerdict = item(gateReport(paused), 'advisor');
+		expect(pauseVerdict.passed).toBe(true);
+		expect(pauseVerdict.detail).toContain('construction-sequencing pause days 18-29');
+
+		// Other stall shapes stay labeled `producer stalled` (informational too).
+		const stalled = [1, 2, 3, 4]
+			.map((seed) => advisor(seed))
+			.concat(
+				advisor(5, {
+					producerStall: { startDay: 100, endDay: 110, days: 11 },
+					advisorChain: servedChain({ stallShape: 'producer stalled' })
+				})
+			);
+		const stallVerdict = item(gateReport(stalled), 'advisor');
+		expect(stallVerdict.passed).toBe(true);
+		expect(stallVerdict.detail).toContain('producer stalled days 100-110');
 	});
 
 	it('renders the Gate A section, is pure, and computes a stable overall verdict', () => {
