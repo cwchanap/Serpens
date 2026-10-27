@@ -119,7 +119,8 @@ const firstProfit = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['convenience'],
-		productIds: ['bottled-water'],
+		// Founding breadth 2 materializes snacks alongside bottled water.
+		productIds: ['bottled-water', 'snacks'],
 		materialIds: [],
 		buildingTypeIds: [],
 		retailPlacements: [],
@@ -228,7 +229,8 @@ const importSqueeze = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['electronics'],
-		productIds: ['games', 'accessories'],
+		// Target level 4 unlocks a third category under the breadth-2 curve.
+		productIds: ['games', 'accessories', 'devices'],
 		materialIds: [],
 		buildingTypeIds: [],
 		retailPlacements: [],
@@ -365,7 +367,8 @@ const localLifeline = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['convenience'],
-		productIds: ['bottled-water'],
+		// Founding breadth 2 materializes snacks alongside bottled water.
+		productIds: ['bottled-water', 'snacks'],
 		materialIds: ['water', 'bottled-water'],
 		buildingTypeIds: ['water-pump', 'water-bottler', 'warehouse'],
 		retailPlacements: [],
@@ -493,7 +496,8 @@ const debtTurnaround = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['electronics'],
-		productIds: ['games', 'accessories'],
+		// Target level 4 unlocks a third category under the breadth-2 curve.
+		productIds: ['games', 'accessories', 'devices'],
 		materialIds: [],
 		buildingTypeIds: [],
 		retailPlacements: [],
@@ -599,7 +603,8 @@ const freshMarket = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['grocery'],
-		productIds: ['produce'],
+		// Founding breadth 2 materializes pantry alongside produce.
+		productIds: ['produce', 'pantry'],
 		materialIds: [],
 		buildingTypeIds: [],
 		retailPlacements: [],
@@ -613,7 +618,7 @@ const freshMarket = {
 			labelKey: 'scenarioDefinitions.freshMarket.objectives.produceSold',
 			query: { metric: 'units-sold', productIds: ['produce'] },
 			comparator: 'gte',
-			target: 850,
+			target: 1300,
 			window: { kind: 'trailing-reports', count: 14 },
 			requiresCompleteWindow: true
 		},
@@ -705,7 +710,8 @@ const rivalNextDoor = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city'],
 		archetypeIds: ['grocery'],
-		productIds: ['produce'],
+		// Founding breadth 2 materializes pantry alongside produce.
+		productIds: ['produce', 'pantry'],
 		materialIds: [],
 		buildingTypeIds: [],
 		retailPlacements: [],
@@ -858,7 +864,8 @@ const twoCitySupplyRun = {
 	content: {
 		cityIds: ['harbor-city', 'industry-city', 'breadbasket-basin'],
 		archetypeIds: ['convenience'],
-		productIds: ['bottled-water'],
+		// Founding breadth 2 materializes snacks alongside bottled water.
+		productIds: ['bottled-water', 'snacks'],
 		materialIds: ['water'],
 		buildingTypeIds: ['water-pump', 'warehouse'],
 		retailPlacements: [],

@@ -23,7 +23,13 @@ const STAFFING_REQUIREMENTS: Record<ArchetypeId, StaffingRequirement> = {
 	convenience: { manager: 1, general: 1 },
 	boutique: { manager: 1, general: 2 },
 	electronics: { manager: 1, general: 2 },
-	grocery: { manager: 1, general: 3 }
+	// HPA-502 Step 4 round 2 (Ruling 8 lever v): grocery runs the heaviest
+	// founding roster (breadth-2 curve put it at 4 generals) while its real-run
+	// windows stay margin-negative on stockout drag; base 3→2 (one general less
+	// at every level) is the ruled payroll relief. Sized with the softened
+	// pantry price so the founding ratio stays inside the 1.2–2.0× band
+	// (scratch/phase5a-r2-before.ts: 1.51–1.87× over the 10 replay seeds).
+	grocery: { manager: 1, general: 2 }
 };
 
 export const HIRING_CANDIDATE_COUNT = 5;

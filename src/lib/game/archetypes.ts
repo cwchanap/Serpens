@@ -32,8 +32,8 @@ const RAW_ARCHETYPES: StoreArchetype[] = [
 			'snacks',
 			'soft-drinks',
 			'essentials',
-			// Household is intentionally unreachable: convenience has five
-			// authored products, but the milestone cap unlocks only four.
+			// Household is reachable at level 10 since HPA-502 Step 4 round 2:
+			// the founding-breadth-2 unlock curve budgets five categories at L10.
 			'household'
 		],
 		risks: ['Stockouts', 'Low margins', 'High foot traffic pressure']

@@ -7,8 +7,12 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultBrandId: 'common-ground',
 		name: 'Bottled Water',
 		demandWeight: 1.2,
-		importCost: 2,
-		defaultSellingPrice: 3,
+		// HPA-502 Step 4 round 2: founding capacity fills in sorted-id order, so
+		// the alphabetically-first product's margin leads convenience economics
+		// (price ×2 is the authorized data-lever cap; demand is unpunished
+		// because the store price tracks the table default).
+		importCost: 1,
+		defaultSellingPrice: 6,
 		priceSensitivity: 0.7,
 		productionMaterialId: 'bottled-water',
 		dynamics: {}
@@ -31,8 +35,10 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultBrandId: 'common-ground',
 		name: 'Snacks',
 		demandWeight: 1,
-		importCost: 3,
-		defaultSellingPrice: 5,
+		// HPA-502 Step 4 round 2: breadth-2 founding tail margin (price ×1.6,
+		// cost ×2/3 — inside the ≤2× data-lever cap).
+		importCost: 2,
+		defaultSellingPrice: 8,
 		priceSensitivity: 0.9,
 		productionMaterialId: 'snacks',
 		dynamics: {}
@@ -169,9 +175,13 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		familyId: 'grocery-food',
 		defaultBrandId: 'common-ground',
 		name: 'Produce',
-		demandWeight: 1,
-		importCost: 2,
-		defaultSellingPrice: 4,
+		// HPA-502 Step 4 round 2: grocery-food demandWeight ×2 (the ruled volume
+		// lever) makes rival-bound seeds capacity-bound like rival-free seeds,
+		// compressing the playerShare swing inside the sizing band; price ×1.5,
+		// cost ×0.5 set the capacity-bound margin.
+		demandWeight: 2,
+		importCost: 1,
+		defaultSellingPrice: 6,
 		priceSensitivity: 0.7,
 		productionMaterialId: 'produce',
 		dynamics: { shelfLifeDays: 10, shrinkRate: 0.02 }
@@ -181,9 +191,13 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		familyId: 'grocery-food',
 		defaultBrandId: 'common-ground',
 		name: 'Pantry',
-		demandWeight: 1.1,
-		importCost: 3,
-		defaultSellingPrice: 6,
+		demandWeight: 2.2,
+		importCost: 1.5,
+		// Price 9 (×1.5, inside the ≤2× data cap): with Ruling 8 lever (v) the
+		// joint set measures 1.54–1.90× live across the 10 replay seeds — inside
+		// the 1.2–2.0× band (scratch/phase5a-r2-live.ts is the authoritative
+		// measurement; the HEAD-basis sizing probe reads ~13% high on payroll).
+		defaultSellingPrice: 9,
 		priceSensitivity: 0.55,
 		productionMaterialId: 'pantry',
 		dynamics: {}
@@ -193,7 +207,8 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		familyId: 'grocery-food',
 		defaultBrandId: 'common-ground',
 		name: 'Prepared Food',
-		demandWeight: 0.75,
+		// Same grocery-food demandWeight ×2 family calibration as produce/pantry.
+		demandWeight: 1.5,
 		importCost: 5,
 		defaultSellingPrice: 10,
 		priceSensitivity: 0.85,
@@ -205,7 +220,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		familyId: 'grocery-food',
 		defaultBrandId: 'common-ground',
 		name: 'Bakery',
-		demandWeight: 0.7,
+		demandWeight: 1.4,
 		importCost: 3,
 		defaultSellingPrice: 7,
 		priceSensitivity: 0.8,
