@@ -248,11 +248,13 @@ describe('opening guidance — First Profit walk', { timeout: 30_000 }, () => {
 		}
 
 		expect(run.status).toBe('completed');
+		// Task-6 recalibration: the passive run completes d4 below Silver (682
+		// bronze) now that the income band rewards deliberate play only.
 		expect(run.result).toMatchObject({
 			outcome: 'completed',
 			completionDay: 4,
-			score: 862,
-			medal: 'gold'
+			score: 682,
+			medal: 'bronze'
 		});
 	});
 });

@@ -2408,7 +2408,9 @@ test('challenge advance updates objective progress and deadline state', async ({
 		.getByRole('article')
 		.filter({ hasText: 'Earn cumulative net income' });
 	await expect(cumulativeIncome).toContainText('Satisfied');
-	await expect(cumulativeIncome).toContainText('Actual $173');
+	// HPA-502 task 6: round-2 founding economics re-seated day-1 net income
+	// 173 → 459 (runtime no-action trace d1 operatingCashFlow = 459).
+	await expect(cumulativeIncome).toContainText('Actual $459');
 	await expect(cumulativeIncome).toContainText('Day 1 report');
 	const positiveIncomeStreak = objectiveDetails
 		.getByRole('article')
@@ -2425,7 +2427,7 @@ test('challenge advance updates objective progress and deadline state', async ({
 		)
 	).toMatchObject({
 		status: 'satisfied',
-		evidence: { actual: 173, contributingIds: ['report:1'] }
+		evidence: { actual: 459, contributingIds: ['report:1'] }
 	});
 	expect(
 		active?.run.evaluation.required.find(
@@ -2450,7 +2452,7 @@ test('First Profit opening guidance walks first-result into dated result evidenc
 		'Finish with cumulative net income above zero, backed by three consecutive positive-income reports. Cash below zero fails the run.'
 	);
 	await expect(firstProfitCard).toContainText(
-		'Inspect completed results and current warnings for evidence — on the official seed, no setting change is required.'
+		'Inspect completed results and current warnings for evidence — on the official seed, tuning price and service above the do-nothing baseline is what earns gold.'
 	);
 	await expect(firstProfitCard).toContainText('Earn cumulative net income');
 	await expect(firstProfitCard).toContainText('Maintain a positive income streak');
@@ -2890,7 +2892,7 @@ test('challenge completes the deterministic reference run and persists its ranke
 	const results = page.getByRole('dialog', { name: 'Challenge results' });
 	await expect(results).toBeVisible();
 	await expect(results.getByRole('heading', { name: 'Challenge completed' })).toBeVisible();
-	await expect(results).toContainText('Gold · 950 points');
+	await expect(results).toContainText('Gold · 862 points');
 	await expect(results).toContainText('New best recorded');
 	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-result', 'completed');
 	await expect(challengeRoot(page)).toHaveAttribute('data-scenario-best-updated', 'true');
@@ -2899,7 +2901,7 @@ test('challenge completes the deterministic reference run and persists its ranke
 	expect(snapshot.bestResultsByDefinitionKey['first-profit@1']?.result).toMatchObject({
 		outcome: 'completed',
 		eligibility: 'ranked',
-		score: 950,
+		score: 862,
 		medal: 'gold'
 	});
 });
@@ -3086,7 +3088,7 @@ test('challenge reload clears transient failed, unranked, and non-best results w
 	await expect(page.getByRole('dialog', { name: 'Challenge results' })).toHaveCount(0);
 	await openChallengeCatalog(page);
 	const card = challengeCard(page, 'First Profit');
-	await expect(card).toContainText('Gold · 950 points');
+	await expect(card).toContainText('Gold · 862 points');
 	await expect(card).not.toContainText('682 points');
 	await expect(card).not.toContainText('Unranked result');
 	const snapshot = await readChallengeSnapshot(page);
