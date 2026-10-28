@@ -7,7 +7,7 @@ import {
 	resolveBrandEconomics
 } from './brands';
 import { getTilePlacementBlockReason } from './city';
-import { getStoreRevenueMultiplier, getUnlockedProductCount } from './leveling';
+import { getStoreRevenueMultiplier, getUnlockedProductIds } from './leveling';
 import {
 	applyProductInventoryAging,
 	resolveProductMarketDynamics,
@@ -74,11 +74,10 @@ export function initializeStoreProducts(
 	receivedDay = 1
 ): StoreProduct[] {
 	const archetype = getArchetype(archetypeId);
-	const unlockedCount = getUnlockedProductCount(level);
 
-	return archetype.startingProductIds
-		.slice(0, unlockedCount)
-		.map((productId) => createStoreProduct(productId, receivedDay));
+	return getUnlockedProductIds(level, archetype.startingProductIds).map((productId) =>
+		createStoreProduct(productId, receivedDay)
+	);
 }
 
 export function updateStoreProduct(

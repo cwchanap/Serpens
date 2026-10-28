@@ -109,6 +109,11 @@ const firstProfit = {
 							stock: 250,
 							reorderThreshold: 30,
 							targetStock: 108,
+							// Authored underprice vs the table default (6): the
+							// passive baseline's thin margin is load-bearing —
+							// the day-4 completion band/medal shape only exists
+							// because fixing it (reference reprices to 6) is
+							// the rewarded play. Do not track the default here.
 							sellingPrice: 3
 						}
 					]
@@ -371,7 +376,7 @@ const localLifeline = {
 							stock: 10,
 							reorderThreshold: 25,
 							targetStock: 50,
-							sellingPrice: 3
+							sellingPrice: 6
 						}
 					]
 				}
@@ -607,7 +612,7 @@ const freshMarket = {
 							stock: 1_000,
 							reorderThreshold: 25,
 							targetStock: 90,
-							sellingPrice: 4
+							sellingPrice: 6
 						}
 					]
 				}
@@ -714,7 +719,7 @@ const rivalNextDoor = {
 							stock: 320,
 							reorderThreshold: 25,
 							targetStock: 90,
-							sellingPrice: 4
+							sellingPrice: 6
 						}
 					]
 				}

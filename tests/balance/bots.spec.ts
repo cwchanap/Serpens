@@ -128,17 +128,19 @@ describe('balance harness bots (HPA-502 Stage 2)', () => {
 
 		for (const opening of expansions) {
 			const city = finalGame.cities.find((candidate) => candidate.id === finalGame.activeCityId)!;
-			// Post-hoc computation on the final game: the store now exists in
-			// game.stores, so an estimate built NOW would count it as an extra
-			// competitor — the ledger value must differ, proving it was
-			// recorded on the pre-command state before openStore ran.
-			const postHoc = estimateOpeningRevenue({
-				game: finalGame,
-				city,
-				tileId: opening.tileId,
-				archetypeId: opening.archetypeId,
-				seed: SEED
-			});
+			// Post-hoc estimation on the final game throws: the tile is
+			// occupied and the estimator rejects it exactly as openStoreAtTile
+			// would — proving the ledger forecast was recorded on the
+			// pre-command state before openStore ran.
+			expect(() =>
+				estimateOpeningRevenue({
+					game: finalGame,
+					city,
+					tileId: opening.tileId,
+					archetypeId: opening.archetypeId,
+					seed: SEED
+				})
+			).toThrow(/occupied/);
 
 			expect(opening.forecast.projectedDailyRevenue).toBeGreaterThan(0);
 			expect(opening.forecast.setupCost).toBe(
@@ -147,7 +149,6 @@ describe('balance harness bots (HPA-502 Stage 2)', () => {
 					opening.archetypeId
 				)
 			);
-			expect(opening.forecast.projectedDailyRevenue).not.toBe(postHoc.projectedDailyRevenue);
 		}
 	});
 

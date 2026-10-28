@@ -1,5 +1,6 @@
+import { getArchetype } from './archetypes';
 import { clampScore } from './reports';
-import { getUnlockedProductCount } from './leveling';
+import { getUnlockedProductIds } from './leveling';
 import {
 	canPromoteStaff,
 	getStaffSalaryAfterPromotion,
@@ -64,7 +65,11 @@ const LAST_NAMES = [
 
 export function getStaffingRequirement(archetypeId: ArchetypeId, level = 1): StaffingRequirement {
 	const base = STAFFING_REQUIREMENTS[archetypeId];
-	const milestoneStaff = getUnlockedProductCount(level) - 1;
+	// Milestone staff track products actually unlocked: the L10 milestone
+	// budgets five categories, but only convenience's catalog reaches five — a
+	// four-product archetype gains no sixth general at level 10.
+	const milestoneStaff =
+		getUnlockedProductIds(level, getArchetype(archetypeId).startingProductIds).length - 1;
 
 	return { manager: base.manager, general: base.general + milestoneStaff };
 }
@@ -277,6 +282,16 @@ function createStarterStaffForRole(
 	});
 }
 
+/**
+ * Uniform-roll parameters for generated staff quality. Exported so the
+ * opening estimator's prospective-hire midpoint (base + spread / 2) tracks
+ * these ranges instead of duplicating literals.
+ */
+export const STAFF_GENERATION_SKILL_BASE = 55;
+export const STAFF_GENERATION_SKILL_SPREAD = 25;
+export const STAFF_GENERATION_MORALE_BASE = 58;
+export const STAFF_GENERATION_MORALE_SPREAD = 24;
+
 function generateStaffProfile(rng: Rng, role: StaffRole, id: string): HiringCandidate {
 	const firstName = FIRST_NAMES[randomInt(rng, 0, FIRST_NAMES.length - 1)]!;
 	const lastName = LAST_NAMES[randomInt(rng, 0, LAST_NAMES.length - 1)]!;
@@ -288,8 +303,12 @@ function generateStaffProfile(rng: Rng, role: StaffRole, id: string): HiringCand
 		name: `${firstName} ${lastName}`,
 		role,
 		monthlySalary: baseSalary + salaryVariance,
-		skill: clampScore(55 + randomInt(rng, 0, 25)),
-		morale: clampScore(58 + randomInt(rng, 0, 24))
+		skill: clampScore(
+			STAFF_GENERATION_SKILL_BASE + randomInt(rng, 0, STAFF_GENERATION_SKILL_SPREAD)
+		),
+		morale: clampScore(
+			STAFF_GENERATION_MORALE_BASE + randomInt(rng, 0, STAFF_GENERATION_MORALE_SPREAD)
+		)
 	};
 }
 

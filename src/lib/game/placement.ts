@@ -12,6 +12,7 @@ import type { FinanceActionResult, FinancedPurchaseReceipt } from './finance';
 import { getStoreRevenueMultiplier } from './leveling';
 import { resolveProductMarketShare } from './marketCompetition';
 import {
+	applyProductInventoryAging,
 	getOldestSellableAgeDays,
 	resolveMarkdownMultiplier,
 	resolveObsolescenceMultiplier,
@@ -22,14 +23,29 @@ import { getProductDefinition } from './products';
 import { REPLENISHMENT_INTERVAL_DAYS } from './retailSupply';
 import {
 	buildCityDemandPools,
+	consumeStoreProductStock,
 	getEligibleProductSellers,
 	getStoreProductStock,
 	priceDemandMultiplier,
 	sellerPolicyDemand
 } from './stock';
 import { POLICY_PRICING_TABLE, projectStoreSalesCapacity } from './simulateDay';
-import { summarizeStoreStaffing } from './staffing';
-import { buildStore, createNewGame, getExpansionSetupCost, openStore } from './state';
+import {
+	STAFF_GENERATION_MORALE_BASE,
+	STAFF_GENERATION_MORALE_SPREAD,
+	STAFF_GENERATION_SKILL_BASE,
+	STAFF_GENERATION_SKILL_SPREAD,
+	summarizeStoreStaffing
+} from './staffing';
+import {
+	buildStore,
+	createNewGame,
+	getExpansionSetupCost,
+	NEW_STORE_MANAGER_QUALITY_MIDPOINT,
+	NEW_STORE_STAFF_CAPACITY_MIDPOINT,
+	NEW_STORE_STAFF_MORALE_MIDPOINT,
+	openStore
+} from './state';
 import { decisionContextLocationBlocked, decisionContextLocationGeneric } from './decisionContext';
 import {
 	createCityTileLookup,
@@ -178,7 +194,7 @@ export function estimateOpeningRevenue(input: {
 	archetypeId: ArchetypeId;
 	seed: number;
 }): OpeningEstimate {
-	const tile = getAvailableTileOrThrow(input.city, input.tileId);
+	const tile = getAvailableTileOrThrow(input.city, input.tileId, input.game);
 
 	if (input.game === null) {
 		const base = deriveFoundingBase({
@@ -328,38 +344,15 @@ export function estimateOpeningForEntrant(input: {
 			const lots = lotsByProduct.get(model.product.productId)!;
 			const shelfLifeDays = model.definition.dynamics.shelfLifeDays;
 
-			// Pre-sales inventory aging, mirroring applyProductInventoryAging:
-			// shelf-life waste first, then shrink on the surviving units.
-			let available = 0;
-			const unshrunkLots: ProductStockLot[] = [];
-
-			for (const lot of lots) {
-				if (lot.quantity <= 0) continue;
-				if (shelfLifeDays !== undefined && day - lot.receivedDay >= shelfLifeDays) continue;
-				unshrunkLots.push(lot);
-				available += lot.quantity;
-			}
-
-			const shrinkUnits = Math.min(
-				available,
-				Math.floor(available * (model.definition.dynamics.shrinkRate ?? 0))
-			);
-			let shrinkRemaining = shrinkUnits;
-			const survivingLots: ProductStockLot[] = [];
-
-			for (const lot of unshrunkLots) {
-				if (shrinkRemaining <= 0) {
-					survivingLots.push(lot);
-					continue;
-				}
-				const removed = Math.min(lot.quantity, shrinkRemaining);
-
-				shrinkRemaining -= removed;
-				if (lot.quantity > removed)
-					survivingLots.push({ ...lot, quantity: lot.quantity - removed });
-			}
-
-			const stockAfterAging = available - shrinkUnits;
+			// Pre-sales inventory aging through the engine helper: shelf-life
+			// waste first, then shrink on the surviving units.
+			const aging = applyProductInventoryAging({
+				product: { ...model.product, lots },
+				definition: model.definition,
+				closingDay: day
+			});
+			const survivingLots = aging.product.lots;
+			const stockAfterAging = getStoreProductStock(aging.product);
 			const trendMultiplier = resolveTrendMultiplier(model.definition.dynamics.trend, day);
 			const cityPool = Math.max(
 				0,
@@ -395,26 +388,13 @@ export function estimateOpeningForEntrant(input: {
 			const revenue = Math.round(
 				unitsSold * (model.basePrice * markdownMultiplier) * revenueMultiplier
 			);
-			// Consume the sold units oldest-first, mirroring
-			// consumeStoreProductStock's lot removal.
-			let soldRemaining = unitsSold;
-			const remainingLots: ProductStockLot[] = [];
-
-			for (const lot of survivingLots) {
-				if (soldRemaining <= 0) {
-					remainingLots.push(lot);
-					continue;
-				}
-				const removed = Math.min(lot.quantity, soldRemaining);
-
-				soldRemaining -= removed;
-				if (lot.quantity > removed)
-					remainingLots.push({ ...lot, quantity: lot.quantity - removed });
-			}
+			// Consume the sold units oldest-first via the engine helper.
+			const soldProduct = consumeStoreProductStock(aging.product, unitsSold);
+			const remainingLots = soldProduct.lots;
 
 			// End-of-day engine replenishment: below the reorder threshold on a
 			// 7th-day check, the stock tops up to target before tomorrow.
-			const stockAfterSales = stockAfterAging - unitsSold;
+			const stockAfterSales = getStoreProductStock(soldProduct);
 
 			if (
 				day % REPLENISHMENT_INTERVAL_DAYS === 0 &&
@@ -476,19 +456,23 @@ export function projectExpansionEntrant(
 		daysOpen: 0,
 		day: game.day,
 		reputation: archetype.customerExpectation,
-		staffMorale: 60,
-		staffCapacity: 64,
+		staffMorale: NEW_STORE_STAFF_MORALE_MIDPOINT,
+		staffCapacity: NEW_STORE_STAFF_CAPACITY_MIDPOINT,
 		localDemand: archetype.baseTraffic,
-		managerQuality: 58
+		managerQuality: NEW_STORE_MANAGER_QUALITY_MIDPOINT
 	});
 	const entrant = placeStoreOnTile(base, tile);
 
 	return { entrantGame: { ...game, stores: [...game.stores, entrant] }, entrant };
 }
 
-/** Starter-grade staffing quality midpoints for a prospective entrant (see module doc). */
-const PROSPECTIVE_STAFF_SKILL = 65;
-const PROSPECTIVE_STAFF_MORALE = 68;
+/**
+ * Prospective-hire quality for an expansion entrant: midpoints of the
+ * uniform skill/morale ranges `generateStaffProfile` rolls (base + spread /
+ * 2), imported from staffing.ts so a retune there keeps this in sync.
+ */
+const PROSPECTIVE_STAFF_SKILL = STAFF_GENERATION_SKILL_BASE + STAFF_GENERATION_SKILL_SPREAD / 2;
+const PROSPECTIVE_STAFF_MORALE = STAFF_GENERATION_MORALE_BASE + STAFF_GENERATION_MORALE_SPREAD / 2;
 
 function resolveEntrantSalesCapacity(
 	entrantGame: GameState,
@@ -659,14 +643,10 @@ function getOpeningRisks(tile: CityTile, fitScore: number, demandScore: number):
 		risks.push('Low local demand');
 	}
 
-	if (tile.locked) {
-		risks.push('Location is locked');
-	}
-
 	return risks;
 }
 
-function getAvailableTileOrThrow(city: City, tileId: string): CityTile {
+function getAvailableTileOrThrow(city: City, tileId: string, game?: GameState | null): CityTile {
 	const tile = getTileById(city, tileId);
 
 	if (!tile) {
@@ -679,9 +659,15 @@ function getAvailableTileOrThrow(city: City, tileId: string): CityTile {
 		throw new Error(`${blockReason}: ${tileId}`);
 	}
 
+	// Expansion estimates must reject what `openStoreAtTile` rejects — a tile
+	// that already carries a store is not a valid opening. Founding callers
+	// pass no game: the only store in a founding derivation is the prospective
+	// entrant itself, which can never collide with its own tile.
+	const tileLookup = createCityTileLookup(city);
 	const footprintBlockReason = getStoreFootprintPlacementBlockReason(
-		createCityTileLookup(city),
-		tile
+		tileLookup,
+		tile,
+		game ? getOccupiedStoreTileIds(city, game.stores, tileLookup) : undefined
 	);
 
 	if (footprintBlockReason) {

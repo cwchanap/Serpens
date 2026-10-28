@@ -109,6 +109,8 @@ export interface AdvisorChainMetric {
 	lastRailDay: number | null;
 	/** Zero-output production days strictly after lastRailDay; null when no rail applied. */
 	zeroOutputDaysAfterLastRail: number | null;
+	/** Production-report days strictly after lastRailDay; null when no rail applied. */
+	postRailObservedDays: number | null;
 	/** Warehouse (local) units delivered to stores across the run. */
 	localDeliveryUnits: number;
 	/** Informational shape of the run's producer-stall window: buildout-shaped
@@ -146,6 +148,10 @@ export interface RunMeasurement {
 	cumulativeImportSpend: number;
 	/** Sum of operatingIncome over report days 61–90 inclusive (partial when the run ends earlier). */
 	operatingIncomeDays61To90: number;
+	/** Per-report-day operating figures, kept so Gate A can evaluate viability
+	 * windows and income-pair sums at whatever dates the active thresholds
+	 * configure instead of only the fixed report columns. */
+	operatingIncomeByDay: { day: number; operatingIncome: number; operatingCashFlow: number }[];
 	forecastOutcomes: OpeningForecastOutcome[];
 	forecastByArchetype: Record<string, ForecastGroupStat>;
 	forecastByNeighborhood: Record<string, ForecastGroupStat>;
@@ -173,7 +179,10 @@ export interface SweepReport {
  * observed history) and contiguous by report day; loan proceeds never enter
  * `operatingIncome`, so financing cannot fake profitability.
  */
-function firstPositiveWindow(reports: DailyReport[], length: number): WindowMetric | null {
+function firstPositiveWindow(
+	reports: readonly { day: number; operatingIncome: number; operatingCashFlow: number }[],
+	length: number
+): WindowMetric | null {
 	for (let end = length - 1; end < reports.length; end += 1) {
 		const start = end - length + 1;
 		if (reports[end]!.day - reports[start]!.day !== length - 1) continue;
@@ -384,11 +393,18 @@ function measureAdvisorChain(
 	const railDays = appliedDays('advisor:connect-rail');
 	const railsApplied = railDays.length > 0;
 	const lastRailDay = railsApplied ? railDays[railDays.length - 1]! : null;
-	const zeroOutputDaysAfterLastRail =
+	// The served check needs an observed day after the rail: a rail connected
+	// on the final report day has no later day to show output on, so counting
+	// it as served would be vacuous.
+	const postRailProduction =
 		lastRailDay === null
 			? null
-			: productionByDay(reports).filter((entry) => entry.day > lastRailDay && entry.produced === 0)
-					.length;
+			: productionByDay(reports).filter((entry) => entry.day > lastRailDay);
+	const postRailObservedDays = postRailProduction === null ? null : postRailProduction.length;
+	const zeroOutputDaysAfterLastRail =
+		postRailProduction === null
+			? null
+			: postRailProduction.filter((entry) => entry.produced === 0).length;
 	let localDeliveryUnits = 0;
 	for (const report of reports) {
 		for (const store of report.storeReports) {
@@ -401,6 +417,8 @@ function measureAdvisorChain(
 		producerBuilt &&
 		warehouseBuilt &&
 		railsApplied &&
+		postRailObservedDays !== null &&
+		postRailObservedDays > 0 &&
 		zeroOutputDaysAfterLastRail === 0 &&
 		localDeliveryUnits >= 1 &&
 		advisorRepeatedNoOp === null;
@@ -410,6 +428,7 @@ function measureAdvisorChain(
 		railsApplied,
 		lastRailDay,
 		zeroOutputDaysAfterLastRail,
+		postRailObservedDays,
 		localDeliveryUnits,
 		stallShape: stall === null ? null : classifyStallShape(reports, ledger, stall),
 		served
@@ -489,11 +508,17 @@ export function measureRun(game: Pick<GameState, 'reports'>, ledger: BotLedger):
 	let maxOutstandingPrincipal = 0;
 	let cumulativeImportSpend = 0;
 	let operatingIncomeDays61To90 = 0;
+	const operatingIncomeByDay: RunMeasurement['operatingIncomeByDay'] = [];
 	for (const report of reports) {
 		if (report.cashAfter < 0 && firstNegativeCashDay === null) firstNegativeCashDay = report.day;
 		maxAbsCash = Math.max(maxAbsCash, Math.abs(report.cashAfter));
 		maxOutstandingPrincipal = Math.max(maxOutstandingPrincipal, report.outstandingPrincipalAfter);
 		cumulativeImportSpend += report.importSpend;
+		operatingIncomeByDay.push({
+			day: report.day,
+			operatingIncome: report.operatingIncome,
+			operatingCashFlow: report.operatingCashFlow
+		});
 		// The agreed Gate A comparison window (days 61–90 inclusive); fixed by
 		// the field's definition, independent of any threshold value.
 		if (report.day >= 61 && report.day <= 90) operatingIncomeDays61To90 += report.operatingIncome;
@@ -551,6 +576,7 @@ export function measureRun(game: Pick<GameState, 'reports'>, ledger: BotLedger):
 		maxOutstandingPrincipal,
 		cumulativeImportSpend,
 		operatingIncomeDays61To90,
+		operatingIncomeByDay,
 		forecastOutcomes,
 		forecastByArchetype: groupBy(forecastOutcomes, (outcome) => outcome.archetypeId),
 		forecastByNeighborhood: groupBy(forecastOutcomes, (outcome) => outcome.neighborhood),
@@ -630,12 +656,20 @@ export function evaluateGateA(
 			const runs = report.runs.filter(
 				(run) => run.archetypeId === archetypeId && run.bot === 'retail-steady'
 			);
-			if (runs.length === 0) continue;
-			const viable = runs.filter(
-				(run) =>
-					run.firstPositiveWindow30 !== null &&
-					run.firstPositiveWindow30.endDay <= thresholds.viabilityByDay
-			).length;
+			// A partial sweep has nothing to measure: missing archetypes fail the
+			// item instead of passing vacuously.
+			if (runs.length === 0) {
+				passed = false;
+				parts.push(`${archetypeId} no runs`);
+				continue;
+			}
+			const viable = runs.filter((run) => {
+				const window = firstPositiveWindow(
+					run.operatingIncomeByDay,
+					thresholds.viabilityWindowDays
+				);
+				return window !== null && window.endDay <= thresholds.viabilityByDay;
+			}).length;
 			const share = viable / runs.length;
 			if (share < thresholds.viabilitySeedShare) passed = false;
 			parts.push(`${archetypeId} ${viable}/${runs.length} (${fmtShare(share)})`);
@@ -710,12 +744,23 @@ export function evaluateGateA(
 			const pairedSeeds = [...managedBySeed.keys()]
 				.filter((seed) => idleBySeed.has(seed))
 				.sort((a, b) => a - b);
-			if (pairedSeeds.length === 0) continue;
+			// Same vacuous-pass guard as viability: an archetype with no paired
+			// seeds fails rather than silently counting toward the share.
+			if (pairedSeeds.length === 0) {
+				passed = false;
+				parts.push(`${archetypeId} no paired seeds`);
+				continue;
+			}
+			const incomeInPairWindow = (run: RunMeasurement): number => {
+				const [windowStart, windowEnd] = thresholds.incomePairDays;
+				return run.operatingIncomeByDay
+					.filter((entry) => entry.day >= windowStart && entry.day <= windowEnd)
+					.reduce((total, entry) => total + entry.operatingIncome, 0);
+			};
 			let wins = 0;
 			for (const seed of pairedSeeds) {
 				if (
-					managedBySeed.get(seed)!.operatingIncomeDays61To90 >
-					idleBySeed.get(seed)!.operatingIncomeDays61To90
+					incomeInPairWindow(managedBySeed.get(seed)!) > incomeInPairWindow(idleBySeed.get(seed)!)
 				) {
 					wins += 1;
 				}

@@ -77,22 +77,23 @@ describe('BuildMenu', () => {
 		expect(onChooseRetail).toHaveBeenCalledWith('convenience');
 	});
 
-	it('shows the archetype base operating rent in the retail option line', async () => {
+	it('shows the archetype daily operating cost in the retail option line', async () => {
 		expect.assertions(2);
 
 		render(BuildMenu, buildMenuProps());
 
-		// Convenience store's archetype baseRent is $115/day; ranges use the
-		// shared currency/range formatting.
+		// The figure matches the daily report's charge — archetype baseRent ×
+		// 0.92 + the default marketing tier's cost — not the raw baseRent.
+		// Convenience: round(115 × 0.92 + 80) = $186.
 		await expect
 			.element(
 				page.getByText(
-					/\$1,100–\$1,500 \| Base rent \$115\/day \| Staffed revenue \$700–\$980\/day/
+					/\$1,100–\$1,500 \| Operating cost \$186\/day \| Staffed revenue \$700–\$980\/day/
 				)
 			)
 			.toBeVisible();
-		// Boutique uses its own archetype baseRent ($135), not tile rent.
-		await expect.element(page.getByText(/Base rent \$135\/day/)).toBeVisible();
+		// Boutique: round(135 × 0.92 + 80) = $204.
+		await expect.element(page.getByText(/Operating cost \$204\/day/)).toBeVisible();
 	});
 
 	it('focuses the modal controls, traps Tab, and closes on Escape', async () => {

@@ -1,6 +1,6 @@
 import { ARCHETYPES } from '$lib/game/archetypes';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
-import { MAX_STORE_LEVEL, getUnlockedProductCount } from '$lib/game/leveling';
+import { MAX_STORE_LEVEL, getUnlockedProductIds } from '$lib/game/leveling';
 import type { IndustrialBuildingTypeId, ProductId } from '$lib/game/types';
 import { STARTER_STORE_CAP, getWorldCityDefinition } from '$lib/game/world';
 import type { AuthoredBuilding, JsonObject, ValidationContext } from './shared';
@@ -270,7 +270,7 @@ function validateProductOverrides(
 	if (!products) return;
 	const archetype = ARCHETYPES.find((candidate) => candidate.id === foundingStore?.archetypeId);
 	const unlockedIds = new Set(
-		archetype?.startingProductIds.slice(0, getUnlockedProductCount(targetLevel)) ?? []
+		archetype ? getUnlockedProductIds(targetLevel, archetype.startingProductIds) : []
 	);
 	const seen = new Set<string>();
 	for (const [index, candidate] of products.entries()) {
@@ -778,9 +778,12 @@ function validateAllowlistedProductUnlocks(
 		let available = false;
 		for (const instance of reachable) {
 			const archetype = ARCHETYPES.find((candidate) => candidate.id === instance.archetypeId)!;
-			const index = archetype.startingProductIds.indexOf(productId);
-			if (index < 0) continue;
-			if (index < getUnlockedProductCount(instance.reachableLevel)) available = true;
+			if (
+				getUnlockedProductIds(instance.reachableLevel, archetype.startingProductIds).includes(
+					productId
+				)
+			)
+				available = true;
 		}
 		if (!available) {
 			const values = contentObject(context)?.productIds;
@@ -802,8 +805,10 @@ function validateAllowlistedProductUnlocks(
 	const reported = new Set<string>();
 	for (const instance of reachable) {
 		const archetype = ARCHETYPES.find((candidate) => candidate.id === instance.archetypeId)!;
-		const unlockedCount = getUnlockedProductCount(instance.reachableLevel);
-		for (const productId of archetype.startingProductIds.slice(0, unlockedCount)) {
+		for (const productId of getUnlockedProductIds(
+			instance.reachableLevel,
+			archetype.startingProductIds
+		)) {
 			if (context.content.products.has(productId)) continue;
 			const key = `${instance.path}:${productId}`;
 			if (reported.has(key)) continue;

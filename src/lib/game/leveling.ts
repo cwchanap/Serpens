@@ -56,6 +56,18 @@ export function getUnlockedProductCount(level: number): number {
 	return 2;
 }
 
+/**
+ * The product prefix an archetype's catalog actually grants at `level`. The
+ * level-10 milestone budgets five categories, but only convenience authors
+ * five starting products — every consumer that maps unlocks onto a real store
+ * (staffing requirements, save validation, product materialization, scenario
+ * reachability) reads through here so an over-budget level can never invent a
+ * product the archetype lacks.
+ */
+export function getUnlockedProductIds<T>(level: number, catalog: readonly T[]): T[] {
+	return catalog.slice(0, getUnlockedProductCount(level));
+}
+
 export function getStoreRevenueMultiplier(level: number): number {
 	let bonusLevels = 0;
 	for (let candidate = 2; candidate <= level; candidate++) {
