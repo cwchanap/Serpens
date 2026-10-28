@@ -30,6 +30,12 @@ export const SWEEP_ARCHETYPES: readonly ArchetypeId[] = [
 
 export const SWEEP_BOTS: readonly BotId[] = ['idle', 'retail-steady', 'advisor'];
 
+/** The approved Gate A seed list: a documented fixed 50-seed sequence. */
+export const SWEEP_SEEDS: readonly number[] = Array.from(
+	{ length: 50 },
+	(_, index) => 20260501 + index
+);
+
 /** The advisor layer only covers convenience (see bots.ts). */
 export function botsForArchetype(archetypeId: ArchetypeId): BotId[] {
 	return archetypeId === 'convenience'
@@ -98,8 +104,8 @@ export interface ProducerStallMetric {
  * item's verdict source; docs/balance/tuning-changelog.md lever 15). `served`
  * is the conjunction of
  * chain built (producer + warehouse applied), rails applied, no zero-output
- * production day after the last applied rail, ≥1 local (warehouse) delivery
- * to a store, and no repeated unapplied advisor recommendation.
+ * production day after the last applied rail, ≥1 local bottled-water delivery
+ * after the last applied rail, and no repeated unapplied advisor recommendation.
  */
 export interface AdvisorChainMetric {
 	producerBuilt: boolean;
@@ -111,7 +117,8 @@ export interface AdvisorChainMetric {
 	zeroOutputDaysAfterLastRail: number | null;
 	/** Production-report days strictly after lastRailDay; null when no rail applied. */
 	postRailObservedDays: number | null;
-	/** Warehouse (local) units delivered to stores across the run. */
+	/** Bottled-water warehouse (local) units delivered to stores strictly after
+	 * the last applied rail; 0 when no rail applied. */
 	localDeliveryUnits: number;
 	/** Informational shape of the run's producer-stall window: buildout-shaped
 	 * windows (a build/rail action inside, production resumed and sustained to
@@ -405,11 +412,21 @@ function measureAdvisorChain(
 		postRailProduction === null
 			? null
 			: postRailProduction.filter((entry) => entry.produced === 0).length;
+	// Gate A item 5 requires local BOTTLED-WATER supply delivered by the
+	// completed chain: count only bottled-water warehouse units on days
+	// strictly after the last applied rail. Other products — or anything
+	// delivered before the chain finished connecting — cannot satisfy the leg
+	// while bottled water itself stays imported.
 	let localDeliveryUnits = 0;
-	for (const report of reports) {
-		for (const store of report.storeReports) {
-			for (const product of store.productReports) {
-				localDeliveryUnits += product.warehouseUnits;
+	if (lastRailDay !== null) {
+		for (const report of reports) {
+			if (report.day <= lastRailDay) continue;
+			for (const store of report.storeReports) {
+				for (const product of store.productReports) {
+					if (product.productId === 'bottled-water') {
+						localDeliveryUnits += product.warehouseUnits;
+					}
+				}
 			}
 		}
 	}
@@ -625,15 +642,92 @@ export interface GateAItemVerdict {
 	detail: string;
 }
 
+/** The approved Gate A horizon: every official run simulates exactly this many days. */
+export const GATE_A_OFFICIAL_DAYS = 365;
+
+export interface GateACoverage {
+	/** True only when the report IS the approved matrix — SWEEP_SEEDS × every
+	 * `botsForArchetype` combination (9 runs per seed, 450 total) at the
+	 * 365-day horizon, with no missing, duplicate, or out-of-matrix runs. */
+	complete: boolean;
+	detail: string;
+}
+
 export interface GateAVerdict {
 	items: GateAItemVerdict[];
 	/** Scenario guardrails are measured by scenario tests (Step 5), not here. */
 	scenarioGuardrails: 'out of scope (scenario tests)';
+	/** Whether the report covers the full approved matrix. The per-item
+	 * ratios intentionally stay evaluable on small fixtures; `coverage`
+	 * carries the official-sweep requirement separately. */
+	coverage: GateACoverage;
+	/** Official verdict: every item passed AND the report covers the complete
+	 * approved matrix. A partial sweep can never claim an official PASS. */
 	allPassed: boolean;
 }
 
 function fmtShare(share: number): string {
 	return `${(share * 100).toFixed(1)}%`;
+}
+
+/**
+ * Official-verdict coverage. Missing pairs are removed from each item's
+ * denominator by design, so the item ratios alone can pass on a smoke
+ * sweep; the published overall verdict additionally requires the approved
+ * 50-seed × 9-combo × 365-day matrix in full — anything else is diagnostic
+ * output, whatever its ratios say.
+ */
+function sweepCoverage(report: SweepReport): GateACoverage {
+	const expectedCombos = SWEEP_ARCHETYPES.flatMap((archetypeId) =>
+		botsForArchetype(archetypeId).map((bot) => `${archetypeId}/${bot}`)
+	);
+	const expectedComboSet = new Set(expectedCombos);
+	const approvedSeeds = new Set<number>(SWEEP_SEEDS);
+	const runCounts = new Map<string, number>();
+	for (const run of report.runs) {
+		const key = `${run.seed} ${run.archetypeId}/${run.bot}`;
+		runCounts.set(key, (runCounts.get(key) ?? 0) + 1);
+	}
+	const missing: string[] = [];
+	for (const seed of SWEEP_SEEDS) {
+		for (const combo of expectedCombos) {
+			if (!runCounts.has(`${seed} ${combo}`)) missing.push(`${seed} ${combo}`);
+		}
+	}
+	const duplicates = [...runCounts.entries()].filter(([, count]) => count > 1).map(([key]) => key);
+	const outside = [...runCounts.keys()].filter((key) => {
+		const separator = key.indexOf(' ');
+		return (
+			!approvedSeeds.has(Number(key.slice(0, separator))) ||
+			!expectedComboSet.has(key.slice(separator + 1))
+		);
+	});
+	const offHorizon = report.runs.filter((run) => run.daysSimulated !== GATE_A_OFFICIAL_DAYS);
+	const list = (entries: string[]): string =>
+		entries.length <= 3
+			? entries.join(', ')
+			: `${entries.slice(0, 3).join(', ')} +${entries.length - 3} more`;
+	const problems: string[] = [];
+	if (report.config.days !== GATE_A_OFFICIAL_DAYS) {
+		problems.push(`horizon ${report.config.days}d, expected ${GATE_A_OFFICIAL_DAYS}d`);
+	}
+	if (offHorizon.length > 0) {
+		problems.push(`${offHorizon.length} run(s) off the ${GATE_A_OFFICIAL_DAYS}d horizon`);
+	}
+	if (missing.length > 0) problems.push(`${missing.length} missing combos (${list(missing)})`);
+	if (duplicates.length > 0) {
+		problems.push(`${duplicates.length} duplicate combos (${list(duplicates)})`);
+	}
+	if (outside.length > 0) {
+		problems.push(`${outside.length} run(s) outside the approved matrix (${list(outside)})`);
+	}
+	return {
+		complete: problems.length === 0,
+		detail:
+			problems.length === 0
+				? `approved matrix: ${SWEEP_SEEDS.length} seeds × ${expectedCombos.length} combos × ${GATE_A_OFFICIAL_DAYS}d`
+				: `partial sweep — ${problems.join('; ')}`
+	};
 }
 
 /**
@@ -810,11 +904,11 @@ export function evaluateGateA(
 		});
 	}
 
-	// Item 5 — advisor: clean = the served-chain
-	// composite (chain built + rails applied + no zero-output day after the
-	// last applied rail + ≥1 local delivery to a store + no repeated
-	// unapplied recommendation). Stall windows stay informational
-	// diagnostics: buildout-shaped windows render as construction-sequencing
+	// Item 5 — advisor: clean = the served-chain composite
+	// (chain built + rails applied + no zero-output day after the last
+	// applied rail + ≥1 local bottled-water delivery after the last applied
+	// rail + no repeated unapplied recommendation). Stall windows stay
+	// informational diagnostics: buildout-shaped windows render as construction-sequencing
 	// pauses, other shapes as producer stalls; neither fails the item.
 	{
 		const advisorRuns = report.runs.filter((run) => run.bot === 'advisor');
@@ -839,10 +933,12 @@ export function evaluateGateA(
 		});
 	}
 
+	const coverage = sweepCoverage(report);
 	return {
 		items,
 		scenarioGuardrails: 'out of scope (scenario tests)',
-		allPassed: items.every((item) => item.passed)
+		coverage,
+		allPassed: coverage.complete && items.every((item) => item.passed)
 	};
 }
 
@@ -941,8 +1037,6 @@ export const BOT_DEFINITIONS = [
 	'advisor (convenience only): retail-steady plus the supply planner recommendation every 7 in-game days, executed through applyGameCommand / buildRailPreview (build producer or warehouse, upgrade building, connect rail).'
 ];
 
-const SWEEP_SEEDS = Array.from({ length: 50 }, (_, index) => 20260501 + index);
-
 export const SWEEP_REGENERATION_COMMAND = `bun tests/balance/run.ts --seeds ${SWEEP_SEEDS.join(',')} --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/balance-sweep`;
 
 /**
@@ -1011,8 +1105,11 @@ export function renderSweepMarkdown(
 		lines.push(`- ${item.id}: ${item.passed ? 'PASS' : 'FAIL'} — ${item.detail}`);
 	}
 	lines.push(`- scenario guardrails: ${verdict.scenarioGuardrails}`);
+	const passedCount = verdict.items.filter((item) => item.passed).length;
 	lines.push(
-		`- overall: ${verdict.allPassed ? 'PASS' : 'FAIL'} (${verdict.items.filter((item) => item.passed).length}/${verdict.items.length} items passed)`
+		verdict.coverage.complete
+			? `- overall: ${verdict.allPassed ? 'PASS' : 'FAIL'} (${passedCount}/${verdict.items.length} items passed)`
+			: `- overall: diagnostic only (${verdict.coverage.detail}); ${passedCount}/${verdict.items.length} items passed — not an official Gate A verdict`
 	);
 	lines.push('');
 	lines.push('## Per-run results');
