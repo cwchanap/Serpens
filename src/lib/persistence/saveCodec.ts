@@ -4718,8 +4718,14 @@ function validateSavedStoreProducts(
 ): StoreProduct[] {
 	const archetypeId = requireOneOf(store.archetypeId, `${label} archetypeId`, ARCHETYPE_IDS);
 	const storeLevel = requireNumber(store.level, `${label} level`);
-	const unlockedCount = getUnlockedProductCount(storeLevel);
 	const archetype = getArchetype(archetypeId);
+	// The level-10 milestone budgets five categories but only convenience
+	// carries five starting products; cap the expected count at the catalog
+	// length so a maxed four-category store validates.
+	const unlockedCount = Math.min(
+		getUnlockedProductCount(storeLevel),
+		archetype.startingProductIds.length
+	);
 	const archetypeProducts = new Set(archetype.startingProductIds);
 	const unlockedProductIds = archetype.startingProductIds.slice(0, unlockedCount);
 	const unlockedProducts = new Set(unlockedProductIds);
