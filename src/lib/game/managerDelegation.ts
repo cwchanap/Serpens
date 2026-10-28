@@ -200,20 +200,23 @@ function buildStoreProposal(
 			};
 		}
 		case 'protect-availability': {
-			const selected = selectAvailabilityProduct(report.productReports ?? []);
-			if (selected && hasAvailabilityPressure(selected)) {
+			// HPA-502: proposals are bounded by recent sellable demand. Candidates
+			// are tried in pressure order — a capped or unbounded top candidate
+			// must not stall remaining products or the staffing fallback below.
+			for (const selected of selectAvailabilityProducts(report.productReports ?? [])) {
+				if (!hasAvailabilityPressure(selected)) break;
 				const before = findProduct(game, storeId, selected.productId);
-				if (!before) return null;
-				// HPA-502: proposals are bounded by recent sellable demand. Without
-				// report history — or when the current target already exceeds the
-				// bound — no proposal is made: growth is bounded, never shrunk.
+				if (!before) continue;
+				// Without report history — or when the current target already
+				// exceeds the bound — no proposal is made for this product:
+				// growth is bounded, never shrunk.
 				const demandCap = getSellableDemandCap(game, storeId, selected.productId);
-				if (demandCap === null || before.targetStock > demandCap) return null;
+				if (demandCap === null || before.targetStock > demandCap) continue;
 				const proposed = {
 					reorderThreshold: Math.min(demandCap, increaseStockValue(before.reorderThreshold)),
 					targetStock: Math.min(demandCap, increaseStockValue(before.targetStock))
 				};
-				if (sameInventoryValues(before, proposed)) return null;
+				if (sameInventoryValues(before, proposed)) continue;
 				return {
 					delegation,
 					conflictKey: `inventory:${storeId}:${selected.productId}`,
@@ -344,16 +347,12 @@ function getTargetStores(game: GameState, delegation: ManagerDelegation): GameSt
 	return [...stores].sort((left, right) => compareIds(left.id, right.id));
 }
 
-function selectAvailabilityProduct(
-	products: readonly DailyProductReport[]
-): DailyProductReport | null {
-	return (
-		[...products].sort(
-			(left, right) =>
-				(right.stockoutLostDemand ?? 0) - (left.stockoutLostDemand ?? 0) ||
-				(right.demandMissed ?? 0) - (left.demandMissed ?? 0) ||
-				compareIds(left.productId, right.productId)
-		)[0] ?? null
+function selectAvailabilityProducts(products: readonly DailyProductReport[]): DailyProductReport[] {
+	return [...products].sort(
+		(left, right) =>
+			(right.stockoutLostDemand ?? 0) - (left.stockoutLostDemand ?? 0) ||
+			(right.demandMissed ?? 0) - (left.demandMissed ?? 0) ||
+			compareIds(left.productId, right.productId)
 	);
 }
 
