@@ -6410,6 +6410,29 @@ describe('saveCodec', () => {
 		).toThrow('products[2] productId must be unlocked at level 4');
 	});
 
+	test('strict validation accepts a maxed four-category store at level 10', () => {
+		const store = createGame().stores[0]!;
+		const products = initializeStoreProducts('boutique', 10);
+		// The level-10 milestone budgets five categories, but boutique carries
+		// only four starting products — the expected count is capped by the
+		// archetype catalog, not the milestone curve.
+		expect(products).toHaveLength(4);
+
+		const game = createGame({
+			stores: [
+				{
+					...store,
+					level: 10,
+					products,
+					stockHealth: calculateStockHealth(products)
+				}
+			]
+		});
+
+		expect(() => validateCurrentGameState(game)).not.toThrow();
+		expect(() => validateSaveRecord(createManualSaveRecord({ game }))).not.toThrow();
+	});
+
 	test('current schema save record rejects stale stock health rather than recalculating it', () => {
 		const store = createGame().stores[0]!;
 		const staleStore = { ...store, stockHealth: store.stockHealth + 1 };
