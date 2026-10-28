@@ -62,7 +62,7 @@ export const zhHant = {
 		},
 		retail: {
 			buildArchetype: '建設{name}',
-			setupRevenue: '設置成本 {setup} | 租金 {rent}/天 | 預估營收 {revenue}/天',
+			setupRevenue: '設置成本 {setup} | 基本租金 {rent}/天 | 員工到位營收 {revenue}/天',
 			rangeFormat: '{min}–{max}',
 			validTiles: {
 				one: '{count} 個可用地塊',
