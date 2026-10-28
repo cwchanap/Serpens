@@ -123,12 +123,13 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		familyId: 'electronics',
 		defaultBrandId: 'common-ground',
 		name: 'Games',
-		// HPA-502 Ruling 13 (task 5d): electronics-family demandWeight ×1.08 —
-		// the smallest two-decimal step that moves ≥6 of the 16 weak-demand
-		// seeds (task-5c-report §5) over the 3-store cost line (measured: 7
-		// flips, viability 34→41/50) while every passing seed's d61–90 income
-		// stays ≤ ~2× its pre-change baseline (worst 1.84×). Prices untouched;
-		// exact family ratio games:accessories preserved (1 : 0.9).
+		// HPA-502 task 5d (changelog lever 7): electronics-family demandWeight
+		// ×1.08 — the smallest two-decimal step that moves ≥6 of the 16
+		// weak-demand seeds (electronics 34/50 at the task-5c checkpoint) over
+		// the 3-store cost line (measured: 7 flips, viability 34→41/50) while
+		// every passing seed's d61–90 income stays ≤ ~2× its pre-change
+		// baseline (worst 1.84×). Prices untouched; exact family ratio
+		// games:accessories preserved (1 : 0.9).
 		demandWeight: 1.08,
 		importCost: 32,
 		defaultSellingPrice: 48,
@@ -141,7 +142,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		familyId: 'electronics',
 		defaultBrandId: 'common-ground',
 		name: 'Accessories',
-		// Ruling 13: 0.9 × 1.08, the same family step as games (ratio intact).
+		// Same ×1.08 family step as games: 0.9 × 1.08 (ratio intact).
 		demandWeight: 0.972,
 		importCost: 11,
 		defaultSellingPrice: 22,
@@ -200,10 +201,11 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		name: 'Pantry',
 		demandWeight: 2.2,
 		importCost: 1.5,
-		// Price 9 (×1.5, inside the ≤2× data cap): with Ruling 8 lever (v) the
-		// joint set measures 1.47–1.86× live across the 10 replay seeds — inside
-		// the 1.2–2.0× band (scratch/phase5a-r2-live.ts is the authoritative
-		// measurement; the HEAD-basis sizing probe reads ~13% high on payroll).
+		// Price 9 (×1.5, inside the ≤2× data cap): with the joint round-2 set
+		// (grocery staffing base 3 → 2) the founding ratio measures 1.47–1.86×
+		// live across the 10 replay seeds — inside the 1.2–2.0× band
+		// (docs/balance/tuning-changelog.md lever 3; the HEAD-basis sizing
+		// probe reads ~13% high on payroll).
 		defaultSellingPrice: 9,
 		priceSensitivity: 0.55,
 		productionMaterialId: 'pantry',

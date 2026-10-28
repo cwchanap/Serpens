@@ -23,12 +23,13 @@ const STAFFING_REQUIREMENTS: Record<ArchetypeId, StaffingRequirement> = {
 	convenience: { manager: 1, general: 1 },
 	boutique: { manager: 1, general: 2 },
 	electronics: { manager: 1, general: 2 },
-	// HPA-502 Step 4 round 2 (Ruling 8 lever v): grocery runs the heaviest
-	// founding roster (breadth-2 curve put it at 4 generals) while its real-run
-	// windows were still short after the demand lever; base 3→2 (one general
-	// less at every level) is the ruled payroll relief. With the joint data set
-	// the founding ratio stays inside the 1.2–2.0× band (live-measured
-	// 1.47–1.86× over the 10 replay seeds, scratch/phase5a-r2-live.ts).
+	// HPA-502 Step 4 round 2: grocery runs the heaviest founding roster (the
+	// breadth-2 curve put it at 4 generals) while its real-run windows were
+	// still short after the demand lever; base 3→2 (one general less at every
+	// level) prevents breadth-2 from adding a founding general (requirement
+	// net-zero vs HEAD). With the joint data set the founding ratio stays
+	// inside the 1.2–2.0× band (live-measured 1.47–1.86× over the 10 replay
+	// seeds — docs/balance/tuning-changelog.md lever 6).
 	grocery: { manager: 1, general: 2 }
 };
 

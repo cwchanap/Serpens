@@ -935,7 +935,6 @@ export interface OpeningForecast {
 	tileId: string;
 	setupCost: number;
 	projectedDailyRevenue: number;
-	projectedDailyRent: number;
 	demandScore: number;
 	customerFit: number;
 	risks: string[];

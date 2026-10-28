@@ -583,7 +583,7 @@ function managerLifecycleGame(): GameState {
 			const products = store.products.map((product) => ({
 				...product,
 				sellingPrice: 2,
-				// HPA-502 5d doubled founding sales capacity, so the starter stock
+				// HPA-502 5a doubled founding sales capacity, so the starter stock
 				// sold out on day 1 and starved the day-3 protect-margin evaluation
 				// of a proposal. 84 units/product keeps days 1–2 selling with the
 				// sub-0.3 margin ratio both manager proposals need.
@@ -2239,7 +2239,7 @@ test('production supplier bulk discount stays active through its final import an
 	expect(saved.events.activeModifiers).toEqual([]);
 	expect(finalReport.day).toBe(7);
 	expect(finalReport.modifierImpacts).toEqual([
-		// HPA-502 5d founding breadth-2 widens the retail-product discount scope
+		// HPA-502 5a founding breadth-2 widens the retail-product discount scope
 		// to the store's first two sorted products (bottled-water + snacks), so
 		// the expiry-day impact reports both ids and two applications.
 		expect.objectContaining({
@@ -4038,7 +4038,7 @@ test('player builds convenience production and refills from city inventory', asy
 	await expect(
 		productSources.getByText(`${bottledWaterReport.importedUnits} external imports`)
 	).toBeVisible();
-	// HPA-502 5d founding breadth-2 stocks Snacks alongside Bottled Water, so
+	// HPA-502 5a founding breadth-2 stocks Snacks alongside Bottled Water, so
 	// the store card's External imports figure is the store-wide weekly spend
 	// across both products, not the Bottled Water line alone.
 	const storeExternalImportSpend = storeReport.productReports.reduce(
@@ -4082,7 +4082,7 @@ test('hire and assign named staff from the staff menu', async ({ page }) => {
 	const staffDialog = await openManagementPanel(page, /staff/i);
 
 	const staffPanel = staffDialog.getByRole('region', { name: 'Staff' });
-	// HPA-502 5d founding breadth-2 raises the L1 product-unlock curve by one
+	// HPA-502 5a founding breadth-2 raises the L1 product-unlock curve by one
 	// category, so the boutique roster requirement is 1 mgr + 3 generals.
 	await expect(staffDialog.getByText('1/1 mgr, 3/3 gen')).toBeVisible();
 	const candidatesSection = staffPanel.getByRole('region', { name: 'Candidates' });
@@ -4847,7 +4847,7 @@ test('player upgrades a store from the tile inspector', async ({ page }) => {
 	await expect(inspector.locator('.level')).toHaveAttribute('title', 'Level 3 / 10');
 
 	// The 3 → 4 milestone preview is visible and advertises the next unlock.
-	// HPA-502 5d founding breadth-2 already includes Snacks at founding, so the
+	// HPA-502 5a founding breadth-2 already includes Snacks at founding, so the
 	// L4 milestone unlock moves one category later to Soft Drinks.
 	const upgradeCard = inspector.getByTestId('upgrade-card');
 	await expect(upgradeCard).toBeVisible();
@@ -5539,7 +5539,7 @@ test('city-local inventory keeps multi-city supply, replenishment, reporting, an
 		importCost: 1,
 		importSpend: 4
 	});
-	// HPA-502 5d founding breadth-2 gives every convenience store a second
+	// HPA-502 5a founding breadth-2 gives every convenience store a second
 	// founding category (Snacks), so both cities' stores carry and refill it.
 	expect(harborStore.products).toMatchObject([
 		{

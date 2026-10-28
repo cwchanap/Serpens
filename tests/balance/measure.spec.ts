@@ -180,7 +180,6 @@ function fakeOpening(overrides: Partial<OpeningRecord> = {}): OpeningRecord {
 			tileId: 'tile-a1',
 			setupCost: 10_000,
 			projectedDailyRevenue: 100,
-			projectedDailyRent: 50,
 			demandScore: 10,
 			customerFit: 0.5,
 			risks: []
@@ -452,7 +451,6 @@ describe('per-opening forecast attribution (HPA-502 Stage 3)', () => {
 					tileId: 'tile-b2',
 					setupCost: 10_000,
 					projectedDailyRevenue: 100,
-					projectedDailyRent: 50,
 					demandScore: 10,
 					customerFit: 0.5,
 					risks: []
