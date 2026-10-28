@@ -648,7 +648,7 @@ describe('estimateOpeningRevenue', () => {
 
 	function foundingTileFor(city: City): CityTile {
 		// Mirrors the harness founding rule: max demand + footTraffic over legal
-		// tiles, lowest tile id breaks ties.
+		// tiles; on ties the incumbent (first-seen) tile is kept.
 		return city.tiles
 			.filter((tile) => isRetailFootprintAvailable(city, tile))
 			.reduce((best, tile) => {

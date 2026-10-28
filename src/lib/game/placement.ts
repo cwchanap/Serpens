@@ -146,7 +146,7 @@ export interface OpeningEstimate extends OpeningForecast {
  * prospective entrant is counted in the market exactly once; no state is
  * mutated or returned). Pure: deterministic in its inputs, no rng draws.
  *
- * Model (mirrors the measured demand chain — see task-3-report PHASE 1):
+ * Model (mirrors the measured demand chain):
  *
  * 1. Demand: `buildCityDemandPools` over the city with the entrant included,
  *    per-day product trend applied, then the entrant-counted-once market
@@ -444,7 +444,6 @@ export function estimateOpeningForEntrant(input: {
 		archetypeId: input.archetypeId,
 		setupCost: getExpansionSetupCost(input.tile, input.archetypeId),
 		projectedDailyRevenue: Math.round(totalRevenue / OPENING_ESTIMATE_DAYS),
-		projectedDailyRent: input.tile.rent,
 		demandScore,
 		customerFit: fitScore,
 		capacityUnitsPerDay,

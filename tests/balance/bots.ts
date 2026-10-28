@@ -132,7 +132,6 @@ function openingForecastFrom(estimate: OpeningEstimate): OpeningForecast {
 		tileId: estimate.tileId,
 		setupCost: estimate.setupCost,
 		projectedDailyRevenue: estimate.projectedDailyRevenue,
-		projectedDailyRent: estimate.projectedDailyRent,
 		demandScore: estimate.demandScore,
 		customerFit: estimate.customerFit,
 		risks: estimate.risks

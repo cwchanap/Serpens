@@ -114,7 +114,6 @@ describe('balance harness bots (HPA-502 Stage 2)', () => {
 			tileId: expected.tileId,
 			setupCost: expected.setupCost,
 			projectedDailyRevenue: expected.projectedDailyRevenue,
-			projectedDailyRent: expected.projectedDailyRent,
 			demandScore: expected.demandScore,
 			customerFit: expected.customerFit,
 			risks: expected.risks

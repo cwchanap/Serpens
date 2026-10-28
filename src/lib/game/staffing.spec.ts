@@ -25,9 +25,10 @@ describe('staffing rules', () => {
 		expect.assertions(4);
 
 		// Founding breadth 2 (HPA-502 Step 4 round 2) adds one milestone general
-		// to every archetype's base requirement at level 1; Ruling 8 lever (v)
-		// takes grocery's base from 3 to 2 generals (payroll relief — the replay
-		// windows were still short after the demand lever).
+		// to every archetype's base requirement at level 1; the grocery base
+		// goes 3 → 2 generals so breadth-2 does not add a founding general
+		// (requirement net-zero vs HEAD — the replay windows were still short
+		// after the demand lever).
 		expect(getStaffingRequirement('convenience')).toEqual({ manager: 1, general: 2 });
 		expect(getStaffingRequirement('boutique')).toEqual({ manager: 1, general: 3 });
 		expect(getStaffingRequirement('electronics')).toEqual({ manager: 1, general: 3 });

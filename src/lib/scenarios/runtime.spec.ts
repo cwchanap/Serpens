@@ -1633,8 +1633,10 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 		expect(run.result).toMatchObject({
 			outcome: 'failed',
 			completionDay: 15,
-			// Round-2 (v) grocery staffing relief trims the no-action loss score;
-			// the invariant holds — still fails at the day-15 deadline, no medal.
+			// Round-2 (v) grocery staffing: prevents breadth-2 from adding a
+			// founding general (requirement net-zero vs HEAD), trimming the
+			// no-action loss score; the invariant holds — still fails at the
+			// day-15 deadline, no medal.
 			score: 992,
 			medal: null
 		});
@@ -1646,7 +1648,9 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 			{ metric: 'units-sold', productIds: ['produce'] },
 			{ kind: 'run-to-date' }
 		);
-		// 984: re-pinned after Ruling-8 (v) grocery staffing relief.
+		// 984: re-pinned after the round-2 set (grocery staffing base 3→2
+		// prevents breadth-2 from adding a founding general; requirement
+		// net-zero vs HEAD).
 		expect(sold.actual).toBe(984);
 		expect(
 			evaluateMetric(
@@ -1748,7 +1752,8 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 		).toMatchObject({ actual: 0.5289812646370023, windowComplete: true });
 		expect(
 			evaluateMetric(run.game, { metric: 'cumulative-net-income' }, { kind: 'run-to-date' }).actual
-		).toBe(3208); // stable across the round-2 set: (v) payroll relief ≈ pantry 9 margin gain
+		).toBe(3208); // stable across the round-2 set: (v) prevents breadth-2 from
+		// adding a founding general (requirement net-zero vs HEAD); pantry 9 margin gain
 		expect(run.evaluation.failures.map((failure) => failure.status)).toEqual(['inactive']);
 	});
 

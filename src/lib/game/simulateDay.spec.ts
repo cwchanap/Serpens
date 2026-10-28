@@ -1534,9 +1534,10 @@ describe('daily simulation', () => {
 			grocery: [
 				{
 					day: 8,
-					// Grocery rows re-pinned for the round-2 set: (v) staffing relief
-					// offsets the pantry 9 margin so cash tracks the old curve with
-					// higher per-unit margins (verified 1.47–1.86× sizing, 10/10).
+					// Grocery rows re-pinned for the round-2 set: (v) prevents breadth-2
+					// from adding a founding general (requirement net-zero vs HEAD), so
+					// cash tracks the old curve with higher per-unit margins
+					// (verified 1.47–1.86× sizing, 10/10).
 					cashBefore: 42_101,
 					cashAfter: 41_868,
 					reserveWarning: false,

@@ -308,7 +308,7 @@ const importSqueeze = {
 			points: 140
 		}
 	],
-	// HPA-502 Ruling 13 (task 5d): the electronics demandWeight ×1.08 family
+	// HPA-502 task 5d (changelog lever 7): the electronics demandWeight ×1.08 family
 	// step raises import-squeeze reference demand-missed to 910 by d15 (fixed
 	// founding targets under the ×2 import squeeze), moving the documented
 	// reference score 853 → 841. Gold 850 → 840 restores the authored

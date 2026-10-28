@@ -62,6 +62,8 @@ export interface OpeningForecastOutcome {
 	archetypeId: ArchetypeId;
 	forecastDailyRevenue: number;
 	observedMeanDailyRevenue: number | null;
+	/** (observed mean − forecast) / forecast — forecast-denominated; the Gate A
+	 * item-4 band is realized-denominated (|forecast − realized| / realized). */
 	relativeError: number | null;
 	withinBand: boolean;
 	/** False when fewer than 14 complete days were observed — incomplete, not a pass. */
@@ -72,7 +74,8 @@ export interface ForecastGroupStat {
 	openings: number;
 	/** Openings with a full 14-day observation window. */
 	complete: number;
-	/** Complete observations with |relative error| ≤ 25%. */
+	/** Complete observations with |relative error| ≤ 25% (forecast-denominated
+	 * `relativeError` band; the Gate A item-4 band is realized-denominated). */
 	withinBand: number;
 	meanRelativeError: number | null;
 }
@@ -91,8 +94,9 @@ export interface ProducerStallMetric {
 }
 
 /**
- * Ruling 11 served-chain composite legs, measured per advisor run (Ruling 12:
- * the Gate A advisor item's verdict source). `served` is the conjunction of
+ * Served-chain composite legs, measured per advisor run (the Gate A advisor
+ * item's verdict source; docs/balance/tuning-changelog.md lever 15). `served`
+ * is the conjunction of
  * chain built (producer + warehouse applied), rails applied, no zero-output
  * production day after the last applied rail, ≥1 local (warehouse) delivery
  * to a store, and no repeated unapplied advisor recommendation.
@@ -111,7 +115,7 @@ export interface AdvisorChainMetric {
 	 * windows (a build/rail action inside, production resumed and sustained to
 	 * end) are construction-sequencing pauses; every other shape stays a stall. */
 	stallShape: 'construction-sequencing pause' | 'producer stalled' | null;
-	/** The Ruling 11 composite verdict for this run. */
+	/** The served-chain composite verdict for this run. */
 	served: boolean;
 }
 
@@ -147,7 +151,7 @@ export interface RunMeasurement {
 	forecastByNeighborhood: Record<string, ForecastGroupStat>;
 	advisorRepeatedNoOp: RepeatedNoOpMetric | null;
 	producerStall: ProducerStallMetric | null;
-	/** Ruling 11 served-chain composite legs (Ruling 12: item-5 verdict source). */
+	/** Served-chain composite legs (Gate A item-5 verdict source). */
 	advisorChain: AdvisorChainMetric;
 }
 
@@ -324,7 +328,7 @@ function productionByDay(reports: DailyReport[]): { day: number; produced: numbe
 }
 
 /**
- * Informational stall-window shape (Ruling 12): a window with an applied
+ * Informational stall-window shape: a window with an applied
  * advisor build/rail action inside it whose production resumes after the
  * window and stays on through end-of-run is a construction-sequencing pause;
  * every other window keeps the `producer stalled` label.
@@ -357,7 +361,7 @@ function classifyStallShape(
 }
 
 /**
- * Ruling 11 composite legs for one run (Ruling 12). `advisorRepeatedNoOp`
+ * Served-chain composite legs for one run. `advisorRepeatedNoOp`
  * closes the last leg; a producer-stall window contributes only its
  * informational shape, never the verdict.
  */
@@ -569,7 +573,9 @@ export interface GateAThresholds {
 	absCeiling: number;
 	/** Inclusive operating-income comparison window, retail-steady vs idle. */
 	incomePairDays: [number, number];
-	/** Per-opening forecast tolerance (same band as FORECAST_ERROR_BAND). */
+	/** Per-opening forecast tolerance: |forecast − realized| / realized ≤ this
+	 * (realized-denominated; the stored `relativeError` keeps a forecast
+	 * denominator). Same 0.25 value as FORECAST_ERROR_BAND. */
 	forecastTolerance: number;
 	/** Required share of clean advisor runs. */
 	advisorSeedShare: number;
@@ -607,9 +613,7 @@ function fmtShare(share: number): string {
 /**
  * Pure Gate A evaluation over a finished sweep report (design doc Gate A
  * items 1–4; item 5 scenarios are scenario-test scope, item 6 is the
- * determinism spec). The forecast and advisor items compute from whatever the
- * report already carries and are expected to fail until Steps 3–4 fix them —
- * informative, not a blocker. Mutates nothing.
+ * determinism spec). Mutates nothing.
  */
 export function evaluateGateA(
 	report: SweepReport,
@@ -753,7 +757,7 @@ export function evaluateGateA(
 		});
 	}
 
-	// Item 5 — advisor (Ruling 12): clean = the Ruling 11 served-chain
+	// Item 5 — advisor: clean = the served-chain
 	// composite (chain built + rails applied + no zero-output day after the
 	// last applied rail + ≥1 local delivery to a store + no repeated
 	// unapplied recommendation). Stall windows stay informational
@@ -924,7 +928,7 @@ export function renderSweepMarkdown(
 	lines.push('## Per-archetype × bot aggregates');
 	lines.push('');
 	lines.push(
-		'| archetype | bot | runs | positive 30d window by day 365 | first negative cash day | forecast within ±25% / complete / openings | stalls ≥7d | repeated unapplied advisor recommendations |'
+		'| archetype | bot | runs | positive 30d window by day 365 | first negative cash day | within ±25% (forecast band) / complete / openings | stalls ≥7d | repeated unapplied advisor recommendations |'
 	);
 	lines.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
 	const groups = new Map<string, RunMeasurement[]>();
