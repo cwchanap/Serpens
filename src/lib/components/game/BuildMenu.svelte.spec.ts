@@ -12,6 +12,7 @@ const retailOptions: RetailBuildMenuOption[] = [
 		archetypeId: 'convenience',
 		setupCostRange: { min: 1100, max: 1500 },
 		projectedDailyRevenueRange: { min: 700, max: 980 },
+		projectedDailyOperatingCost: 186,
 		validTileCount: 24,
 		disabledReason: null,
 		financeOffer: null
@@ -20,6 +21,7 @@ const retailOptions: RetailBuildMenuOption[] = [
 		archetypeId: 'boutique',
 		setupCostRange: { min: 1200, max: 1900 },
 		projectedDailyRevenueRange: { min: 420, max: 880 },
+		projectedDailyOperatingCost: 204,
 		validTileCount: 18,
 		disabledReason: null,
 		financeOffer: null
@@ -83,8 +85,8 @@ describe('BuildMenu', () => {
 		render(BuildMenu, buildMenuProps());
 
 		// The figure matches the daily report's charge — archetype baseRent ×
-		// 0.92 + the default marketing tier's cost — not the raw baseRent.
-		// Convenience: round(115 × 0.92 + 80) = $186.
+		// 0.92 + the entrant's effective marketing tier's cost — not the raw
+		// baseRent. Convenience (awareness): round(115 × 0.92 + 80) = $186.
 		await expect
 			.element(
 				page.getByText(
@@ -227,6 +229,7 @@ describe('BuildMenu', () => {
 						archetypeId: 'convenience',
 						setupCostRange: { min: 1500, max: 1500 },
 						projectedDailyRevenueRange: { min: 700, max: 980 },
+						projectedDailyOperatingCost: 186,
 						validTileCount: 1,
 						disabledReason: null
 					}
@@ -251,6 +254,7 @@ describe('BuildMenu', () => {
 						archetypeId: 'boutique',
 						setupCostRange: { min: 1200, max: 1900 },
 						projectedDailyRevenueRange: { min: 420, max: 880 },
+						projectedDailyOperatingCost: 204,
 						validTileCount: 0,
 						disabledReason: { code: 'retail.noValidTiles' }
 					}
@@ -276,6 +280,7 @@ describe('BuildMenu', () => {
 						archetypeId: 'boutique',
 						setupCostRange: { min: 1200, max: 1900 },
 						projectedDailyRevenueRange: { min: 420, max: 880 },
+						projectedDailyOperatingCost: 204,
 						validTileCount: 0,
 						disabledReason: { code: 'retail.noValidTiles' }
 					}
@@ -298,6 +303,7 @@ describe('BuildMenu', () => {
 						archetypeId: 'boutique',
 						setupCostRange: { min: 1200, max: 1900 },
 						projectedDailyRevenueRange: { min: 420, max: 880 },
+						projectedDailyOperatingCost: 204,
 						validTileCount: 0,
 						disabledReason: { code: 'retail.storeLimitReached' }
 					}
@@ -434,6 +440,7 @@ describe('BuildMenu', () => {
 						archetypeId: 'convenience',
 						setupCostRange: { min: 2000, max: 3000 },
 						projectedDailyRevenueRange: { min: 800, max: 1200 },
+						projectedDailyOperatingCost: 186,
 						validTileCount: 30,
 						disabledReason: null
 					},
@@ -441,6 +448,7 @@ describe('BuildMenu', () => {
 						archetypeId: 'boutique',
 						setupCostRange: { min: 1200, max: 1900 },
 						projectedDailyRevenueRange: { min: 420, max: 880 },
+						projectedDailyOperatingCost: 204,
 						validTileCount: 18,
 						disabledReason: null
 					}

@@ -7,8 +7,6 @@
 		getProductArt
 	} from '$lib/assets/gameArt';
 	import { ARCHETYPES } from '$lib/game/archetypes';
-	import { getStoreDailyOperatingCost } from '$lib/game/simulateDay';
-	import { DEFAULT_POLICY } from '$lib/game/state';
 	import {
 		INDUSTRIAL_BUILDING_TYPES,
 		PRODUCTION_RECIPES,
@@ -363,9 +361,7 @@
 							<small>
 								{i18n.t('buildMenu.retail.setupRevenue' as never, {
 									setup: formatRange(option.setupCostRange),
-									rent: i18n.format.currency(
-										getStoreDailyOperatingCost(option.archetypeId, DEFAULT_POLICY.marketing)
-									),
+									rent: i18n.format.currency(option.projectedDailyOperatingCost),
 									revenue: formatRange(option.projectedDailyRevenueRange)
 								})}
 							</small>

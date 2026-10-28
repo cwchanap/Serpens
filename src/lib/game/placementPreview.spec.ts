@@ -21,7 +21,8 @@ import {
 	resolveSelectionAnchorTileId
 } from './placementPreview';
 import { createFoundingGameAtTile, estimateOpeningRevenue } from './placement';
-import { createNewGame, getExpansionSetupCost } from './state';
+import { setPolicyOverride } from './policyInheritance';
+import { createNewGame, getExpansionSetupCost, updatePolicy } from './state';
 import {
 	createCityTileLookup,
 	getOccupiedStoreTileIds,
@@ -351,6 +352,7 @@ describe('retail placement preview', () => {
 				archetypeId: 'convenience',
 				setupCostRange: { min: 14570, max: 22292 },
 				projectedDailyRevenueRange: { min: 174, max: 174 },
+				projectedDailyOperatingCost: 186,
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -359,6 +361,7 @@ describe('retail placement preview', () => {
 				archetypeId: 'boutique',
 				setupCostRange: { min: 14930, max: 22652 },
 				projectedDailyRevenueRange: { min: 708, max: 708 },
+				projectedDailyOperatingCost: 204,
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -369,6 +372,7 @@ describe('retail placement preview', () => {
 				// Ruling 13 (task 5d): ×1.08 electronics-family demandWeight lifts the
 				// founding forecast (775 → 837); other archetypes untouched.
 				projectedDailyRevenueRange: { min: 837, max: 837 },
+				projectedDailyOperatingCost: 218,
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -377,6 +381,7 @@ describe('retail placement preview', () => {
 				archetypeId: 'grocery',
 				setupCostRange: { min: 15470, max: 23192 },
 				projectedDailyRevenueRange: { min: 359, max: 359 },
+				projectedDailyOperatingCost: 232,
 				validTileCount: 100,
 				disabledReason: null,
 				financeOffer: null
@@ -395,6 +400,7 @@ describe('retail placement preview', () => {
 				archetypeId: 'convenience',
 				setupCostRange: { min: 14570, max: 22292 },
 				projectedDailyRevenueRange: { min: 174, max: 174 },
+				projectedDailyOperatingCost: 186,
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null
@@ -403,6 +409,7 @@ describe('retail placement preview', () => {
 				archetypeId: 'boutique',
 				setupCostRange: { min: 14930, max: 22652 },
 				projectedDailyRevenueRange: { min: 708, max: 708 },
+				projectedDailyOperatingCost: 204,
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null
@@ -411,6 +418,7 @@ describe('retail placement preview', () => {
 				archetypeId: 'electronics',
 				setupCostRange: { min: 15200, max: 22922 },
 				projectedDailyRevenueRange: { min: 837, max: 837 },
+				projectedDailyOperatingCost: 218,
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null
@@ -419,11 +427,51 @@ describe('retail placement preview', () => {
 				archetypeId: 'grocery',
 				setupCostRange: { min: 15470, max: 23192 },
 				projectedDailyRevenueRange: { min: 359, max: 359 },
+				projectedDailyOperatingCost: 232,
 				validTileCount: 98,
 				disabledReason: null,
 				financeOffer: null
 			}
 		]);
+	});
+
+	test('quotes expansion operating cost under the entrant effective marketing policy', () => {
+		expect.assertions(3);
+		const city = generateCity({
+			id: 'harbor-city',
+			name: 'Harbor City',
+			width: 20,
+			height: 20,
+			seed: 20260503
+		});
+		const game = createFoundingGameAtTile({
+			archetypeId: 'convenience',
+			city,
+			tileId: city.tiles.find((tile) => !tile.locked && tile.feature === null)!.id,
+			seed: 20260503
+		});
+		const convenienceCost = (target: typeof game) =>
+			getRetailBuildMenuOptions({ game: target, city }).find(
+				(option) => option.archetypeId === 'convenience'
+			)!.projectedDailyOperatingCost;
+
+		// Company marketing switched to the free tier: the menu must quote the
+		// charge the entrant will actually pay (round(115 × 0.92 + 0) = $106),
+		// not DEFAULT_POLICY's awareness $186.
+		expect(convenienceCost(updatePolicy(game, { marketing: 'none' }))).toBe(106);
+		// A city-scoped override beats the company tier for that city's stores
+		// (round(115 × 0.92 + 130) = $236).
+		expect(
+			convenienceCost(
+				setPolicyOverride(
+					game,
+					{ kind: 'city', cityId: 'harbor-city' },
+					{ marketing: 'promotions' }
+				)
+			)
+		).toBe(236);
+		// The baseline keeps quoting the default tier.
+		expect(convenienceCost(game)).toBe(186);
 	});
 
 	test('disables retail build menu options when no tile can accept another store', () => {

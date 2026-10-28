@@ -121,7 +121,8 @@ const SERVICE = {
  * The daily operating charge a store actually pays: discounted rent plus the
  * marketing tier's daily cost, rounded exactly as the daily report does. The
  * build menu displays this so the advertised figure matches the charge a new
- * store will see (new stores run `DEFAULT_POLICY`'s marketing tier).
+ * store will see — callers pass the marketing tier the prospective entrant's
+ * effective policy resolves to (`DEFAULT_POLICY`'s tier on founding).
  */
 export function getStoreDailyOperatingCost(
 	archetypeId: ArchetypeId,

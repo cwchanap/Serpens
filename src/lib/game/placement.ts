@@ -29,7 +29,11 @@ import {
 	priceDemandMultiplier,
 	sellerPolicyDemand
 } from './stock';
-import { POLICY_PRICING_TABLE, projectStoreSalesCapacity } from './simulateDay';
+import {
+	getStoreDailyOperatingCost,
+	POLICY_PRICING_TABLE,
+	projectStoreSalesCapacity
+} from './simulateDay';
 import {
 	STAFF_GENERATION_MORALE_BASE,
 	STAFF_GENERATION_MORALE_SPREAD,
@@ -152,6 +156,13 @@ export interface OpeningEstimate extends OpeningForecast {
 	archetypeId: ArchetypeId;
 	/** Store-wide daily unit sales ceiling, shared across products. */
 	capacityUnitsPerDay: number;
+	/**
+	 * The daily charge the entrant will pay once opened: archetype rent plus
+	 * the marketing tier's cost under the entrant's resolved effective policy
+	 * (company policy + city override). Founding previews resolve to
+	 * `DEFAULT_POLICY`, so they keep quoting the default tier.
+	 */
+	dailyOperatingCost: number;
 	perProduct: OpeningEstimateProduct[];
 }
 
@@ -424,6 +435,7 @@ export function estimateOpeningForEntrant(input: {
 		archetypeId: input.archetypeId,
 		setupCost: getExpansionSetupCost(input.tile, input.archetypeId),
 		projectedDailyRevenue: Math.round(totalRevenue / OPENING_ESTIMATE_DAYS),
+		dailyOperatingCost: getStoreDailyOperatingCost(input.archetypeId, policy.marketing),
 		demandScore,
 		customerFit: fitScore,
 		capacityUnitsPerDay,
