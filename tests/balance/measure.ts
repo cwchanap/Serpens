@@ -661,6 +661,10 @@ export function evaluateGateA(
 		let worstRun: RunMeasurement | null = null;
 		let worstMetric = 'none';
 		let globalMax = 0;
+		// NaN never satisfies `value > max`, so a corrupted measurement would
+		// otherwise pass the gate silently; track the first non-finite
+		// candidate and fail on it explicitly.
+		let nonFinite: { metric: string; run: RunMeasurement } | null = null;
 		for (const run of report.runs) {
 			const candidates: [string, number][] = [
 				['cash', run.maxAbsCash],
@@ -670,6 +674,10 @@ export function evaluateGateA(
 				['waste value', run.wasteValue]
 			];
 			for (const [metric, value] of candidates) {
+				if (!Number.isFinite(value)) {
+					nonFinite ??= { metric, run };
+					continue;
+				}
 				if (value > maxima[metric]) maxima[metric] = value;
 				if (value > globalMax) {
 					globalMax = value;
@@ -680,8 +688,8 @@ export function evaluateGateA(
 		}
 		items.push({
 			id: 'boundedness',
-			passed: globalMax < thresholds.absCeiling,
-			detail: `max |cash| ${maxima.cash}, max principal ${maxima.principal}, max cumulative imports ${maxima['cumulative imports']}, max waste ${maxima['waste units']}u/${maxima['waste value']} over ${report.runs.length} runs; ceiling ${thresholds.absCeiling}${worstRun ? `; worst: ${worstMetric} on seed ${worstRun.seed} ${worstRun.archetypeId}/${worstRun.bot}` : ''}`
+			passed: nonFinite === null && globalMax < thresholds.absCeiling,
+			detail: `max |cash| ${maxima.cash}, max principal ${maxima.principal}, max cumulative imports ${maxima['cumulative imports']}, max waste ${maxima['waste units']}u/${maxima['waste value']} over ${report.runs.length} runs; ceiling ${thresholds.absCeiling}${worstRun ? `; worst: ${worstMetric} on seed ${worstRun.seed} ${worstRun.archetypeId}/${worstRun.bot}` : ''}${nonFinite ? `; non-finite ${nonFinite.metric} on seed ${nonFinite.run.seed} ${nonFinite.run.archetypeId}/${nonFinite.run.bot}` : ''}`
 		});
 	}
 

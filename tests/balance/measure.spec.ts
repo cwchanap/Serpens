@@ -1114,6 +1114,22 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 		expect(boundedness.detail).toContain('worst: principal on seed 2 electronics/idle');
 	});
 
+	it('boundedness: a NaN measurement fails instead of slipping past the numeric maximum', () => {
+		const report = gateReport([
+			gateRun({
+				seed: 3,
+				archetypeId: 'convenience',
+				bot: 'retail-steady',
+				cumulativeImportSpend: Number.NaN
+			})
+		]);
+		const boundedness = item(report, 'boundedness');
+		expect(boundedness.passed).toBe(false);
+		expect(boundedness.detail).toContain(
+			'non-finite cumulative imports on seed 3 convenience/retail-steady'
+		);
+	});
+
 	it('managed-vs-idle: 4/5 wins passes at the bar, ties and idle wins are losses, unpaired seeds are excluded', () => {
 		const managed = (seed: number, income: number): RunMeasurement =>
 			gateRun({
