@@ -85,10 +85,14 @@ describe('BuildMenu', () => {
 		// Convenience store's archetype baseRent is $115/day; ranges use the
 		// shared currency/range formatting.
 		await expect
-			.element(page.getByText(/\$1,100–\$1,500 \| Rent \$115\/day \| Revenue \$700–\$980\/day/))
+			.element(
+				page.getByText(
+					/\$1,100–\$1,500 \| Base rent \$115\/day \| Staffed revenue \$700–\$980\/day/
+				)
+			)
 			.toBeVisible();
 		// Boutique uses its own archetype baseRent ($135), not tile rent.
-		await expect.element(page.getByText(/Rent \$135\/day/)).toBeVisible();
+		await expect.element(page.getByText(/Base rent \$135\/day/)).toBeVisible();
 	});
 
 	it('focuses the modal controls, traps Tab, and closes on Escape', async () => {
