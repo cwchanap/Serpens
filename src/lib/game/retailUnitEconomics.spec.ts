@@ -39,9 +39,15 @@ import { isTileBuildable } from './city';
 import { resolveProductMarketShare } from './marketCompetition';
 import { createFoundingGameAtTile } from './placement';
 import { getProductDefinition } from './products';
-import { projectStoreSalesCapacity } from './simulateDay';
+import { resolveProductMarketDynamics, resolveTrendMultiplier } from './productDynamics';
+import { POLICY_PRICING_TABLE, projectStoreSalesCapacity } from './simulateDay';
 import { summarizeStoreStaffing } from './staffing';
-import { buildCityDemandPools, getEligibleProductSellers, priceDemandMultiplier } from './stock';
+import {
+	buildCityDemandPools,
+	getEligibleProductSellers,
+	priceDemandMultiplier,
+	sellerPolicyDemand
+} from './stock';
 import { createCityTileLookup, getStoreFootprintPlacementBlockReason } from './storeFootprint';
 import { createNewGame } from './state';
 import type { ArchetypeId, City, CityTile, GameState, ProductId } from './types';
@@ -133,15 +139,33 @@ function measureFoundingEconomics(archetypeId: ArchetypeId, seed: number): Found
 			1
 		);
 		playerShare = Math.min(playerShare, market.playerShare);
-		const playerPool = Math.round((pools[productId] ?? 0) * market.playerShare);
+		// Live desired-units factors from simulateProductSalesForCity: trend on the
+		// city pool, the marketing/pricing policy demand multiplier, the brand
+		// demand multiplier, and obsolescence (1 on founding-day lots). Only the
+		// daily jitter is dropped (deterministic probe).
+		const trendPool = Math.max(
+			0,
+			Math.round(
+				(pools[productId] ?? 0) * resolveTrendMultiplier(definition.dynamics.trend, game.day)
+			)
+		);
+		const playerPool = Math.round(trendPool * market.playerShare);
+		const sellerSplit = brandedSellerScore(store, productId) / totalScore;
+		const brandEconomics = resolveBrandEconomics(definition, product.brandId);
+		const basePrice = product.sellingPrice * POLICY_PRICING_TABLE[game.policy.pricing].price;
+		const marketDynamics = resolveProductMarketDynamics({ product, definition, day: game.day });
 		const desired = Math.max(
 			0,
-			Math.round(playerPool * priceDemandMultiplier(definition, product.sellingPrice))
+			Math.round(
+				sellerPolicyDemand(playerPool, sellerSplit, game.policy) *
+					brandEconomics.demandMultiplier *
+					marketDynamics.obsolescenceMultiplier *
+					priceDemandMultiplier(definition, basePrice)
+			)
 		);
 		const sold = Math.min(desired, capacityRemaining);
 		capacityRemaining -= sold;
-		const unitCost = resolveBrandEconomics(definition, product.brandId).unitCost;
-		gross += sold * (product.sellingPrice - unitCost);
+		gross += sold * (basePrice - brandEconomics.unitCost);
 		grossUnits += sold;
 	}
 
@@ -208,7 +232,7 @@ describe('electronics 3-store band under the Ruling 13 demand weights (HPA-502 t
 
 	/** First positive 30d operating-income window completing by day 90. */
 	function viableByDay90(seed: number): boolean {
-		const { game } = runBot('retail-steady', 'electronics', seed, 91);
+		const { game } = runBot('retail-steady', 'electronics', seed, 90);
 		const reports = game.reports;
 		for (let end = 29; end < reports.length; end += 1) {
 			const start = end - 29;
