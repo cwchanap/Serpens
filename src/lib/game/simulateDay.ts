@@ -723,7 +723,7 @@ function buildDailyStoreReport(
 		productReports,
 		profile.startingStockHealth,
 		profile.stockPressureThreshold,
-		profile.staffLimit,
+		profile.salesCapacity,
 		profile.staffingShortage,
 		endingReputation
 	);
@@ -760,7 +760,7 @@ function buildStoreWarnings(
 	productReports: DailyProductReport[],
 	startingStockHealth: number,
 	stockPressureThreshold: number,
-	staffLimit: number,
+	salesCapacity: number,
 	staffingShortage: StaffingRequirement,
 	reputation: number
 ): StoreReportWarning[] {
@@ -776,7 +776,7 @@ function buildStoreWarnings(
 		warnings.push({ code: 'stockPressure', storeId: store.id });
 	}
 
-	if (store.staffMorale < 30 || staffLimit <= customersServed + 1) {
+	if (store.staffMorale < 30 || salesCapacity <= customersServed + 1) {
 		warnings.push({ code: 'nearStaffCapacity', storeId: store.id });
 	}
 
