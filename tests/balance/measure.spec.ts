@@ -15,6 +15,7 @@ import type {
 import { runBot } from './bots';
 import type { BotLedger, OpeningRecord } from './bots';
 import {
+	botsForArchetype,
 	buildSweepReport,
 	evaluateGateA,
 	FORECAST_ERROR_BAND,
@@ -25,6 +26,7 @@ import {
 	renderSweepMarkdown,
 	SWEEP_ARCHETYPES,
 	SWEEP_REGENERATION_COMMAND,
+	SWEEP_SEEDS,
 	sweepRegenerationCommand,
 	type AdvisorChainMetric,
 	type GateAItemVerdict,
@@ -844,8 +846,8 @@ describe('advisor served-chain composite (HPA-502 Ruling 12)', () => {
 
 	it('does not count a rail connected on the final report day as served', () => {
 		// Rails on days 22 and 35 (the last report day): no observed post-rail
-		// production day exists, so the chain cannot count as served even with
-		// production flowing and deliveries landing.
+		// production day exists, and the days-30–34 deliveries all land BEFORE
+		// the last applied rail, so neither post-connection leg has evidence.
 		const actions = [
 			advisorAction(1, 'advisor:build-producer'),
 			advisorAction(8, 'advisor:build-warehouse'),
@@ -855,11 +857,48 @@ describe('advisor served-chain composite (HPA-502 Ruling 12)', () => {
 		const measured = measureRun({ reports: chainReports(35, 1, 35) }, advisorLedger(actions));
 		expect(measured.advisorChain.lastRailDay).toBe(35);
 		expect(measured.advisorChain.postRailObservedDays).toBe(0);
-		expect(measured.advisorChain.localDeliveryUnits).toBeGreaterThan(0);
+		expect(measured.advisorChain.localDeliveryUnits).toBe(0);
 		expect(measured.advisorChain.served).toBe(false);
 	});
 
-	it('requires at least one local (warehouse) delivery to a store', () => {
+	it('scopes the local-supply leg to bottled water delivered after the last applied rail', () => {
+		// Deliveries of other products never satisfy the leg: a run whose
+		// warehouse units are all snacks has no local bottled-water supply,
+		// whatever the volume.
+		const snacksOnly = chainReports(35, 1, 35).map((report) => ({
+			...report,
+			storeReports: report.storeReports.map((store) => ({
+				...store,
+				productReports: store.productReports.map((product) => ({
+					...product,
+					productId: 'snacks' as const
+				}))
+			}))
+		}));
+		const snacksRun = measureRun({ reports: snacksOnly }, advisorLedger(CHAIN_ACTIONS));
+		expect(snacksRun.advisorChain.localDeliveryUnits).toBe(0);
+		expect(snacksRun.advisorChain.served).toBe(false);
+
+		// Deliveries before the last applied rail are pre-connection evidence —
+		// they never count toward the leg either (production flows throughout,
+		// so the delivery leg is the only failing composite leg).
+		const preRailOnly = Array.from({ length: 35 }, (_, index) => {
+			const day = index + 1;
+			const delivering = day > 22 && day < 29;
+			return fakeReport(day, {
+				productionReport: fakeProduction(producing()),
+				storeReports: delivering
+					? [fakeStore({ productReports: [fakeProduct({ warehouseUnits: 7 })] })]
+					: []
+			});
+		});
+		const preRailRun = measureRun({ reports: preRailOnly }, advisorLedger(CHAIN_ACTIONS));
+		expect(preRailRun.advisorChain.localDeliveryUnits).toBe(0);
+		expect(preRailRun.advisorChain.zeroOutputDaysAfterLastRail).toBe(0);
+		expect(preRailRun.advisorChain.served).toBe(false);
+	});
+
+	it('requires at least one local bottled-water delivery to a store', () => {
 		const reports = chainReports(35, 1, 35).map((report) => ({
 			...report,
 			storeReports: []
@@ -1541,6 +1580,7 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 		// items pass on this fixture (idle always loses the 61–90 pairing, all
 		// forecasts in band, advisor clean).
 		expect(verdict.allPassed).toBe(false);
+		expect(verdict.coverage.complete).toBe(false);
 		expect(verdict.items.filter((entry) => entry.passed).map((entry) => entry.id)).toEqual([
 			'boundedness',
 			'managed-vs-idle',
@@ -1554,6 +1594,110 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 			'- viability: FAIL — 30d window complete by day 90 (retail-steady): convenience 0/5 (0.0%), boutique 0/5 (0.0%), electronics 0/5 (0.0%), grocery 0/5 (0.0%)'
 		);
 		expect(markdown).toContain('- scenario guardrails: out of scope (scenario tests)');
-		expect(markdown).toMatch(/^- overall: FAIL \(4\/5 items passed\)$/m);
+		// 5-seed fixture coverage is far from the approved 50-seed matrix, so
+		// the overall line is diagnostic — never an official PASS/FAIL stamp.
+		expect(markdown).toMatch(/^- overall: diagnostic only \(partial sweep — /m);
+		expect(markdown).not.toMatch(/^- overall: (PASS|FAIL)/m);
+	});
+
+	it('never prints an official overall PASS on a partial sweep, whatever the item ratios', () => {
+		// A one-seed smoke sweep where every ratio item passes — viability 1/1,
+		// managed > idle, all forecasts in band, advisor served — still cannot
+		// publish an official verdict: 49/50 approved seeds are unmeasured.
+		const incomeTail = (amount: number): RunMeasurement['operatingIncomeByDay'] =>
+			Array.from({ length: 30 }, (_, index) => ({
+				day: 61 + index,
+				operatingIncome: amount,
+				operatingCashFlow: 0
+			}));
+		const inBand = (archetypeId: ArchetypeId): OpeningForecastOutcome => ({
+			storeId: `store-${archetypeId}`,
+			openedOnDay: 1,
+			neighborhood: 'downtown',
+			archetypeId,
+			forecastDailyRevenue: 100,
+			observedMeanDailyRevenue: 110,
+			relativeError: 0.1,
+			withinBand: true,
+			complete: true
+		});
+		const smoke = SWEEP_ARCHETYPES.flatMap((archetypeId) => [
+			gateRun({
+				seed: 1,
+				archetypeId,
+				bot: 'retail-steady',
+				operatingIncomeByDay: incomeTail(100),
+				forecastOutcomes: [inBand(archetypeId)]
+			}),
+			gateRun({ seed: 1, archetypeId, bot: 'idle', operatingIncomeByDay: incomeTail(10) })
+		]).concat([gateRun({ seed: 1, archetypeId: 'convenience', bot: 'advisor' })]);
+		const report = gateReport(smoke);
+		const verdict = evaluateGateA(report);
+		expect(verdict.items.every((entry) => entry.passed)).toBe(true);
+		expect(verdict.coverage.complete).toBe(false);
+		expect(verdict.allPassed).toBe(false);
+		const markdown = renderSweepMarkdown(report);
+		expect(markdown).not.toMatch(/^- overall: (PASS|FAIL)/m);
+		expect(markdown).toMatch(/^- overall: diagnostic only \(partial sweep — /m);
+	});
+
+	it('publishes the official verdict only on the complete 450-run matrix', () => {
+		const incomeTail = (amount: number): RunMeasurement['operatingIncomeByDay'] =>
+			Array.from({ length: 30 }, (_, index) => ({
+				day: 61 + index,
+				operatingIncome: amount,
+				operatingCashFlow: 0
+			}));
+		const inBand = (archetypeId: ArchetypeId): OpeningForecastOutcome => ({
+			storeId: `store-${archetypeId}`,
+			openedOnDay: 1,
+			neighborhood: 'downtown',
+			archetypeId,
+			forecastDailyRevenue: 100,
+			observedMeanDailyRevenue: 110,
+			relativeError: 0.1,
+			withinBand: true,
+			complete: true
+		});
+		const official = SWEEP_SEEDS.flatMap((seed) =>
+			SWEEP_ARCHETYPES.flatMap((archetypeId) =>
+				botsForArchetype(archetypeId).map((bot) =>
+					gateRun({
+						seed,
+						archetypeId,
+						bot,
+						operatingIncomeByDay: incomeTail(bot === 'idle' ? 10 : 100),
+						forecastOutcomes: bot === 'idle' ? [] : [inBand(archetypeId)]
+					})
+				)
+			)
+		);
+		expect(official).toHaveLength(450);
+		const report = gateReport(official);
+		const verdict = evaluateGateA(report);
+		expect(verdict.coverage).toEqual({
+			complete: true,
+			detail: 'approved matrix: 50 seeds × 9 combos × 365d'
+		});
+		expect(verdict.items.every((entry) => entry.passed)).toBe(true);
+		expect(verdict.allPassed).toBe(true);
+		expect(renderSweepMarkdown(report)).toMatch(/^- overall: PASS \(5\/5 items passed\)$/m);
+
+		// One missing combination demotes the report to diagnostic output.
+		const missingOne = gateReport(official.slice(1));
+		expect(evaluateGateA(missingOne).coverage.complete).toBe(false);
+		expect(evaluateGateA(missingOne).allPassed).toBe(false);
+		expect(renderSweepMarkdown(missingOne)).not.toMatch(/^- overall: (PASS|FAIL)/m);
+
+		// A duplicated seed×archetype×bot run is rejected the same way.
+		const duplicated = gateReport([...official, official[0]!]);
+		expect(evaluateGateA(duplicated).coverage.complete).toBe(false);
+		expect(evaluateGateA(duplicated).allPassed).toBe(false);
+
+		// A run short of the 365-day horizon disqualifies coverage as well.
+		const shortHorizon = gateReport(
+			official.map((run, index) => (index === 0 ? { ...run, daysSimulated: 364 } : run))
+		);
+		expect(evaluateGateA(shortHorizon).coverage.complete).toBe(false);
 	});
 });
