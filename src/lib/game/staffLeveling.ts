@@ -28,7 +28,7 @@ export function getStaffSalaryAfterPromotion(salary: number): number {
 }
 
 /**
- * Daily XP for an assigned member; `utilization` is customersServed / staffLimit.
+ * Daily XP for an assigned member; `utilization` is customersServed / salesCapacity.
  * Returns an integer: base XP plus the activity bonus rounded to the nearest
  * whole point (so fractional utilization yields base + round(bonus * utilization),
  * not base + bonus * utilization).

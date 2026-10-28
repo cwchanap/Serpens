@@ -52,6 +52,7 @@ import type {
 	ActiveEventModifier,
 	DailyMaterialMovement,
 	DailyMarketReport,
+	ArchetypeId,
 	DailyProductReport,
 	DailyProductionReport,
 	DailyReport,
@@ -115,6 +116,19 @@ const SERVICE = {
 	balanced: { throughput: 1, satisfaction: 0, morale: 0 },
 	highTouch: { throughput: 0.9, satisfaction: 4, morale: 1 }
 } as const;
+
+/**
+ * The daily operating charge a store actually pays: discounted rent plus the
+ * marketing tier's daily cost, rounded exactly as the daily report does. The
+ * build menu displays this so the advertised figure matches the charge a new
+ * store will see (new stores run `DEFAULT_POLICY`'s marketing tier).
+ */
+export function getStoreDailyOperatingCost(
+	archetypeId: ArchetypeId,
+	marketing: CompanyPolicy['marketing']
+): number {
+	return Math.round(getArchetype(archetypeId).baseRent * 0.92 + MARKETING[marketing].cost);
+}
 
 type SummedStoreReportKey =
 	| 'revenue'
@@ -617,9 +631,7 @@ function buildStoreOperationProfile(
 			(staffingSummary.coverage < 80 ? -2 : 1)
 	);
 	const marketPosition = clampScore(35 + store.localDemand / 5 + reputation / 3 + marketing.market);
-	const operatingCosts = Math.round(
-		getArchetype(store.archetypeId).baseRent * 0.92 + marketing.cost
-	);
+	const operatingCosts = getStoreDailyOperatingCost(store.archetypeId, policy.marketing);
 
 	return {
 		store,
@@ -643,8 +655,12 @@ function accrueStaffXp(
 ): GameState['staff'] {
 	const utilizationByStoreId = new Map<string, number>();
 	for (const report of storeReports) {
-		const staffLimit = profileByStoreId.get(report.storeId)?.staffLimit ?? 0;
-		const utilization = staffLimit > 0 ? report.customersServed / staffLimit : 0;
+		// Utilization is measured against sales capacity, not the raw staff
+		// limit: the inventory-policy multiplier (~2× under balanced) doubles
+		// the ceiling a busy store can reach, so a store at half sales capacity
+		// must not already earn maximum XP.
+		const salesCapacity = profileByStoreId.get(report.storeId)?.salesCapacity ?? 0;
+		const utilization = salesCapacity > 0 ? report.customersServed / salesCapacity : 0;
 		utilizationByStoreId.set(report.storeId, utilization);
 	}
 

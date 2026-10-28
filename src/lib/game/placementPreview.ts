@@ -14,8 +14,7 @@ import {
 	estimateOpeningForEntrant,
 	placeStoreOnTile,
 	projectExpansionEntrant,
-	type FoundingBase,
-	type OpeningEstimate
+	type FoundingBase
 } from './placement';
 import { getExpansionSetupCost } from './state';
 import { buildCityDemandPools } from './stock';
@@ -115,18 +114,21 @@ interface RetailPreviewInput {
 	financeCommandAvailable?: boolean;
 }
 
-interface RetailBuildMenuInput {
-	game: GameState | null;
+interface RetailBuildMenuInputBase {
 	city: City;
 	cashCommandAvailable?: boolean;
 	financeCommandAvailable?: boolean;
-	/**
-	 * Explicit founding seed used when `game` is null, so founding previews
-	 * derive the same hypothetical founding store the real command will. The
-	 * UI threads its starter seed here; omitted defaults to 0.
-	 */
-	seed?: number;
 }
+
+/**
+ * Founding previews (`game: null` or `game` not narrowed) require the seed
+ * the real `createFoundingGameAtTile` command will use — an omitted seed
+ * previously fell back to 0, silently forecasting a different founding store
+ * than the command creates. Callers that prove `game` is a live `GameState`
+ * may omit `seed`; it is ignored on the expansion path.
+ */
+type RetailBuildMenuInput = RetailBuildMenuInputBase &
+	({ game: GameState | null; seed: number } | { game: GameState; seed?: number });
 
 interface RetailPlacementContext {
 	tileLookup: CityTileLookup;
@@ -320,7 +322,10 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	// competitors, starter staff) runs once and only the tile placement and
 	// market estimate repeat per tile.
 	const foundingBases = new Map<ArchetypeId, FoundingBase>();
-	const foundingSeed = input.seed ?? 0;
+	// `seed` is contractually required when `game` is null (see
+	// RetailBuildMenuInput); the base intersection blocks the union's
+	// narrowing, so the assertion spells the contract out.
+	const foundingSeed = input.game === null ? input.seed! : 0;
 	// Demand pools depend only on the archetype's carried products + world
 	// modifiers, never on the entrant's tile, so compute them once per
 	// archetype per menu build. Recomputing per tile made the menu an
@@ -339,7 +344,53 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 
 		return pools;
 	};
-	const estimateForTile = (tile: CityTile, archetypeId: ArchetypeId): OpeningEstimate => {
+	// The 14-day opening simulation is the menu's only expensive input, and
+	// its projected revenue depends only on the placed entrant's stats — the
+	// tile's identity fields (tileId/mapX/mapY/location) never reach the
+	// simulation — so memoize revenue per (archetype, entrant-stats) key.
+	// Tiles that place identically share one simulation; with current game
+	// content the estimate is stock-bound and a whole city collapses to a
+	// handful of keys, instead of one sim per valid tile per archetype.
+	const revenueCacheByArchetype = new Map<ArchetypeId, Map<string, number>>();
+	const revenueForEntrant = (projection: {
+		entrantGame: GameState;
+		entrant: Store;
+		tile: CityTile;
+		archetypeId: ArchetypeId;
+	}): number => {
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-destructure drops tile-identity fields the sim never reads
+		const { tileId, mapX, mapY, location, ...simFields } = projection.entrant;
+		const key = JSON.stringify(simFields);
+		let cache = revenueCacheByArchetype.get(projection.archetypeId);
+
+		if (!cache) {
+			cache = new Map();
+			revenueCacheByArchetype.set(projection.archetypeId, cache);
+		}
+
+		let revenue = cache.get(key);
+
+		if (revenue === undefined) {
+			revenue = estimateOpeningForEntrant({
+				entrantGame: projection.entrantGame,
+				entrant: projection.entrant,
+				city: input.city,
+				tile: projection.tile,
+				archetypeId: projection.archetypeId,
+				pools: demandPoolsFor(projection.archetypeId, projection.entrantGame)
+			}).projectedDailyRevenue;
+			cache.set(key, revenue);
+		}
+
+		return revenue;
+	};
+	const estimateForTile = (
+		tile: CityTile,
+		archetypeId: ArchetypeId
+	): { setupCost: number; projectedDailyRevenue: number } => {
+		let entrantGame: GameState;
+		let entrant: Store;
+
 		if (context.game === null) {
 			let base = foundingBases.get(archetypeId);
 
@@ -348,28 +399,16 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 				foundingBases.set(archetypeId, base);
 			}
 
-			const entrant = placeStoreOnTile(base.baseStore, tile);
-			const entrantGame = { ...base.game, stores: [entrant] };
-
-			return estimateOpeningForEntrant({
-				entrantGame,
-				entrant,
-				city: input.city,
-				tile,
-				archetypeId,
-				pools: demandPoolsFor(archetypeId, entrantGame)
-			});
+			entrant = placeStoreOnTile(base.baseStore, tile);
+			entrantGame = { ...base.game, stores: [entrant] };
+		} else {
+			({ entrantGame, entrant } = projectExpansionEntrant(context.game, tile, archetypeId));
 		}
 
-		const projected = projectExpansionEntrant(context.game, tile, archetypeId);
-
-		return estimateOpeningForEntrant({
-			...projected,
-			city: input.city,
-			tile,
-			archetypeId,
-			pools: demandPoolsFor(archetypeId, projected.entrantGame)
-		});
+		return {
+			setupCost: getExpansionSetupCost(tile, archetypeId),
+			projectedDailyRevenue: revenueForEntrant({ entrantGame, entrant, tile, archetypeId })
+		};
 	};
 
 	// Footprint block reasons are archetype-independent (they depend only on
@@ -387,7 +426,7 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	}));
 
 	return ARCHETYPES.map((archetype) => {
-		const validEstimates: OpeningEstimate[] = [];
+		const validEstimates: { setupCost: number; projectedDailyRevenue: number }[] = [];
 		const footprintReasons = new Set<StoreFootprintPlacementBlockReason>();
 
 		for (const { tile, footprintReason } of tileFootprintReasons) {

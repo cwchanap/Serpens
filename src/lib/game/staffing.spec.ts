@@ -268,6 +268,16 @@ describe('staffing rules', () => {
 		expect(getStaffingRequirement('convenience', 10)).toEqual({ manager: 1, general: 5 });
 	});
 
+	test('staffing requirement caps at the archetype catalog at level 10', () => {
+		expect.assertions(3);
+		// The L10 milestone budgets five categories, but these archetypes author
+		// only four — a fully staffed store must not suddenly show a sixth
+		// general shortage on the 9 → 10 upgrade.
+		expect(getStaffingRequirement('boutique', 10)).toEqual({ manager: 1, general: 5 });
+		expect(getStaffingRequirement('electronics', 10)).toEqual({ manager: 1, general: 5 });
+		expect(getStaffingRequirement('grocery', 10)).toEqual({ manager: 1, general: 5 });
+	});
+
 	test('starter staff and hired candidates begin at level 1 with zero xp', () => {
 		expect.assertions(3);
 		const starter = generateStarterStaffForStore({

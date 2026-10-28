@@ -62,7 +62,7 @@ export const ja = {
 		},
 		retail: {
 			buildArchetype: '{name}を建設',
-			setupRevenue: '初期費用 {setup} | 基本家賃 {rent}/日 | 人員配置時売上 {revenue}/日',
+			setupRevenue: '初期費用 {setup} | 運営費 {rent}/日 | 人員配置時売上 {revenue}/日',
 			rangeFormat: '{min}～{max}',
 			validTiles: {
 				one: '有効な立地 {count} 件',

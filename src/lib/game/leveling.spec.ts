@@ -6,6 +6,7 @@ import {
 	INDUSTRY_UPGRADE_BASE_COST,
 	isMilestoneLevel,
 	getUnlockedProductCount,
+	getUnlockedProductIds,
 	getStoreRevenueMultiplier,
 	getStoreStaffCapacityBonus,
 	getStoreUpgradeCost,
@@ -45,6 +46,16 @@ describe('leveling math', () => {
 		expect(getUnlockedProductCount(4)).toBe(3);
 		expect(getUnlockedProductCount(7)).toBe(4);
 		expect(getUnlockedProductCount(10)).toBe(5);
+	});
+
+	test('unlocked product ids cap at the catalog length', () => {
+		expect.assertions(4);
+		// The L10 budget (5) exceeds a four-product catalog — the shared helper
+		// returns the catalog prefix so no caller can invent a fifth product.
+		expect(getUnlockedProductIds(10, ['a', 'b', 'c', 'd'])).toEqual(['a', 'b', 'c', 'd']);
+		expect(getUnlockedProductIds(10, ['a', 'b', 'c', 'd', 'e'])).toEqual(['a', 'b', 'c', 'd', 'e']);
+		expect(getUnlockedProductIds(1, ['a', 'b', 'c', 'd'])).toEqual(['a', 'b']);
+		expect(getUnlockedProductIds(7, ['a', 'b', 'c', 'd'])).toEqual(['a', 'b', 'c', 'd']);
 	});
 
 	test('revenue multiplier adds 10% per non-milestone level', () => {

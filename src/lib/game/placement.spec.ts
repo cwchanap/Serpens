@@ -778,6 +778,24 @@ describe('estimateOpeningRevenue', () => {
 		).not.toEqual(sameSeed().capacityUnitsPerDay);
 	});
 
+	test('rejects an expansion tile that already carries a store', () => {
+		const city = makeCity();
+		const game = found('convenience', city);
+		const occupiedTileId = game.stores[0]!.tileId;
+
+		// openStoreAtTile would refuse this anchor; the estimator must match
+		// instead of forecasting revenue for a command that cannot run.
+		expect(() =>
+			estimateOpeningRevenue({
+				game,
+				city,
+				tileId: occupiedTileId,
+				archetypeId: 'convenience',
+				seed: SEED
+			})
+		).toThrow(/occupied/);
+	});
+
 	test('founding estimates track the simulated first-14-day mean (±15%)', () => {
 		for (const archetypeId of ['convenience', 'boutique'] as const) {
 			const game = found(archetypeId);

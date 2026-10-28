@@ -208,7 +208,7 @@ describe('retail placement preview', () => {
 				}) === null
 		);
 		// Menu revenue/setup ranges must be derived by the shared opening
-		// estimator (founding path, default seed 0 — no explicit seed passed).
+		// estimator (founding path; the menu requires an explicit seed).
 		const estimates = validTiles.map((tile) =>
 			estimateOpeningRevenue({
 				game: null,
@@ -221,7 +221,7 @@ describe('retail placement preview', () => {
 		const setupCosts = estimates.map((estimate) => estimate.setupCost);
 		const projectedDailyRevenue = estimates.map((estimate) => estimate.projectedDailyRevenue);
 
-		const options = getRetailBuildMenuOptions({ game: null, city });
+		const options = getRetailBuildMenuOptions({ game: null, city, seed: 0 });
 		const boutique = options.find((option) => option.archetypeId === 'boutique')!;
 
 		expect(options).toHaveLength(4);
@@ -278,18 +278,17 @@ describe('retail placement preview', () => {
 		};
 
 		// The menu must feed its seed into the founding derivation: the ranges
-		// equal the estimator's at the seed actually passed (7), and the no-seed
-		// call documents the default (0). Note: with current game content the
-		// fresh-store 14-day window is stock-capped, so revenue ranges are
-		// numerically seed-invariant — seed sensitivity of the estimate itself
-		// is asserted in placement.spec (capacity intermediates).
+		// equal the estimator's at the seed actually passed. Note: with current
+		// game content the fresh-store 14-day window is stock-capped, so revenue
+		// ranges are numerically seed-invariant — seed sensitivity of the
+		// estimate itself is asserted in placement.spec (capacity intermediates).
 		expect(
 			getRetailBuildMenuOptions({ game: null, city, seed: 7 }).find(
 				(option) => option.archetypeId === 'convenience'
 			)
 		).toMatchObject(estimatorRange(7));
 		expect(
-			getRetailBuildMenuOptions({ game: null, city }).find(
+			getRetailBuildMenuOptions({ game: null, city, seed: 0 }).find(
 				(option) => option.archetypeId === 'convenience'
 			)
 		).toMatchObject(estimatorRange(0));
@@ -347,7 +346,7 @@ describe('retail placement preview', () => {
 		// Golden values re-captured after the HPA-502 round-2 economy change
 		// (founding breadth 2, capacity ×2, product data); the memoization must
 		// not move any estimate.
-		expect(getRetailBuildMenuOptions({ game: null, city })).toEqual([
+		expect(getRetailBuildMenuOptions({ game: null, city, seed: 0 })).toEqual([
 			{
 				archetypeId: 'convenience',
 				setupCostRange: { min: 14570, max: 22292 },

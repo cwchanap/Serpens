@@ -14,7 +14,7 @@ import {
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint
 } from '$lib/game/industryFootprint';
-import { getUnlockedProductCount, MAX_STORE_LEVEL, MAX_BUILDING_LEVEL } from '$lib/game/leveling';
+import { getUnlockedProductIds, MAX_STORE_LEVEL, MAX_BUILDING_LEVEL } from '$lib/game/leveling';
 import { MANAGER_ACTION_HISTORY_LIMIT } from '$lib/game/managerDelegation';
 import { POLICY_FIELD_OPTIONS } from '$lib/game/policyInheritance';
 import { formatLocation } from '$lib/game/placement';
@@ -4720,14 +4720,10 @@ function validateSavedStoreProducts(
 	const storeLevel = requireNumber(store.level, `${label} level`);
 	const archetype = getArchetype(archetypeId);
 	// The level-10 milestone budgets five categories but only convenience
-	// carries five starting products; cap the expected count at the catalog
-	// length so a maxed four-category store validates.
-	const unlockedCount = Math.min(
-		getUnlockedProductCount(storeLevel),
-		archetype.startingProductIds.length
-	);
+	// carries five starting products; the shared helper caps the expected set
+	// at the catalog prefix so a maxed four-category store validates.
+	const unlockedProductIds = getUnlockedProductIds(storeLevel, archetype.startingProductIds);
 	const archetypeProducts = new Set(archetype.startingProductIds);
-	const unlockedProductIds = archetype.startingProductIds.slice(0, unlockedCount);
 	const unlockedProducts = new Set(unlockedProductIds);
 	const seenProducts = new Set<string>();
 	const products = requireArray(store.products, `${label} products`);
@@ -4758,9 +4754,9 @@ function validateSavedStoreProducts(
 		throw new SaveDataError(`${label} products must have at least one product`);
 	}
 
-	if (products.length !== unlockedCount) {
+	if (products.length !== unlockedProductIds.length) {
 		throw new SaveDataError(
-			`${label} products length (${products.length}) must equal unlocked product count (${unlockedCount}) for level ${storeLevel}`,
+			`${label} products length (${products.length}) must equal unlocked product count (${unlockedProductIds.length}) for level ${storeLevel}`,
 			'invariant-products'
 		);
 	}

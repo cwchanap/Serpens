@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type {
+	ArchetypeId,
 	DailyMaterialMovement,
 	DailyProductReport,
 	DailyProductionReport,
@@ -22,6 +23,7 @@ import {
 	measureRun,
 	mergeSweepReports,
 	renderSweepMarkdown,
+	SWEEP_ARCHETYPES,
 	SWEEP_REGENERATION_COMMAND,
 	sweepRegenerationCommand,
 	type AdvisorChainMetric,
@@ -224,6 +226,7 @@ function servedChain(overrides: Partial<AdvisorChainMetric> = {}): AdvisorChainM
 		railsApplied: true,
 		lastRailDay: 29,
 		zeroOutputDaysAfterLastRail: 0,
+		postRailObservedDays: 61,
 		localDeliveryUnits: 336,
 		stallShape: null,
 		served: true,
@@ -796,6 +799,7 @@ describe('advisor served-chain composite (HPA-502 Ruling 12)', () => {
 			railsApplied: true,
 			lastRailDay: 29,
 			zeroOutputDaysAfterLastRail: 0,
+			postRailObservedDays: 6,
 			localDeliveryUnits: 42,
 			stallShape: 'construction-sequencing pause',
 			served: true
@@ -835,6 +839,23 @@ describe('advisor served-chain composite (HPA-502 Ruling 12)', () => {
 		// Flow stops on days 33-35 (3 zero-output days after rail day 29).
 		const measured = measureRun({ reports: chainReports(35, 1, 32) }, advisorLedger(CHAIN_ACTIONS));
 		expect(measured.advisorChain.zeroOutputDaysAfterLastRail).toBe(3);
+		expect(measured.advisorChain.served).toBe(false);
+	});
+
+	it('does not count a rail connected on the final report day as served', () => {
+		// Rails on days 22 and 35 (the last report day): no observed post-rail
+		// production day exists, so the chain cannot count as served even with
+		// production flowing and deliveries landing.
+		const actions = [
+			advisorAction(1, 'advisor:build-producer'),
+			advisorAction(8, 'advisor:build-warehouse'),
+			advisorAction(22, 'advisor:connect-rail'),
+			advisorAction(35, 'advisor:connect-rail')
+		];
+		const measured = measureRun({ reports: chainReports(35, 1, 35) }, advisorLedger(actions));
+		expect(measured.advisorChain.lastRailDay).toBe(35);
+		expect(measured.advisorChain.postRailObservedDays).toBe(0);
+		expect(measured.advisorChain.localDeliveryUnits).toBeGreaterThan(0);
 		expect(measured.advisorChain.served).toBe(false);
 	});
 
@@ -1015,6 +1036,7 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 			maxOutstandingPrincipal: 8_000,
 			cumulativeImportSpend: 1_000,
 			operatingIncomeDays61To90: 0,
+			operatingIncomeByDay: [],
 			forecastOutcomes: [],
 			forecastByArchetype: {},
 			forecastByNeighborhood: {},
@@ -1052,41 +1074,62 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 	});
 
 	it('viability: 4/5 seeds with a day-80 completion passes at exactly the 80% bar; 3/5 and day-91 completions fail', () => {
-		const viable = (seed: number, endDay: number): RunMeasurement =>
+		// The gate recomputes the window from operatingIncomeByDay at the active
+		// threshold length, so a viable fixture carries a 30-day contiguous
+		// tail of positive income ending on `endDay`.
+		const incomeTail = (endDay: number): RunMeasurement['operatingIncomeByDay'] =>
+			Array.from({ length: 30 }, (_, index) => ({
+				day: endDay - 29 + index,
+				operatingIncome: 10,
+				operatingCashFlow: 5
+			}));
+		const viable = (seed: number, archetypeId: ArchetypeId, endDay: number): RunMeasurement =>
 			gateRun({
 				seed,
-				archetypeId: 'boutique',
+				archetypeId,
 				bot: 'retail-steady',
 				firstPositiveWindow30: {
 					startDay: endDay - 29,
 					endDay,
-					operatingIncome: 10,
-					operatingCashFlow: 5
-				}
+					operatingIncome: 300,
+					operatingCashFlow: 150
+				},
+				operatingIncomeByDay: incomeTail(endDay)
 			});
-		const atBar = [1, 2, 3, 4]
-			.map((seed) => viable(seed, 80))
-			.concat(gateRun({ seed: 5, archetypeId: 'boutique', bot: 'retail-steady' }));
+		const notViable = (seed: number, archetypeId: ArchetypeId): RunMeasurement =>
+			gateRun({ seed, archetypeId, bot: 'retail-steady' });
+		// A full sweep covers every archetype — endDayByIndex returns the
+		// window end day per seed index, or null for a non-viable run.
+		const sweep = (endDayByIndex: (index: number) => number | null): RunMeasurement[] =>
+			SWEEP_ARCHETYPES.flatMap((archetypeId) =>
+				[1, 2, 3, 4, 5].map((seed) => {
+					const endDay = endDayByIndex(seed - 1);
+					return endDay === null ? notViable(seed, archetypeId) : viable(seed, archetypeId, endDay);
+				})
+			);
+
+		const atBar = sweep((index) => (index < 4 ? 80 : null));
 		expect(item(gateReport(atBar), 'viability').passed).toBe(true);
 		expect(item(gateReport(atBar), 'viability').detail).toContain('boutique 4/5 (80.0%)');
 
 		// Day-90 completions count (at the by-day bar); day-91 completions do
 		// not (over it): otherwise-identical 5-seed reports flip PASS → FAIL.
-		const atByDay = [1, 2, 3]
-			.map((seed) => viable(seed, 80))
-			.concat([4, 5].map((seed) => viable(seed, 90)));
+		const atByDay = sweep((index) => (index < 3 ? 80 : 90));
 		expect(item(gateReport(atByDay), 'viability').passed).toBe(true);
-		const overByDay = [1, 2, 3]
-			.map((seed) => viable(seed, 80))
-			.concat([4, 5].map((seed) => viable(seed, 91)));
+		const overByDay = sweep((index) => (index < 3 ? 80 : 91));
 		expect(item(gateReport(overByDay), 'viability').passed).toBe(false);
 
-		const threeFifths = [1, 2, 3]
-			.map((seed) => viable(seed, 80))
-			.concat(
-				[4, 5].map((seed) => gateRun({ seed, archetypeId: 'boutique', bot: 'retail-steady' }))
-			);
+		const threeFifths = sweep((index) => (index < 3 ? 80 : null));
 		expect(item(gateReport(threeFifths), 'viability').passed).toBe(false);
+
+		// A partial sweep — boutique runs only — fails the item instead of
+		// passing vacuously on the archetypes it never measured.
+		const partial = item(
+			gateReport(atBar.filter((run) => run.archetypeId === 'boutique')),
+			'viability'
+		);
+		expect(partial.passed).toBe(false);
+		expect(partial.detail).toContain('convenience no runs');
 	});
 
 	it('boundedness: strictly below the ceiling passes; at-ceiling fails and traces the worst metric/run', () => {
@@ -1131,38 +1174,104 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 	});
 
 	it('managed-vs-idle: 4/5 wins passes at the bar, ties and idle wins are losses, unpaired seeds are excluded', () => {
-		const managed = (seed: number, income: number): RunMeasurement =>
+		// The gate sums operatingIncomeByDay inside the configured pair window;
+		// a single entry inside it carries the whole comparison total.
+		const pairIncome = (income: number): RunMeasurement['operatingIncomeByDay'] => [
+			{ day: 61, operatingIncome: income, operatingCashFlow: 0 }
+		];
+		const managed = (seed: number, archetypeId: ArchetypeId, income: number): RunMeasurement =>
 			gateRun({
 				seed,
-				archetypeId: 'convenience',
+				archetypeId,
 				bot: 'retail-steady',
-				operatingIncomeDays61To90: income
+				operatingIncomeDays61To90: income,
+				operatingIncomeByDay: pairIncome(income)
 			});
-		const idle = (seed: number, income: number): RunMeasurement =>
-			gateRun({ seed, archetypeId: 'convenience', bot: 'idle', operatingIncomeDays61To90: income });
+		const idle = (seed: number, archetypeId: ArchetypeId, income: number): RunMeasurement =>
+			gateRun({
+				seed,
+				archetypeId,
+				bot: 'idle',
+				operatingIncomeDays61To90: income,
+				operatingIncomeByDay: pairIncome(income)
+			});
 
 		// Seeds 1-4: managed wins. Seed 5: tie (100 vs 100) — not a win. Seed 6
 		// has no idle pair, so it is excluded from the denominator: 4/5 = 80%.
-		const paired = [
-			...[1, 2, 3, 4].map((seed) => managed(seed, 300)),
-			managed(5, 100),
-			...[1, 2, 3, 4].map((seed) => idle(seed, 50)),
-			idle(5, 100),
-			managed(6, 500)
-		];
+		const paired = SWEEP_ARCHETYPES.flatMap((archetypeId) => [
+			...[1, 2, 3, 4].map((seed) => managed(seed, archetypeId, 300)),
+			managed(5, archetypeId, 100),
+			...[1, 2, 3, 4].map((seed) => idle(seed, archetypeId, 50)),
+			idle(5, archetypeId, 100),
+			managed(6, archetypeId, 500)
+		]);
 		const atBar = item(gateReport(paired), 'managed-vs-idle');
 		expect(atBar.passed).toBe(true);
 		expect(atBar.detail).toContain('convenience 4/5 (80.0%)');
 		expect(atBar.detail).toContain('days 61-90');
 
 		// Idle strictly better on every seed: managed wins 0/5.
-		const idleWins = gateReport([
-			...[1, 2, 3, 4, 5].map((seed) => managed(seed, 100)),
-			...[1, 2, 3, 4, 5].map((seed) => idle(seed, 200))
-		]);
+		const idleWins = gateReport(
+			SWEEP_ARCHETYPES.flatMap((archetypeId) => [
+				...[1, 2, 3, 4, 5].map((seed) => managed(seed, archetypeId, 100)),
+				...[1, 2, 3, 4, 5].map((seed) => idle(seed, archetypeId, 200))
+			])
+		);
 		const loss = item(idleWins, 'managed-vs-idle');
 		expect(loss.passed).toBe(false);
 		expect(loss.detail).toContain('convenience 0/5 (0.0%)');
+
+		// An archetype with no paired seeds fails the item instead of passing
+		// vacuously on archetypes the sweep never measured.
+		const convenienceOnly = item(
+			gateReport(paired.filter((run) => run.archetypeId === 'convenience')),
+			'managed-vs-idle'
+		);
+		expect(convenienceOnly.passed).toBe(false);
+		expect(convenienceOnly.detail).toContain('boutique no paired seeds');
+	});
+
+	it('uses the configured viability window and income-pair days instead of the baked-in defaults', () => {
+		// Income tails end on day 30 and last 7 days: a configured 7-day
+		// viability window and a days 1–30 pair window both resolve, while the
+		// default 30-day window and days 61–90 pair window find nothing.
+		const incomeTail = (
+			endDay: number,
+			length: number,
+			income: number
+		): RunMeasurement['operatingIncomeByDay'] =>
+			Array.from({ length }, (_, index) => ({
+				day: endDay - length + 1 + index,
+				operatingIncome: income,
+				operatingCashFlow: income
+			}));
+		const report = gateReport(
+			SWEEP_ARCHETYPES.flatMap((archetypeId) => [
+				gateRun({
+					seed: 1,
+					archetypeId,
+					bot: 'retail-steady',
+					operatingIncomeByDay: incomeTail(30, 7, 100)
+				}),
+				gateRun({
+					seed: 1,
+					archetypeId,
+					bot: 'idle',
+					operatingIncomeByDay: incomeTail(30, 7, 10)
+				})
+			])
+		);
+		expect(item(report, 'viability').passed).toBe(false);
+		expect(item(report, 'managed-vs-idle').passed).toBe(false);
+
+		const custom = evaluateGateA(report, {
+			...GATE_A_THRESHOLDS,
+			viabilityWindowDays: 7,
+			viabilityByDay: 40,
+			incomePairDays: [1, 30]
+		});
+		expect(custom.items.find((candidate) => candidate.id === 'viability')!.passed).toBe(true);
+		expect(custom.items.find((candidate) => candidate.id === 'managed-vs-idle')!.passed).toBe(true);
 	});
 
 	it('forecast: idle openings and incomplete windows are excluded-and-counted around the 80% share bar', () => {
@@ -1284,7 +1393,8 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 						served: false,
 						railsApplied: false,
 						lastRailDay: null,
-						zeroOutputDaysAfterLastRail: null
+						zeroOutputDaysAfterLastRail: null,
+						postRailObservedDays: null
 					})
 				})
 			);
@@ -1299,7 +1409,13 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 		const legs: Partial<AdvisorChainMetric>[] = [
 			{ producerBuilt: false, served: false },
 			{ warehouseBuilt: false, served: false },
-			{ railsApplied: false, lastRailDay: null, zeroOutputDaysAfterLastRail: null, served: false },
+			{
+				railsApplied: false,
+				lastRailDay: null,
+				zeroOutputDaysAfterLastRail: null,
+				postRailObservedDays: null,
+				served: false
+			},
 			{ zeroOutputDaysAfterLastRail: 9, served: false },
 			{ localDeliveryUnits: 0, served: false }
 		];
@@ -1313,6 +1429,7 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 							railsApplied: false,
 							lastRailDay: null,
 							zeroOutputDaysAfterLastRail: null,
+							postRailObservedDays: null,
 							served: false
 						})
 					})
@@ -1378,41 +1495,49 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 	});
 
 	it('renders the Gate A section, is pure, and computes a stable overall verdict', () => {
-		const runs = [1, 2, 3, 4, 5]
-			.map((seed) =>
-				gateRun({
-					seed,
-					archetypeId: 'boutique',
-					bot: 'retail-steady',
-					operatingIncomeDays61To90: 300,
-					forecastOutcomes: [
-						{
-							storeId: `store-${seed}`,
-							openedOnDay: 1,
-							neighborhood: 'downtown',
-							archetypeId: 'boutique',
-							forecastDailyRevenue: 100,
-							observedMeanDailyRevenue: 110,
-							relativeError: 0.1,
-							withinBand: true,
-							complete: true
-						}
-					]
-				})
-			)
-			.concat(
-				[1, 2, 3, 4, 5].map((seed) =>
-					gateRun({ seed, archetypeId: 'boutique', bot: 'idle', operatingIncomeDays61To90: 50 })
+		const runs = SWEEP_ARCHETYPES.flatMap((archetypeId) =>
+			[1, 2, 3, 4, 5]
+				.map((seed) =>
+					gateRun({
+						seed,
+						archetypeId,
+						bot: 'retail-steady',
+						operatingIncomeDays61To90: 300,
+						operatingIncomeByDay: [{ day: 61, operatingIncome: 300, operatingCashFlow: 0 }],
+						forecastOutcomes: [
+							{
+								storeId: `store-${archetypeId}-${seed}`,
+								openedOnDay: 1,
+								neighborhood: 'downtown',
+								archetypeId,
+								forecastDailyRevenue: 100,
+								observedMeanDailyRevenue: 110,
+								relativeError: 0.1,
+								withinBand: true,
+								complete: true
+							}
+						]
+					})
 				)
-			)
-			.concat([gateRun({ seed: 1, archetypeId: 'convenience', bot: 'advisor' })]);
+				.concat(
+					[1, 2, 3, 4, 5].map((seed) =>
+						gateRun({
+							seed,
+							archetypeId,
+							bot: 'idle',
+							operatingIncomeDays61To90: 50,
+							operatingIncomeByDay: [{ day: 61, operatingIncome: 50, operatingCashFlow: 0 }]
+						})
+					)
+				)
+		).concat([gateRun({ seed: 1, archetypeId: 'convenience', bot: 'advisor' })]);
 		const report = gateReport(runs);
 		const before = JSON.stringify(report);
 		const verdict = evaluateGateA(report);
 		expect(JSON.stringify(report)).toBe(before);
 		expect(JSON.stringify(evaluateGateA(report))).toBe(JSON.stringify(verdict));
 		expect(verdict.scenarioGuardrails).toBe('out of scope (scenario tests)');
-		// No boutique retail-steady window → viability fails; the other four
+		// No retail-steady window → viability fails; the other four
 		// items pass on this fixture (idle always loses the 61–90 pairing, all
 		// forecasts in band, advisor clean).
 		expect(verdict.allPassed).toBe(false);
@@ -1426,7 +1551,7 @@ describe('Gate A evaluation (HPA-502 follow-up step 2)', () => {
 		const markdown = renderSweepMarkdown(report);
 		expect(markdown).toContain('## Gate A verdict');
 		expect(markdown).toContain(
-			'- viability: FAIL — 30d window complete by day 90 (retail-steady): boutique 0/5 (0.0%)'
+			'- viability: FAIL — 30d window complete by day 90 (retail-steady): convenience 0/5 (0.0%), boutique 0/5 (0.0%), electronics 0/5 (0.0%), grocery 0/5 (0.0%)'
 		);
 		expect(markdown).toContain('- scenario guardrails: out of scope (scenario tests)');
 		expect(markdown).toMatch(/^- overall: FAIL \(4\/5 items passed\)$/m);

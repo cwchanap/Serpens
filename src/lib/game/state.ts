@@ -5,6 +5,7 @@ import {
 	getStoreUpgradeCost,
 	getStoreStaffCapacityBonus,
 	getUnlockedProductCount,
+	getUnlockedProductIds,
 	isMilestoneLevel,
 	STORE_MILESTONE_LEVELS
 } from './leveling';
@@ -309,14 +310,14 @@ function resolveStoreUpgrade(store: Store): StoreUpgradeResolution | null {
 
 	if (isMilestoneLevel(nextLevel)) {
 		const archetype = getArchetype(store.archetypeId);
-		const unlockedCount = getUnlockedProductCount(nextLevel);
-		const newProductId = archetype.startingProductIds.find(
+		const unlockedProductIds = getUnlockedProductIds(nextLevel, archetype.startingProductIds);
+		const newProductId = unlockedProductIds.find(
 			(productId) => !store.products.some((product) => product.productId === productId)
 		);
 
-		// Cap at unlockedCount: a store only catches up to its level's unlock
-		// budget — never gains more categories than its milestones allow.
-		if (newProductId && store.products.length < unlockedCount) {
+		// Cap at the level's unlocked prefix: a store only catches up to its
+		// unlock budget — never gains more categories than its milestones allow.
+		if (newProductId && store.products.length < unlockedProductIds.length) {
 			unlockedProductId = newProductId;
 		}
 
@@ -460,6 +461,16 @@ export function buildStore(input: {
 	};
 }
 
+/**
+ * Zero-mean centers of the rng ranges `createStore` rolls a new store's
+ * mutable stats around. Exported so the opening estimator's prospective
+ * entrant (`projectExpansionEntrant`) shares them — a retune moves the
+ * forecast in lockstep instead of silently leaving stale literals behind.
+ */
+export const NEW_STORE_STAFF_MORALE_MIDPOINT = 60;
+export const NEW_STORE_STAFF_CAPACITY_MIDPOINT = 64;
+export const NEW_STORE_MANAGER_QUALITY_MIDPOINT = 58;
+
 function createStore(input: {
 	id: string;
 	name: string;
@@ -480,10 +491,10 @@ function createStore(input: {
 		daysOpen: input.daysOpen,
 		day: input.day,
 		reputation: archetype.customerExpectation + randomInt(input.rng, -4, 4),
-		staffMorale: 60 + randomInt(input.rng, -6, 6),
-		staffCapacity: 64 + randomInt(input.rng, -5, 5),
+		staffMorale: NEW_STORE_STAFF_MORALE_MIDPOINT + randomInt(input.rng, -6, 6),
+		staffCapacity: NEW_STORE_STAFF_CAPACITY_MIDPOINT + randomInt(input.rng, -5, 5),
 		localDemand: archetype.baseTraffic + randomInt(input.rng, -8, 8),
-		managerQuality: 58 + randomInt(input.rng, -7, 7)
+		managerQuality: NEW_STORE_MANAGER_QUALITY_MIDPOINT + randomInt(input.rng, -7, 7)
 	});
 }
 
