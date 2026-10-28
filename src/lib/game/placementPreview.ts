@@ -14,7 +14,8 @@ import {
 	estimateOpeningForEntrant,
 	placeStoreOnTile,
 	projectExpansionEntrant,
-	type FoundingBase
+	type FoundingBase,
+	type OpeningEstimate
 } from './placement';
 import { getExpansionSetupCost } from './state';
 import { buildCityDemandPools } from './stock';
@@ -67,6 +68,14 @@ export interface RetailBuildMenuOption {
 	archetypeId: ArchetypeId;
 	setupCostRange: NumberRange;
 	projectedDailyRevenueRange: NumberRange;
+	/**
+	 * The entrant's daily charge under its resolved effective policy (company
+	 * policy + city override) — the same figure `buildStoreOperationProfile`
+	 * will charge once the store opens. Constant across a city's tiles, so a
+	 * scalar rather than a range; `DEFAULT_POLICY`'s tier for founding
+	 * previews.
+	 */
+	projectedDailyOperatingCost: number;
 	validTileCount: number;
 	disabledReason: PlacementBlockReason | null;
 	financeOffer: ExpansionFinanceOffer | null;
@@ -351,43 +360,43 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	// Tiles that place identically share one simulation; with current game
 	// content the estimate is stock-bound and a whole city collapses to a
 	// handful of keys, instead of one sim per valid tile per archetype.
-	const revenueCacheByArchetype = new Map<ArchetypeId, Map<string, number>>();
-	const revenueForEntrant = (projection: {
+	const estimateCacheByArchetype = new Map<ArchetypeId, Map<string, OpeningEstimate>>();
+	const estimateForEntrant = (projection: {
 		entrantGame: GameState;
 		entrant: Store;
 		tile: CityTile;
 		archetypeId: ArchetypeId;
-	}): number => {
+	}): OpeningEstimate => {
 		// eslint-disable-next-line @typescript-eslint/no-unused-vars -- rest-destructure drops tile-identity fields the sim never reads
 		const { tileId, mapX, mapY, location, ...simFields } = projection.entrant;
 		const key = JSON.stringify(simFields);
-		let cache = revenueCacheByArchetype.get(projection.archetypeId);
+		let cache = estimateCacheByArchetype.get(projection.archetypeId);
 
 		if (!cache) {
 			cache = new Map();
-			revenueCacheByArchetype.set(projection.archetypeId, cache);
+			estimateCacheByArchetype.set(projection.archetypeId, cache);
 		}
 
-		let revenue = cache.get(key);
+		let estimate = cache.get(key);
 
-		if (revenue === undefined) {
-			revenue = estimateOpeningForEntrant({
+		if (estimate === undefined) {
+			estimate = estimateOpeningForEntrant({
 				entrantGame: projection.entrantGame,
 				entrant: projection.entrant,
 				city: input.city,
 				tile: projection.tile,
 				archetypeId: projection.archetypeId,
 				pools: demandPoolsFor(projection.archetypeId, projection.entrantGame)
-			}).projectedDailyRevenue;
-			cache.set(key, revenue);
+			});
+			cache.set(key, estimate);
 		}
 
-		return revenue;
+		return estimate;
 	};
 	const estimateForTile = (
 		tile: CityTile,
 		archetypeId: ArchetypeId
-	): { setupCost: number; projectedDailyRevenue: number } => {
+	): { setupCost: number; projectedDailyRevenue: number; dailyOperatingCost: number } => {
 		let entrantGame: GameState;
 		let entrant: Store;
 
@@ -405,9 +414,12 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 			({ entrantGame, entrant } = projectExpansionEntrant(context.game, tile, archetypeId));
 		}
 
+		const estimate = estimateForEntrant({ entrantGame, entrant, tile, archetypeId });
+
 		return {
 			setupCost: getExpansionSetupCost(tile, archetypeId),
-			projectedDailyRevenue: revenueForEntrant({ entrantGame, entrant, tile, archetypeId })
+			projectedDailyRevenue: estimate.projectedDailyRevenue,
+			dailyOperatingCost: estimate.dailyOperatingCost
 		};
 	};
 
@@ -426,7 +438,11 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 	}));
 
 	return ARCHETYPES.map((archetype) => {
-		const validEstimates: { setupCost: number; projectedDailyRevenue: number }[] = [];
+		const validEstimates: {
+			setupCost: number;
+			projectedDailyRevenue: number;
+			dailyOperatingCost: number;
+		}[] = [];
 		const footprintReasons = new Set<StoreFootprintPlacementBlockReason>();
 
 		for (const { tile, footprintReason } of tileFootprintReasons) {
@@ -451,6 +467,7 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 				archetypeId: archetype.id,
 				setupCostRange: { min: 0, max: 0 },
 				projectedDailyRevenueRange: { min: 0, max: 0 },
+				projectedDailyOperatingCost: 0,
 				validTileCount: 0,
 				disabledReason: resolveRetailDisabledReason(context, footprintReasons),
 				financeOffer: null
@@ -474,6 +491,9 @@ export function getRetailBuildMenuOptions(input: RetailBuildMenuInput): RetailBu
 			projectedDailyRevenueRange: rangeFrom(
 				validEstimates.map((estimate) => estimate.projectedDailyRevenue)
 			),
+			// The operating charge is tile-independent (archetype rent + effective
+			// marketing tier), so every valid estimate carries the same figure.
+			projectedDailyOperatingCost: validEstimates[0]!.dailyOperatingCost,
 			validTileCount: validEstimates.length,
 			disabledReason: fundingUnavailable
 				? { code: 'retail.requiresCash', amount: minimumSetupCost }

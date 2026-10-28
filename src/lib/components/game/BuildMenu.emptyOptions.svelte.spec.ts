@@ -22,6 +22,7 @@ const retailOptions: RetailBuildMenuOption[] = [
 		archetypeId: 'convenience',
 		setupCostRange: { min: 1100, max: 1500 },
 		projectedDailyRevenueRange: { min: 700, max: 980 },
+		projectedDailyOperatingCost: 186,
 		validTileCount: 24,
 		disabledReason: null,
 		financeOffer: null
