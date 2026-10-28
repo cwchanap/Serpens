@@ -24,7 +24,7 @@ One lever, four products (prices ≤ the 2× cap; import costs narrowed within t
 
 | product | defaultSellingPrice | importCost | intended | observed |
 | --- | --- | --- | --- | --- |
-| bottled-water | 3 → 6 | 2 → 1 | lead convenience's capacity-bound margin (×2 price / ×0.5 cost caps) | convenience founding ratio 0.16–0.19× → 1.32–1.64×, windows 0/10 → 10/10; advisor water-chain retail demand fell ~70% (priceMult 0.30) — volumes only, no cash coupling, convenience stays capacity-bound |
+| bottled-water | 3 → 6 | 2 → 1 | lead convenience's capacity-bound margin (×2 price / ×0.5 cost caps) | convenience founding ratio 0.16–0.19× → 1.32–1.64×, windows 0/10 → 10/10; margin 1 → 5/u — the table default price moved with the authored price (3→6), so `priceDemandMultiplier` stays 1.0 and demand is unpunished. **Coupled cost side:** these import-cost cuts also halve the supply planner's `finishedImportCostPerUnit` (derived from the retail import-cost table), halving the planner's cash value of Tier-1 local-supply chains; keep-vs-price-only-margins is a human decision flagged for PR review (after.md §8.7) |
 | snacks | 5 → 8 | 3 → 2 | breadth-2 founding tail margin for convenience | contributes to the convenience band above; forecast ±25% gate holds |
 | produce | 4 → 6 | 2 → 1 | grocery founding lead margin | grocery rival-bound ≥ 1.30× live |
 | pantry | 6 → 9 | 3 → 1.5 | grocery founding tail + family volume | +0.17–0.25× vs a pantry-8 trial; replay windows 5/10 → 10/10 |
@@ -35,6 +35,7 @@ One lever, four products (prices ≤ the 2× cap; import costs narrowed within t
 - **Why:** Task 3 measured that L1 stores carried exactly one low-margin product (convenience bottled-water 1/u, grocery produce 2/u) while fixed costs ran 444–695/day per store — the decisive structural gap. A second category fills the same shared sales capacity with additional margin.
 - **Intended effect:** roughly double the capacity-bound gross ceiling for the tuned archetypes without touching capacity or wages alone.
 - **Observed:** convenience+grocery ceilings ≈ ×2 (with lever 6 below); L10 unlock budget 5 (household now reachable for convenience; preview null-guarded for 4-product archetypes). Founding staffing follows the milestone curve (see lever 6).
+- **Disclosure:** the milestone staffing curve adds one required general at every level for 3+-product archetypes — including L10, where boutique/electronics/grocery unlock no new product (the milestone count is not capped by the catalog).
 
 ### 5. Inventory-policy sales capacity ×2 — Task 5a (same commit, `src/lib/game/simulateDay.ts` INVENTORY table)
 
@@ -59,7 +60,7 @@ One lever, four products (prices ≤ the 2× cap; import costs narrowed within t
 
 ### Controls note — boutique and electronics
 
-Boutique is the strengthen-never-weaken control; electronics was protected until its dedicated lever. Boutique was **strengthened** by the shared capacity/breadth levers (measured, disclosed, within the ≤2× allowance: seed-20260503 perfect-stock founding gross 2,180 → 2,762 = 1.27× like-for-like; vs round-1 real gross ≈ 1.9×; sweep-level d365 median 239,456 → 670,792, after.md §3) and never weakened. Electronics was untouched by levers 2–6 (capacity ×2 verified a true no-op: desired 60 < capacity) and moved only by its own ruled lever 7. Neither control's demand family was rescaled by any other archetype's lever (disjoint `startingProductIds`; family-scoped weights).
+Boutique is the strengthen-never-weaken control; electronics was protected until its dedicated lever. Boutique was **strengthened** by the shared capacity/breadth levers (measured, disclosed, within the ≤2× allowance: seed-20260503 perfect-stock founding gross 2,180 → 2,762 = 1.27× like-for-like; vs round-1 real gross ≈ 1.9×; sweep-level d365 median 239,456 → 670,792, after.md §3) and never weakened. Electronics saw no electronics-*specific* data change from levers 2–6, but it was not untouched by them: breadth-2 (lever 4) gives every electronics store the accessories category at L1, and the capacity ×2 (lever 5) applies to its stores (a measured no-op at founding: desired 60 < capacity). Its trajectory: 0/50 → 34/50 after the 5a shared levers → 41/50 after 5d's ×1.08 (lever 7). Neither control's demand family was rescaled by any other archetype's lever (disjoint `startingProductIds`; family-scoped weights).
 
 ## Scenario calibrations (authored targets/thresholds — no engine change)
 
@@ -68,6 +69,7 @@ Each restores an authored scenario invariant that the tuned economy broke; each 
 ### 8. fresh-market `produce-sold` target 850 → 1300 — Task 5a (commit `fbe5a8e0`, `src/lib/scenarios/catalog.ts`)
 
 - **Trace evidence:** under the round-2 economy the no-action trace sells 984 produce over the objective's trailing-14 window — at 850 it would have met both required objectives and completed, breaking the authored no-action-fails-at-deadline shape. At 1300: no-action 984 < 1300 still fails at deadline (no medal); reference 1,653 ≥ 1300 completes d15 gold (score 1000), unchanged.
+- **Disclosure:** under the tuned economy the no-action run sells its oversized opening produce lot before expiry, so the waste objective is passively met on the documented traces (zero spoilage); the scenario now binds via the raised volume target (1300).
 
 ### 9. debt-turnaround content: level-4 `devices` allowlist entry — Task 5a (same commit)
 
