@@ -1403,4 +1403,63 @@ describe('protect-availability inventory growth (HPA-502)', () => {
 		expect(result.records).toEqual([]);
 		expect(result.game).toBe(game);
 	});
+
+	// HPA-502 review: a pressured product that has already converged on its
+	// demand bound must not stall the playbook — the next pressured product
+	// still earns its bounded proposal.
+	test('a converged top-pressure product yields to the next pressured product', () => {
+		const base = createNewGame('convenience', 148);
+		const game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: [
+						// Sellable 9/day → cap 63; targets already converged there.
+						product('bottled-water', { reorderThreshold: 63, targetStock: 63 }),
+						product('snacks')
+					]
+				})),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', {}, [
+					productReport('bottled-water', { unitsSold: 4, stockoutLostDemand: 5 }),
+					// Sellable 3/day → cap 21 above the default target 20.
+					productReport('snacks', { stockoutLostDemand: 3 })
+				])
+			]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records.map((record) => record.change.kind)).toEqual(['inventory-targets']);
+		const change = result.records[0]?.change;
+		expect(change?.kind === 'inventory-targets' && change.productId).toBe('snacks');
+	});
+
+	// HPA-502 review: when every pressured product is capped, the playbook
+	// still reaches the nearStaffCapacity staffing fallback.
+	test('capped products do not block the nearStaffCapacity staffing fallback', () => {
+		const base = createNewGame('convenience', 149);
+		const game = withLatestReport(
+			{
+				...base,
+				stores: base.stores.map((store) => ({
+					...store,
+					products: [product('bottled-water', { reorderThreshold: 63, targetStock: 63 })]
+				})),
+				managerDelegations: [delegation({ playbook: 'protect-availability' })]
+			},
+			[
+				storeReport('store-1', { warnings: [{ code: 'nearStaffCapacity', storeId: 'store-1' }] }, [
+					productReport('bottled-water', { unitsSold: 4, stockoutLostDemand: 5 })
+				])
+			]
+		);
+
+		const result = applyManagerDelegations(game);
+
+		expect(result.records.map((record) => record.change.kind)).toEqual(['staffing-policy']);
+	});
 });
