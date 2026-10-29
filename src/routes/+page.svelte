@@ -335,6 +335,7 @@
 		hiringCandidates: [],
 		events: createInitialEventRuntime(20260503),
 		decisions: [],
+		progression: { claims: [] },
 		reports: []
 	};
 	const bgmCueByMapView: Record<MapViewId, BgmCueId> = {

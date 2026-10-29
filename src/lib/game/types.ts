@@ -1223,6 +1223,38 @@ export interface FinanceState {
 	currentDayActivity: FinanceDayActivity;
 }
 
+/** Stable ladder ids for the five-step authored progression (design §2). */
+export type ProgressionTierId =
+	| 'local-shop'
+	| 'neighborhood-chain'
+	| 'regional-supplier'
+	| 'multi-city-operator'
+	| 'market-leader';
+
+export const PROGRESSION_TIER_IDS = [
+	'local-shop',
+	'neighborhood-chain',
+	'regional-supplier',
+	'multi-city-operator',
+	'market-leader'
+] as const satisfies readonly ProgressionTierId[];
+
+// Errors when a ProgressionTierId is added without extending PROGRESSION_TIER_IDS.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- compile-time exhaustiveness check
+type ProgressionTierIdsExhaustive = AssertExhausted<
+	Exclude<ProgressionTierId, (typeof PROGRESSION_TIER_IDS)[number]>
+>;
+
+/** Persisted receipt for one claimed ladder tier; claimed day only, nothing derived. */
+export interface ProgressionClaim {
+	tierId: ProgressionTierId;
+	claimedOnDay: number;
+}
+
+export interface ProgressionState {
+	claims: ProgressionClaim[];
+}
+
 export interface GameState {
 	seed: number;
 	rngState: number;
@@ -1252,5 +1284,6 @@ export interface GameState {
 	hiringCandidates: HiringCandidate[];
 	events: EventRuntimeState;
 	decisions: DecisionItem[];
+	progression: ProgressionState;
 	reports: DailyReport[];
 }
