@@ -1944,8 +1944,7 @@ export const ja = {
 			neighborhoodChainMaxStoreLevel: '店舗をレベル2にアップグレードする',
 			neighborhoodChainOpenedCities: '3都市を開放する（スターター2都市を含む）',
 			regionalSupplierOpenedCities: '4都市を開放する',
-			regionalSupplierLocalUnits:
-				'地場生産品を25ユニット届ける（ボトルウォーター・農産物・パントリー）',
+			regionalSupplierLocalUnits: '店舗で扱う地場生産品を25ユニット届ける',
 			regionalSupplierPeakBookValue: '報告済み会社帳簿価値のピークを$60,000に伸ばす',
 			multiCityOperatorStoreCount: '5店舗を運営する',
 			multiCityOperatorOpenedCities: '5都市を開放する',

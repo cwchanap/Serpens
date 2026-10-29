@@ -166,7 +166,17 @@ describe('PROGRESSION_TIERS catalog', () => {
 		)!;
 		if (!('productIds' in productGoal.query)) throw new Error('query must carry productIds');
 		expect(productGoal.query.productIds.length).toBeGreaterThan(0);
-		expect(productGoal.query.productIds).toEqual(['bottled-water', 'produce', 'pantry']);
+		// Calibration revision: the set covers every industry-linked product so
+		// any archetype stocking at least one of them can satisfy the goal.
+		expect(productGoal.query.productIds).toEqual([
+			'bottled-water',
+			'produce',
+			'pantry',
+			'snacks',
+			'soft-drinks',
+			'essentials',
+			'gifts'
+		]);
 	});
 });
 

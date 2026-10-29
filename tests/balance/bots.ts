@@ -12,7 +12,18 @@
  */
 
 import { isTileBuildable } from '$lib/game/city';
+import { getArchetype } from '$lib/game/archetypes';
+import {
+	assessCredit,
+	estimateNextLoanPayment,
+	getPayoffAmount,
+	isOutstandingLoan
+} from '$lib/game/finance';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import { getStoreUpgradeCost } from '$lib/game/leveling';
+import { claimEarnedTiers } from '$lib/game/progression';
+import { PRODUCTS } from '$lib/game/products';
+import { compareWorldCityIds, WORLD_CITY_CATALOG } from '$lib/game/worldCatalog';
 import { getIndustrialPlacementBlockReason } from '$lib/game/industryPlacement';
 import { setManagerDelegation } from '$lib/game/managerDelegation';
 import {
@@ -39,12 +50,16 @@ import type {
 	CityTile,
 	GameState,
 	IndustrialBuildingTypeId,
+	LoanTermDays,
 	OpeningForecast,
+	ProductId,
+	ProgressionTierId,
 	WorldCityId
 } from '$lib/game/types';
 import { applyGameCommand } from '$lib/scenarios/runtime';
+import type { ScenarioCommand } from '$lib/scenarios/types';
 
-export type BotId = 'idle' | 'retail-steady' | 'advisor';
+export type BotId = 'idle' | 'retail-steady' | 'advisor' | 'progression';
 
 export type BotActionOutcome = 'applied' | 'no-op' | 'rejected' | 'unsupported';
 
@@ -163,6 +178,12 @@ export function runBot(
 	seed: number,
 	days: number
 ): { game: GameState; ledger: BotLedger } {
+	// The progression bot owns its own founding + ledger shape (it additionally
+	// records claims/credit/repayments), so dispatch before the shared loop.
+	if (bot === 'progression') {
+		const progression = runProgressionBot(archetypeId, seed, days);
+		return { game: progression.game, ledger: progression.ledger };
+	}
 	const { game: founded, tile } = createFoundingGame(archetypeId, seed);
 	// Founding forecast: the shared estimator's founding derivation (game
 	// null + the same seed the real founding command consumes).
@@ -569,4 +590,758 @@ function findLegalIndustryTile(
 		.filter((tile) => getIndustrialPlacementBlockReason(game, tile.id, buildingTypeId) === null)
 		.sort(byId);
 	return legal[0]?.id ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Progression bot (HPA-318 Step 4). Opt-in: the calibration runner selects it
+// explicitly; the three HPA-502 bots above are untouched. It plays only legal
+// `applyGameCommand` operations (plus the real `setManagerDelegation`
+// transition, like every harness bot), and after EVERY successfully applied
+// command — including `advanceDay` — calls the production `claimEarnedTiers`
+// on the transition result, mirroring the eventual sandbox route commit.
+// ---------------------------------------------------------------------------
+
+export interface ProgressionClaimRecord {
+	tierId: ProgressionTierId;
+	claimedOnDay: number;
+}
+
+export interface ProgressionCreditEvent {
+	day: number;
+	amount: number;
+	termDays: LoanTermDays;
+	/** Number of progression claims already held when the loan was taken. */
+	claimsAtBorrow: number;
+	availableCredit: number;
+	grossPrincipalLimit: number;
+}
+
+export interface ProgressionRepaymentRecord {
+	day: number;
+	loanId: string;
+	amount: number;
+}
+
+export interface ProgressionLedger {
+	claims: ProgressionClaimRecord[];
+	creditEvents: ProgressionCreditEvent[];
+	repayments: ProgressionRepaymentRecord[];
+	/** Product ids whose supply plan can no longer reduce a shortage. */
+	supplyChainsComplete: Set<ProductId>;
+}
+
+/** Plain-data determinism digest: identical for identical seeds. */
+export interface ProgressionRunDigest {
+	actions: BotActionRecord[];
+	claims: ProgressionClaimRecord[];
+	creditEvents: ProgressionCreditEvent[];
+	repayments: ProgressionRepaymentRecord[];
+	finalCash: number;
+}
+
+export interface ProgressionRunResult {
+	game: GameState;
+	ledger: BotLedger;
+	progression: ProgressionLedger;
+	digest: ProgressionRunDigest;
+}
+
+/** The progression bot replans on the same weekly cadence as the advisor. */
+export const PROGRESSION_CADENCE_DAYS = ADVISOR_CADENCE_DAYS;
+
+/** Tier 4 requires max-store-level ≥ 4; the bot concentrates upgrades there. */
+const PROGRESSION_UPGRADE_TARGET_LEVEL = 4;
+/** 84-day term: 12 weekly installments minimize the peak payment, so the
+ * engine's repayment-service check approves the most principal. */
+const PROGRESSION_CREDIT_TERM_DAYS: LoanTermDays = 84;
+/** Supply chains are planned in the starter industry city, deterministically. */
+const PROGRESSION_INDUSTRY_CITY: WorldCityId = 'industry-city';
+/** Retail supply plans target the starter retail city (its supply assignment
+ * exists from founding; later retail cities import until assigned manually). */
+const PROGRESSION_HOME_RETAIL_CITY: WorldCityId = 'harbor-city';
+/**
+ * Up to two industry-linked products this archetype actually stocks, in
+ * catalog order — the supply chains the company can sell at all. Electronics
+ * stocks none, so its runs plan no chain (a documented calibration blocker
+ * for the delivery-goal tier). When a planned product's material is one of
+ * the branded finished materials {snacks, drinks, essentials, gifts}
+ * (convenience → snacks, boutique → gifts), its city-attributed production
+ * movement is also the legal reveal path for quarry-works.
+ */
+function progressionSupplyProductIds(archetypeId: ArchetypeId): ProductId[] {
+	return getArchetype(archetypeId)
+		.startingProductIds.filter((productId) => PRODUCTS[productId].productionMaterialId !== null)
+		.slice(0, 2);
+}
+
+/** Working-capital floor: borrow up to this before planner spending so
+ * affordability stalls cannot freeze chain builds and rails for months. */
+const PROGRESSION_WORKING_CASH_FLOOR = 2_000;
+/** Planner week index (day − 1)/7 when secondary chains (the quarry-works
+ * reveal path) start if the primary chain has not exhausted by then —
+ * deferring their buildout losses past the measured first-quarter trough. */
+const PROGRESSION_SECONDARY_CHAIN_START_WEEK = 13;
+
+function claimNewlyEarnedTiers(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number
+): GameState {
+	const claimed = claimEarnedTiers(game);
+	if (claimed === game) return game;
+	for (const claim of claimed.progression.claims.slice(game.progression.claims.length)) {
+		progression.claims.push({ tierId: claim.tierId, claimedOnDay: claim.claimedOnDay });
+		record(ledger, day, 'claimEarnedTiers', 'applied', claim.tierId);
+	}
+	return claimed;
+}
+
+/** Applies one command, records the outcome, then claims via production code. */
+function runProgressionCommand(
+	game: GameState,
+	command: ScenarioCommand,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number,
+	action: string,
+	detail?: string
+): GameState {
+	const result = applyGameCommand(game, command);
+	if (!result.ok) {
+		record(
+			ledger,
+			day,
+			action,
+			'rejected',
+			JSON.stringify(
+				result.decisionContext ??
+					result.financeFailure ??
+					result.retailSupplyFailure ??
+					result.logisticsFailure ??
+					result.decisionFailure ??
+					null
+			)
+		);
+		return game;
+	}
+	record(ledger, day, action, result.changed ? 'applied' : 'no-op', detail);
+	return claimNewlyEarnedTiers(result.game, ledger, progression, day);
+}
+
+function runProgressionDelegation(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number
+): GameState {
+	const delegated = ensureManagerDelegation(game, ledger, day);
+	if (delegated === game) return game;
+	return claimNewlyEarnedTiers(delegated, ledger, progression, day);
+}
+
+/** Hire and assign to cover each store's staffing requirement; nothing more. */
+function runProgressionStaffing(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number
+): GameState {
+	let next = game;
+	for (const store of [...next.stores].sort(byId)) {
+		for (const role of ['manager', 'general'] as const) {
+			for (;;) {
+				const shortage = summarizeStoreStaffing(next, store).shortage[role];
+				if (shortage <= 0) break;
+				const candidate = next.hiringCandidates.filter((item) => item.role === role).sort(byId)[0];
+				if (!candidate) {
+					record(ledger, day, 'hireStaff', 'no-op', `no ${role} candidate on the market`);
+					break;
+				}
+				const hired = runProgressionCommand(
+					next,
+					{ kind: 'hireStaff', candidateId: candidate.id },
+					ledger,
+					progression,
+					day,
+					'hireStaff',
+					`${role} ${candidate.id}`
+				);
+				if (hired === next) break;
+				next = hired;
+				const hire = next.staff
+					.filter((member) => member.role === role && member.assignedStoreId === null)
+					.sort(byId)[0];
+				if (hire) {
+					const assigned = runProgressionCommand(
+						next,
+						{ kind: 'assignStaff', staffId: hire.id, storeId: store.id },
+						ledger,
+						progression,
+						day,
+						'assignStaff',
+						`${hire.id} -> ${store.id}`
+					);
+					if (assigned !== next) next = assigned;
+				}
+			}
+		}
+	}
+	return next;
+}
+
+/** max(20k floor, sum of every outstanding loan's next installment). */
+/**
+ * Operating reserve: every outstanding loan's next installment (≈ the next 7
+ * days of scheduled debt service). The original 20k floor starved all early
+ * growth in calibration (founding cash 24k–34k minus a ~9k–30k setup can
+ * never clear it), so growth is cash-gated like the HPA-502 playbooks and
+ * only scheduled debt service is protected.
+ */
+function progressionReserve(game: GameState): number {
+	return game.finance.loans.reduce((total, loan) => total + estimateNextLoanPayment(loan), 0);
+}
+
+/**
+ * Credit is a gap-closer, never speculative: borrow the exact whole-dollar
+ * shortfall (rounded up to the 1,000 working-capital minimum) on the 84-day
+ * term, only when the engine's own assessment covers it.
+ */
+function borrowProgressionShortfall(
+	game: GameState,
+	shortfall: number,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number
+): GameState {
+	const assessment = assessCredit(game, PROGRESSION_CREDIT_TERM_DAYS);
+	const amount = Math.max(1_000, Math.ceil(shortfall / 1_000) * 1_000);
+	if (shortfall <= 0 || amount > assessment.availableCredit) {
+		record(
+			ledger,
+			day,
+			'defer-credit',
+			'no-op',
+			`shortfall ${shortfall} exceeds available credit ${assessment.availableCredit}`
+		);
+		return game;
+	}
+	const borrowed = runProgressionCommand(
+		game,
+		{ kind: 'borrow', amount, termDays: PROGRESSION_CREDIT_TERM_DAYS },
+		ledger,
+		progression,
+		day,
+		'borrow',
+		`workingCapital ${amount}`
+	);
+	if (borrowed === game) return game;
+	progression.creditEvents.push({
+		day,
+		amount,
+		termDays: PROGRESSION_CREDIT_TERM_DAYS,
+		claimsAtBorrow: game.progression.claims.length,
+		availableCredit: assessment.availableCredit,
+		grossPrincipalLimit: assessment.grossPrincipalLimit
+	});
+	return borrowed;
+}
+
+/** One planner recommendation per product per planner day, advisor-shaped. */
+function executeProgressionPlannerAction(
+	game: GameState,
+	action: SupplyPlannerAction,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number,
+	productId: ProductId
+): GameState {
+	if (action.kind === 'none') {
+		// 'surplus'/'no-demand' mean the chain already serves demand;
+		// 'ineffective' means more capacity cannot reduce the shortage — the
+		// chain is functionally complete. 'unaffordable'/'no-feasible-action'
+		// mean "retry later".
+		if (
+			action.reason === 'surplus' ||
+			action.reason === 'no-demand' ||
+			action.reason === 'ineffective'
+		) {
+			progression.supplyChainsComplete.add(productId);
+		}
+		record(ledger, day, 'progression:none', 'no-op', `${productId}: ${action.reason}`);
+		return game;
+	}
+	if (
+		action.kind === 'create-route' ||
+		action.kind === 'edit-route' ||
+		action.kind === 'resume-route' ||
+		action.kind === 'change-supply-source'
+	) {
+		record(ledger, day, `progression:${action.kind}`, 'unsupported', JSON.stringify(action));
+		return game;
+	}
+	if (action.kind === 'build-producer' || action.kind === 'build-warehouse') {
+		if (action.kind === 'build-warehouse' && action.cityId !== game.activeIndustryCityId) {
+			record(
+				ledger,
+				day,
+				'progression:build-warehouse',
+				'unsupported',
+				`target city ${action.cityId} is not the active industry city`
+			);
+			return game;
+		}
+		const buildingTypeId = action.buildingTypeId;
+		const tileId = action.tileId ?? findLegalIndustryTile(game, buildingTypeId);
+		if (!tileId) {
+			record(
+				ledger,
+				day,
+				`progression:${action.kind}`,
+				'no-op',
+				`no legal tile for ${buildingTypeId}`
+			);
+			return game;
+		}
+		return runProgressionCommand(
+			game,
+			{ kind: 'buildIndustrialBuilding', tileId, buildingTypeId },
+			ledger,
+			progression,
+			day,
+			`progression:${action.kind}`,
+			`${buildingTypeId} on ${tileId}`
+		);
+	}
+	if (action.kind === 'upgrade-building') {
+		return runProgressionCommand(
+			game,
+			{ kind: 'upgradeIndustrialBuilding', buildingId: action.buildingId },
+			ledger,
+			progression,
+			day,
+			'progression:upgrade-building',
+			`${action.buildingId} level ${action.fromLevel} -> ${action.toLevel}`
+		);
+	}
+	// connect-rail: the engine's own preview derives the path; buildRail
+	// re-validates it inside applyGameCommand. No bespoke pathfinding.
+	const preview = buildRailPreview(game, {
+		originBuildingId: action.buildingId,
+		waypoints: [],
+		destinationBuildingId: action.destinationBuildingId
+	});
+	if (preview.blockReason) {
+		record(ledger, day, 'progression:connect-rail', 'no-op', JSON.stringify(preview.blockReason));
+		return game;
+	}
+	return runProgressionCommand(
+		game,
+		{
+			kind: 'buildRail',
+			originBuildingId: action.buildingId,
+			waypoints: [],
+			destinationBuildingId: action.destinationBuildingId
+		},
+		ledger,
+		progression,
+		day,
+		'progression:connect-rail',
+		`${action.buildingId} -> ${action.destinationBuildingId}`
+	);
+}
+
+function runProgressionSupplyPlan(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number,
+	productId: ProductId
+): GameState {
+	const result = buildSupplyPlan(
+		game,
+		{ retailCityId: PROGRESSION_HOME_RETAIL_CITY, productId },
+		ADVISOR_AVAILABILITY
+	);
+	if (result.status !== 'ready') {
+		record(
+			ledger,
+			day,
+			'progression:plan',
+			'no-op',
+			`${productId}: ${result.status}: ${result.reason}`
+		);
+		return game;
+	}
+	return executeProgressionPlannerAction(
+		game,
+		result.plan.recommendation.action,
+		ledger,
+		progression,
+		day,
+		productId
+	);
+}
+
+/**
+ * City opening: on planner days, the revealed-but-unopened city with the
+ * lowest opening cost (tie: lexicographic id), opened cash-first; borrowing
+ * only to close the gap to (cost + reserve). Reveal eligibility is never
+ * forced — the bot earns reveals through its own builds/stores/reports.
+ */
+function runProgressionCityOpening(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number
+): GameState {
+	const opened = new Set(game.world.openedCityIds);
+	const candidate = WORLD_CITY_CATALOG.filter(
+		(city) =>
+			city.openingCost > 0 && !opened.has(city.id) && game.world.revealedCityIds.includes(city.id)
+	).sort(
+		(left, right) => left.openingCost - right.openingCost || compareWorldCityIds(left.id, right.id)
+	)[0];
+	if (!candidate) {
+		record(ledger, day, 'openWorldCity', 'no-op', 'no revealed unopened city');
+		return game;
+	}
+	const reserve = progressionReserve(game);
+	let next = game;
+	if (next.cash < candidate.openingCost + reserve) {
+		next = borrowProgressionShortfall(
+			next,
+			candidate.openingCost + reserve - next.cash,
+			ledger,
+			progression,
+			day
+		);
+		if (next.cash < candidate.openingCost + reserve) {
+			record(
+				ledger,
+				day,
+				'openWorldCity',
+				'no-op',
+				`deferred: ${candidate.id} costs ${candidate.openingCost} with reserve ${reserve} vs cash ${next.cash}`
+			);
+			return next;
+		}
+	}
+	return runProgressionCommand(
+		next,
+		{ kind: 'openWorldCity', cityId: candidate.id },
+		ledger,
+		progression,
+		day,
+		'openWorldCity',
+		`${candidate.id} for ${candidate.openingCost}`
+	);
+}
+
+/**
+ * Store upgrades concentrate on the lowest-id store below the tier-4 target
+ * level (one milestone ladder to level 4 satisfies both the tier-2 and tier-4
+ * level goals); cash-only, reserve-gated, one per planner day.
+ */
+function runProgressionStoreUpgrade(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number
+): GameState {
+	const target = [...game.stores]
+		.sort(byId)
+		.find((store) => store.level < PROGRESSION_UPGRADE_TARGET_LEVEL);
+	if (!target) {
+		record(ledger, day, 'upgradeStore', 'no-op', 'all stores at target level');
+		return game;
+	}
+	const cost = getStoreUpgradeCost(target.level);
+	const reserve = progressionReserve(game);
+	if (game.cash < cost + reserve) {
+		record(
+			ledger,
+			day,
+			'upgradeStore',
+			'no-op',
+			`deferred: ${target.id} level ${target.level} costs ${cost} with reserve ${reserve} vs cash ${game.cash}`
+		);
+		return game;
+	}
+	return runProgressionCommand(
+		game,
+		{ kind: 'upgradeStore', storeId: target.id },
+		ledger,
+		progression,
+		day,
+		'upgradeStore',
+		`${target.id} level ${target.level} -> ${target.level + 1} for ${cost}`
+	);
+}
+
+/** Best legal expansion tile across ALL opened retail cities. */
+function bestExpansionCandidate(game: GameState): { city: City; tile: CityTile } | null {
+	let best: { city: City; tile: CityTile; score: number } | null = null;
+	for (const city of [...game.cities].sort(byId)) {
+		const lookup = createCityTileLookup(city);
+		const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores, lookup);
+		for (const tile of city.tiles) {
+			if (
+				!isTileBuildable(tile) ||
+				getStoreFootprintPlacementBlockReason(lookup, tile, occupiedTileIds) !== null
+			) {
+				continue;
+			}
+			const score = tile.demand + tile.footTraffic;
+			// Ascending city ids + strict improvement give the deterministic
+			// tie-break: highest score, then lowest city id, then lowest tile id.
+			if (!best || score > best.score) best = { city, tile, score };
+		}
+	}
+	return best ? { city: best.city, tile: best.tile } : null;
+}
+
+/** Expansion: retail-steady's tile rule extended to every opened retail city. */
+function runProgressionExpansion(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number,
+	archetypeId: ArchetypeId
+): GameState {
+	if (game.stores.length >= game.storeCap) {
+		record(ledger, day, 'openStore', 'no-op', 'store cap reached');
+		return game;
+	}
+	const candidate = bestExpansionCandidate(game);
+	if (!candidate) {
+		record(ledger, day, 'openStore', 'no-op', 'no legal tile in any opened retail city');
+		return game;
+	}
+	const cost = getExpansionSetupCost(candidate.tile, archetypeId);
+	const reserve = progressionReserve(game);
+	let next = runProgressionCommand(
+		game,
+		{ kind: 'selectWorldCity', cityId: candidate.city.id as WorldCityId },
+		ledger,
+		progression,
+		day,
+		'selectWorldCity',
+		candidate.city.id
+	);
+	if (next.cash < cost + reserve) {
+		next = borrowProgressionShortfall(next, cost + reserve - next.cash, ledger, progression, day);
+		if (next.cash < cost + reserve) {
+			record(
+				ledger,
+				day,
+				'openStore',
+				'no-op',
+				`deferred: setup ${cost} with reserve ${reserve} vs cash ${next.cash}`
+			);
+			return next;
+		}
+	}
+	// Expansion forecast on the PRE-COMMAND game, exactly like retail-steady.
+	const expansionEstimate = estimateOpeningRevenue({
+		game: next,
+		city: candidate.city,
+		tileId: candidate.tile.id,
+		archetypeId,
+		seed: next.seed
+	});
+	const opened = runProgressionCommand(
+		next,
+		{ kind: 'openStore', tileId: candidate.tile.id, archetypeId },
+		ledger,
+		progression,
+		day,
+		'openStore',
+		`${candidate.city.id}/${candidate.tile.id} for ${cost}`
+	);
+	if (opened === next) return opened;
+	const store = opened.stores.find((entry) => entry.tileId === candidate.tile.id)!;
+	ledger.openings.push({
+		day,
+		storeId: store.id,
+		tileId: candidate.tile.id,
+		archetypeId: store.archetypeId,
+		neighborhood: candidate.tile.neighborhood,
+		level: store.level,
+		forecast: openingForecastFrom(expansionEstimate)
+	});
+	return opened;
+}
+
+/** Close the smallest outstanding loan when cash covers payoff + reserve. */
+function runProgressionRepayment(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number
+): GameState {
+	const target = game.finance.loans
+		.filter(isOutstandingLoan)
+		.sort(
+			(left, right) => left.remainingPrincipal - right.remainingPrincipal || byId(left, right)
+		)[0];
+	if (!target) {
+		record(ledger, day, 'payOffLoan', 'no-op', 'no outstanding loan');
+		return game;
+	}
+	const payoff = getPayoffAmount(target);
+	const reserve = progressionReserve(game);
+	if (game.cash <= reserve + payoff) {
+		record(
+			ledger,
+			day,
+			'payOffLoan',
+			'no-op',
+			`deferred: ${target.id} payoff ${payoff} with reserve ${reserve} vs cash ${game.cash}`
+		);
+		return game;
+	}
+	const paid = runProgressionCommand(
+		game,
+		{ kind: 'payOffLoan', loanId: target.id },
+		ledger,
+		progression,
+		day,
+		'payOffLoan',
+		`${target.id} for ${payoff}`
+	);
+	if (paid !== game) {
+		progression.repayments.push({ day, loanId: target.id, amount: payoff });
+	}
+	return paid;
+}
+
+function runProgressionPlanner(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number,
+	archetypeId: ArchetypeId
+): GameState {
+	let next = runProgressionCommand(
+		game,
+		{ kind: 'selectWorldCity', cityId: PROGRESSION_INDUSTRY_CITY },
+		ledger,
+		progression,
+		day,
+		'selectWorldCity',
+		PROGRESSION_INDUSTRY_CITY
+	);
+	// Working-capital floor: borrow the shortfall up to the engine's own
+	// assessment so affordability stalls (railRequiresCash at cash < 0 for
+	// months) don't freeze the chains. Credit is still gap-closing only.
+	if (next.cash < PROGRESSION_WORKING_CASH_FLOOR) {
+		next = borrowProgressionShortfall(
+			next,
+			PROGRESSION_WORKING_CASH_FLOOR - next.cash,
+			ledger,
+			progression,
+			day
+		);
+	}
+	// Supply builds are the cheapest, highest-leverage spend (500–1,500 per
+	// building) and the planner is affordability-aware, so plans run FIRST on
+	// the planner day — before city/upgrade/expansion cash commits. The first
+	// (primary) chain plans weekly; secondary chains (the quarry-works reveal
+	// path) start at week 13 or when the primary chain exhausts, whichever is
+	// first, keeping the measured first-quarter trough shallow.
+	const supplyProductIds = progressionSupplyProductIds(archetypeId);
+	supplyProductIds.forEach((productId, index) => {
+		if (
+			index === 0 ||
+			progression.supplyChainsComplete.has(supplyProductIds[0]!) ||
+			(day - 1) / PROGRESSION_CADENCE_DAYS >= PROGRESSION_SECONDARY_CHAIN_START_WEEK
+		) {
+			next = runProgressionSupplyPlan(next, ledger, progression, day, productId);
+		}
+	});
+	next = runProgressionCityOpening(next, ledger, progression, day);
+	next = runProgressionStoreUpgrade(next, ledger, progression, day);
+	next = runProgressionExpansion(next, ledger, progression, day, archetypeId);
+	next = runProgressionRepayment(next, ledger, progression, day);
+	return next;
+}
+
+function runProgressionDay(
+	game: GameState,
+	ledger: BotLedger,
+	progression: ProgressionLedger,
+	day: number,
+	archetypeId: ArchetypeId
+): GameState {
+	let next = runProgressionDelegation(game, ledger, progression, day);
+	next = runProgressionStaffing(next, ledger, progression, day);
+	if ((day - 1) % PROGRESSION_CADENCE_DAYS === 0) {
+		next = runProgressionPlanner(next, ledger, progression, day, archetypeId);
+	}
+	return next;
+}
+
+/**
+ * Run the progression bot for an explicit number of days. Identical founding
+ * and daily-loop shape to `runBot`; every applied command (including the
+ * final `advanceDay`) is followed by the production `claimEarnedTiers`.
+ */
+export function runProgressionBot(
+	archetypeId: ArchetypeId,
+	seed: number,
+	days: number
+): ProgressionRunResult {
+	const { game: founded, tile } = createFoundingGame(archetypeId, seed);
+	const foundingEstimate = estimateOpeningRevenue({
+		game: null,
+		city: founded.cities[0]!,
+		tileId: tile.id,
+		archetypeId,
+		seed
+	});
+	const ledger: BotLedger = {
+		seed,
+		archetypeId,
+		bot: 'progression',
+		foundingTileId: tile.id,
+		foundingCash: founded.cash,
+		openings: [
+			{
+				day: founded.day,
+				storeId: founded.stores[0]!.id,
+				tileId: tile.id,
+				archetypeId,
+				neighborhood: tile.neighborhood,
+				level: founded.stores[0]!.level,
+				forecast: openingForecastFrom(foundingEstimate)
+			}
+		],
+		actions: []
+	};
+	const progression: ProgressionLedger = {
+		claims: [],
+		creditEvents: [],
+		repayments: [],
+		supplyChainsComplete: new Set()
+	};
+
+	let game = founded;
+	for (let day = 1; day <= days; day += 1) {
+		game = runProgressionDay(game, ledger, progression, day, archetypeId);
+		const advanced = applyGameCommand(game, { kind: 'advanceDay' });
+		if (!advanced.ok) {
+			throw new Error(`advanceDay was rejected on day ${day}; this is a harness bug.`);
+		}
+		game = claimNewlyEarnedTiers(advanced.game, ledger, progression, day);
+	}
+
+	const digest: ProgressionRunDigest = {
+		actions: ledger.actions,
+		claims: progression.claims,
+		creditEvents: progression.creditEvents,
+		repayments: progression.repayments,
+		finalCash: game.cash
+	};
+	return { game, ledger, progression, digest };
 }
