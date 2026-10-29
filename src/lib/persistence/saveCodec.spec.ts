@@ -420,6 +420,7 @@ function createDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		netIncome: 400,
 		cashAfter: 12900,
 		outstandingPrincipalAfter: 0,
+		companyBookValueAfter: 12900,
 		nextLoanPayment: null,
 		scorecard: {
 			profit: 55,
@@ -5360,6 +5361,7 @@ describe('saveCodec', () => {
 		'financingCashFlow',
 		'netCashChange',
 		'outstandingPrincipalAfter',
+		'companyBookValueAfter',
 		'nextLoanPayment'
 	] as const)('drops a historical report missing %s', (field) => {
 		const report = { ...createDailyReport() } as Record<string, unknown>;
@@ -5371,6 +5373,25 @@ describe('saveCodec', () => {
 				).game
 		);
 	});
+	test.each([
+		['a non-integer', 55_705.5],
+		['a non-numeric', '55705'],
+		['a non-finite', Number.POSITIVE_INFINITY]
+	] as const)('drops a historical report with %s companyBookValueAfter', (_label, value) => {
+		const report = createDailyReport({
+			companyBookValueAfter: value as unknown as number
+		});
+		expectHistoricalReportDropped(() => decodeHistoricalReport(createGame(), report));
+	});
+
+	test('preserves a negative integer companyBookValueAfter', () => {
+		const report = createDailyReport({ companyBookValueAfter: -12_500 });
+
+		expect(
+			expectHistoricalReportPreserved(() => decodeHistoricalReport(createGame(), report)).reports[0]
+		).toEqual(report);
+	});
+
 	test('strict current-game validation returns an exact deep clone without mutating its input', () => {
 		const game = createGame();
 		const before = structuredClone(game);

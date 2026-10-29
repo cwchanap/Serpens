@@ -435,6 +435,54 @@ export const METRIC_REGISTRY = {
 			contributingIds: sortedIds(game.stores.map((store) => store.id))
 		})
 	},
+	'max-store-level': {
+		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: stateMetricComplete,
+		evaluate: ({ game }) => {
+			const maxLevel = game.stores.reduce((level, store) => Math.max(level, store.level), 0);
+			return {
+				actual: maxLevel,
+				contributingIds: sortedIds(
+					game.stores.filter((store) => store.level === maxLevel).map((store) => store.id)
+				)
+			};
+		}
+	},
+	'opened-city-count': {
+		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: stateMetricComplete,
+		evaluate: ({ game }) => ({
+			actual: game.world.openedCityIds.length,
+			contributingIds: sortedIds([...game.world.openedCityIds])
+		})
+	},
+	'peak-company-book-value': {
+		supportedWindows: RUN_TO_DATE,
+		productScoped: false,
+		format: 'currency',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		// Zero report history is not a completed window (design §2).
+		isComplete: ({ reports }) => reports.length > 0,
+		evaluate: ({ reports }) => {
+			if (reports.length === 0) return { actual: 0, contributingIds: [] };
+			const peak = Math.max(...reports.map((report) => report.companyBookValueAfter));
+			return {
+				actual: peak,
+				contributingIds: reportIds(
+					reports.filter((report) => report.companyBookValueAfter === peak)
+				)
+			};
+		}
+	},
 	'industrial-building-count': {
 		supportedWindows: CURRENT,
 		productScoped: false,
@@ -606,7 +654,7 @@ export function scenarioConditionPasses(
 	return windowComplete && comparatorPasses(actual, condition.comparator, condition.target);
 }
 
-function evaluateCondition(condition: ScenarioCondition, game: GameState) {
+export function evaluateCondition(condition: ScenarioCondition, game: GameState) {
 	const evaluation = evaluateMetric(
 		game,
 		condition.query,

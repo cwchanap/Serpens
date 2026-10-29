@@ -1,6 +1,7 @@
 import { getArchetype } from './archetypes';
 import { getBrandDefinition, resolveBrandEconomics } from './brands';
 import { assertValidEntityCityOwnership } from './cityInventory';
+import { getCompanyBookValue } from './companyBookValue';
 import { generateDecisions, pruneExpiredDecisions } from './events';
 import {
 	cloneTimedEffect,
@@ -358,6 +359,7 @@ export function simulateDay(
 		netIncome: operatingCashFlow,
 		cashAfter,
 		outstandingPrincipalAfter: getTotalDebt(postServiceGame),
+		companyBookValueAfter: getCompanyBookValue(postServiceGame).total,
 		nextLoanPayment,
 		scorecard,
 		productionReport,

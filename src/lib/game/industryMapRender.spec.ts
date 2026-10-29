@@ -32,6 +32,7 @@ function makeReport(railUsage: Record<string, number>): DailyReport {
 		netIncome: 0,
 		cashAfter: 0,
 		outstandingPrincipalAfter: 0,
+		companyBookValueAfter: 0,
 		nextLoanPayment: null,
 		scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 },
 		productionReport: { ...emptyProductionReport(), railUsage },

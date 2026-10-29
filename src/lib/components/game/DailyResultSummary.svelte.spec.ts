@@ -36,6 +36,7 @@ function makeDailyReport(overrides: Partial<DailyReport> = {}): DailyReport {
 		cashAfter: 800,
 		inventoryLossExpense: 0,
 		outstandingPrincipalAfter: 0,
+		companyBookValueAfter: 0,
 		nextLoanPayment: null,
 		scorecard: {
 			profit: 50,
