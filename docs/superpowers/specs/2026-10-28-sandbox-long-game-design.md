@@ -15,7 +15,7 @@ One company-value headline is available on the Dashboard. A small current-tier s
 
 | Concern | Existing authority | Decision |
 | --- | --- | --- |
-| World unlocks / store cap | `game/world.ts`: `STARTER_STORE_CAP=3`, city bonuses, `positive-income-store-cap` milestone, `refreshWorldProgress` | Extend the derived cap with claimed tier count; do not modify existing city milestones |
+| World unlocks / store cap | `game/world.ts`: `STARTER_STORE_CAP=3`, city bonuses, `positive-income-store-cap` milestone, `refreshWorldProgress` | Introduce a single exported `getDerivedStoreCap(game)` formula for all sandbox cap writes and save checks; retain city/milestone trigger rules |
 | Finance | `game/finance.ts:assessCredit`, `getTotalDebt` | Replace the fixed $100,000 principal ceiling with a pure progression-dependent bound; keep every affordability and delinquency check |
 | Asset definitions | `game/state.ts:getExpansionSetupCost`, `game/leveling.ts`, `game/industry.ts`, `game/rail.ts`, `game/products.ts` | Reuse current cost catalogs instead of introducing an asset ledger |
 | Objectives | `scenarios/types.ts`, `scenarios/metrics.ts:METRIC_REGISTRY`, `evaluateMetric` | Add a small number of current/report-derived metrics to the one existing registry; authored ladder uses that same evaluator |
@@ -29,7 +29,7 @@ One company-value headline is available on the Dashboard. A small current-tier s
 
 The existing balance harness's `advisor` bot runs *convenience only*. It delegates, hires, expands **within its active retail city**, and applies a Supply Planner recommendation weekly. It does **not** open world cities or upgrade stores. A five-tier ladder requiring those actions cannot be demonstrated with this bot unchanged. Further, HPA-502's measured after-sweep has convenience/advisor median day-365 cash below zero; this does not establish the proposed Market Leader reachability.
 
-**Decision:** keep the ticket's seed `20260503` / approximate day-120 and day-250–365 pacing as **provisional hypotheses**, not acceptance facts. Add the smallest deterministic, legal multi-city/upgrade progression script to the existing advisor test strategy, keep the original HPA-502 bot/sweep stable, and report *measured* claim days and blockers. If the reference trace cannot complete a tier under tuned economics, adjust authored goals/thresholds (not the underlying economy or synthetic rewards) and disclose any remaining gap. A pure idle/advance-only bot must not claim tier 1.
+**Decision:** keep the ticket's seed `20260503` / approximate day-120 and day-250–365 pacing as **provisional hypotheses**, not acceptance facts. Add the smallest deterministic, legal multi-city/upgrade progression script to the existing advisor test strategy, keep the original HPA-502 bot/sweep stable, and report *measured* claim days and blockers. The committed `docs/balance/progression-calibration.md` **must describe the bot's actual policy** (city-opening eligibility/timing, store-upgrade selection/aggressiveness, borrow-versus-cash rule, staffing/delegation, and planner cadence), in addition to claim-day results, seed, and blockers. If the reference trace cannot complete a tier under tuned economics, adjust authored goals/thresholds (not the underlying economy or synthetic rewards) and disclose any remaining gap. A pure idle/advance-only bot must not claim tier 1.
 
 ## 1. Company book value: deliberately simple
 
@@ -71,12 +71,13 @@ Create `src/lib/game/progression.ts` with an immutable five-entry catalog, stabl
 Use `ScenarioCondition`-shaped metric/comparator/window definitions and existing `evaluateMetric` for evidence. Add only:
 - `max-store-level` (current; 0 for no stores).
 - `opened-city-count` (current).
-- `company-book-value` (current/live; currency; Dashboard and possible future goals).
 - `peak-company-book-value` (run-to-date; max of completed report `companyBookValueAfter`, 0 with no report; currency).
+
+**No live `company-book-value` metric registration:** none of the five tiers needs one. The Dashboard headline reads `getCompanyBookValue(game).total` directly and formats it using `i18n.format.currency`; the scenario registry stays responsible for condition evidence only (three new metrics total).
 
 Other goals reuse `store-count` and `retail-local-units` (run-to-date, explicit nonempty ProductId set). All *claim* goals use **monotone predicates** under the supported sandbox actions: store count (no closing), max level (no downgrade), opened city count (no closing), historical peak (append-only reports), and cumulative delivered units (append-only reports). Avoid debt-now, current market share, or current cash as persisted claims because a subsequent decline would make save-time proof impossible without new evidence. Each condition includes a target and actual/evidence; for report goals a zero-history result is not silently a completed window.
 
-Pure `evaluateProgression(game)` returns a current-tier view, per-goal evidence, unlocked capacity and completion state; it does not mutate game. A small `claimEarnedTiers(game)` transition applies each contiguous eligible tier in order, storing a claim with ID and `claimedOnDay` only and issuing a stable, one-time system notice; **no background timers, achievements subsystem, or special event scheduler**. If multiple tiers become eligible together, claim in order at a single commit and issue one notice for each. Keep `claimEarnedTiers` idempotent and return the original game reference when nothing changes.
+Pure `evaluateProgression(game)` returns a current-tier view, per-goal evidence, unlocked capacity and completion state; it does not mutate game. A small `claimEarnedTiers(game)` transition applies each contiguous eligible tier in order, storing a claim with ID and `claimedOnDay` only, setting the persisted `storeCap` **once via `getDerivedStoreCap` on the updated claims**, and issuing a stable, one-time system notice; **no background timers, achievements subsystem, or special event scheduler**. If multiple tiers become eligible together, claim in order at a single commit and issue one notice for each. Keep `claimEarnedTiers` idempotent and return the original game reference when nothing changes.
 
 ## 3. Reward authority and persistence invariants
 
@@ -87,27 +88,29 @@ progression: { claims: Array<{ tierId: ProgressionTierId; claimedOnDay: number }
 
 The claim-day value is part of a claimed-tier receipt, **not** a separate event log. It permits the final summary to display the original completion day on reload without a second persisted summary. Everything else (goal results, peak, available credit ceiling) is derived.
 
-Reward formulas:
+Reward formulas (**one authority for the store-cap number**):
 ```text
-storeCap = STARTER_STORE_CAP
+getDerivedStoreCap(game) = STARTER_STORE_CAP
   + sum(storeCapBonus of actually opened nonstarter cities)
   + (world positive-income-store-cap claim ? 1 : 0)
-  + progression.claims.length
+  + game.progression.claims.length
 
-gross principal hard ceiling = $100,000 + $25,000 * progression.claims.length
+gross principal hard ceiling = $100,000 + $25,000 * game.progression.claims.length
 ```
 
-The five rewards raise the *possible* store cap from the current world maximum of 6 to 11. Actual credit remains constrained by cash flow, credit health, debt service, existing principal and delinquency in `assessCredit`; this reward does **not** issue a loan or cash. Display "credit ceiling", not "available credit". Keep the existing world milestone/city increments authoritative at runtime and reconcile via the common cap formula without applying a bonus twice.
+Export `getDerivedStoreCap(game)` from the focused world/progression boundary. `openWorldCity` and `refreshWorldProgress` must replace their incremental `storeCap + bonus` assignments with that **same** derived value on the post-transition world state; they still own the unchanged city-reveal and positive-income milestone decisions. `claimEarnedTiers` then sets `storeCap` from the **same helper** after appending claims. Save validation compares `game.storeCap` against that helper in sandbox mode, never a separately reconstructed formula. No other code independently increments cap on the tier-claim path. This also covers a city opening and a tier claim landing in the same commit.
 
-Persist claim receipts and the pre-existing `storeCap` only. No stored peak value, goal progress, reward count, or credit limit. Initialize empty claims in `state.ts:createNewGame` and `routes/+page.svelte:starterMapState`; configure scenario state so its progression stays empty and inactive. Extend `saveCodec.ts` strict structural checks and round trips; validate unique contiguous catalog-prefix IDs, chronological in-range claim days, satisfied monotone conditions against validated state/reports, and exact derived sandbox store cap. Reject unknown, duplicate, skipped or **unearned** claims. Validate report value as a finite integer; note `decodeHistoricalReports` drops malformed historical records, so proof must run *after* report decoding and must not silently trust missing report evidence.
+The five rewards raise the *possible* store cap from the current world maximum of 6 to 11. Actual credit remains constrained by cash flow, credit health, debt service, existing principal and delinquency in `assessCredit`; this reward does **not** issue a loan or cash. Display "credit ceiling", not "available credit". World milestones/city openings retain their existing **unlock authority**, while the derived helper becomes the sole authority for the resulting cap number.
 
-World-progress codec still checks `refreshWorldProgress(game) === game`. For sandbox, commit `claimEarnedTiers` on the existing sandbox command result/advance-day path **before persistence**, then require its fixed-point at save validation. The runtime path must avoid rejecting a legal mid-day command merely because that command newly satisfied a goal; all sandbox commits should pass through the same refresh. Scenario setup, commands and save validation explicitly opt out: their authored `storeCap` overrides remain legal and no tier can auto-claim. A challenge's shared `DailyReport` may carry the book-value field, but scenario scoring/results, RNG, allowed actions, and time limits stay unchanged. Do not embed a mode flag in the simulation's economic state just to drive UI.
+Persist claim receipts **and the existing `storeCap` integer, updated from `getDerivedStoreCap` on every relevant world/claim transition**. `storeCap` is not a separate earned-reward counter and must not be left at its pre-claim value. No stored peak value, goal progress, reward count, or credit limit. Initialize empty claims in `state.ts:createNewGame` and `routes/+page.svelte:starterMapState`; configure scenario state so its progression stays empty and inactive. Extend `saveCodec.ts` strict structural checks and round trips; validate unique contiguous catalog-prefix IDs, chronological in-range claim days, satisfied monotone conditions against validated state/reports, and exact derived sandbox store cap. Reject unknown, duplicate, skipped or **unearned** claims. Validate report value as a finite integer; note `decodeHistoricalReports` drops malformed historical records, so proof must run *after* report decoding and must not silently trust missing report evidence.
+
+World-progress codec still checks `refreshWorldProgress(game) === game`. For sandbox, commit `claimEarnedTiers` on the existing sandbox command result/advance-day path **before persistence**, then require its fixed-point at save validation. Treat sandbox as the strict/default validator context; every scenario codec/setup caller must opt into `scenario` explicitly rather than bypassing the cap invariant by omission. The runtime path must avoid rejecting a legal mid-day command merely because that command newly satisfied a goal; all sandbox commits should pass through the same refresh. Scenario setup, commands and save validation explicitly opt out: their authored `storeCap` overrides remain legal and no tier can auto-claim. A challenge's shared `DailyReport` may carry the book-value field, but scenario scoring/results, RNG, allowed actions, and time limits stay unchanged. Do not embed a mode flag in the simulation's economic state just to drive UI.
 
 The design is **pre-release only**: update required schema, fixtures and codecs in one shot. No save migration or backward compatibility adapter.
 
 ## 4. UI, localization and experience
 
-- Dashboard only, not a new global panel: a clear **Company book value** number and a small **Next milestone** section with 2–3 metric rows, real actual/target units and the upcoming +1 store slot / +$25k credit ceiling. Completed tiers can be expanded as a brief summary, but no trophy gallery.
+- Dashboard only, not a new global panel: a clear **Company book value** number computed directly with `getCompanyBookValue(game).total`, plus a small **Next milestone** section with 2–3 metric-backed rows, real actual/target units and the upcoming +1 store slot / +$25k credit ceiling. Completed tiers can be expanded as a brief summary, but no trophy gallery.
 - Reuse the existing scenario evidence row typography/formatting and its `i18n.format` currency/percent/quantity helpers; add a small shared row presenter only if doing so avoids duplicating real UI. Do **not** mount `ScenarioObjectivePanel` with artificial failures/deadline records.
 - A one-time nonblocking localized completion notice; final summary displays claimed day, peak historical value, current cap and a **Continue playing** path. No terminal status.
 - The route explicitly gates the panel/notices for `playMode === 'sandbox'`. No ladder in active/resumed/results scenarios, not even a disabled tier. The GameState reused by scenarios remains valid with empty claims.
@@ -127,8 +130,8 @@ The design is **pre-release only**: update required schema, fixtures and codecs 
 
 1. Hand-worked assets/inventory/debt fixture including founding-free store, level upgrades, rails, demolition and in-transit no-double-count; reported daily close matches post-service state and Dashboard live value after a command.
 2. Monotone tier conditions, exactly-once ordered claim/reward/notice, scenario-no-op, and deterministic replay for explicit seed. Save → load keeps claim days, UI peak from reports and final summary; malformed/forged claims and mismatched cap are rejected.
-3. Existing city milestones and per-city cap bonuses still work. Every credit path uses the state-dependent cap while preserving payment headroom and delinquency refusal.
-4. HPA-502 50-seed economy baseline is unchanged; add focused seed `20260503` 365-day progression reference/idle controls and record actual day-by-tier values. Target tier 3 ~day 120, tier 5 days 250–365 **only if demonstrated**; document any impossibility/revised thresholds. Retain prior balance harness expected outputs and scenario pack scores.
+3. `getDerivedStoreCap(game)` is the single formula used by city-open, milestone, tier-claim and sandbox save validation; combinations never double count and match persisted `storeCap`. Every credit path uses the state-dependent ceiling while preserving payment headroom and delinquency refusal.
+4. HPA-502 50-seed economy baseline is unchanged; add focused seed `20260503` 365-day progression reference/idle controls and record actual day-by-tier values **with the readable bot policy (openings, upgrades, financing, staffing and planner cadence)**. Target tier 3 ~day 120, tier 5 days 250–365 **only if demonstrated**; document any impossibility/revised thresholds. Retain prior balance harness expected outputs and scenario pack scores.
 5. Dashboard, narrow screen, keyboard and localized strings verified; one browser E2E establishes a real first-tier claim in sandbox, reload persistence and absence in scenario mode.
 6. `bun run check`, `bun run lint`, `bun run test:unit -- --run`, affected route/scenario E2E, full test suite, and `git diff --check`.
 
