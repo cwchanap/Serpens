@@ -17,7 +17,7 @@ Read at implementation HEAD, not only the original HPA-318 baseline (`200bc7b`):
 
 Write a focused fixture to prove why the existing advisor bot cannot hit city-opening/level conditions: it never runs `openWorldCity` or `upgradeStore`, and HPA-502 after-sweep shows negative median convenience/advisor cash at d365. Avoid tuning goals to a bot that lacks the necessary action vocabulary. Identify existing legal `applyGameCommand` cases for city opening, upgrades and city selection, then extend the **test-only scripted strategy**, never a second command adapter or engine.
 
-**Gate:** agree on exactly which bot actions are needed, preserve the HPA-502 reference bot unchanged, and commit an explicit candidate goal table; neither five-tier reachability nor the proposed 120/250–365 days is claimed yet.
+**Gate:** agree on exactly which bot actions are needed, preserve the HPA-502 reference bot unchanged, and commit an explicit candidate goal table **and a short written opt-in strategy policy** (city-opening timing/eligibility, store-upgrade priority/cadence, borrowing policy, staffing/delegation, and planner cadence); neither five-tier reachability nor the proposed 120/250–365 days is claimed yet.
 
 ## Step 1 — Pure company book value + hand fixture
 
@@ -38,7 +38,7 @@ Implement `getCompanyBookValue(game)` returning `{ total, cash, retailAssets, in
 
 Add `DailyReport.companyBookValueAfter`, computed on the **closing-day post-finance game** alongside `cashAfter` and `outstandingPrincipalAfter`. Ensure the value is not computed prematurely before inventory transfers, sales, finance service or deferred events. Add finite-integer report validation to the existing report decoder; update current test fixtures. No second historical value array.
 
-Extend the existing exhaustive `METRIC_REGISTRY` / `ScenarioMetricQuery` with `max-store-level`, `opened-city-count`, `company-book-value` and `peak-company-book-value`. Current metrics read the live state; peak reads completed report snapshots using run-to-date only. Reuse existing format/window validation and canonical contribution IDs (report evidence for the peak day), without adding standalone metrics registries.
+Extend the existing exhaustive `METRIC_REGISTRY` / `ScenarioMetricQuery` with **three** entries: `max-store-level`, `opened-city-count` (both current), and `peak-company-book-value` (run-to-date from completed daily report snapshots only). Do **not** register a live `company-book-value` metric, because no tier condition consumes it: the Dashboard computes its headline directly using `getCompanyBookValue(game).total`. Reuse existing format/window validation and canonical contribution IDs (report evidence for the peak day), without adding standalone metrics registries.
 
 **Gate:** metrics return expected numerical results and windows, unknown metric remains invalid, previous seven scenario definitions still validate and score identically.
 
@@ -50,7 +50,7 @@ Implement a five-entry, typed `PROGRESSION_TIERS` catalog, an `evaluateProgressi
 
 - Define contiguous catalog-prefix claim order; a tier is awarded only after preceding tiers.
 - Return the original state on repeat evaluation; no RNG consumed, no duplicate system notices.
-- Use persistent claim receipts `{tierId,claimedOnDay}`; keep goal results and historical peak derived.
+- Use persistent claim receipts `{tierId,claimedOnDay}`; keep goal results and historical peak derived. After appending eligible claims, **assign `storeCap = getDerivedStoreCap(updatedGame)` exactly once**; do not increment the old cap or reimplement the formula in this transition.
 - Note that a claim can follow real purchases or simulation, so refresh claimed tiers at the shared sandbox commit boundary; model no required mutation of each individual store/finance command.
 - When all tiers claimed, return summary information from receipts/reports and allow ongoing play.
 
@@ -58,21 +58,21 @@ Implement a five-entry, typed `PROGRESSION_TIERS` catalog, an `evaluateProgressi
 
 ## Step 4 — Rewards, save invariants and explicit scenario isolation
 
-**Files:** `src/lib/game/world.ts` or a focused cap helper, `finance.ts`, `state.ts`, `persistence/saveCodec.ts`, `persistence/scenarioCodec.ts`, `scenarios/setup.ts`, `routes/gameRouteController.ts` and `routes/+page.svelte` (only when needed); corresponding specs/repository fixtures.
+**Files:** `src/lib/game/world.ts` (export `getDerivedStoreCap(game)`), `finance.ts`, `state.ts`, `persistence/saveCodec.ts`, `persistence/scenarioCodec.ts`, `scenarios/setup.ts`, `routes/gameRouteController.ts` and `routes/+page.svelte` (only when needed); corresponding specs/repository fixtures.
 
-- Make `GameState.progression.claims` a required initial field. Derive the maximum store cap from opened-city bonuses, existing world positive-income claim and tier count; verify upgrades/opens never apply a bonus twice. Keep `refreshWorldProgress` existing behavior and fixed-point guarantee.
+- Make `GameState.progression.claims` a required initial field. **One exported `getDerivedStoreCap(game)` owns the entire formula**: starter 3 + opened city bonuses + claimed existing positive-income world bonus + claimed tier count. Replace incremental cap assignment in `openWorldCity` and `refreshWorldProgress` with that helper on the *resulting* world state; apply the same helper after tier claims; `saveCodec.ts` compares persisted sandbox `storeCap` to the helper instead of independently rebuilding it. Preserve existing reveal/positive-income trigger rules and `refreshWorldProgress` fixed-point behavior. Test city-only, world-milestone-only, tier-only and same-commit combinations to catch double increments.
 - Replace `finance.ts:assessCredit` `100_000` ceiling with `getCreditCeiling(game)`. Do not modify the repayment-service or delinquency constraints; test no borrowing windfall.
 - In sandbox, refresh progression after every committed mutation and advance-day result, *before* save. Extend strict game save validation for IDs, ordering, valid dates, earned monotone evidence and cap/claim coherence. Validate against **decoded** reports. Reject an unearned tier rather than repairing it silently.
-- Scenario runs share `GameState` and strict validation but use authored store cap and command constraints. Supply an explicit **scenario context** to save validation where needed, initialize empty claims in scenario setup, and prevent progression claims in scenario `advanceDay` or any scenario command. Do not store a redundant `playMode` field in `GameState`. Scenario codec round-trip must continue to accept scenario-specific `storeCap` overrides.
+- Scenario runs share `GameState` and strict validation but use authored store cap and command constraints. Default validation context stays **sandbox (strict)**; the scenario codec/setup callers must pass an explicit **scenario context** rather than silently opting out, initialize empty claims in scenario setup, and prevent progression claims in scenario `advanceDay` or any scenario command. Do not store a redundant `playMode` field in `GameState`. Scenario codec round-trip must continue to accept scenario-specific `storeCap` overrides.
 - Update all required mock `GameState` literals and repository tests without migrations or compatibility fallback.
 
-**Gate:** sandbox save→reload same claims/cap/final completion day; unknown/duplicate/skipped/unearned claims fail; scenario setup, scenario save and resume remain valid, no unlock notices or reward cap changes in scenario.
+**Gate:** sandbox save→reload same claims/cap/final completion day; `getDerivedStoreCap` matches all cap writers and save checks (including city-open + tier-claim in one commit); unknown/duplicate/skipped/unearned claims fail; scenario setup, scenario save and resume remain valid, no unlock notices or reward cap changes in scenario.
 
 ## Step 5 — Dashboard UI and three-language copy
 
 **Files:** `src/lib/components/game/SandboxProgression.svelte` and component spec; `src/routes/ManagementPanelHost.svelte`, `src/routes/+page.svelte`, locale message files, existing `i18n` helpers.
 
-Place live book value and next tier in Dashboard beside `DailyResultSummary` and `Scorecard`. Render honest current/target rows, completion state and the next store-cap/credit-ceiling rewards, using the current objective evidence typography and `i18n.format`. Extract a shared evidence row only if meaningful reuse emerges; do not send fake scenario objective records into `ScenarioObjectivePanel`.
+Place **live `getCompanyBookValue(game).total`** and next tier in Dashboard beside `DailyResultSummary` and `Scorecard`; format the live headline directly with `i18n.format.currency`, without calling `evaluateMetric` for the headline. Render honest current/target rows, completion state and the next store-cap/credit-ceiling rewards, using the current objective evidence typography and `i18n.format`. Extract a shared evidence row only if meaningful reuse emerges; do not send fake scenario objective records into `ScenarioObjectivePanel`.
 
 - Explicitly pass `showSandboxProgression = (playMode === 'sandbox')` to the host. A scenario dashboard, scenario status strip and scenario results must never show ladder UI.
 - Reuse the existing system decision/acknowledgement presentation for a once-only tier notice; final tier adds a succinct summary with continue-playing interaction, not a new modal workflow.
@@ -85,7 +85,7 @@ Place live book value and next tier in Dashboard beside `DailyResultSummary` and
 
 **Files:** `tests/balance/bots.ts` (minimal extra opt-in strategy helper), `tests/balance/*.spec.ts`, `docs/balance/progression-calibration.md`.
 
-Run seed **20260503** through 365 days with an explicit deterministic progression-capable advisor script that uses only legal world opening/store upgrades and existing actions. Preserve original `advisor`, `idle`, and HPA-502 after-sweep behavior. Record all five claim days, failed attempts, ending company value, and the primary blocker if unreachable.
+Run seed **20260503** through 365 days with an explicit deterministic progression-capable advisor script that uses only legal world opening/store upgrades and existing actions. Preserve original `advisor`, `idle`, and HPA-502 after-sweep behavior. Commit a **short, reviewable strategy policy alongside the trace** in `docs/balance/progression-calibration.md`: city-opening prerequisites and trigger days, upgrade targeting/cadence, when borrowing is considered versus cash-only, staffing/delegation, supply-planner cadence, and action-order/tie-break rules. Record all five claim days, failed attempts, ending company value, and the primary blocker if unreachable. This makes the claimed pacing interpretable as an actual legal strategy rather than a threshold-fitted black box.
 
 Calibration sequence:
 1. Check that idle cannot claim Local Shop (requires a second store).
@@ -94,7 +94,7 @@ Calibration sequence:
 4. Compare measured tier-3/day-120 and final-tier/day-250–365 targets. If not feasible, document the exact divergence and a revised range based on traces; never assert PASS based on a synthetic state edit.
 5. Run a small additional fixed-seed sanity sample across archetypes, if cheap, to avoid one-seed exploits. Do not rerun a costly full 50×365 matrix unless changing the economy (which is out of scope).
 
-**Gate:** committed calibration summary explicitly distinguishes proposed vs measured goals, and negative control stays negative. If the reference cannot reach the final tier at all, the PR remains draft with a documented blocker.
+**Gate:** committed calibration summary includes **bot policy + seed + action trace + measured claim-day table + remaining blockers**, explicitly distinguishes proposed vs measured goals, and confirms the idle negative control stays negative. If the reference cannot reach the final tier at all, the PR remains draft with a documented blocker.
 
 ## Step 7 — End-to-end integration, docs and verification
 
@@ -119,8 +119,8 @@ Run focused specs and a targeted E2E after each risky integration, then full sui
 
 | Risk | Containment |
 | --- | --- |
-| Existing advisor bot lacks world-opening and upgrading; tuned convenience advisor loses cash by d365 | Separate opt-in progression script, legal command evidence, provisional thresholds, no claim of current passing pacing |
-| Cap counted twice across a world milestone/city opening/tier claim | Single derived cap invariant + combination fixture; retain current world transition fixed-point behavior |
+| Existing advisor bot lacks world-opening and upgrading; tuned convenience advisor loses cash by d365 | Separate opt-in progression script, **document its action policy and decision cadence** alongside legal command evidence, provisional thresholds, no claim of current passing pacing |
+| Cap counted twice across a world milestone/city opening/tier claim | `getDerivedStoreCap(game)` is the sole cap formula for world-open, milestone, tier-claim and sandbox save checks; combined-transition fixture; retain world progress fixed-point behavior |
 | Scenario save has authored `storeCap` and uses same `GameState` | Explicit sandbox/scenario codec context and scenario progression opt-out; no new stored mode flag |
 | Claims made after a transient high value become unverifiable later | Only monotone criteria / peak from validated historical reports; no current-cash/market-share claim goals |
 | Historical malformed reports are dropped by decoder | Validate claim proof after decoding; reject claims with missing evidence |
