@@ -195,6 +195,7 @@ function financeReportFields() {
 		netCashChange: 40,
 		netIncome: 40,
 		outstandingPrincipalAfter: 0,
+		companyBookValueAfter: 0,
 		nextLoanPayment: null
 	};
 }

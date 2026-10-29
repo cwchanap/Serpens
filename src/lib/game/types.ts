@@ -1050,6 +1050,8 @@ export interface DailyReport {
 	netIncome: number;
 	cashAfter: number;
 	outstandingPrincipalAfter: number;
+	/** Post-finance close-of-day company book value snapshot (see companyBookValue.ts). */
+	companyBookValueAfter: number;
 	nextLoanPayment: LoanPaymentSnapshot | null;
 	scorecard: Scorecard;
 	productionReport: DailyProductionReport;

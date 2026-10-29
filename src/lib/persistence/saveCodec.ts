@@ -3753,6 +3753,7 @@ function validateSavedReport(
 	}
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.cashAfter, `${label} cashAfter`);
+	requireInteger(report.companyBookValueAfter, `${label} companyBookValueAfter`);
 	const inventoryLossExpense = requireNonNegativeFiniteNumber(
 		report.inventoryLossExpense,
 		`${label} inventoryLossExpense`

@@ -147,6 +147,7 @@ function withLatestReport(game: GameState, productionReport: DailyProductionRepo
 				netIncome: 40,
 				cashAfter: game.cash + 40,
 				outstandingPrincipalAfter: 0,
+				companyBookValueAfter: 0,
 				nextLoanPayment: null,
 				scorecard: game.scorecard,
 				productionReport,

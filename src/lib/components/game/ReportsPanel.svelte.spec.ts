@@ -64,6 +64,7 @@ const summary: ReportSummary = {
 		netIncome: 69,
 		cashAfter: 12_345,
 		outstandingPrincipalAfter: 5_970,
+		companyBookValueAfter: 0,
 		inventoryLossExpense: 0,
 		nextLoanPayment: { loanId: 'loan-1', day: 11, amount: 49 },
 		scorecard: {

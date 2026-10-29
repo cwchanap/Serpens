@@ -225,6 +225,35 @@ describe('getCompanyBookValue', () => {
 		});
 	});
 
+	test('out-of-catalog product ids contribute zero inventory value', () => {
+		const game = createNewGame('convenience', 20260508);
+		const [store] = game.stores;
+		const synthetic: GameState = {
+			...game,
+			stores: [
+				{
+					...store,
+					products: [
+						...store.products,
+						{
+							productId: 'unknown-category' as StoreProduct['productId'],
+							brandId: 'common-ground',
+							lots: [{ receivedDay: 1, quantity: 10 }],
+							reorderThreshold: 5,
+							targetStock: 20,
+							sellingPrice: 5
+						}
+					]
+				}
+			]
+		};
+		const baseline = getCompanyBookValue(game);
+
+		// The sales pipeline tolerates synthetic category fixtures; book value
+		// must survive them too instead of crashing on the missing catalog entry.
+		expect(getCompanyBookValue(synthetic).inventory).toBe(baseline.inventory);
+	});
+
 	test('max-level store counts every completed upgrade level', () => {
 		const game = buildHandFixtureGame();
 		const maxed: GameState = {

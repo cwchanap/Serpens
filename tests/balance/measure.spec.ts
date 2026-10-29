@@ -137,6 +137,7 @@ function fakeReport(day: number, overrides: Partial<DailyReport> = {}): DailyRep
 		netIncome: 0,
 		cashAfter: 100,
 		outstandingPrincipalAfter: 8_000,
+		companyBookValueAfter: 0,
 		nextLoanPayment: null,
 		scorecard: { profit: 0, customerSatisfaction: 0, staffMorale: 0, marketPosition: 0 },
 		productionReport: {

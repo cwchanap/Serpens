@@ -57,6 +57,7 @@ function report(
 		netIncome,
 		cashAfter: 10_000 + netCashChange,
 		outstandingPrincipalAfter: 9_000,
+		companyBookValueAfter: 0,
 		nextLoanPayment: { loanId: 'loan-1', day: day + 7, amount: 120 },
 		scorecard: {
 			profit: 50,

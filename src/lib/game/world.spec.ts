@@ -521,6 +521,7 @@ describe('world progression and city opening', () => {
 					netIncome: 0,
 					cashAfter: game.cash,
 					outstandingPrincipalAfter: 0,
+					companyBookValueAfter: 0,
 					nextLoanPayment: null,
 					scorecard: game.scorecard,
 					productionReport: {
@@ -645,6 +646,7 @@ describe('world progression and city opening', () => {
 					netIncome: 1,
 					cashAfter: 1,
 					outstandingPrincipalAfter: 0,
+					companyBookValueAfter: 0,
 					nextLoanPayment: null,
 					scorecard: { profit: 50, customerSatisfaction: 50, staffMorale: 50, marketPosition: 50 },
 					productionReport: {
@@ -734,6 +736,7 @@ describe('world progression and city opening', () => {
 					netIncome: 0,
 					cashAfter: rawGame.cash,
 					outstandingPrincipalAfter: 0,
+					companyBookValueAfter: 0,
 					nextLoanPayment: null,
 					scorecard: rawGame.scorecard,
 					productionReport: {
@@ -834,6 +837,7 @@ describe('world progression and city opening', () => {
 					netIncome: 1,
 					cashAfter: 90_001,
 					outstandingPrincipalAfter: 0,
+					companyBookValueAfter: 0,
 					nextLoanPayment: null,
 					scorecard: finishedGame.scorecard,
 					productionReport: {
@@ -908,6 +912,7 @@ describe('world progression and city opening', () => {
 					netIncome: 1,
 					cashAfter: withCampus.cash + 1,
 					outstandingPrincipalAfter: 0,
+					companyBookValueAfter: 0,
 					nextLoanPayment: null,
 					scorecard: withCampus.scorecard,
 					productionReport: {
@@ -976,6 +981,7 @@ describe('world progression and city opening', () => {
 					netIncome: 1,
 					cashAfter: game.cash + 1,
 					outstandingPrincipalAfter: 0,
+					companyBookValueAfter: 0,
 					nextLoanPayment: null,
 					scorecard: game.scorecard,
 					productionReport: {

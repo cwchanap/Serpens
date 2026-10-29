@@ -103,7 +103,8 @@ function getInventoryValue(game: GameState): number {
 	for (const store of game.stores) {
 		for (const product of store.products) {
 			for (const lot of product.lots) {
-				total += lot.quantity * PRODUCTS[product.productId].importCost;
+				// Synthetic test-category fixtures may lack a catalog entry; they contribute zero like the sales pipeline that tolerates them.
+				total += lot.quantity * (PRODUCTS[product.productId]?.importCost ?? 0);
 			}
 		}
 	}
