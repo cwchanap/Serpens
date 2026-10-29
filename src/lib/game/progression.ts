@@ -40,13 +40,21 @@ const TIER_REWARD: ProgressionTierReward = {
 };
 
 /**
- * Tier-3 local-delivery product set: the three tier-1 onboarding industry
- * chains (spring-water treatment, produce packing, pantry goods production).
- * A regional-supplier-era company can legally produce and deliver all three
- * through the day-one buildings; calibration (step 4) validates the 25-unit
- * target is reachable with them.
+ * Tier-3 local-delivery product set: every industry-linked product (a
+ * productionMaterialId exists), so any archetype that stocks at least one of
+ * them can legally satisfy the 25-unit goal — the original tier-1-onboarding
+ * trio was deliverable only by convenience stores (step-4 calibration
+ * finding). Electronics stocks none and stays structurally blocked.
  */
-const REGIONAL_SUPPLIER_PRODUCT_IDS = ['bottled-water', 'produce', 'pantry'] as const;
+const REGIONAL_SUPPLIER_PRODUCT_IDS = [
+	'bottled-water',
+	'produce',
+	'pantry',
+	'snacks',
+	'soft-drinks',
+	'essentials',
+	'gifts'
+] as const;
 
 const CURRENT_WINDOW = { kind: 'current' } as const;
 const RUN_TO_DATE_WINDOW = { kind: 'run-to-date' } as const;

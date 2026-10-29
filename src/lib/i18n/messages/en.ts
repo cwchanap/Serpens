@@ -1974,8 +1974,7 @@ export const en = {
 			neighborhoodChainMaxStoreLevel: 'Upgrade a store to level 2',
 			neighborhoodChainOpenedCities: 'Open 3 cities (starter cities included)',
 			regionalSupplierOpenedCities: 'Open 4 cities',
-			regionalSupplierLocalUnits:
-				'Deliver 25 locally produced units (bottled water, produce, pantry)',
+			regionalSupplierLocalUnits: 'Deliver 25 locally produced units of goods your stores stock',
 			regionalSupplierPeakBookValue: 'Grow reported peak company book value to $60,000',
 			multiCityOperatorStoreCount: 'Operate 5 stores',
 			multiCityOperatorOpenedCities: 'Open 5 cities',

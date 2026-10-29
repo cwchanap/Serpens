@@ -1919,7 +1919,7 @@ export const zhHant = {
 			neighborhoodChainMaxStoreLevel: '將一間店鋪升級到等級 2',
 			neighborhoodChainOpenedCities: '開放 3 個城市（含兩個起始城市）',
 			regionalSupplierOpenedCities: '開放 4 個城市',
-			regionalSupplierLocalUnits: '配送 25 個在地生產單位（瓶裝水、農產、食品雜貨）',
+			regionalSupplierLocalUnits: '配送 25 個門市有販售的在地生產單位',
 			regionalSupplierPeakBookValue: '將已回報的公司帳面價值峰值提升到 $60,000',
 			multiCityOperatorStoreCount: '經營 5 間店鋪',
 			multiCityOperatorOpenedCities: '開放 5 個城市',
