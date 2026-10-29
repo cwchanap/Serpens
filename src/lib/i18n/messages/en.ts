@@ -1769,6 +1769,11 @@ export const en = {
 			openedSummary: '{storeCount} stores - {buildingCount} industrial buildings'
 		},
 		decisions: {
+			progressionTierClaimed: {
+				title: 'Milestone reached',
+				context:
+					'{tier} claimed: +1 store slot and +$25,000 credit underwriting base and hard bound.'
+			},
 			cashPressure: {
 				title: 'Cash pressure',
 				context:
@@ -1936,6 +1941,48 @@ export const en = {
 				warehouseOverflow: '{quantity} units are in city inventory overflow.',
 				warehouseAvailable: 'City inventory capacity is available.'
 			}
+		}
+	},
+	progression: {
+		reward: '+1 store slot and +$25,000 credit underwriting base and hard bound',
+		tiers: {
+			'local-shop': {
+				title: 'Local Shop',
+				description: 'Prove a second storefront and grow the company beyond its founding value.'
+			},
+			'neighborhood-chain': {
+				title: 'Neighborhood Chain',
+				description: 'Run an upgraded chain across several opened cities.'
+			},
+			'regional-supplier': {
+				title: 'Regional Supplier',
+				description: 'Deliver locally produced basics at regional volume.'
+			},
+			'multi-city-operator': {
+				title: 'Multi-City Operator',
+				description: 'Operate upgraded stores across most of the region.'
+			},
+			'market-leader': {
+				title: 'Market Leader',
+				description: 'Lead the whole region with the strongest company value.'
+			}
+		},
+		goals: {
+			localShopStoreCount: 'Open a second store',
+			localShopPeakBookValue: 'Grow reported peak company book value to $70,000',
+			neighborhoodChainStoreCount: 'Operate 3 stores',
+			neighborhoodChainMaxStoreLevel: 'Upgrade a store to level 2',
+			neighborhoodChainOpenedCities: 'Open 3 cities (starter cities included)',
+			regionalSupplierOpenedCities: 'Open 4 cities',
+			regionalSupplierLocalUnits:
+				'Deliver 25 locally produced units (bottled water, produce, pantry)',
+			regionalSupplierPeakBookValue: 'Grow reported peak company book value to $60,000',
+			multiCityOperatorStoreCount: 'Operate 5 stores',
+			multiCityOperatorOpenedCities: 'Open 5 cities',
+			multiCityOperatorMaxStoreLevel: 'Upgrade a store to level 4',
+			marketLeaderStoreCount: 'Operate 7 stores',
+			marketLeaderOpenedCities: 'Open all 6 cities',
+			marketLeaderPeakBookValue: 'Grow reported peak company book value to $150,000'
 		}
 	},
 	scenarioDefinitions: {

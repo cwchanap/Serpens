@@ -65,6 +65,7 @@ function gameStub(overrides: Partial<GameState> = {}): GameState {
 		staff: [],
 		hiringCandidates: [],
 		decisions: [],
+		progression: { claims: [] },
 		events: createInitialEventRuntime(20260530),
 		reports: [],
 		world: createInitialWorldProgress(),

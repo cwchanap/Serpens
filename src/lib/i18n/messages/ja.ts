@@ -1741,6 +1741,10 @@ export const ja = {
 			openedSummary: '{storeCount} 店舗・{buildingCount} 工業施設'
 		},
 		decisions: {
+			progressionTierClaimed: {
+				title: 'マイルストーン達成',
+				context: '{tier}を達成：店舗上限 +1、与信基準額と上限額が+$25,000。'
+			},
 			cashPressure: {
 				title: '資金繰り圧力',
 				context: '現金がマイナスです。ブランドを守りながら営業を続ける方法を選びます。',
@@ -1907,6 +1911,48 @@ export const ja = {
 				warehouseOverflow: '{quantity} 単位が都市在庫から超過しています。',
 				warehouseAvailable: '都市在庫の容量に余裕があります。'
 			}
+		}
+	},
+	progression: {
+		reward: '店舗枠 +1 と与信基準額・上限額 +$25,000',
+		tiers: {
+			'local-shop': {
+				title: 'ローカルショップ',
+				description: '2店目を構えて会社の価値を創業時より伸ばしましょう。'
+			},
+			'neighborhood-chain': {
+				title: 'ネイバーフッドチェーン',
+				description: '複数の都市にまたがるレベルアップしたチェーンを展開します。'
+			},
+			'regional-supplier': {
+				title: 'リージョナルサプライヤー',
+				description: '地場生産の生活基本品を地域規模で届けます。'
+			},
+			'multi-city-operator': {
+				title: 'マルチシティオペレーター',
+				description: '地域の大半の都市でレベルアップした店舗を運営します。'
+			},
+			'market-leader': {
+				title: 'マーケットリーダー',
+				description: '地域全体を代表する企業価値を築きます。'
+			}
+		},
+		goals: {
+			localShopStoreCount: '2店目の店舗を出す',
+			localShopPeakBookValue: '報告済み会社帳簿価値のピークを$70,000に伸ばす',
+			neighborhoodChainStoreCount: '3店舗を運営する',
+			neighborhoodChainMaxStoreLevel: '店舗をレベル2にアップグレードする',
+			neighborhoodChainOpenedCities: '3都市を開放する（スターター2都市を含む）',
+			regionalSupplierOpenedCities: '4都市を開放する',
+			regionalSupplierLocalUnits:
+				'地場生産品を25ユニット届ける（ボトルウォーター・農産物・パントリー）',
+			regionalSupplierPeakBookValue: '報告済み会社帳簿価値のピークを$60,000に伸ばす',
+			multiCityOperatorStoreCount: '5店舗を運営する',
+			multiCityOperatorOpenedCities: '5都市を開放する',
+			multiCityOperatorMaxStoreLevel: '店舗をレベル4にアップグレードする',
+			marketLeaderStoreCount: '7店舗を運営する',
+			marketLeaderOpenedCities: '全6都市を開放する',
+			marketLeaderPeakBookValue: '報告済み会社帳簿価値のピークを$150,000に伸ばす'
 		}
 	},
 	scenarioDefinitions: {

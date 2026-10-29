@@ -1,4 +1,4 @@
-import type { IndustrialBuildingTypeId, WorldCityId } from './types';
+import type { IndustrialBuildingTypeId, ProgressionTierId, WorldCityId } from './types';
 
 export type DecisionContext =
 	| { code: 'expansionUnavailable'; storeCap: number }
@@ -26,7 +26,8 @@ export type DecisionContext =
 	| { code: 'railRequiresCash'; cost: number; cash: number }
 	| { code: 'railSegmentAtMaxLevel' }
 	| { code: 'railUnknownSegment' }
-	| { code: 'industrialTileHasRail' };
+	| { code: 'industrialTileHasRail' }
+	| { code: 'progressionTierClaimed'; tierId: ProgressionTierId };
 
 export const decisionContextExpansionUnavailable = (storeCap: number): DecisionContext => ({
 	code: 'expansionUnavailable',
@@ -133,3 +134,7 @@ export const decisionContextRailUnknownSegment = (): DecisionContext => ({
 export const decisionContextIndustrialTileHasRail = (): DecisionContext => ({
 	code: 'industrialTileHasRail'
 });
+
+export const decisionContextProgressionTierClaimed = (
+	tierId: ProgressionTierId
+): DecisionContext => ({ code: 'progressionTierClaimed', tierId });

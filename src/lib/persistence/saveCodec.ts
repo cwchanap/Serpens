@@ -37,6 +37,7 @@ import { BRANDS, isBrandSupported } from '$lib/game/brands';
 import { COMPETITOR_COUNT } from '$lib/game/competitors';
 import { PRODUCTS } from '$lib/game/products';
 import { calculateStockHealth } from '$lib/game/stock';
+import { PROGRESSION_TIER_IDS } from '$lib/game/types';
 import type {
 	City,
 	CityTile,
@@ -53,6 +54,7 @@ import type {
 	PolicyOverrideScope,
 	ProductId,
 	ProductStockLot,
+	ProgressionTierId,
 	MarketCompetitor,
 	StoreProduct,
 	WorldCityId
@@ -392,6 +394,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	}
 	validateSavedFinance(game.finance, gameDay, 'Saved game finance');
 	const world = validateSavedWorld(game.world, 'Saved game world');
+	validateSavedProgression(game.progression, gameDay, 'Saved game progression');
 	for (const field of POLICY_FIELDS) {
 		validatePolicyValue(policy[field], `Saved game policy ${field}`, field);
 	}
@@ -1177,6 +1180,37 @@ function validateSavedWorld(value: unknown, label: string): GameState['world'] {
 		openedCityIds: [...new Set(openedCityIds)],
 		claimedMilestoneIds: [...new Set(claimedMilestoneIds)]
 	};
+}
+
+/**
+ * Shared claim-receipt shape check (design §3): known tier ids, unique
+ * contiguous catalog-prefix order, integer claimedOnDay within [0, day].
+ * The sandbox-only earned-claim re-verification lives in the save-record
+ * validator (later step); scenarios only ever carry empty claims.
+ */
+function validateSavedProgression(value: unknown, gameDay: number, label: string): void {
+	const progression = requireRecord(value, label);
+	const claims = requireArray(progression.claims, `${label} claims`);
+	claims.forEach((claimValue, index) => {
+		const claimLabel = `${label} claims[${index}]`;
+		const claim = requireRecord(claimValue, claimLabel);
+		const tierId = requireOneOf(
+			requireString(claim.tierId, `${claimLabel} tierId`),
+			`${claimLabel} tierId`,
+			PROGRESSION_TIER_IDS
+		);
+		if (tierId !== PROGRESSION_TIER_IDS[index]) {
+			throw new SaveDataError(
+				`${claimLabel} must extend the tier catalog as a contiguous prefix; expected ${PROGRESSION_TIER_IDS[index]}`
+			);
+		}
+		const claimedOnDay = requireNumber(claim.claimedOnDay, `${claimLabel} claimedOnDay`);
+		if (!Number.isInteger(claimedOnDay) || claimedOnDay < 0 || claimedOnDay > gameDay) {
+			throw new SaveDataError(
+				`${claimLabel} claimedOnDay must be an integer between 0 and the saved day (${gameDay})`
+			);
+		}
+	});
 }
 
 function validateUniqueCityIds(cities: unknown[], label: string): void {
@@ -2804,6 +2838,15 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 			return { code };
 		case 'industrialTileHasRail':
 			return { code };
+		case 'progressionTierClaimed': {
+			const tierId = requireString(ctx.tierId, `${label} context tierId`);
+			if (!(PROGRESSION_TIER_IDS as readonly string[]).includes(tierId)) {
+				throw new SaveDataError(
+					`${label} context tierId must be a known progression tier id: ${tierId}`
+				);
+			}
+			return { code, tierId: tierId as ProgressionTierId };
+		}
 		default:
 			throw new SaveDataError(`${label} context code must be a known decision context code`);
 	}

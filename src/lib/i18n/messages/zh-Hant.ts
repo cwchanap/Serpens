@@ -1717,6 +1717,10 @@ export const zhHant = {
 			openedSummary: '{storeCount} 間商店 - {buildingCount} 座工業建築'
 		},
 		decisions: {
+			progressionTierClaimed: {
+				title: '里程碑達成',
+				context: '達成「{tier}」：店鋪上限 +1，信用核給基準與硬上限各 +$25,000。'
+			},
 			cashPressure: {
 				title: '現金壓力',
 				context: '現金低於零。請選擇如何維持營運，同時保護品牌。',
@@ -1882,6 +1886,47 @@ export const zhHant = {
 				warehouseOverflow: '{quantity} 單位正在城市庫存溢出。',
 				warehouseAvailable: '城市庫存容量仍有空間。'
 			}
+		}
+	},
+	progression: {
+		reward: '店鋪上限 +1，信用核給基準與硬上限 +$25,000',
+		tiers: {
+			'local-shop': {
+				title: '在地小店',
+				description: '開出第二間店，讓公司價值超越創業規模。'
+			},
+			'neighborhood-chain': {
+				title: '社區連鎖',
+				description: '跨多個開放城市經營升級後的連鎖店。'
+			},
+			'regional-supplier': {
+				title: '區域供應商',
+				description: '以區域規模配送在地生產的基本商品。'
+			},
+			'multi-city-operator': {
+				title: '多城市營運者',
+				description: '在區域內大多數城市經營升級後的店鋪。'
+			},
+			'market-leader': {
+				title: '市場領導者',
+				description: '以全區域最強的公司價值領導市場。'
+			}
+		},
+		goals: {
+			localShopStoreCount: '開設第二間店鋪',
+			localShopPeakBookValue: '將已回報的公司帳面價值峰值提升到 $70,000',
+			neighborhoodChainStoreCount: '經營 3 間店鋪',
+			neighborhoodChainMaxStoreLevel: '將一間店鋪升級到等級 2',
+			neighborhoodChainOpenedCities: '開放 3 個城市（含兩個起始城市）',
+			regionalSupplierOpenedCities: '開放 4 個城市',
+			regionalSupplierLocalUnits: '配送 25 個在地生產單位（瓶裝水、農產、食品雜貨）',
+			regionalSupplierPeakBookValue: '將已回報的公司帳面價值峰值提升到 $60,000',
+			multiCityOperatorStoreCount: '經營 5 間店鋪',
+			multiCityOperatorOpenedCities: '開放 5 個城市',
+			multiCityOperatorMaxStoreLevel: '將一間店鋪升級到等級 4',
+			marketLeaderStoreCount: '經營 7 間店鋪',
+			marketLeaderOpenedCities: '開放全部 6 個城市',
+			marketLeaderPeakBookValue: '將已回報的公司帳面價值峰值提升到 $150,000'
 		}
 	},
 	scenarioDefinitions: {

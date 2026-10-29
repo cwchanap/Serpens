@@ -240,6 +240,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		hiringCandidates: [],
 		events: overrides.events ?? createInitialEventRuntime(20260505),
 		decisions: [],
+		progression: { claims: [] },
 		reports: [],
 		...overrides
 	};
@@ -7705,12 +7706,13 @@ describe('saveCodec', () => {
 			railRequiresCash: { code: 'railRequiresCash', cost: 1000, cash: 500 },
 			railSegmentAtMaxLevel: { code: 'railSegmentAtMaxLevel' },
 			railUnknownSegment: { code: 'railUnknownSegment' },
-			industrialTileHasRail: { code: 'industrialTileHasRail' }
+			industrialTileHasRail: { code: 'industrialTileHasRail' },
+			progressionTierClaimed: { code: 'progressionTierClaimed', tierId: 'local-shop' }
 		};
 		const contexts = Object.values(ALL_DECISION_CONTEXTS);
-		// 26 = number of variants in the DecisionContext union. If this fails,
+		// 27 = number of variants in the DecisionContext union. If this fails,
 		// a variant was added or removed without updating ALL_DECISION_CONTEXTS.
-		expect(contexts).toHaveLength(26);
+		expect(contexts).toHaveLength(27);
 		const structuredDecisions = contexts.map((context, index) => ({
 			kind: 'system' as const,
 			id: `d${index + 1}`,

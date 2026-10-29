@@ -292,6 +292,7 @@ function createGame(overrides: Partial<GameState> = {}): GameState {
 		hiringCandidates: [],
 		events: overrides.events ?? createInitialEventRuntime(20260505),
 		decisions: [],
+		progression: { claims: [] },
 		reports: [],
 		...otherOverrides
 	};

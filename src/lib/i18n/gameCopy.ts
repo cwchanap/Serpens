@@ -394,6 +394,7 @@ function classifyDecision(decision: DecisionItem): string | null {
 	// are preserved instead of being rewritten with world-city copy.
 	if (decision.id.startsWith('world-city-') && isWorldCityContext(decision.context))
 		return 'worldCity';
+	if (decision.id.startsWith('progression-tier-claimed-')) return 'progressionTierClaimed';
 	return null;
 }
 
@@ -470,6 +471,10 @@ export function localizeDecisionContextValue(ctx: DecisionContext, i18n: I18nBun
 			return i18n.t('copy.decisions.railConstruction.contexts.unknownSegment');
 		case 'industrialTileHasRail':
 			return i18n.t('copy.decisions.railConstruction.contexts.tileHasRail');
+		case 'progressionTierClaimed':
+			return i18n.t('copy.decisions.progressionTierClaimed.context', {
+				tier: tScoped(i18n, `progression.tiers.${ctx.tierId}`, 'title')
+			});
 	}
 }
 
@@ -491,6 +496,8 @@ function localizeDecisionTitle(decision: DecisionItem, i18n: I18nBundle): string
 		case 'locationUnavailable':
 		case 'industrialConstructionDelayed':
 			return translateMessage(i18n, `copy.decisions.${family}.title`) ?? decision.title;
+		case 'progressionTierClaimed':
+			return i18n.t('copy.decisions.progressionTierClaimed.title');
 		case 'worldCity':
 			switch (decision.context.code) {
 				case 'worldCityUnknown':
