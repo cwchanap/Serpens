@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getCompanyBookValue } from '$lib/game/companyBookValue';
-	import { evaluateProgression } from '$lib/game/progression';
+	import { evaluateProgression, PROGRESSION_TIERS } from '$lib/game/progression';
 	import { evaluateMetric } from '$lib/scenarios/metrics';
 	import type { GameState } from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
@@ -35,9 +35,27 @@
 					})),
 					i18n,
 					(id) => resolveScenarioContributorLabel(game, id, i18n)
-				)
+				).map((row) => ({
+					// Sandbox runs are unbounded, so evidence like tier-3
+					// retail-local-units (one contributor per report-day × store ×
+					// product) would repeat store names forever — collapse labels.
+					...row,
+					contributorLabels: [...new Set(row.contributorLabels)]
+				}))
 			: []
 	);
+	// Spec "latest completion": most recent ladder receipt (claims is
+	// append-only), shown in the current-tier view only.
+	const lastClaimedLabel = $derived.by(() => {
+		const claim = game.progression.claims.at(-1);
+		if (!claim) return null;
+		const tier = PROGRESSION_TIERS.find((candidate) => candidate.id === claim.tierId);
+		if (!tier) return null;
+		return i18n.t('progression.panel.lastClaimed', {
+			tier: i18n.t(tier.titleKey),
+			day: i18n.format.integer(claim.claimedOnDay)
+		});
+	});
 	const finalSummary = $derived(
 		progression.allTiersClaimed
 			? {
@@ -61,6 +79,9 @@
 	</p>
 	{#if currentTier}
 		<p class="reward">{i18n.t('progression.panel.reward')}</p>
+		{#if lastClaimedLabel}
+			<p class="last-claimed">{lastClaimedLabel}</p>
+		{/if}
 		<ScenarioObjectivePanel
 			id="sandbox-progression-objectives"
 			view={{ required: tierRows, optional: [], failures: [], deadlineLabel: null }}
@@ -125,6 +146,11 @@
 	}
 	.reward {
 		margin: 0 0 0.6rem;
+		color: var(--ink-500);
+		font-size: 0.85rem;
+	}
+	.last-claimed {
+		margin: -0.4rem 0 0.6rem;
 		color: var(--ink-500);
 		font-size: 0.85rem;
 	}
