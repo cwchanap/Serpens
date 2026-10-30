@@ -1944,7 +1944,6 @@ export const en = {
 		}
 	},
 	progression: {
-		reward: '+1 store slot and +$25,000 credit underwriting base and hard bound',
 		panel: {
 			title: 'Company progression',
 			bookValue: 'Company book value',
@@ -1953,6 +1952,7 @@ export const en = {
 				'Claim reward: +1 store slot and +$25,000 credit underwriting base and hard bound — higher possible credit, not guaranteed funds.',
 			completeHeading: 'Ladder complete',
 			claimedOnDay: 'Final tier claimed on day {day}',
+			lastClaimed: 'Last claimed: {tier} — day {day}',
 			peakBookValue: 'Peak company book value: {value}',
 			storeCap: 'Current store limit: {cap}'
 		},

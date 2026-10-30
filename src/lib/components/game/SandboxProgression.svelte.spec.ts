@@ -48,6 +48,44 @@ function allClaims(): ReturnType<typeof claim>[] {
 	];
 }
 
+/** The tier-3 industry-linked product set (progression.ts REGIONAL_SUPPLIER_PRODUCT_IDS). */
+const REGIONAL_SUPPLIER_PRODUCT_IDS = [
+	'bottled-water',
+	'produce',
+	'pantry',
+	'snacks',
+	'soft-drinks',
+	'essentials',
+	'gifts'
+];
+
+/**
+ * A game whose current tier is tier 3 (regional-supplier): tiers 1–2 claimed,
+ * multiple named stores, and one report per requested day carrying every
+ * industry-linked product for both stores — the worst-case tier-3 evidence
+ * volume (report-day × store × product contributor ids).
+ */
+function tierThreeGame(reportDays: number): GameState {
+	const base = gameWith({
+		progression: { claims: [claim('local-shop', 10), claim('neighborhood-chain', 57)] }
+	});
+	const stores = [
+		{ ...base.stores[0]!, name: 'Harbor Shop' },
+		{ ...base.stores[0]!, id: 'store-2', name: 'Market Shop' }
+	];
+	const reports = Array.from({ length: reportDays }, (_, index) => ({
+		...reportStub(index + 1, 10_000),
+		storeReports: stores.map((store) => ({
+			storeId: store.id,
+			productReports: REGIONAL_SUPPLIER_PRODUCT_IDS.map((productId) => ({
+				productId,
+				warehouseUnits: 1
+			}))
+		}))
+	})) as unknown as DailyReport[];
+	return { ...base, stores, reports };
+}
+
 describe('SandboxProgression', () => {
 	it('renders the book-value headline, current tier rows with actual/target evidence, and the reward copy', async () => {
 		expect.assertions(9);
@@ -114,5 +152,37 @@ describe('SandboxProgression', () => {
 		await expect
 			.element(page.getByRole('heading', { name: '次のマイルストーン：ローカルショップ' }))
 			.toBeVisible();
+	});
+
+	it('dedupes tier-3 contributor labels and keeps them bounded as report days grow', async () => {
+		expect.assertions(3);
+		const i18n = createI18n('en');
+		// Two stores × two days × seven products → repeated store labels before
+		// dedupe; the row must render each store exactly once.
+		const first = render(SandboxProgression, { game: tierThreeGame(2), i18n });
+		await expect
+			.element(page.getByRole('heading', { name: 'Next milestone: Regional Supplier' }))
+			.toBeVisible();
+		await expect.element(page.getByText('Contributors: Harbor Shop and Market Shop')).toBeVisible();
+		first.unmount();
+
+		// Sandbox runs are unbounded — five more report days must not add labels.
+		const second = render(SandboxProgression, { game: tierThreeGame(7), i18n });
+		await expect.element(page.getByText('Contributors: Harbor Shop and Market Shop')).toBeVisible();
+		second.unmount();
+	});
+
+	it('shows the latest claim in the current-tier view and hides it when nothing is claimed', async () => {
+		expect.assertions(3);
+		const i18n = createI18n('en');
+		const claimed = render(SandboxProgression, { game: tierThreeGame(1), i18n });
+		await expect
+			.element(page.getByRole('heading', { name: 'Next milestone: Regional Supplier' }))
+			.toBeVisible();
+		await expect.element(page.getByText('Last claimed: Neighborhood Chain — day 57')).toBeVisible();
+		claimed.unmount();
+
+		render(SandboxProgression, { game: gameWith({}), i18n });
+		await expect.element(page.getByText('Last claimed:', { exact: false })).not.toBeInTheDocument();
 	});
 });

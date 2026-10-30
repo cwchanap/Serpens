@@ -1889,7 +1889,6 @@ export const zhHant = {
 		}
 	},
 	progression: {
-		reward: '店鋪上限 +1，信用核給基準與硬上限 +$25,000',
 		panel: {
 			title: '公司發展',
 			bookValue: '公司帳簿價值',
@@ -1898,6 +1897,7 @@ export const zhHant = {
 				'達成獎勵：店面額度 +1，信用核給基準與硬上限 +$25,000。提高可能的信用額度，不保證核貸金額。',
 			completeHeading: '階梯全部達成',
 			claimedOnDay: '最終階層已於第 {day} 天領取',
+			lastClaimed: '最近領取：{tier} — 第 {day} 天',
 			peakBookValue: '公司帳簿價值峰值：{value}',
 			storeCap: '目前店面上限：{cap}'
 		},
