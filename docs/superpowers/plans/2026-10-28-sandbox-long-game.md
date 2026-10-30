@@ -1,8 +1,8 @@
 # HPA-318 — Sandbox Long Game Implementation Plan
 
-**Issue:** https://linear.app/cwchanap/issue/HPA-318/progression-give-the-sandbox-a-long-game-with-company-value-and-a-goal  
-**Design:** `docs/superpowers/specs/2026-10-28-sandbox-long-game-design.md`  
-**Branch / PR:** `docs/hpa-318-sandbox-long-game` · **single PR for this ticket**  
+**Issue:** https://linear.app/cwchanap/issue/HPA-318/progression-give-the-sandbox-a-long-game-with-company-value-and-a-goal\
+**Design:** `docs/superpowers/specs/2026-10-28-sandbox-long-game-design.md`\
+**Branch / PR:** `docs/hpa-318-sandbox-long-game` · **single PR for this ticket**\
 **Status:** planning checkpoint — runtime work has not started; no test outcomes implied
 
 ## Goal and scope discipline

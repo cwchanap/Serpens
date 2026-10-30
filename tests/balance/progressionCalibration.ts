@@ -32,6 +32,7 @@ export function median(sample: readonly number[]): number | null {
 }
 
 function minMedianMax(sample: readonly number[]): { min: number; median: number; max: number } {
+	if (sample.length === 0) throw new Error('minMedianMax requires a nonempty sample');
 	const sorted = [...sample].sort((left, right) => left - right);
 	return {
 		min: sorted[0]!,
