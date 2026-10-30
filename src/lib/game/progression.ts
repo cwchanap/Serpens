@@ -16,8 +16,8 @@ export interface ProgressionTierReward {
 	storeCapacityBonus: number;
 	/**
 	 * +$25,000 credit underwriting base and gross-principal hard bound per
-	 * claimed tier. Description only — the finance math lands with the
-	 * credit-limits step; nothing here touches loans.
+	 * claimed tier, applied by `finance.ts:assessCredit`. Description only —
+	 * nothing here touches loans.
 	 */
 	creditUnderwritingBaseBonus: number;
 	creditGrossPrincipalHardBoundBonus: number;
