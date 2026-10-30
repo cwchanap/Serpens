@@ -255,3 +255,60 @@ zh-Hant equivalents).
   explicitly, never via `botsForArchetype`).
 - Full gate: `bun run test:unit -- --run` and `bun run check` green at the
   calibration commit.
+
+## 9. Step-5 credit counterfactual (wired claim-raised terms, measured)
+
+Step 5 wired the tier reward into `finance.ts:assessCredit`:
+`underwritingBase = 15_000 + 25_000 * claims.length` and
+`hardLimit = 100_000 + 25_000 * claims.length`, health/history,
+repayment-service, outstanding-principal, delinquency and payment-headroom
+checks unchanged. This section re-measures the §4/§6 credit numbers under the
+wired terms (carry-over acceptance item 4 from the Step-4 calibration). The
+§3–§6 numbers above remain the committed **static-terms** record
+(`15_000`/`100_000` at any claim count).
+
+What was run (harness unchanged, `tests/balance/progressionRun.ts`):
+
+- Reference seed `20260503`, convenience, 365 days, `--trace` — 3.1 s.
+- Focused sample: seeds `20260501`–`20260510` × `convenience`, `grocery`
+  (the two archetypes that reach tier 3) — 20 progression + 20 idle runs,
+  59.7 s. Not a full 200-run re-sweep; actual seeds and runtime recorded here
+  per the carry-over requirement.
+
+Reference seed `20260503` (static vs wired):
+
+| Metric | Static (§4) | Wired |
+| --- | --- | --- |
+| Claims | T1 day 327, T2 day 358, T3 day 358 | T1 day 327 (T2/T3 slip past day 365) |
+| Borrows | 13 totaling $56,000, max $15,000 | 13 totaling $62,000, max $21,000 |
+| Highest `grossPrincipalLimit` observed | $18,895 | $34,931 |
+| Final cash / book value / storeCap | −$23,825 / $52,153 / 8 | −$16,370 / $62,101 / 7 |
+
+**Direct claim-raised-limit evidence (same seed, same claim day):** tier 1 is
+claimed on day 327 in both runs; on day 330 the wired bot borrows **$21,000
+at `claimsAtBorrow: 1`** (`grossPrincipalLimit` $34,931, available credit
+$27,419) — $6,000 more than any loan the static terms ever allowed in this
+run (static max $15,000, limit ≤ $18,895). So yes: at least one real loan
+borrowed more **because** a claim raised the underwriting base. The bot still
+only ever borrows its exact working-capital/expansion shortfall up to the
+engine's own `assessCredit` ceiling — never a guaranteed $25k.
+
+Focused sample (10 seeds × 2 archetypes, static vs wired):
+
+| Metric | Static | Wired |
+| --- | --- | --- |
+| Borrows | 158 | 156 |
+| Total principal advanced | $1,041,000 | $1,189,000 (+14%) |
+| Max single borrow | $21,000 | $28,000 |
+| Claims reached (T1–T3) | 46 | 40 |
+
+15 of the 20 sampled runs changed borrowing outcomes; several borrowed
+strictly more per loan after a claim (e.g. seed 20260502 grocery max single
+$14,000 → $27,000), while others shifted the other way purely through seeded
+trajectory divergence (any credit change reshuffles later RNG draws), which
+also moved claim days/counts (e.g. reference T2/T3). Delinquent/service-limited
+runs still cannot borrow: the wired terms only move the two ceiling terms, so
+denial behavior (delinquency refusal, exhausted debt-service capacity) is
+unchanged by construction and pinned by spec. Copy rule for the UI stands: a
+claimed tier grants an **underwriting-base increase / higher possible
+credit**, never guaranteed available credit.

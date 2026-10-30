@@ -30,7 +30,32 @@ import { createNewGame } from './state';
 import { simulateDay } from './simulateDay';
 import { refreshWorldProgress } from './world';
 import { validateCurrentGameState } from '../persistence/saveCodec';
-import type { FinanceState, GameState, LoanInstrument } from './types';
+import {
+	PROGRESSION_TIER_IDS,
+	type FinanceState,
+	type GameState,
+	type LoanInstrument
+} from './types';
+
+/** Progression receipt override carrying `count` contiguous catalog claims. */
+function claimsOverride(count: number): Partial<GameState> {
+	return {
+		progression: {
+			claims: PROGRESSION_TIER_IDS.slice(0, count).map((tierId, index) => ({
+				tierId,
+				claimedOnDay: index + 1
+			}))
+		}
+	};
+}
+
+/** createCreditGame picks explicit fields only, so claims are applied after. */
+function createClaimedCreditGame(
+	claims: number,
+	input: Parameters<typeof createCreditGame>[0] = {}
+): GameState {
+	return { ...createCreditGame(input), ...claimsOverride(claims) };
+}
 
 function createLoan(overrides: Partial<LoanInstrument> = {}): LoanInstrument {
 	const loan = createFoundingFinanceState(1, 1_200).loans[0]!;
@@ -1446,6 +1471,53 @@ describe('credit assessment', () => {
 		expect(ordinary.existingWeeklyDebtService).toBe(102.761647);
 		expect(refinance.existingWeeklyDebtService).toBe(0);
 		expect(refinance.principalHeadroom).toBeGreaterThan(ordinary.principalHeadroom);
+	});
+
+	it('raises the underwriting base and hard bound by $25k per progression claim', () => {
+		const noClaims = assessCredit(createClaimedCreditGame(0), 28);
+		const oneClaim = assessCredit(createClaimedCreditGame(1), 28);
+		const fiveClaims = assessCredit(createClaimedCreditGame(5), 28);
+		const cappedByHardBound = assessCredit(createClaimedCreditGame(5, { cash: 400_000 }), 28);
+
+		// $15,000 base + $25,000 per claim, hard-bounded at $100,000 + $25,000 per claim.
+		expect(noClaims.grossPrincipalLimit).toBe(15_000);
+		expect(oneClaim.grossPrincipalLimit).toBe(40_000);
+		expect(oneClaim.principalHeadroom).toBe(40_000);
+		expect(fiveClaims.grossPrincipalLimit).toBe(140_000);
+		expect(fiveClaims.principalHeadroom).toBe(140_000);
+		expect(cappedByHardBound.grossPrincipalLimit).toBe(225_000);
+	});
+
+	it('still denies borrowing for delinquency or exhausted service capacity despite claims', () => {
+		const delinquent = assessCredit(
+			createClaimedCreditGame(3, {
+				finance: createFinance([
+					createLoan({ status: 'delinquent', overduePrincipal: 1, arrearsSinceDay: 1 })
+				])
+			}),
+			28
+		);
+		const noServiceHeadroom = assessCredit(
+			createClaimedCreditGame(3, {
+				finance: createFinance([
+					createLoan({
+						originalPrincipal: 85_000,
+						remainingPrincipal: 85_000,
+						annualInterestRateBps: 0,
+						termDays: 28,
+						installmentsProcessed: 0
+					})
+				])
+			}),
+			28
+		);
+
+		expect(delinquent).toMatchObject({
+			availableCredit: 0,
+			reasons: ['delinquentObligation']
+		});
+		expect(noServiceHeadroom.availableCredit).toBe(0);
+		expect(noServiceHeadroom.reasons).toEqual(['debtServiceCapacityLimited']);
 	});
 });
 

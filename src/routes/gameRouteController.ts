@@ -32,6 +32,7 @@ import {
 	financeRetailStoreOpening,
 	openStoreAtTile
 } from '$lib/game/placement';
+import { claimEarnedTiers } from '$lib/game/progression';
 import { buildRail, demolishRailSegment, upgradeRailSegment } from '$lib/game/railPlacement';
 import {
 	setRetailSupplySource as setRetailSupplySourceTransition,
@@ -1680,16 +1681,22 @@ export class GameRouteController {
 					context: transition.context
 				};
 			}
+			// Progression claims are a sandbox-only reward authority (design §3):
+			// applied once per accepted command at this single commit boundary,
+			// before the immediate operation, so publication, autosave and
+			// onAcceptedGameChange all observe the claimed game. The scenario
+			// branch below never claims.
+			const claimedGame = claimEarnedTiers(transition.game);
 			const result = runImmediateSandboxOperation({
 				current: this.currentState.sandboxGame,
-				transition: () => transition.game,
+				transition: () => claimedGame,
 				publish: (sandboxGame) => this.patchState({ sandboxGame }),
 				autosave: (game) => {
 					void this.saveAuto(game);
 				},
 				afterPublish: () => {
 					if (request.cueId) this.options.playSfx(request.cueId);
-					this.options.onAcceptedGameChange?.(previousSandboxGame, transition.game);
+					this.options.onAcceptedGameChange?.(previousSandboxGame, claimedGame);
 				}
 			});
 			return { status: 'sandbox-committed', changed: result.changed };

@@ -60,6 +60,8 @@ import type {
 	WorldCityId
 } from '$lib/game/types';
 import { getWorldCityDefinition, isWorldCityId, refreshWorldProgress } from '$lib/game/world';
+import { PROGRESSION_TIERS, claimEarnedTiers } from '$lib/game/progression';
+import { evaluateCondition } from '$lib/scenarios/metrics';
 import {
 	AUTO_SAVE_SLOT_ID,
 	SAVE_SCHEMA_VERSION,
@@ -316,6 +318,11 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 	const game = validateCurrentGameStateInternal(
 		regenerateLegacyRetailCitiesForStrictValidation(record.game)
 	);
+	// Sandbox-only earned-claim invariants (design §3), run after the shared
+	// validator has decoded historical reports so monotone-goal evidence is the
+	// decoded report evidence. Scenarios validate through
+	// validateCurrentGameState only and never reach this check.
+	assertClaimsAreEarned(game);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -1183,11 +1190,14 @@ function validateSavedWorld(value: unknown, label: string): GameState['world'] {
 }
 
 /**
- * Shared claim-receipt shape check (design §3): known tier ids, unique
- * contiguous catalog-prefix order, integer claimedOnDay within [0, day].
- * The sandbox-only earned-claim re-verification lives in the save-record
- * validator (later step); scenarios only ever carry empty claims.
+ * Shared claim-receipt shape check (design §3): known tier ids sourced from
+ * the PROGRESSION_TIERS catalog (not a duplicated list), unique contiguous
+ * prefix order, integer claimedOnDay within [0, day]. The sandbox-only
+ * earned-claim re-verification lives in validateSaveRecordInternal;
+ * scenarios only ever carry empty claims.
  */
+const PROGRESSION_CATALOG_TIER_IDS = PROGRESSION_TIERS.map((tier) => tier.id);
+
 function validateSavedProgression(value: unknown, gameDay: number, label: string): void {
 	const progression = requireRecord(value, label);
 	const claims = requireArray(progression.claims, `${label} claims`);
@@ -1197,11 +1207,11 @@ function validateSavedProgression(value: unknown, gameDay: number, label: string
 		const tierId = requireOneOf(
 			requireString(claim.tierId, `${claimLabel} tierId`),
 			`${claimLabel} tierId`,
-			PROGRESSION_TIER_IDS
+			PROGRESSION_CATALOG_TIER_IDS
 		);
-		if (tierId !== PROGRESSION_TIER_IDS[index]) {
+		if (tierId !== PROGRESSION_CATALOG_TIER_IDS[index]) {
 			throw new SaveDataError(
-				`${claimLabel} must extend the tier catalog as a contiguous prefix; expected ${PROGRESSION_TIER_IDS[index]}`
+				`${claimLabel} must extend the tier catalog as a contiguous prefix; expected ${PROGRESSION_CATALOG_TIER_IDS[index]}`
 			);
 		}
 		const claimedOnDay = requireNumber(claim.claimedOnDay, `${claimLabel} claimedOnDay`);
@@ -1209,6 +1219,35 @@ function validateSavedProgression(value: unknown, gameDay: number, label: string
 			throw new SaveDataError(
 				`${claimLabel} claimedOnDay must be an integer between 0 and the saved day (${gameDay})`
 			);
+		}
+	});
+}
+
+/**
+ * Sandbox-only earned-claim invariants (design §3): a saved receipt must be a
+ * fixed point of `claimEarnedTiers` (no earned tier left unclaimed — never
+ * auto-claim) and every claimed tier must still satisfy its monotone
+ * `evaluateCondition` goals against the decoded report evidence. Forged,
+ * stale or evidence-free claims are rejected, never repaired.
+ */
+function assertClaimsAreEarned(game: GameState): void {
+	if (claimEarnedTiers(game) !== game) {
+		throw new SaveDataError('Saved game progression claims must cover every earned tier');
+	}
+	game.progression.claims.forEach((claim, index) => {
+		const tier = PROGRESSION_TIERS[index];
+		// Unreachable: the shared validator already enforced the catalog prefix.
+		if (!tier || tier.id !== claim.tierId) {
+			throw new SaveDataError(
+				`Saved game progression claims[${index}] must match the tier catalog: ${claim.tierId}`
+			);
+		}
+		for (const goal of tier.goals) {
+			if (!evaluateCondition(goal, game).passes) {
+				throw new SaveDataError(
+					`Saved game progression claim no longer satisfies its goals: ${claim.tierId}`
+				);
+			}
 		}
 	});
 }

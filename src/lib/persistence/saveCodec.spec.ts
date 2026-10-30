@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, it, test, vi } from 'vitest';
 import {
 	computeStoreLocalDemand,
 	DEFAULT_RETAIL_CITY_HEIGHT,
@@ -18,6 +18,7 @@ import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { cloneTimedEffect } from '$lib/game/eventModifiers';
 import { createNewGame, resolveDecision } from '$lib/game/state';
+import { claimEarnedTiers } from '$lib/game/progression';
 import { ensureCompetitorsForRetailCity } from '$lib/game/competitors';
 import { MANAGER_ACTION_HISTORY_LIMIT } from '$lib/game/managerDelegation';
 import { getProductDefinition } from '$lib/game/products';
@@ -10110,6 +10111,141 @@ describe('saveCodec', () => {
 			const game = { ...baseGame, logistics: mutate(createLogisticsState(baseGame)) };
 
 			expect(logisticsError(() => validateCurrentGameState(game)).code).toBe('invariant-logistics');
+		});
+	});
+
+	describe('progression claim receipt shape (validateCurrentGameState)', () => {
+		function gameWithClaims(claims: GameState['progression']['claims']): GameState {
+			return { ...createGame(), progression: { claims } };
+		}
+
+		it('accepts a contiguous catalog-prefix receipt list with in-range integer days', () => {
+			const game = gameWithClaims([
+				{ tierId: 'local-shop', claimedOnDay: 2 },
+				{ tierId: 'neighborhood-chain', claimedOnDay: 3 }
+			]);
+
+			expect(validateCurrentGameState(game).progression.claims).toEqual(game.progression.claims);
+		});
+
+		it('rejects an unknown tier id', () => {
+			expectGameStateErrorCode(
+				gameWithClaims([{ tierId: 'not-a-tier' as never, claimedOnDay: 1 }]),
+				'corrupt'
+			);
+		});
+
+		it('rejects duplicate claims instead of a contiguous prefix', () => {
+			expectGameStateErrorCode(
+				gameWithClaims([
+					{ tierId: 'local-shop', claimedOnDay: 1 },
+					{ tierId: 'local-shop', claimedOnDay: 2 }
+				]),
+				'corrupt',
+				'contiguous prefix'
+			);
+		});
+
+		it('rejects a skipped prefix', () => {
+			expectGameStateErrorCode(
+				gameWithClaims([{ tierId: 'neighborhood-chain', claimedOnDay: 1 }]),
+				'corrupt',
+				'contiguous prefix'
+			);
+		});
+
+		it('rejects a claimedOnDay outside [0, day] or a non-integer day', () => {
+			expectGameStateErrorCode(
+				gameWithClaims([{ tierId: 'local-shop', claimedOnDay: 4 }]),
+				'corrupt',
+				'between 0 and the saved day'
+			);
+			expectGameStateErrorCode(
+				gameWithClaims([{ tierId: 'local-shop', claimedOnDay: -1 }]),
+				'corrupt',
+				'between 0 and the saved day'
+			);
+			expectGameStateErrorCode(
+				gameWithClaims([{ tierId: 'local-shop', claimedOnDay: 1.5 }]),
+				'corrupt',
+				'between 0 and the saved day'
+			);
+		});
+	});
+
+	describe('sandbox earned-claim invariants (validateSaveRecord)', () => {
+		/** Two stores plus a decoded report peaking above the tier-1 $70k goal. */
+		function createEarnedTier1Game(): GameState {
+			return withCurrentReports(createGameWithTwoStores(), [
+				createDailyReport({ companyBookValueAfter: 80_000 })
+			]);
+		}
+
+		it('accepts an earned claim and keeps it exactly-once after decoding', () => {
+			const game = {
+				...createEarnedTier1Game(),
+				progression: { claims: [{ tierId: 'local-shop' as const, claimedOnDay: 2 }] }
+			};
+
+			const decoded = validateSaveRecord(createManualSaveRecord({ game })).game;
+
+			expect(decoded.progression.claims).toEqual([{ tierId: 'local-shop', claimedOnDay: 2 }]);
+			// Reload is a claim fixed point: no reward is awarded twice.
+			expect(claimEarnedTiers(decoded)).toBe(decoded);
+		});
+
+		it('rejects a forged claim whose tier goals no longer pass', () => {
+			const game = {
+				...createGame(),
+				progression: { claims: [{ tierId: 'local-shop' as const, claimedOnDay: 2 }] }
+			};
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(
+				/no longer satisfies its goals: local-shop/
+			);
+		});
+
+		it('rejects a later claim whose predecessor evidence is missing', () => {
+			const game = {
+				...createEarnedTier1Game(),
+				progression: {
+					claims: [
+						{ tierId: 'local-shop' as const, claimedOnDay: 2 },
+						{ tierId: 'neighborhood-chain' as const, claimedOnDay: 3 }
+					]
+				}
+			};
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(
+				/no longer satisfies its goals: neighborhood-chain/
+			);
+		});
+
+		it('rejects claims whose report evidence is dropped as malformed', () => {
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			try {
+				const game = {
+					...withCurrentReports(createGameWithTwoStores(), [
+						createDailyReport({ companyBookValueAfter: 80_000, cashAfter: 'bogus' as never })
+					]),
+					progression: { claims: [{ tierId: 'local-shop' as const, claimedOnDay: 2 }] }
+				};
+
+				expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(
+					/no longer satisfies its goals: local-shop/
+				);
+				expect(warn).toHaveBeenCalledTimes(1);
+			} finally {
+				warn.mockRestore();
+			}
+		});
+
+		it('rejects an earned tier that was never claimed instead of auto-claiming', () => {
+			const game = createEarnedTier1Game();
+
+			expect(() => validateSaveRecord(createManualSaveRecord({ game }))).toThrow(
+				/must cover every earned tier/
+			);
 		});
 	});
 

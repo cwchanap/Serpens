@@ -867,12 +867,18 @@ export function assessCredit(
 	const healthPenaltyBps = Math.round((100 - healthScore) * 6);
 	const historyPenaltyBps = Math.round(history.missRate * 800);
 	const annualInterestRateBps = baseRateBps + healthPenaltyBps + historyPenaltyBps;
+	// Design §3 reward: +$25k underwriting base and hard bound per progression
+	// claim. A higher base/limit is a higher *possible* credit ceiling, not a
+	// guaranteed loan — health, history, service, principal and delinquency
+	// checks below still bind.
+	const underwritingBase = 15_000 + 25_000 * game.progression.claims.length;
+	const hardLimit = 100_000 + 25_000 * game.progression.claims.length;
 	const grossPrincipalLimit = Math.max(
 		0,
 		Math.min(
-			100_000,
+			hardLimit,
 			Math.floor(
-				(15_000 + weeklyOperatingCashFlow * 2 + Math.max(0, game.cash) * 0.25) *
+				(underwritingBase + weeklyOperatingCashFlow * 2 + Math.max(0, game.cash) * 0.25) *
 					healthFactor *
 					historyFactor
 			)
