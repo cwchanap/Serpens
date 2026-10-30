@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createI18n } from '$lib/i18n';
 import { decisionContextIndustrialOccupiedTile } from '$lib/game/decisionContext';
+import type { GameState } from '$lib/game/types';
 import type {
 	ScenarioDefinition,
 	ScenarioPersistenceSummary,
@@ -10,6 +11,8 @@ import {
 	buildScenarioProgressView,
 	buildScenarioResultsView,
 	buildScenarioCatalogCards,
+	conditionViews,
+	resolveScenarioContributorLabel,
 	scenarioDiagnosticText,
 	scenarioShareCodeErrorText
 } from './scenarioCopy';
@@ -420,6 +423,51 @@ describe('scenario copy', () => {
 		expect(failed.medalLabel).toBe('No medal');
 		expect(failed.bestLabel).toBe('Best unchanged');
 		expect(failed.deadlineLabel).toBe('Deadline triggered on day 14');
+	});
+
+	it('exposes conditionViews and the shared contributor resolver for sandbox progression rows', () => {
+		expect.assertions(3);
+		const i18n = createI18n('en');
+		const sandboxGame = {
+			stores: [{ id: 'store-2', name: 'Harbor Shop' }],
+			world: { openedCityIds: ['harbor-city'] },
+			industrialBuildings: []
+		} as unknown as GameState;
+		const rows = conditionViews(
+			[
+				{
+					id: 'open-cities',
+					labelKey: 'progression.goals.neighborhoodChainOpenedCities',
+					query: { metric: 'opened-city-count' },
+					comparator: 'gte',
+					target: 3,
+					window: { kind: 'current' }
+				}
+			],
+			[
+				{
+					conditionId: 'open-cities',
+					status: 'pending' as const,
+					evidence: {
+						conditionId: 'open-cities',
+						metric: 'opened-city-count' as const,
+						comparator: 'gte' as const,
+						target: 3,
+						actual: 1,
+						day: 5,
+						window: { kind: 'current' as const },
+						windowComplete: true,
+						contributingIds: ['store-2', 'harbor-city', 'report:3']
+					}
+				}
+			],
+			i18n,
+			(id) => resolveScenarioContributorLabel(sandboxGame, id, i18n)
+		);
+
+		expect(rows[0]?.label).toBe('Open 3 cities (starter cities included)');
+		expect(rows[0]?.evidenceLabel).toBe('Actual 1 · Target 3');
+		expect(rows[0]?.contributorLabels).toEqual(['Harbor Shop', 'Harbor City', 'Day 3 report']);
 	});
 
 	it('localizes catalog card titles, eligibility, medals, and scores for ja and zh-Hant', () => {

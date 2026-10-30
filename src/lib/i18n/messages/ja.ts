@@ -1915,6 +1915,17 @@ export const ja = {
 	},
 	progression: {
 		reward: '店舗枠 +1 と与信基準額・上限額 +$25,000',
+		panel: {
+			title: '会社の発展',
+			bookValue: '会社帳簿価値',
+			nextMilestone: '次のマイルストーン：{tier}',
+			reward:
+				'達成報酬：店舗枠 +1 と与信基準額・上限額 +$25,000。与信余力が伸びる可能性があり、融資額は保証されません。',
+			completeHeading: 'すべての段階を達成',
+			claimedOnDay: '最終段階を{day}日に達成',
+			peakBookValue: '会社帳簿価値のピーク：{value}',
+			storeCap: '現在の店舗上限：{cap}'
+		},
 		tiers: {
 			'local-shop': {
 				title: 'ローカルショップ',

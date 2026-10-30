@@ -8,9 +8,17 @@
 	interface Props {
 		view: Pick<ScenarioProgressViewModel, 'required' | 'optional' | 'failures' | 'deadlineLabel'>;
 		i18n: I18nBundle;
+		/** Heading for the required section; defaults to the scenario copy. */
+		requiredHeading?: string;
+		/** Root element id; give each mount a distinct id to keep document ids unique. */
+		id?: string;
 	}
 
-	let { view, i18n }: Props = $props();
+	let { view, i18n, requiredHeading, id = 'scenario-objective-panel' }: Props = $props();
+
+	const resolvedRequiredHeading = $derived(
+		requiredHeading ?? i18n.t('scenarioObjectives.requiredHeading')
+	);
 </script>
 
 {#snippet evidenceSection(title: string, items: ScenarioEvidenceViewModel[])}
@@ -39,8 +47,8 @@
 	{/if}
 {/snippet}
 
-<div id="scenario-objective-panel" class="objective-panel">
-	{@render evidenceSection(i18n.t('scenarioObjectives.requiredHeading'), view.required)}
+<div {id} class="objective-panel">
+	{@render evidenceSection(resolvedRequiredHeading, view.required)}
 	{@render evidenceSection(i18n.t('scenarioObjectives.optionalHeading'), view.optional)}
 	{@render evidenceSection(i18n.t('scenarioObjectives.failuresHeading'), view.failures)}
 	{#if view.deadlineLabel}<p class="deadline">{view.deadlineLabel}</p>{/if}

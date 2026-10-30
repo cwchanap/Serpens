@@ -57,7 +57,10 @@ function progressionRunDigest(
 	return runProgressionBot(archetypeId, seed, days).digest;
 }
 
-describe('progression bot (HPA-318 Step 4)', () => {
+// Full multi-day bot simulations (each test re-runs the 365-day bot), so this
+// file needs the heavy-spec headroom the config comment reserves for
+// encode/validate-heavy suites.
+describe('progression bot (HPA-318 Step 4)', { timeout: 30_000 }, () => {
 	it('ends at the production claim fixed point: claimEarnedTiers finds nothing left to claim', () => {
 		const { game, digest } = runProgressionBot('convenience', REFERENCE_SEED, REFERENCE_DAYS);
 		// After claiming after every applied command, no earned tier may remain
