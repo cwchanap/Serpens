@@ -1945,6 +1945,17 @@ export const en = {
 	},
 	progression: {
 		reward: '+1 store slot and +$25,000 credit underwriting base and hard bound',
+		panel: {
+			title: 'Company progression',
+			bookValue: 'Company book value',
+			nextMilestone: 'Next milestone: {tier}',
+			reward:
+				'Claim reward: +1 store slot and +$25,000 credit underwriting base and hard bound — higher possible credit, not guaranteed funds.',
+			completeHeading: 'Ladder complete',
+			claimedOnDay: 'Final tier claimed on day {day}',
+			peakBookValue: 'Peak company book value: {value}',
+			storeCap: 'Current store limit: {cap}'
+		},
 		tiers: {
 			'local-shop': {
 				title: 'Local Shop',

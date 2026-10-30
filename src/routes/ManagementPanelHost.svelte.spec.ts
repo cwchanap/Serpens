@@ -53,6 +53,7 @@ interface ManagementPanelHostProps {
 	logisticsView: LogisticsPanelView;
 	focusedLogisticsRouteId: string | null;
 	logisticsRoutePreset: RecurringRouteInput | null;
+	sandboxProgressionGame?: GameState | null;
 	i18n: I18nBundle;
 	disabledReason: string | null;
 
@@ -666,5 +667,19 @@ describe('ManagementPanelHost', () => {
 		expect(() => render(ManagementPanelHost, props)).toThrow(
 			'logisticsView required for logistics panel'
 		);
+	});
+
+	it('renders the sandbox progression ladder on the dashboard only when a sandbox game is supplied', async () => {
+		expect.assertions(2);
+		const { unmount } = render(ManagementPanelHost, {
+			...hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard' }),
+			sandboxProgressionGame: compositionGame()
+		});
+		await expect.element(page.getByRole('heading', { name: 'Company progression' })).toBeVisible();
+		await unmount();
+
+		// Scenario mode (and pre-found sandbox) pass null — no ladder at all.
+		render(ManagementPanelHost, hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard' }));
+		await expect.element(page.getByText('Company progression')).not.toBeInTheDocument();
 	});
 });

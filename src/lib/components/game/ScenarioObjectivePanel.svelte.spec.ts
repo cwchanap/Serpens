@@ -62,4 +62,23 @@ describe('ScenarioObjectivePanel', () => {
 			.element(page.getByRole('heading', { name: 'Failure conditions' }))
 			.not.toBeInTheDocument();
 	});
+
+	it('keeps the scenario root id and required heading by default and accepts sandbox overrides', async () => {
+		expect.assertions(4);
+		const scenario = render(ScenarioObjectivePanel, { view, i18n: createI18n('en') });
+		await expect.element(page.getByRole('heading', { name: 'Required objectives' })).toBeVisible();
+		expect(document.getElementById('scenario-objective-panel')).not.toBeNull();
+		await scenario.unmount();
+
+		render(ScenarioObjectivePanel, {
+			view: { ...view, optional: [], failures: [], deadlineLabel: null },
+			i18n: createI18n('en'),
+			id: 'custom-objective-root',
+			requiredHeading: 'Custom required heading'
+		});
+		await expect
+			.element(page.getByRole('heading', { name: 'Custom required heading' }))
+			.toBeVisible();
+		expect(document.getElementById('custom-objective-root')).not.toBeNull();
+	});
 });

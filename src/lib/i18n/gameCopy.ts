@@ -394,7 +394,14 @@ function classifyDecision(decision: DecisionItem): string | null {
 	// are preserved instead of being rewritten with world-city copy.
 	if (decision.id.startsWith('world-city-') && isWorldCityContext(decision.context))
 		return 'worldCity';
-	if (decision.id.startsWith('progression-tier-claimed-')) return 'progressionTierClaimed';
+	// Same prefix-only hazard as the world-city family: only classify when the
+	// decision carries the matching progression context code, so a stored
+	// decision that merely reuses the id prefix keeps its retained copy.
+	if (
+		decision.id.startsWith('progression-tier-claimed-') &&
+		decision.context.code === 'progressionTierClaimed'
+	)
+		return 'progressionTierClaimed';
 	return null;
 }
 

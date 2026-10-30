@@ -1,4 +1,5 @@
 import type { I18nBundle, TranslationKey } from '$lib/i18n';
+import type { GameState } from '$lib/game/types';
 import { localizeDecisionContextValue } from '$lib/i18n/gameCopy';
 import type { ScenarioCatalogEntry } from '$lib/scenarios/catalog';
 import { METRIC_REGISTRY } from '$lib/scenarios/metrics';
@@ -225,7 +226,12 @@ function windowLabel(evidence: ObjectiveEvidence, i18n: I18nBundle): string {
 	}
 }
 
-function conditionViews(
+/**
+ * Localized evidence rows for one objective section. Shared by the scenario
+ * progress/results views and the sandbox progression ladder (which maps its
+ * goal evaluations onto the same shape). Exported for that reuse.
+ */
+export function conditionViews(
 	definitions: readonly ScenarioDefinition['requiredObjectives'][number][],
 	evaluations: ReadonlyArray<{
 		conditionId: string;
@@ -249,6 +255,41 @@ function conditionViews(
 			contributorLabels: evaluation.evidence.contributingIds.map(resolveContributor)
 		};
 	});
+}
+
+/**
+ * Resolves a metric evidence id (a store id, an opened city id, or a
+ * `report:<day>[/store:<id>…]` contributor) into a human label. Extracted
+ * from the route so the scenario views and the sandbox progression panel
+ * resolve contributors identically.
+ */
+export function resolveScenarioContributorLabel(
+	game: GameState | null,
+	id: string,
+	i18n: I18nBundle
+): string {
+	const reportMatch = /^report:(\d+)/.exec(id);
+	if (reportMatch) {
+		const storeMatch = /\/store:([^/]+)/.exec(id);
+		if (storeMatch) {
+			try {
+				const storeId = decodeURIComponent(storeMatch[1]!);
+				const store = game?.stores.find((candidate) => candidate.id === storeId);
+				if (store) return store.name || i18n.t('store.defaultName');
+			} catch {
+				// Preserve the canonical ID below when a segment cannot be decoded.
+			}
+		}
+		return i18n.t('scenarioObjectives.reportContributor', { day: reportMatch[1]! });
+	}
+	const store = game?.stores.find((candidate) => candidate.id === id);
+	if (store) return store.name || i18n.t('store.defaultName');
+	if (game?.world.openedCityIds.find((cityId) => cityId === id)) {
+		return i18n.labels.worldCity(id).name;
+	}
+	const building = game?.industrialBuildings.find((candidate) => candidate.id === id);
+	if (building) return i18n.labels.industrialBuilding(building.typeId);
+	return i18n.labels.material(id);
 }
 
 function deadlineLabel(

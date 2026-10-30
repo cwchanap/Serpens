@@ -15,6 +15,7 @@
 	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
 	import RetailSupplySources from '$lib/components/game/RetailSupplySources.svelte';
+	import SandboxProgression from '$lib/components/game/SandboxProgression.svelte';
 	import Scorecard from '$lib/components/game/Scorecard.svelte';
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import ManagerDelegationPanel from '$lib/components/game/ManagerDelegationPanel.svelte';
@@ -58,6 +59,8 @@
 		logisticsView: LogisticsPanelView | null;
 		focusedLogisticsRouteId?: string | null;
 		logisticsRoutePreset?: RecurringRouteInput | null;
+		/** Live sandbox game driving the progression ladder; null hides it (scenario mode or pre-found sandbox). */
+		sandboxProgressionGame?: GameState | null;
 		i18n: I18nBundle;
 		disabledReason: string | null;
 
@@ -115,6 +118,7 @@
 		logisticsView,
 		focusedLogisticsRouteId = null,
 		logisticsRoutePreset = null,
+		sandboxProgressionGame = null,
 		i18n,
 		disabledReason,
 		onClose,
@@ -294,6 +298,9 @@
 			{#key panelId}
 				{#if panelId === 'dashboard'}
 					<div class="dashboard-surfaces">
+						{#if sandboxProgressionGame}
+							<SandboxProgression game={sandboxProgressionGame} {i18n} />
+						{/if}
 						<DailyResultSummary
 							{i18n}
 							view={dailyResultView}

@@ -82,6 +82,7 @@
 		buildScenarioProgressView,
 		buildScenarioResultsView,
 		buildScenarioCatalogCards,
+		resolveScenarioContributorLabel,
 		scenarioDiagnosticText,
 		scenarioShareCodeErrorText,
 		type ScenarioCatalogActionResult,
@@ -1470,26 +1471,11 @@
 	}
 
 	function resolveScenarioContributor(id: string): string {
-		const currentGame = activeScenarioRun?.game ?? scenarioEvidenceGame ?? game;
-		const reportMatch = /^report:(\d+)/.exec(id);
-		if (reportMatch) {
-			const storeMatch = /\/store:([^/]+)/.exec(id);
-			if (storeMatch) {
-				try {
-					const storeId = decodeURIComponent(storeMatch[1]!);
-					const store = currentGame?.stores.find((candidate) => candidate.id === storeId);
-					if (store) return store.name || i18n.t('store.defaultName');
-				} catch {
-					// Preserve the canonical ID below when a segment cannot be decoded.
-				}
-			}
-			return i18n.t('scenarioObjectives.reportContributor', { day: reportMatch[1]! });
-		}
-		const store = currentGame?.stores.find((candidate) => candidate.id === id);
-		if (store) return store.name || i18n.t('store.defaultName');
-		const building = currentGame?.industrialBuildings.find((candidate) => candidate.id === id);
-		if (building) return i18n.labels.industrialBuilding(building.typeId);
-		return i18n.labels.material(id);
+		return resolveScenarioContributorLabel(
+			activeScenarioRun?.game ?? scenarioEvidenceGame ?? game,
+			id,
+			i18n
+		);
 	}
 
 	function handleScenarioCardResult(result: GameRouteCommitResult): void {
@@ -3370,6 +3356,7 @@
 			logisticsView={logisticsPanelView}
 			{focusedLogisticsRouteId}
 			{logisticsRoutePreset}
+			sandboxProgressionGame={playMode === 'sandbox' ? game : null}
 			{i18n}
 			disabledReason={mutationDisabledReason}
 			onClose={closeManagementPanel}
