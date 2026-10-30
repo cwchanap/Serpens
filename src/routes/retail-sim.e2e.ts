@@ -6582,3 +6582,79 @@ test('sandbox city opening stacks world bonus, milestone, and claim steps onto a
 	expect(saved.stores.length).toBeLessThanOrEqual(saved.storeCap);
 	expect(saved.reports.some((report) => report.companyBookValueAfter >= 70_000)).toBe(true);
 });
+
+test('scenario world map selects opened cities but never opens revealed ones, preserving the authored store cap', async ({
+	page
+}) => {
+	// Local Lifeline is the scenario counterpart of the sandbox city-opening
+	// journey: it starts at the authored storeCap 1 with industry-city already
+	// opened (it hosts the authored pump/warehouse), while the shared
+	// world-progress refresh reveals breadbasket-basin without opening it. No
+	// scenario lists openWorldCity in allowedCommands, so the world map must
+	// refuse every opening while still selecting already-opened cities.
+	await page.goto('/');
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'Local Lifeline')
+		.getByRole('button', { name: 'Start Local Lifeline', exact: true })
+		.click();
+	await pauseActiveSimulation(page);
+	await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'scenario');
+	await expect(challengeStatus(page)).toContainText('Local Lifeline · Ranked');
+
+	// Scenario content excludes breadbasket-basin, so its world-map card shows
+	// the unavailable marker instead of an open affordance, and the sandbox
+	// journey's "Open for …" button must not exist anywhere in scenario mode.
+	await openMapMenuItem(page, /world map/i);
+	await expect(page.getByRole('button', { name: /breadbasket basin/i })).toContainText(
+		'Unavailable'
+	);
+	await expect(page.getByRole('button', { name: /open for/i })).toHaveCount(0);
+
+	// The already-opened industry city still navigates through the real UI...
+	await page.getByRole('button', { name: 'Industry City', exact: true }).click();
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+
+	// ...and a legal day settlement neither claims a tier nor moves the cap:
+	// scenario mode never claims, and the cap-granting world milestone needs a
+	// non-harbor retail city that no scenario can open.
+	await advanceChallengeDay(page);
+	const snapshot = await readChallengeSnapshot(page);
+	const run = snapshot.activeRunsByScenarioId['local-lifeline'];
+	expect(run?.game).toMatchObject({
+		storeCap: 1,
+		progression: { claims: [] }
+	});
+	// `ScenarioRunRecord.game` is the persisted unknown shape; read the
+	// world-milestone evidence through a narrowed view like the round-trip
+	// group's saved-shape reads.
+	const savedWorld = (run?.game as { world?: { claimedMilestoneIds?: string[] } } | undefined)
+		?.world;
+	expect(savedWorld?.claimedMilestoneIds).toContain('reveal-breadbasket-basin');
+	expect(savedWorld?.claimedMilestoneIds).not.toContain('positive-income-store-cap');
+
+	// The sandbox progression ladder stays hidden from the scenario Dashboard.
+	await page.getByTestId('game-menu-trigger').click();
+	const menuManagement = page.getByRole('group', { name: /management panels/i });
+	await expect(menuManagement).toBeVisible();
+	await menuManagement.getByRole('button', { name: /dashboard/i }).click();
+	const dashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(dashboard).toBeVisible();
+	await expect(dashboard.locator('#sandbox-progression')).toHaveCount(0);
+	await dashboard.getByRole('button', { name: /close dashboard/i }).click();
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+
+	// Resume round trip: return the active city to harbor-city so the reload
+	// lands on the retail map, then assert the authored cap survives with no
+	// claims materialized.
+	await openMapMenuItem(page, /world map/i);
+	await page.getByRole('button', { name: 'Harbor City', exact: true }).click();
+	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
+	await page.reload();
+	await expectRetailMapReady(page);
+	await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'scenario');
+	const resumed = await readChallengeSnapshot(page);
+	expect(resumed.activeRunsByScenarioId['local-lifeline']?.game).toMatchObject({
+		storeCap: 1,
+		progression: { claims: [] }
+	});
+});
