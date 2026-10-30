@@ -1,8 +1,8 @@
 # HPA-318 — Sandbox Long Game: Book Value and Progression Ladder
 
-**Linear:** https://linear.app/cwchanap/issue/HPA-318/progression-give-the-sandbox-a-long-game-with-company-value-and-a-goal  
-**Parent:** HPA-534 · **Delivery:** one ticket / one PR, starting with these docs  
-**Baseline:** Serpens `main` inspected 2026-10-28, after HPA-502 tuning and HPA-511 scenario pack  
+**Linear:** https://linear.app/cwchanap/issue/HPA-318/progression-give-the-sandbox-a-long-game-with-company-value-and-a-goal\
+**Parent:** HPA-534 · **Delivery:** one ticket / one PR, starting with these docs\
+**Baseline:** Serpens `main` inspected 2026-10-28, after HPA-502 tuning and HPA-511 scenario pack\
 **Checkpoint:** design proposal; **no runtime implementation or passing calibration is claimed**
 
 ## Outcome and player loop

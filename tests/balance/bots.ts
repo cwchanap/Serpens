@@ -69,6 +69,8 @@ export interface BotActionRecord {
 	action: string;
 	outcome: BotActionOutcome;
 	detail?: string;
+	/** Exact `ScenarioCommand.kind` issued for this action, when it was one command. */
+	commandKind?: ScenarioCommand['kind'];
 }
 
 export interface OpeningRecord {
@@ -243,13 +245,13 @@ function record(
 	day: number,
 	action: string,
 	outcome: BotActionOutcome,
-	detail?: string
+	detail?: string,
+	commandKind?: ScenarioCommand['kind']
 ): void {
-	ledger.actions.push(
-		detail === undefined
-			? { day, bot: ledger.bot, action, outcome }
-			: { day, bot: ledger.bot, action, outcome, detail }
-	);
+	const entry: BotActionRecord = { day, bot: ledger.bot, action, outcome };
+	if (detail !== undefined) entry.detail = detail;
+	if (commandKind !== undefined) entry.commandKind = commandKind;
+	ledger.actions.push(entry);
 }
 
 function runRetailSteadyDay(game: GameState, ledger: BotLedger, day: number): GameState {
@@ -721,11 +723,12 @@ function runProgressionCommand(
 					result.logisticsFailure ??
 					result.decisionFailure ??
 					null
-			)
+			),
+			command.kind
 		);
 		return game;
 	}
-	record(ledger, day, action, result.changed ? 'applied' : 'no-op', detail);
+	record(ledger, day, action, result.changed ? 'applied' : 'no-op', detail, command.kind);
 	return claimNewlyEarnedTiers(result.game, ledger, progression, day);
 }
 
@@ -790,7 +793,6 @@ function runProgressionStaffing(
 	return next;
 }
 
-/** max(20k floor, sum of every outstanding loan's next installment). */
 /**
  * Operating reserve: every outstanding loan's next installment (≈ the next 7
  * days of scheduled debt service). The original 20k floor starved all early

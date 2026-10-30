@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import { claimEarnedTiers, evaluateProgression } from '$lib/game/progression';
 import type { ArchetypeId } from '$lib/game/types';
+import type { ScenarioCommand } from '$lib/scenarios/types';
 import { runBot, runProgressionBot, type ProgressionRunDigest } from './bots';
 import { median, quantile } from './progressionCalibration';
 
@@ -48,6 +49,26 @@ const LEGAL_PROGRESSION_ACTIONS = new Set([
 	'progression:none',
 	'defer-credit'
 ]);
+
+/**
+ * Pinned label → `ScenarioCommand.kind` mapping for every command-shaped
+ * action. The legal-vocabulary check below enforces it in both directions, so
+ * a label can never drift away from the command value the bot actually issues.
+ */
+const PROGRESSION_ACTION_COMMAND_KINDS: Record<string, ScenarioCommand['kind']> = {
+	hireStaff: 'hireStaff',
+	assignStaff: 'assignStaff',
+	selectWorldCity: 'selectWorldCity',
+	openWorldCity: 'openWorldCity',
+	openStore: 'openStore',
+	upgradeStore: 'upgradeStore',
+	borrow: 'borrow',
+	payOffLoan: 'payOffLoan',
+	'progression:build-producer': 'buildIndustrialBuilding',
+	'progression:build-warehouse': 'buildIndustrialBuilding',
+	'progression:upgrade-building': 'upgradeIndustrialBuilding',
+	'progression:connect-rail': 'buildRail'
+};
 
 function progressionRunDigest(
 	seed: number,
@@ -94,6 +115,30 @@ describe('progression bot (HPA-318 Step 4)', { timeout: 30_000 }, () => {
 			(action) => !LEGAL_PROGRESSION_ACTIONS.has(action.action)
 		);
 		expect(illegal).toEqual([]);
+	});
+
+	it('pins each command-shaped action label to the exact ScenarioCommand kind it issues', () => {
+		const { digest } = runProgressionBot('convenience', REFERENCE_SEED, 120);
+		for (const action of digest.actions) {
+			if (action.commandKind !== undefined) {
+				// Every recorded command kind is the pinned mapping for its label…
+				expect(PROGRESSION_ACTION_COMMAND_KINDS[action.action]).toBe(action.commandKind);
+			} else if (action.outcome === 'applied') {
+				// …and every applied command-shaped action records its command kind,
+				// so a label cannot silently drift away from the issued command.
+				// (Plain `record` bookkeeping — deferred openWorldCity, no-candidate
+				// hireStaff — only emits 'no-op' without a command; the applied
+				// non-command labels are the setManagerDelegation transition and the
+				// claimEarnedTiers receipt.)
+				expect(PROGRESSION_ACTION_COMMAND_KINDS[action.action]).toBeUndefined();
+				expect(['setManagerDelegation', 'claimEarnedTiers']).toContain(action.action);
+			}
+		}
+		// The reference run actually exercises the mapping rather than passing vacuously.
+		const exercisedKinds = new Set(
+			digest.actions.map((action) => action.commandKind).filter(Boolean)
+		);
+		expect(exercisedKinds.size).toBeGreaterThan(0);
 	});
 
 	it('opens stores only inside its store cap and only in opened cities', () => {

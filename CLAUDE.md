@@ -38,7 +38,7 @@ The retail-simulation game is a deterministic, seed-driven state machine. The si
 
 Key modules in `src/lib/game/`:
 
-- `types.ts` — domain types (`GameState`, `City`, `Store`, `CompanyPolicy`, archetypes, terrain, industry types, etc.) and constants like `MAX_STORES`.
+- `types.ts` — domain types (`GameState`, `City`, `Store`, `CompanyPolicy`, archetypes, terrain, industry types, etc.). There is no `MAX_STORES` constant: the store limit is the persisted `GameState.storeCap`, which starts at `STARTER_STORE_CAP` (3) and grows through incremental world-milestone bonuses (`refreshWorldProgress` in `world.ts`) plus one slot per claimed progression tier (`claimEarnedTiers` in `progression.ts`).
 - `rng.ts` — seeded RNG; `state.rngState` is advanced through transitions to keep simulations reproducible from a `seed`.
 - `city.ts` — city/tile generation and placement validation (`generateCity`, `getTileById`, `getTilePlacementBlockReason`). `getNeighborhood` lays out districts geographically by tile position (`downtown`, `campus`, `mall`, `residential`, `suburb`, `parkEdge`, `transit`); each `NeighborhoodId` has a `NEIGHBORHOOD_PROFILES` entry that seeds per-tile `demand`/`rent`/`footTraffic`/`customerFit` (jittered by the seeded RNG), and `rent` is what drives a tile's land/setup cost. `getTilesByNeighborhood` filters tiles by district.
 - `archetypes.ts` — store archetype definitions and tuning knobs.

@@ -11,7 +11,7 @@ match these values.
   and acceptance item 4.
 - Implementation under test: `src/lib/game/progression.ts` (steps 1–3) at
   commit `8a79c323`, plus the Step-4 revision documented below.
-- Harness: `tests/balance/bots.ts` (`runProgressionBot`), 
+- Harness: `tests/balance/bots.ts` (`runProgressionBot`),
   `tests/balance/progressionCalibration.ts` (aggregation),
   `tests/balance/progressionRun.ts` (CLI).
 - Regenerate both artifacts (git-ignored, deterministic, byte-identical):

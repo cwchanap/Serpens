@@ -159,7 +159,7 @@ describe('PROGRESSION_TIERS catalog', () => {
 		]);
 	});
 
-	test('tier-3 product goal uses a nonempty authored set of tier-1 onboarding products', () => {
+	test('tier-3 product goal uses the authored set of every industry-linked product', () => {
 		const regionalSupplier = PROGRESSION_TIERS.find((tier) => tier.id === 'regional-supplier')!;
 		const productGoal = regionalSupplier.goals.find(
 			(goal) => goal.query.metric === 'retail-local-units'
