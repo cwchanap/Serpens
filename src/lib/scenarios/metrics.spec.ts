@@ -1558,6 +1558,27 @@ describe('progression metrics', () => {
 		).toBe(-50);
 	});
 
+	it('evaluates peak-company-book-value past the spread Math.max argument ceiling', () => {
+		// Math.max(...reports) throws RangeError above ~100k arguments; a sandbox
+		// long game accumulates unbounded report history.
+		const reports = Array.from({ length: 200_000 }, (_, index) =>
+			report(index + 1, 10, [], { companyBookValueAfter: index })
+		);
+		reports[150_000] = report(150_001, 10, [], { companyBookValueAfter: 999_999 });
+
+		expect(
+			evaluateMetric(
+				game({ reports }),
+				{ metric: 'peak-company-book-value' },
+				{ kind: 'run-to-date' }
+			)
+		).toEqual({
+			actual: 999_999,
+			contributingIds: ['report:150001'],
+			windowComplete: true
+		});
+	});
+
 	it('evaluates peak-company-book-value as 0 with an incomplete window when no reports exist', () => {
 		expect(
 			evaluateMetric(game(), { metric: 'peak-company-book-value' }, { kind: 'run-to-date' }, true)

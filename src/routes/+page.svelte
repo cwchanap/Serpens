@@ -167,7 +167,7 @@
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
 	import { SaveDataError } from '$lib/persistence/saveCodec';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
-	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
+	import type { SaveSlotMetadata, SaveStoreDiagnostic } from '$lib/persistence/saveTypes';
 	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
 	import {
 		currentScenarioDefinition,
@@ -388,6 +388,7 @@
 		onSaveSummary: (summary) => {
 			autoSave = summary.autoSave;
 			manualSaveSlots = summary.manualSlots;
+			saveDiagnostics = summary.diagnostics;
 		},
 		onScenarioSummary: (summary) => {
 			scenarioSummary = summary;
@@ -618,6 +619,7 @@
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
+	let saveDiagnostics = $state<SaveStoreDiagnostic[]>([]);
 	let isSavePanelOpen = $state(false);
 	let isScenarioCatalogOpen = $state(false);
 	let scenarioSummary = $state<ScenarioPersistenceSummary>({
@@ -1447,6 +1449,7 @@
 		const saveSummary = await saveRepository.getSummary();
 		autoSave = saveSummary.autoSave;
 		manualSaveSlots = saveSummary.manualSlots;
+		saveDiagnostics = saveSummary.diagnostics;
 	}
 
 	function openSavePanel(): void {
@@ -3394,6 +3397,7 @@
 			activeGame={game}
 			{autoSave}
 			slots={manualSaveSlots}
+			diagnostics={saveDiagnostics}
 			status={saveStatus}
 			error={saveError}
 			{i18n}

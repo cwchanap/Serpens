@@ -56,10 +56,12 @@ import {
 import {
 	SaveDataError,
 	cloneSaveStoreSnapshot,
+	createEmptySaveStore,
 	createManualSlotId,
 	createPlainSnapshot,
 	createSaveRecord,
 	createSaveSummary,
+	decodeSaveStoreSnapshot,
 	parseSaveStoreSnapshot,
 	validateCurrentGameState,
 	validateSaveRecord,
@@ -6625,19 +6627,50 @@ describe('saveCodec', () => {
 		expect(error.code).toBe('storage-unavailable');
 	});
 
-	test('parseSaveStoreSnapshot re-throws SaveDataError from validation unchanged', () => {
-		expect.assertions(2);
+	test('parseSaveStoreSnapshot reports a store-level failure with a diagnostic', () => {
+		expect.assertions(4);
 		const invalid = JSON.stringify({ schemaVersion: 99, autoSave: null, manualSlots: [] });
 
-		expect(() => parseSaveStoreSnapshot(invalid)).toThrow(SaveDataError);
-		expect(() => parseSaveStoreSnapshot(invalid)).toThrow('Unsupported save schema version: 99');
+		const result = parseSaveStoreSnapshot(invalid);
+
+		expect(result.snapshot).toEqual(createEmptySaveStore());
+		expect(result.diagnostics).toHaveLength(1);
+		expect(result.diagnostics[0]).toMatchObject({ code: 'invalid-record', path: 'saveStore' });
+		expect(result.diagnostics[0]!.detail).toContain('Unsupported save schema version: 99');
 	});
 
-	test('parseSaveStoreSnapshot wraps non-JSON input as SaveDataError', () => {
-		expect.assertions(2);
+	test('parseSaveStoreSnapshot reports non-JSON input with a diagnostic', () => {
+		expect.assertions(3);
 
-		expect(() => parseSaveStoreSnapshot('{not json')).toThrow(SaveDataError);
-		expect(() => parseSaveStoreSnapshot('{not json')).toThrow('Save data is not valid JSON');
+		const result = parseSaveStoreSnapshot('{not json');
+
+		expect(result.snapshot).toEqual(createEmptySaveStore());
+		expect(result.diagnostics).toHaveLength(1);
+		expect(result.diagnostics[0]).toMatchObject({
+			code: 'invalid-record',
+			path: 'saveStore',
+			detail: 'Save data is not valid JSON'
+		});
+	});
+
+	test('decodeSaveStoreSnapshot drops a bad record and keeps valid siblings', () => {
+		expect.assertions(4);
+		const good = createManualSaveRecord();
+		const bad = { ...createManualSaveRecord(), schemaVersion: 99 };
+
+		const result = decodeSaveStoreSnapshot({
+			schemaVersion: SAVE_SCHEMA_VERSION,
+			autoSave: bad,
+			manualSlots: [bad, good]
+		});
+
+		expect(result.snapshot.autoSave).toBeNull();
+		expect(result.snapshot.manualSlots).toHaveLength(1);
+		expect(result.snapshot.manualSlots[0]!.metadata.id).toBe(good.metadata.id);
+		expect(result.diagnostics).toEqual([
+			expect.objectContaining({ code: 'invalid-record', path: 'autoSave' }),
+			expect.objectContaining({ code: 'invalid-record', path: 'manualSlots[0]' })
+		]);
 	});
 
 	test('validateSaveRecord rejects unsupported schema versions', () => {
@@ -10170,6 +10203,26 @@ describe('saveCodec', () => {
 				'corrupt',
 				'between 0 and the saved day'
 			);
+		});
+
+		it('rejects claim days that move backwards in ladder order', () => {
+			expectGameStateErrorCode(
+				gameWithClaims([
+					{ tierId: 'local-shop', claimedOnDay: 3 },
+					{ tierId: 'neighborhood-chain', claimedOnDay: 2 }
+				]),
+				'corrupt',
+				"must not be earlier than the previous claim's day"
+			);
+		});
+
+		it('accepts multiple claims stamped on the same day', () => {
+			const game = gameWithClaims([
+				{ tierId: 'local-shop', claimedOnDay: 2 },
+				{ tierId: 'neighborhood-chain', claimedOnDay: 2 }
+			]);
+
+			expect(validateCurrentGameState(game).progression.claims).toEqual(game.progression.claims);
 		});
 	});
 

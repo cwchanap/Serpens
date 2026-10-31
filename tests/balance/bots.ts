@@ -818,13 +818,19 @@ function borrowProgressionShortfall(
 ): GameState {
 	const assessment = assessCredit(game, PROGRESSION_CREDIT_TERM_DAYS);
 	const amount = Math.max(1_000, Math.ceil(shortfall / 1_000) * 1_000);
-	if (shortfall <= 0 || amount > assessment.availableCredit) {
+	if (shortfall <= 0) {
+		record(ledger, day, 'defer-credit', 'no-op', `no shortfall (${shortfall})`);
+		return game;
+	}
+	if (amount > assessment.availableCredit) {
+		// The blocker is the rounded borrow amount (whole-dollar shortfall
+		// raised to the 1,000 minimum), not the raw shortfall.
 		record(
 			ledger,
 			day,
 			'defer-credit',
 			'no-op',
-			`shortfall ${shortfall} exceeds available credit ${assessment.availableCredit}`
+			`required ${amount} exceeds available credit ${assessment.availableCredit}`
 		);
 		return game;
 	}

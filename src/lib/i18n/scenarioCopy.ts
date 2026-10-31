@@ -1,5 +1,6 @@
 import type { I18nBundle, TranslationKey } from '$lib/i18n';
 import type { GameState } from '$lib/game/types';
+import { getStoreOrdinal } from '$lib/game/state';
 import { localizeDecisionContextValue, storeDisplayName } from '$lib/i18n/gameCopy';
 import type { ScenarioCatalogEntry } from '$lib/scenarios/catalog';
 import { METRIC_REGISTRY } from '$lib/scenarios/metrics';
@@ -245,7 +246,11 @@ export function conditionViews(
 		const condition = definitions.find((candidate) => candidate.id === evaluation.conditionId);
 		return {
 			id: evaluation.conditionId,
-			label: condition ? i18n.t(condition.labelKey) : evaluation.conditionId,
+			label: condition
+				? i18n.t(condition.labelKey, {
+						target: formatEvidenceValue(evaluation.evidence, evaluation.evidence.target, i18n)
+					})
+				: evaluation.conditionId,
 			statusLabel: i18n.t(`scenarioObjectives.status.${evaluation.status}` as TranslationKey),
 			evidenceLabel: i18n.t('scenarioObjectives.actualTarget', {
 				actual: formatEvidenceValue(evaluation.evidence, evaluation.evidence.actual, i18n),
@@ -276,8 +281,7 @@ export function resolveScenarioContributorLabel(
 				const storeId = decodeURIComponent(storeMatch[1]!);
 				const store = game?.stores.find((candidate) => candidate.id === storeId);
 				if (store) {
-					const ordinal = (game?.stores.indexOf(store) ?? -1) + 1;
-					return storeDisplayName(store, ordinal, i18n);
+					return storeDisplayName(store, getStoreOrdinal(game!.stores, store.id), i18n);
 				}
 			} catch {
 				// Preserve the canonical ID below when a segment cannot be decoded.
@@ -287,8 +291,7 @@ export function resolveScenarioContributorLabel(
 	}
 	const store = game?.stores.find((candidate) => candidate.id === id);
 	if (store) {
-		const ordinal = (game?.stores.indexOf(store) ?? -1) + 1;
-		return storeDisplayName(store, ordinal, i18n);
+		return storeDisplayName(store, getStoreOrdinal(game!.stores, store.id), i18n);
 	}
 	if (game?.world.openedCityIds.find((cityId) => cityId === id)) {
 		return i18n.labels.worldCity(id).name;

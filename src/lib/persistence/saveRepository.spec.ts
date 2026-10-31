@@ -40,11 +40,17 @@ import type {
 	ProductId,
 	StoreProduct
 } from '$lib/game/types';
-import { SAVE_SCHEMA_VERSION, type SaveRecord, type SaveStoreSnapshot } from './saveTypes';
+import {
+	SAVE_SCHEMA_VERSION,
+	type DecodeSaveStoreResult,
+	type SaveRecord,
+	type SaveStoreSnapshot
+} from './saveTypes';
 import {
 	SaveDataError,
 	createEmptySaveStore,
 	createSaveRecord,
+	decodeSaveStoreSnapshot,
 	validateSaveRecord,
 	validateSaveStoreSnapshot
 } from './saveCodec';
@@ -105,8 +111,10 @@ class FakeStorage implements StorageLike {
 class MemorySaveStoreDriver implements SaveStoreDriver {
 	constructor(private snapshot: SaveStoreSnapshot = createEmptySaveStore()) {}
 
-	async read(): Promise<SaveStoreSnapshot> {
-		return this.snapshot;
+	async read(): Promise<DecodeSaveStoreResult> {
+		// Same read boundary as the real drivers: stored bytes are decoded per
+		// record, so a malformed slot surfaces through salvage diagnostics.
+		return decodeSaveStoreSnapshot(this.snapshot);
 	}
 
 	async write(snapshot: SaveStoreSnapshot): Promise<void> {
@@ -115,7 +123,7 @@ class MemorySaveStoreDriver implements SaveStoreDriver {
 }
 
 class DelayedMemorySaveStoreDriver extends MemorySaveStoreDriver {
-	override async read(): Promise<SaveStoreSnapshot> {
+	override async read(): Promise<DecodeSaveStoreResult> {
 		await delay();
 		return super.read();
 	}
@@ -129,7 +137,7 @@ class DelayedMemorySaveStoreDriver extends MemorySaveStoreDriver {
 class SaveDataErrorOnceDriver extends MemorySaveStoreDriver {
 	private hasFailed = false;
 
-	override async read(): Promise<SaveStoreSnapshot> {
+	override async read(): Promise<DecodeSaveStoreResult> {
 		if (!this.hasFailed) {
 			this.hasFailed = true;
 			throw new SaveDataError('Persisted save is obsolete');
@@ -140,7 +148,7 @@ class SaveDataErrorOnceDriver extends MemorySaveStoreDriver {
 }
 
 class NonSaveDataErrorDriver extends MemorySaveStoreDriver {
-	override async read(): Promise<SaveStoreSnapshot> {
+	override async read(): Promise<DecodeSaveStoreResult> {
 		throw new TypeError('Driver is unavailable');
 	}
 }
@@ -2207,7 +2215,7 @@ describe('browser save repository', () => {
 		const game = createCurrentGame({ day: 9 });
 
 		const metadata = await repository.saveAuto(game);
-		const snapshot = await driver.read();
+		const { snapshot } = await driver.read();
 
 		expect(metadata.kind).toBe('auto');
 		expect(metadata.day).toBe(9);
@@ -2216,22 +2224,24 @@ describe('browser save repository', () => {
 		expect(snapshot.autoSave?.game.hiringCandidates).toEqual([]);
 	});
 
-	test('resets a corrupt current-schema snapshot instead of repairing it', async () => {
-		expect.assertions(4);
-		const record = createManualSaveRecord();
-		const { level: _level, ...storeWithoutLevel } = record.game.stores[0]!;
+	test('drops a corrupt current-schema record but keeps its valid siblings', async () => {
+		expect.assertions(6);
+		const corrupt = createManualSaveRecord();
+		const { level: _level, ...storeWithoutLevel } = corrupt.game.stores[0]!;
 		void _level;
+		const surviving = createManualSaveRecord({ metadata: { name: 'Kept Slot' } });
 		const driver = new MemorySaveStoreDriver({
 			schemaVersion: SAVE_SCHEMA_VERSION,
 			autoSave: null,
 			manualSlots: [
 				{
-					...record,
+					...corrupt,
 					game: {
-						...record.game,
+						...corrupt.game,
 						stores: [storeWithoutLevel as GameState['stores'][number]]
 					}
-				}
+				},
+				surviving
 			]
 		} as SaveStoreSnapshot);
 		const repository = new SaveRepositoryFromDriver(
@@ -2239,12 +2249,17 @@ describe('browser save repository', () => {
 			() => new Date('2026-05-05T12:00:00.000Z')
 		);
 
-		expect(await repository.getSummary()).toEqual({ autoSave: null, manualSlots: [] });
+		const summary = await repository.getSummary();
+		expect(summary.autoSave).toBeNull();
+		expect(summary.manualSlots).toEqual([{ ...surviving.metadata }]);
+		expect(summary.diagnostics).toEqual([
+			expect.objectContaining({ code: 'invalid-record', path: 'manualSlots[0]' })
+		]);
 		const metadata = await repository.saveAuto(createGame());
-		const persisted = await driver.read();
+		const persisted = (await driver.read()).snapshot;
 
 		expect(metadata.kind).toBe('auto');
-		expect(persisted.manualSlots).toEqual([]);
+		expect(persisted.manualSlots.map((slot) => slot.metadata.id)).toEqual([surviving.metadata.id]);
 		expect(persisted.autoSave?.game.stores[0]?.level).toBe(1);
 	});
 

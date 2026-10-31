@@ -161,6 +161,10 @@ median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
 - **200/200 idle runs finished with zero claims** (`progression.claims`
   empty and `claimEarnedTiers(game) === game`); the sweep CLI aborts on any
   violation, and a focused spec pins the property for the reference seed.
+  The CLI's check is now the non-vacuous form: the idle bot never calls
+  `claimEarnedTiers`, so `claims.length` is structurally zero — the abort
+  instead measures `totalEarnedUnclaimed` (tiers the idle state earned but
+  never claimed), which must also stay 0.
 - Idle founding book value: min $24,224 / median $31,236 / max $37,180.
 - Idle **peak** report book value: min $24,697 / median $36,319 /
   max $42,218 (idle cash strictly decays: final book value −$48,992 to
@@ -174,6 +178,9 @@ median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
 - **Tier 3 (72/200).** Blockers among never-claimed runs:
   `regional-supplier-local-units` 100, `regional-supplier-opened-cities` 12,
   `regional-supplier-peak-book-value` 12.
+  (The 60k peak goal was measured here but has since been removed from the
+  catalog — see §7. It could never be the binding constraint: any run that
+  claims tier 1 already holds a peak ≥ $70k.)
   - **Electronics (0/50): structural.** No electronics catalog product is
     industry-linked (`productionMaterialId` null), so no legal supply chain
     can ever deliver local units to its stores. No product-set or target
@@ -231,14 +238,16 @@ median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
 | --- | --- | --- | --- |
 | 1 | Local Shop | stores ≥ 2; peak book value ≥ $70k | unchanged |
 | 2 | Neighborhood Chain | stores ≥ 3; max store level ≥ 2; cities ≥ 3 | unchanged |
-| 3 | Regional Supplier | cities ≥ 4; local units ≥ 25; peak book value ≥ $60k | unchanged |
+| 3 | Regional Supplier | cities ≥ 4; local units ≥ 25 | $60k peak goal **removed** (dead goal — could never block after tier 1's ≥ $70k prefix claim) |
 | 4 | Multi-City Operator | stores ≥ 5; cities ≥ 5; max store level ≥ 4 | unchanged (draft-blocked) |
 | 5 | Market Leader | stores ≥ 7; cities ≥ 6; peak book value ≥ $150k | unchanged (draft-blocked) |
 
 **One revision — tier-3 product set.** The authored set
 `[bottled-water, produce, pantry]` is widened in `progression.ts` to every
-industry-linked product
-`[bottled-water, produce, pantry, snacks, soft-drinks, essentials, gifts]`.
+industry-linked product. The set is now **derived** from the catalog —
+`Object.values(PRODUCTS).filter(p => p.productionMaterialId !== null)` —
+rather than a hand-written list, so new industry-linked products extend the
+goal automatically.
 
 Corrected rationale (post-review re-measurement): the trio was never
 convenience-only — grocery stocks `produce`/`pantry`, which always counted.
@@ -264,12 +273,13 @@ copy updated to match (see below); all numeric targets and the
 `store-count`/`level`/`city` goals are byte-identical to the pre-calibration
 authored values, and `progression.spec.ts` pins the frozen numbers.
 
-**Locale note.** All 42 provisional numeric-target strings across
-`src/lib/i18n/messages/{en,ja,zh-Hant}.ts` match the frozen targets verbatim
-(no numeric change), except the three `regionalSupplierLocalUnits` strings,
-rewritten for the widened product set
-(en: "Deliver 25 locally produced units of goods your stores stock"; ja and
-zh-Hant equivalents).
+**Locale note.** The `progression.goals.*` strings across
+`src/lib/i18n/messages/{en,ja,zh-Hant}.ts` now interpolate the evaluated
+target via `{target}` (passed by `conditionViews` from the goal evidence) —
+the numeric source is the goal catalog itself, so no locale string can drift
+from a retuned target. The `regionalSupplierPeakBookValue` keys were removed
+with the dead goal, and `progression.panel.reward` interpolates the shared
+`PROGRESSION_TIER_REWARD` fields instead of hard-coding +1/+$25,000.
 
 ## 8. Verification
 
@@ -287,8 +297,10 @@ zh-Hant equivalents).
 ## 9. Step-5 credit counterfactual (wired claim-raised terms, measured)
 
 Step 5 wired the tier reward into `finance.ts:assessCredit`:
-`underwritingBase = 15_000 + 25_000 * claims.length` and
-`hardLimit = 100_000 + 25_000 * claims.length`, health/history,
+`underwritingBase = 15_000 + PROGRESSION_TIER_REWARD.creditUnderwritingBaseBonus * claims.length`
+and
+`hardLimit = 100_000 + PROGRESSION_TIER_REWARD.creditGrossPrincipalHardBoundBonus * claims.length`
+(both bonuses currently $25,000), health/history,
 repayment-service, outstanding-principal, delinquency and payment-headroom
 checks unchanged. This section re-measures the §4/§6 credit numbers under the
 wired terms (carry-over acceptance item 4 from the Step-4 calibration). The

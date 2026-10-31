@@ -325,6 +325,10 @@ export const en = {
 		overwrite: 'Overwrite',
 		delete: 'Delete',
 		noManualSlots: 'No manual slots yet.',
+		droppedRecords: {
+			one: '{count} stored save record could not be read and was skipped.',
+			other: '{count} stored save records could not be read and were skipped.'
+		},
 		storeCount: {
 			one: '{count} store',
 			other: '{count} stores'
@@ -1949,7 +1953,7 @@ export const en = {
 			bookValue: 'Company book value',
 			nextMilestone: 'Next milestone: {tier}',
 			reward:
-				'Claim reward: +1 store slot and +$25,000 credit underwriting base and hard bound — higher possible credit, not guaranteed funds.',
+				'Claim reward: +{storeSlots} store slot, +{credit} credit underwriting base, +{creditBound} credit hard bound — higher possible credit, not guaranteed funds.',
 			completeHeading: 'Ladder complete',
 			claimedOnDay: 'Final tier claimed on day {day}',
 			lastClaimed: 'Last claimed: {tier} — day {day}',
@@ -1979,20 +1983,20 @@ export const en = {
 			}
 		},
 		goals: {
-			localShopStoreCount: 'Open a second store',
-			localShopPeakBookValue: 'Grow reported peak company book value to $70,000',
-			neighborhoodChainStoreCount: 'Operate 3 stores',
-			neighborhoodChainMaxStoreLevel: 'Upgrade a store to level 2',
-			neighborhoodChainOpenedCities: 'Open 3 cities (starter cities included)',
-			regionalSupplierOpenedCities: 'Open 4 cities',
-			regionalSupplierLocalUnits: 'Deliver 25 locally produced units of goods your stores stock',
-			regionalSupplierPeakBookValue: 'Grow reported peak company book value to $60,000',
-			multiCityOperatorStoreCount: 'Operate 5 stores',
-			multiCityOperatorOpenedCities: 'Open 5 cities',
-			multiCityOperatorMaxStoreLevel: 'Upgrade a store to level 4',
-			marketLeaderStoreCount: 'Operate 7 stores',
-			marketLeaderOpenedCities: 'Open all 6 cities',
-			marketLeaderPeakBookValue: 'Grow reported peak company book value to $150,000'
+			localShopStoreCount: 'Operate {target} stores',
+			localShopPeakBookValue: 'Grow reported peak company book value to {target}',
+			neighborhoodChainStoreCount: 'Operate {target} stores',
+			neighborhoodChainMaxStoreLevel: 'Upgrade a store to level {target}',
+			neighborhoodChainOpenedCities: 'Open {target} cities (starter cities included)',
+			regionalSupplierOpenedCities: 'Open {target} cities',
+			regionalSupplierLocalUnits:
+				'Deliver {target} locally produced units of goods your stores stock',
+			multiCityOperatorStoreCount: 'Operate {target} stores',
+			multiCityOperatorOpenedCities: 'Open {target} cities',
+			multiCityOperatorMaxStoreLevel: 'Upgrade a store to level {target}',
+			marketLeaderStoreCount: 'Operate {target} stores',
+			marketLeaderOpenedCities: 'Open all {target} cities',
+			marketLeaderPeakBookValue: 'Grow reported peak company book value to {target}'
 		}
 	},
 	scenarioDefinitions: {

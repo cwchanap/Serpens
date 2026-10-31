@@ -25,12 +25,13 @@ import {
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
 import type { BrandId, EventDecisionItem, GameState, WorldCityId } from '$lib/game/types';
-import { createEmptySaveStore } from '$lib/persistence/saveCodec';
+import { createEmptySaveStore, decodeSaveStoreSnapshot } from '$lib/persistence/saveCodec';
 import {
 	SaveRepositoryFromDriver,
 	type SaveStoreDriver
 } from '$lib/persistence/saveStoreRepository';
 import type { SaveRepository } from '$lib/persistence/saveRepository';
+import type { DecodeSaveStoreResult, SaveStoreSnapshot } from '$lib/persistence/saveTypes';
 import { createScenarioMemoryRepository } from '$lib/persistence/scenarioMemoryRepository';
 import type { ScenarioMemoryRepository } from '$lib/persistence/scenarioMemoryRepository';
 import type { ScenarioRepository, ScenarioSaveOutcome } from '$lib/persistence/scenarioRepository';
@@ -50,11 +51,11 @@ import {
 class MemorySaveStoreDriver implements SaveStoreDriver {
 	constructor(private snapshot: unknown = createEmptySaveStore()) {}
 
-	async read(): Promise<never> {
-		return structuredClone(this.snapshot) as never;
+	async read(): Promise<DecodeSaveStoreResult> {
+		return decodeSaveStoreSnapshot(this.snapshot);
 	}
 
-	async write(snapshot: never): Promise<void> {
+	async write(snapshot: SaveStoreSnapshot): Promise<void> {
 		this.snapshot = structuredClone(snapshot);
 	}
 }

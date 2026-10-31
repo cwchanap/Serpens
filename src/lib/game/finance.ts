@@ -1,9 +1,10 @@
-import type {
-	FinanceState,
-	FinanceTransaction,
-	GameState,
-	LoanInstrument,
-	LoanTermDays
+import {
+	PROGRESSION_TIER_REWARD,
+	type FinanceState,
+	type FinanceTransaction,
+	type GameState,
+	type LoanInstrument,
+	type LoanTermDays
 } from './types';
 
 export const LOAN_PAYMENT_FREQUENCY_DAYS = 7;
@@ -867,12 +868,15 @@ export function assessCredit(
 	const healthPenaltyBps = Math.round((100 - healthScore) * 6);
 	const historyPenaltyBps = Math.round(history.missRate * 800);
 	const annualInterestRateBps = baseRateBps + healthPenaltyBps + historyPenaltyBps;
-	// Design §3 reward: +$25k underwriting base and hard bound per progression
-	// claim. A higher base/limit is a higher *possible* credit ceiling, not a
-	// guaranteed loan — health, history, service, principal and delinquency
-	// checks below still bind.
-	const underwritingBase = 15_000 + 25_000 * game.progression.claims.length;
-	const hardLimit = 100_000 + 25_000 * game.progression.claims.length;
+	// Design §3 reward: each progression claim adds the uniform tier reward to
+	// the underwriting base and hard bound. A higher base/limit is a higher
+	// *possible* credit ceiling, not a guaranteed loan — health, history,
+	// service, principal and delinquency checks below still bind.
+	const claimCount = game.progression.claims.length;
+	const underwritingBase =
+		15_000 + PROGRESSION_TIER_REWARD.creditUnderwritingBaseBonus * claimCount;
+	const hardLimit =
+		100_000 + PROGRESSION_TIER_REWARD.creditGrossPrincipalHardBoundBonus * claimCount;
 	const grossPrincipalLimit = Math.max(
 		0,
 		Math.min(

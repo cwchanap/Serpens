@@ -78,7 +78,15 @@
 		<strong>{bookValueLabel}</strong>
 	</p>
 	{#if currentTier}
-		<p class="reward">{i18n.t('progression.panel.reward')}</p>
+		<p class="reward">
+			{i18n.t('progression.panel.reward', {
+				storeSlots: currentTier.tier.reward.storeCapacityBonus,
+				credit: i18n.format.currency(currentTier.tier.reward.creditUnderwritingBaseBonus),
+				creditBound: i18n.format.currency(
+					currentTier.tier.reward.creditGrossPrincipalHardBoundBonus
+				)
+			})}
+		</p>
 		{#if lastClaimedLabel}
 			<p class="last-claimed">{lastClaimedLabel}</p>
 		{/if}

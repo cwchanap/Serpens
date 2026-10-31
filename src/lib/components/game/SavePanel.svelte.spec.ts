@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import SavePanel from './SavePanel.svelte';
 import type { GameState } from '$lib/game/types';
-import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
+import type { SaveSlotMetadata, SaveStoreDiagnostic } from '$lib/persistence/saveTypes';
 
 const game = { day: 5 } as GameState;
 
@@ -35,6 +35,7 @@ function renderPanel(
 		activeGame: GameState | null;
 		autoSave: SaveSlotMetadata | null;
 		slots: SaveSlotMetadata[];
+		diagnostics: SaveStoreDiagnostic[];
 		status: string;
 		error: string | null;
 		i18n: I18nBundle;
@@ -49,6 +50,7 @@ function renderPanel(
 		activeGame: game,
 		autoSave,
 		slots: [manualSlot],
+		diagnostics: [] as SaveStoreDiagnostic[],
 		status: '',
 		error: null,
 		i18n: createI18n('en'),
@@ -121,6 +123,24 @@ describe('SavePanel', () => {
 
 		await expect.element(page.getByRole('status')).toHaveTextContent('Saved successfully.');
 		await expect.element(page.getByRole('alert')).toHaveTextContent('Save failed.');
+	});
+
+	it('surfaces dropped-record diagnostics when provided', async () => {
+		expect.assertions(2);
+
+		renderPanel({
+			diagnostics: [
+				{ code: 'invalid-record', path: 'manualSlots[0]', detail: 'bad record' },
+				{ code: 'invalid-record', path: 'autoSave', detail: 'bad record' }
+			]
+		});
+
+		await expect
+			.element(page.getByRole('alert'))
+			.toHaveTextContent('2 stored save records could not be read and were skipped.');
+		await expect
+			.element(page.getByText('{count} stored save records could not be read and were skipped.'))
+			.not.toBeInTheDocument();
 	});
 
 	it('renders the raw updatedAt string when the date is invalid', async () => {

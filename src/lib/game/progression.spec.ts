@@ -3,6 +3,7 @@ import { createNewGame } from './state';
 import { openWorldCity, refreshWorldProgress } from './world';
 import { WORLD_CITY_CATALOG } from './worldCatalog';
 import { PROGRESSION_TIERS, claimEarnedTiers, evaluateProgression } from './progression';
+import { PRODUCTS } from './products';
 import type { DailyReport, GameState, Store } from './types';
 import { buildScenarioGame } from '$lib/scenarios/setup';
 import { SCENARIO_CATALOG } from '$lib/scenarios/catalog';
@@ -143,8 +144,7 @@ describe('PROGRESSION_TIERS catalog', () => {
 			],
 			[
 				['opened-city-count', 4],
-				['retail-local-units', 25],
-				['peak-company-book-value', 60_000]
+				['retail-local-units', 25]
 			],
 			[
 				['store-count', 5],
@@ -159,24 +159,21 @@ describe('PROGRESSION_TIERS catalog', () => {
 		]);
 	});
 
-	test('tier-3 product goal uses the authored set of every industry-linked product', () => {
+	test('tier-3 product goal covers every industry-linked product in catalog order', () => {
 		const regionalSupplier = PROGRESSION_TIERS.find((tier) => tier.id === 'regional-supplier')!;
 		const productGoal = regionalSupplier.goals.find(
 			(goal) => goal.query.metric === 'retail-local-units'
 		)!;
 		if (!('productIds' in productGoal.query)) throw new Error('query must carry productIds');
 		expect(productGoal.query.productIds.length).toBeGreaterThan(0);
-		// Calibration revision: the set covers every industry-linked product so
-		// any archetype stocking at least one of them can satisfy the goal.
-		expect(productGoal.query.productIds).toEqual([
-			'bottled-water',
-			'produce',
-			'pantry',
-			'snacks',
-			'soft-drinks',
-			'essentials',
-			'gifts'
-		]);
+		// The goal derives from PRODUCTS — any archetype stocking at least one
+		// industry-linked product can satisfy it, and adding one to the
+		// catalog extends the set automatically.
+		expect(productGoal.query.productIds).toEqual(
+			Object.values(PRODUCTS)
+				.filter((product) => product.productionMaterialId !== null)
+				.map((product) => product.id)
+		);
 	});
 });
 

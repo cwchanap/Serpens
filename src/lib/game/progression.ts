@@ -1,7 +1,14 @@
 import type { TranslationKey } from '$lib/i18n/translate';
 import { evaluateCondition } from '$lib/scenarios/metrics';
 import type { ObjectiveEvidence, ScenarioCondition } from '$lib/scenarios/types';
-import type { DecisionItem, GameState, ProgressionTierId } from './types';
+import {
+	PROGRESSION_TIER_REWARD,
+	type DecisionItem,
+	type GameState,
+	type ProgressionTierId,
+	type ProgressionTierReward
+} from './types';
+import { PRODUCTS } from './products';
 import { decisionContextProgressionTierClaimed } from './decisionContext';
 
 /**
@@ -10,18 +17,6 @@ import { decisionContextProgressionTierClaimed } from './decisionContext';
  * (append-only receipt transition). No background timers or achievement
  * framework — just monotone metric goals and one commit per call.
  */
-
-export interface ProgressionTierReward {
-	/** +1 store slot per claimed tier, added to the existing persisted storeCap. */
-	storeCapacityBonus: number;
-	/**
-	 * +$25,000 credit underwriting base and gross-principal hard bound per
-	 * claimed tier, applied by `finance.ts:assessCredit`. Description only —
-	 * nothing here touches loans.
-	 */
-	creditUnderwritingBaseBonus: number;
-	creditGrossPrincipalHardBoundBonus: number;
-}
 
 export interface ProgressionTier {
 	id: ProgressionTierId;
@@ -32,31 +27,19 @@ export interface ProgressionTier {
 	reward: ProgressionTierReward;
 }
 
-/** Uniform per-tier reward (design §2/§3); identical for every tier. */
-const TIER_REWARD: ProgressionTierReward = {
-	storeCapacityBonus: 1,
-	creditUnderwritingBaseBonus: 25_000,
-	creditGrossPrincipalHardBoundBonus: 25_000
-};
-
 /**
  * Tier-3 local-delivery product set: every industry-linked product (a
- * productionMaterialId exists), so any archetype that stocks at least one of
- * them can legally satisfy the 25-unit goal. The original tier-1-onboarding
- * trio counted only `bottled-water` for convenience and `produce`/`pantry`
- * for grocery — boutique and electronics stocked no countable product at all
+ * productionMaterialId exists), derived from the catalog rather than a
+ * hand-maintained list, so any archetype that stocks at least one of them can
+ * legally satisfy the 25-unit goal. The original tier-1-onboarding trio
+ * counted only `bottled-water` for convenience and `produce`/`pantry` for
+ * grocery — boutique and electronics stocked no countable product at all
  * (step-4 calibration finding). Electronics still stocks none and stays
  * structurally blocked.
  */
-const REGIONAL_SUPPLIER_PRODUCT_IDS = [
-	'bottled-water',
-	'produce',
-	'pantry',
-	'snacks',
-	'soft-drinks',
-	'essentials',
-	'gifts'
-] as const;
+const REGIONAL_SUPPLIER_PRODUCT_IDS = Object.values(PRODUCTS)
+	.filter((product) => product.productionMaterialId !== null)
+	.map((product) => product.id);
 
 const CURRENT_WINDOW = { kind: 'current' } as const;
 const RUN_TO_DATE_WINDOW = { kind: 'run-to-date' } as const;
@@ -85,7 +68,7 @@ export const PROGRESSION_TIERS: readonly ProgressionTier[] = [
 				requiresCompleteWindow: true
 			}
 		],
-		reward: TIER_REWARD
+		reward: PROGRESSION_TIER_REWARD
 	},
 	{
 		id: 'neighborhood-chain',
@@ -117,7 +100,7 @@ export const PROGRESSION_TIERS: readonly ProgressionTier[] = [
 				window: CURRENT_WINDOW
 			}
 		],
-		reward: TIER_REWARD
+		reward: PROGRESSION_TIER_REWARD
 	},
 	{
 		id: 'regional-supplier',
@@ -140,18 +123,12 @@ export const PROGRESSION_TIERS: readonly ProgressionTier[] = [
 				target: 25,
 				window: RUN_TO_DATE_WINDOW,
 				requiresCompleteWindow: true
-			},
-			{
-				id: 'regional-supplier-peak-book-value',
-				labelKey: 'progression.goals.regionalSupplierPeakBookValue',
-				query: { metric: 'peak-company-book-value' },
-				comparator: 'gte',
-				target: 60_000,
-				window: RUN_TO_DATE_WINDOW,
-				requiresCompleteWindow: true
 			}
+			// No peak-book-value goal here by design: claims form a contiguous
+			// prefix behind tier 1, whose ≥$70k peak always precedes this tier,
+			// so any tier-3 peak target below $70k could never block a claim.
 		],
-		reward: TIER_REWARD
+		reward: PROGRESSION_TIER_REWARD
 	},
 	{
 		id: 'multi-city-operator',
@@ -183,7 +160,7 @@ export const PROGRESSION_TIERS: readonly ProgressionTier[] = [
 				window: CURRENT_WINDOW
 			}
 		],
-		reward: TIER_REWARD
+		reward: PROGRESSION_TIER_REWARD
 	},
 	{
 		id: 'market-leader',
@@ -216,7 +193,7 @@ export const PROGRESSION_TIERS: readonly ProgressionTier[] = [
 				requiresCompleteWindow: true
 			}
 		],
-		reward: TIER_REWARD
+		reward: PROGRESSION_TIER_REWARD
 	}
 ];
 
@@ -268,7 +245,9 @@ export function evaluateProgression(game: GameState): ProgressionEvaluation {
 		tiers,
 		currentTier: tiers.find((tier) => !tier.claimed) ?? null,
 		claimedCount,
-		storeCapacityUnlockedByClaims: claimedCount,
+		storeCapacityUnlockedByClaims: tiers
+			.filter((tier) => tier.claimed)
+			.reduce((unlocked, tier) => unlocked + tier.tier.reward.storeCapacityBonus, 0),
 		allTiersClaimed: claimedCount === PROGRESSION_TIERS.length
 	};
 }
@@ -294,27 +273,29 @@ function tierClaimedNotice(tierId: ProgressionTierId, day: number): DecisionItem
 /**
  * Append receipts for every newly eligible tier in ladder order, stopping at
  * the first tier whose goals fail so only the contiguous prefix claims. Each
- * new claim adds exactly one to the existing persisted storeCap and issues a
- * one-time system notice. Idempotent: with nothing newly eligible the original
- * game reference is returned untouched.
+ * new claim adds its tier's `reward.storeCapacityBonus` to the existing
+ * persisted storeCap and issues a one-time system notice. Idempotent: with
+ * nothing newly eligible the original game reference is returned untouched.
  */
 export function claimEarnedTiers(game: GameState): GameState {
 	const claimedTierIds = new Set(game.progression.claims.map((claim) => claim.tierId));
 	const newClaims: GameState['progression']['claims'] = [];
 	const newNotices: DecisionItem[] = [];
+	let storeCapacityDelta = 0;
 
 	for (const tier of PROGRESSION_TIERS) {
 		if (claimedTierIds.has(tier.id)) continue;
 		if (!tierGoalsPass(tier, game)) break;
 		newClaims.push({ tierId: tier.id, claimedOnDay: game.day });
 		newNotices.push(tierClaimedNotice(tier.id, game.day));
+		storeCapacityDelta += tier.reward.storeCapacityBonus;
 	}
 
 	if (newClaims.length === 0) return game;
 
 	return {
 		...game,
-		storeCap: game.storeCap + newClaims.length,
+		storeCap: game.storeCap + storeCapacityDelta,
 		progression: { claims: [...game.progression.claims, ...newClaims] },
 		decisions: [...game.decisions, ...newNotices]
 	};

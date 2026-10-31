@@ -180,10 +180,12 @@ export function main(argv: readonly string[]): number {
 		progressionRuns,
 		idleRuns
 	);
-	// Hard negative-control requirement: idle must never claim.
-	if (report.idle.totalClaims !== 0) {
+	// Hard negative-control requirement: idle must neither claim nor earn a
+	// tier it left unclaimed — the idle bot never calls claimEarnedTiers, so
+	// totalClaims alone could never fail and is only a shape check.
+	if (report.idle.totalClaims !== 0 || report.idle.totalEarnedUnclaimed !== 0) {
 		argsError(
-			`idle negative control violated: ${report.idle.totalClaims} claim(s) across ${report.idle.runs} idle runs.`
+			`idle negative control violated: ${report.idle.totalClaims} claim(s) and ${report.idle.totalEarnedUnclaimed} earned-but-unclaimed tier(s) across ${report.idle.runs} idle runs.`
 		);
 	}
 	const outputBase = options.output ?? 'docs/balance/generated/progression-calibration';
@@ -200,7 +202,7 @@ export function main(argv: readonly string[]): number {
 		);
 	}
 	console.log(
-		`  idle: ${report.idle.zeroClaimRuns}/${report.idle.runs} zero-claim runs, peak book value max ${report.idle.peakReportBookValue.max}`
+		`  idle: ${report.idle.zeroClaimRuns}/${report.idle.runs} zero-claim runs, ${report.idle.totalEarnedUnclaimed} earned-unclaimed, peak book value max ${report.idle.peakReportBookValue.max}`
 	);
 	console.log(
 		`  tier1 non-decorative: ${report.tier1NonDecorative.passes} (idle max ${report.tier1NonDecorative.idlePeakReportBookValueMax} < target ${report.tier1NonDecorative.tier1PeakTarget})`
