@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { ARCHETYPES } from './archetypes';
+import { getCompanyBookValue } from './companyBookValue';
 import { EVENT_DRAW_COUNT_PER_DAY } from './eventSelection';
 import { appendFinanceTransaction, getTotalDebt } from './finance';
 import { buildIndustrialBuilding } from './industryPlacement';
@@ -1343,6 +1344,20 @@ describe('daily simulation', () => {
 			refinancedPrincipal: 0,
 			financingCashFlow: 0
 		});
+	});
+
+	test('snapshots post-finance company book value into the daily report', () => {
+		let beforeClosingDay = createNewGame('grocery', 277_008);
+
+		for (let day = 1; day < 8; day += 1) {
+			beforeClosingDay = simulateDay(beforeClosingDay);
+		}
+
+		const result = simulateDay(beforeClosingDay);
+		const report = result.reports.at(-1)!;
+
+		expect(Number.isInteger(report.companyBookValueAfter)).toBe(true);
+		expect(report.companyBookValueAfter).toBe(getCompanyBookValue(result).total);
 	});
 
 	test('uses plain ID ordering for equal-date next-loan-payment snapshots', () => {

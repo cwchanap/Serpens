@@ -325,6 +325,10 @@ export const en = {
 		overwrite: 'Overwrite',
 		delete: 'Delete',
 		noManualSlots: 'No manual slots yet.',
+		droppedRecords: {
+			one: '{count} stored save record could not be read and was skipped.',
+			other: '{count} stored save records could not be read and were skipped.'
+		},
 		storeCount: {
 			one: '{count} store',
 			other: '{count} stores'
@@ -1769,6 +1773,11 @@ export const en = {
 			openedSummary: '{storeCount} stores - {buildingCount} industrial buildings'
 		},
 		decisions: {
+			progressionTierClaimed: {
+				title: 'Milestone reached',
+				context:
+					'{tier} claimed: +1 store slot and +$25,000 credit underwriting base and hard bound.'
+			},
 			cashPressure: {
 				title: 'Cash pressure',
 				context:
@@ -1936,6 +1945,58 @@ export const en = {
 				warehouseOverflow: '{quantity} units are in city inventory overflow.',
 				warehouseAvailable: 'City inventory capacity is available.'
 			}
+		}
+	},
+	progression: {
+		panel: {
+			title: 'Company progression',
+			bookValue: 'Company book value',
+			nextMilestone: 'Next milestone: {tier}',
+			reward:
+				'Claim reward: +{storeSlots} store slot, +{credit} credit underwriting base, +{creditBound} credit hard bound — higher possible credit, not guaranteed funds.',
+			completeHeading: 'Ladder complete',
+			claimedOnDay: 'Final tier claimed on day {day}',
+			lastClaimed: 'Last claimed: {tier} — day {day}',
+			peakBookValue: 'Peak company book value: {value}',
+			storeCap: 'Current store limit: {cap}'
+		},
+		tiers: {
+			'local-shop': {
+				title: 'Local Shop',
+				description: 'Prove a second storefront and grow the company beyond its founding value.'
+			},
+			'neighborhood-chain': {
+				title: 'Neighborhood Chain',
+				description: 'Run an upgraded chain across several opened cities.'
+			},
+			'regional-supplier': {
+				title: 'Regional Supplier',
+				description: 'Deliver locally produced basics at regional volume.'
+			},
+			'multi-city-operator': {
+				title: 'Multi-City Operator',
+				description: 'Operate upgraded stores across most of the region.'
+			},
+			'market-leader': {
+				title: 'Market Leader',
+				description: 'Lead the whole region with the strongest company value.'
+			}
+		},
+		goals: {
+			localShopStoreCount: 'Operate {target} stores',
+			localShopPeakBookValue: 'Grow reported peak company book value to {target}',
+			neighborhoodChainStoreCount: 'Operate {target} stores',
+			neighborhoodChainMaxStoreLevel: 'Upgrade a store to level {target}',
+			neighborhoodChainOpenedCities: 'Open {target} cities (starter cities included)',
+			regionalSupplierOpenedCities: 'Open {target} cities',
+			regionalSupplierLocalUnits:
+				'Deliver {target} locally produced units of goods your stores stock',
+			multiCityOperatorStoreCount: 'Operate {target} stores',
+			multiCityOperatorOpenedCities: 'Open {target} cities',
+			multiCityOperatorMaxStoreLevel: 'Upgrade a store to level {target}',
+			marketLeaderStoreCount: 'Operate {target} stores',
+			marketLeaderOpenedCities: 'Open all {target} cities',
+			marketLeaderPeakBookValue: 'Grow reported peak company book value to {target}'
 		}
 	},
 	scenarioDefinitions: {

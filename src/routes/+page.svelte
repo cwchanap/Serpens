@@ -82,6 +82,7 @@
 		buildScenarioProgressView,
 		buildScenarioResultsView,
 		buildScenarioCatalogCards,
+		resolveScenarioContributorLabel,
 		scenarioDiagnosticText,
 		scenarioShareCodeErrorText,
 		type ScenarioCatalogActionResult,
@@ -166,7 +167,7 @@
 	import type { SaveRepository } from '$lib/persistence/saveRepository';
 	import { SaveDataError } from '$lib/persistence/saveCodec';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
-	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
+	import type { SaveSlotMetadata, SaveStoreDiagnostic } from '$lib/persistence/saveTypes';
 	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
 	import {
 		currentScenarioDefinition,
@@ -335,6 +336,7 @@
 		hiringCandidates: [],
 		events: createInitialEventRuntime(20260503),
 		decisions: [],
+		progression: { claims: [] },
 		reports: []
 	};
 	const bgmCueByMapView: Record<MapViewId, BgmCueId> = {
@@ -386,6 +388,7 @@
 		onSaveSummary: (summary) => {
 			autoSave = summary.autoSave;
 			manualSaveSlots = summary.manualSlots;
+			saveDiagnostics = summary.diagnostics;
 		},
 		onScenarioSummary: (summary) => {
 			scenarioSummary = summary;
@@ -616,6 +619,7 @@
 	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
+	let saveDiagnostics = $state<SaveStoreDiagnostic[]>([]);
 	let isSavePanelOpen = $state(false);
 	let isScenarioCatalogOpen = $state(false);
 	let scenarioSummary = $state<ScenarioPersistenceSummary>({
@@ -1445,6 +1449,7 @@
 		const saveSummary = await saveRepository.getSummary();
 		autoSave = saveSummary.autoSave;
 		manualSaveSlots = saveSummary.manualSlots;
+		saveDiagnostics = saveSummary.diagnostics;
 	}
 
 	function openSavePanel(): void {
@@ -1469,26 +1474,11 @@
 	}
 
 	function resolveScenarioContributor(id: string): string {
-		const currentGame = activeScenarioRun?.game ?? scenarioEvidenceGame ?? game;
-		const reportMatch = /^report:(\d+)/.exec(id);
-		if (reportMatch) {
-			const storeMatch = /\/store:([^/]+)/.exec(id);
-			if (storeMatch) {
-				try {
-					const storeId = decodeURIComponent(storeMatch[1]!);
-					const store = currentGame?.stores.find((candidate) => candidate.id === storeId);
-					if (store) return store.name || i18n.t('store.defaultName');
-				} catch {
-					// Preserve the canonical ID below when a segment cannot be decoded.
-				}
-			}
-			return i18n.t('scenarioObjectives.reportContributor', { day: reportMatch[1]! });
-		}
-		const store = currentGame?.stores.find((candidate) => candidate.id === id);
-		if (store) return store.name || i18n.t('store.defaultName');
-		const building = currentGame?.industrialBuildings.find((candidate) => candidate.id === id);
-		if (building) return i18n.labels.industrialBuilding(building.typeId);
-		return i18n.labels.material(id);
+		return resolveScenarioContributorLabel(
+			activeScenarioRun?.game ?? scenarioEvidenceGame ?? game,
+			id,
+			i18n
+		);
 	}
 
 	function handleScenarioCardResult(result: GameRouteCommitResult): void {
@@ -3369,6 +3359,7 @@
 			logisticsView={logisticsPanelView}
 			{focusedLogisticsRouteId}
 			{logisticsRoutePreset}
+			sandboxProgressionGame={playMode === 'sandbox' ? game : null}
 			{i18n}
 			disabledReason={mutationDisabledReason}
 			onClose={closeManagementPanel}
@@ -3406,6 +3397,7 @@
 			activeGame={game}
 			{autoSave}
 			slots={manualSaveSlots}
+			diagnostics={saveDiagnostics}
 			status={saveStatus}
 			error={saveError}
 			{i18n}

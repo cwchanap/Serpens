@@ -1050,6 +1050,8 @@ export interface DailyReport {
 	netIncome: number;
 	cashAfter: number;
 	outstandingPrincipalAfter: number;
+	/** Post-finance close-of-day company book value snapshot (see companyBookValue.ts). */
+	companyBookValueAfter: number;
 	nextLoanPayment: LoanPaymentSnapshot | null;
 	scorecard: Scorecard;
 	productionReport: DailyProductionReport;
@@ -1221,6 +1223,53 @@ export interface FinanceState {
 	currentDayActivity: FinanceDayActivity;
 }
 
+/**
+ * Stable ladder ids for the five-step authored progression (design §2). The
+ * union is derived from this array so the id list exists exactly once.
+ */
+export const PROGRESSION_TIER_IDS = [
+	'local-shop',
+	'neighborhood-chain',
+	'regional-supplier',
+	'multi-city-operator',
+	'market-leader'
+] as const;
+
+export type ProgressionTierId = (typeof PROGRESSION_TIER_IDS)[number];
+
+export interface ProgressionTierReward {
+	/** Store slots added to the persisted storeCap per claimed tier. */
+	storeCapacityBonus: number;
+	/**
+	 * Credit underwriting base and gross-principal hard bound added per
+	 * claimed tier, applied by `finance.ts:assessCredit`. Description only —
+	 * nothing here touches loans.
+	 */
+	creditUnderwritingBaseBonus: number;
+	creditGrossPrincipalHardBoundBonus: number;
+}
+
+/**
+ * Uniform per-tier reward (design §2/§3); identical for every tier. The
+ * single source for the reward amounts — the tier catalog and
+ * `assessCredit` both read this rather than restating the numbers.
+ */
+export const PROGRESSION_TIER_REWARD: ProgressionTierReward = {
+	storeCapacityBonus: 1,
+	creditUnderwritingBaseBonus: 25_000,
+	creditGrossPrincipalHardBoundBonus: 25_000
+};
+
+/** Persisted receipt for one claimed ladder tier; claimed day only, nothing derived. */
+export interface ProgressionClaim {
+	tierId: ProgressionTierId;
+	claimedOnDay: number;
+}
+
+export interface ProgressionState {
+	claims: ProgressionClaim[];
+}
+
 export interface GameState {
 	seed: number;
 	rngState: number;
@@ -1250,5 +1299,6 @@ export interface GameState {
 	hiringCandidates: HiringCandidate[];
 	events: EventRuntimeState;
 	decisions: DecisionItem[];
+	progression: ProgressionState;
 	reports: DailyReport[];
 }

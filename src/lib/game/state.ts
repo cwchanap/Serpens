@@ -201,6 +201,7 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		hiringCandidates,
 		events: createInitialEventRuntime(normalizedSeed),
 		decisions: [],
+		progression: { claims: [] },
 		reports: []
 	};
 

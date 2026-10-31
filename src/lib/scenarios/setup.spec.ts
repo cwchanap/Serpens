@@ -980,6 +980,20 @@ describe('buildScenarioGame', { timeout: 30_000 }, () => {
 });
 
 describe('launch catalog setup isolation', { timeout: 30_000 }, () => {
+	it('keeps every authored cap-1 scenario valid with empty progression claims (HPA-318 §3 regression)', () => {
+		for (const definition of listCurrentScenarioDefinitions()) {
+			const result = buildScenarioGame(definition, definition.officialSeed);
+			expect(result.ok).toBe(true);
+			if (!result.ok) continue;
+			expect(definition.start.overrides.storeCap).toBe(1);
+			// Shared validation keeps the authored cap-1 world (and its milestone
+			// fixed point) valid without deriving caps from progression claims.
+			const validated = validateCurrentGameState(result.game);
+			expect(validated.storeCap).toBe(1);
+			expect(validated.progression.claims).toEqual([]);
+		}
+	});
+
 	it('builds each official run deterministically without sharing mutable game branches', () => {
 		for (const definition of listCurrentScenarioDefinitions()) {
 			const first = buildScenarioGame(definition, definition.officialSeed);

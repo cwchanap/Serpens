@@ -26,6 +26,7 @@ import { simulateDay } from '../lib/game/simulateDay';
 import { createNewGame, getExpansionSetupCost, upgradeStore } from '../lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '../lib/game/stock';
 import { openWorldCity } from '../lib/game/world';
+import { claimEarnedTiers } from '../lib/game/progression';
 import type {
 	DailyLogisticsReport,
 	DecisionItem,
@@ -48,7 +49,7 @@ import {
 	encodeScenarioRunRecord,
 	scenarioDefinitionKey
 } from '../lib/persistence/scenarioCodec';
-import { currentScenarioDefinition } from '../lib/scenarios/catalog';
+import { currentScenarioDefinition, SCENARIO_CATALOG } from '../lib/scenarios/catalog';
 import { evaluateScenario, executeScenarioCommand, startScenario } from '../lib/scenarios/runtime';
 import { encodeScenarioShareCode } from '../lib/scenarios/shareCode';
 import type {
@@ -172,6 +173,9 @@ test('snack factory visual comparison opens a prefilled logistics route', async 
 		)
 	};
 	game = simulateDay(game);
+	// Same save fixed point as `logisticsRouteNavigationGame`: the settled
+	// report makes tier 1 earned, so the fixture must carry its receipt.
+	game = claimEarnedTiers(game);
 	await page.setViewportSize({ width: 1920, height: 1080 });
 	await installSandboxAutoSave(page, game);
 	await page.goto('/?ui-comparison=1');
@@ -1024,7 +1028,11 @@ function logisticsRouteNavigationGame(): GameState {
 	game = simulateDay(game); // day 7: capacity-constrained attempt
 	game = simulateDay(game); // day 8: no attempt
 	game = simulateDay(game); // day 9: second capacity-constrained attempt
-	return game;
+	// The simulated reports push peak book value past the tier-1 goal with two
+	// stores open, so the save-validation fixed point (design §3) demands the
+	// receipt. Settle it with the real claim transition instead of a synthetic
+	// receipt so the fixture loads like any sandbox game at this state.
+	return claimEarnedTiers(game);
 }
 
 /**
@@ -1145,6 +1153,8 @@ interface SavedRailShipment {
 interface SavedDailyReport {
 	day: number;
 	cashBefore: number;
+	/** Post-finance close-of-day company book value snapshot (HPA-318). */
+	companyBookValueAfter: number;
 	operatingCashFlow: number;
 	financingCashFlow: number;
 	netCashChange: number;
@@ -1224,6 +1234,11 @@ interface SavedGame {
 	world: {
 		revealedCityIds: string[];
 		openedCityIds: string[];
+		claimedMilestoneIds: string[];
+	};
+	storeCap: number;
+	progression: {
+		claims: Array<{ tierId: string; claimedOnDay: number }>;
 	};
 	policy: GameState['policy'];
 	policyOverrides: GameState['policyOverrides'];
@@ -1766,6 +1781,37 @@ async function revealCityAndGrantFunds(
 			window.localStorage.setItem('serpens.saves.v2', JSON.stringify(saveStore));
 		},
 		{ cityId, cash, storeCap }
+	);
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
+	await pauseActiveSimulation(page);
+}
+
+/**
+ * Grant cash to the auto-saved sandbox game (same save-mutation pattern as
+ * `revealCityAndGrantFunds`, cash only) and resume. Progression claims need a
+ * $70,000 reported peak book value; growing there by pure multi-day play
+ * exceeds the e2e budget, so tests seed cash and then reach the claim through
+ * real UI commands only — the claim itself always runs inside the route's
+ * `commitMutation`, never by writing progression state directly.
+ */
+async function grantSandboxFunds(page: Page, cash: number): Promise<void> {
+	await page.evaluate(
+		({ key, amount }) => {
+			const serialized = window.localStorage.getItem(key);
+			if (!serialized) {
+				throw new Error('Missing save data');
+			}
+			const saveStore = JSON.parse(serialized);
+			saveStore.autoSave.game.cash = amount;
+			window.localStorage.setItem(key, JSON.stringify(saveStore));
+		},
+		{ key: BROWSER_SAVE_STORAGE_KEY, amount: cash }
 	);
 	await page.reload();
 	await openSaves(page);
@@ -6348,4 +6394,267 @@ test('freight disruption lifecycle closes through dispatch, pause/edit/resume, a
 	expect(getLatestReport(saved).logistics.arrivals).toContainEqual(
 		expect.objectContaining({ transferOrderId: 'transfer-1', quantity: 3 })
 	);
+});
+
+test('sandbox progression claims tier 1 once, grants +1 store cap, and survives reload', async ({
+	page
+}) => {
+	test.slow();
+	await page.goto('/');
+
+	// Found the company through the real UI (free founding store, fixed
+	// starter seed), then seed cash for the claimable book value (see
+	// `grantSandboxFunds` for why) and open the second store through the map.
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+	await grantSandboxFunds(page, 150_000);
+	await buildRetailStoreAt(page, {
+		x: 3,
+		y: 6,
+		storeTypeName: /build electronics & games/i,
+		expectedStoreCount: 2
+	});
+
+	// Pre-claim: starter cap intact, ladder shows tier 1 as the next milestone.
+	let saved = await readAutoSaveGame(page);
+	expect(saved.storeCap).toBe(3);
+	expect(saved.progression.claims).toEqual([]);
+	const dashboard = await openManagementPanel(page, /dashboard/i);
+	const ladder = dashboard.locator('#sandbox-progression');
+	await expect(ladder.getByRole('heading', { name: 'Company progression' })).toBeVisible();
+	await expect(ladder).toContainText('Next milestone: Local Shop');
+	await dashboard.getByRole('button', { name: /close dashboard/i }).click();
+
+	// Day settlement snapshots the book value and the same commit claims tier 1
+	// inside the route's commitMutation: exactly one notice and +1 store cap.
+	await advanceSimulationDay(page);
+	saved = await waitForAutoSaveDay(page, 2);
+	expect(saved.storeCap).toBe(4);
+	expect(saved.progression.claims).toEqual([{ tierId: 'local-shop', claimedOnDay: 2 }]);
+	expect(saved.reports.at(-1)!.companyBookValueAfter).toBeGreaterThanOrEqual(70_000);
+
+	const decisions = await openManagementPanel(page, 'Decisions');
+	const claimNotices = decisions
+		.locator('article[data-decision-kind="system"]')
+		.filter({ has: page.getByRole('heading', { name: 'Milestone reached' }) });
+	await expect(claimNotices).toHaveCount(1);
+	await expect(claimNotices.first()).toContainText('Local Shop claimed');
+	await expect(claimNotices.first()).toContainText('+$25,000');
+	await decisions.getByRole('button', { name: /close decisions/i }).click();
+
+	await openManagementPanel(page, /dashboard/i);
+	await expect(ladder).toContainText('Next milestone: Neighborhood Chain');
+	await page.getByRole('button', { name: /close dashboard/i }).click();
+
+	// Reload keeps the receipt, the raised cap, and the single notice — the
+	// reward is exact-once, never re-issued by resume.
+	await page.reload();
+	await openSaves(page);
+	await page.getByRole('button', { name: /^resume$/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^close$/i })
+		.click();
+	await pauseActiveSimulation(page);
+
+	saved = await readAutoSaveGame(page);
+	expect(saved.day).toBe(2);
+	expect(saved.storeCap).toBe(4);
+	expect(saved.progression.claims).toEqual([{ tierId: 'local-shop', claimedOnDay: 2 }]);
+
+	await advanceSimulationDay(page);
+	saved = await waitForAutoSaveDay(page, 3);
+	// Fixed point through a real command: no second claim, no duplicate notice,
+	// and the cap keeps its single +1 step.
+	expect(saved.storeCap).toBe(4);
+	expect(saved.progression.claims).toEqual([{ tierId: 'local-shop', claimedOnDay: 2 }]);
+	const decisionsAfterReload = await openManagementPanel(page, 'Decisions');
+	await expect(
+		decisionsAfterReload
+			.locator('article[data-decision-kind="system"]')
+			.filter({ has: page.getByRole('heading', { name: 'Milestone reached' }) })
+	).toHaveCount(1);
+});
+
+for (const definition of SCENARIO_CATALOG) {
+	test(`scenario ${definition.id} start and reload round trip preserve the authored store cap and hide the ladder`, async ({
+		page
+	}) => {
+		const i18n = createI18n('en');
+		const title = i18n.t(definition.titleKey);
+		const authoredCap = definition.start.overrides.storeCap;
+		expect(authoredCap).toBeDefined();
+
+		// Open the Dashboard from the hamburger menu: on day 1 the scenario
+		// status strip's risk list overlays the side dock's hit targets, while
+		// the menu popover owns its own hit target (narrow-viewport path).
+		const openDashboard = async () => {
+			await page.getByTestId('game-menu-trigger').click();
+			const menuManagement = page.getByRole('group', { name: /management panels/i });
+			await expect(menuManagement).toBeVisible();
+			await menuManagement.getByRole('button', { name: /dashboard/i }).click();
+			const dashboard = page.getByRole('dialog', { name: /dashboard/i });
+			await expect(dashboard).toBeVisible();
+			return dashboard;
+		};
+
+		await page.goto('/');
+		await openChallengeCatalog(page);
+		await challengeCard(page, title)
+			.getByRole('button', { name: `Start ${title}`, exact: true })
+			.click();
+		await pauseActiveSimulation(page);
+		await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'scenario');
+
+		const assertScenarioRoundTripState = async () => {
+			const snapshot = await readChallengeSnapshot(page);
+			const run = snapshot.activeRunsByScenarioId[definition.id];
+			expect(run?.game).toMatchObject({
+				storeCap: authoredCap,
+				// Scenario mode never claims progression tiers.
+				progression: { claims: [] }
+			});
+			const dashboard = await openDashboard();
+			await expect(dashboard.locator('#sandbox-progression')).toHaveCount(0);
+			await dashboard.getByRole('button', { name: /close dashboard/i }).click();
+			await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+		};
+		await assertScenarioRoundTripState();
+
+		// Reload auto-resumes the active run and the authored cap survives.
+		await page.reload();
+		await expectRetailMapReady(page);
+		await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'scenario');
+		await assertScenarioRoundTripState();
+	});
+}
+
+test('sandbox city opening stacks world bonus, milestone, and claim steps onto a custom cap', async ({
+	page
+}) => {
+	test.slow();
+	await page.goto('/');
+
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build convenience store/i,
+		expectedStoreCount: 1
+	});
+	// Custom-cap helper still works with progression on the branch.
+	await revealCityAndGrantFunds(page, 'campus-junction', 150_000, 4);
+
+	// Open the revealed city from the world map and build its first store
+	// (same flow as the existing revealed-city journey above).
+	await openMapMenuItem(page, /world map/i);
+	await page.getByRole('button', { name: /campus junction/i }).click();
+	await page.getByRole('button', { name: /open for/i }).click();
+	await page.getByRole('button', { name: /campus junction/i }).click();
+	await openMapMenuItem(page, /retail city map/i);
+	await expect(page.getByRole('heading', { name: /campus junction/i })).toBeVisible();
+	await buildRetailStoreAt(page, {
+		x: 1,
+		y: 6,
+		storeTypeName: /build electronics & games/i,
+		expectedStoreCount: 1
+	});
+
+	// The city-opening commit may already claim tier 1 (two stores + cash-rich
+	// report on the first settlement); advance until the positive-income
+	// milestone lands so every cap contributor is observable. The seeded
+	// journey fires it on day 2.
+	let saved = await readAutoSaveGame(page);
+	for (let expectedDay = saved.day + 1; expectedDay <= 5; expectedDay += 1) {
+		await advanceSimulationDay(page);
+		saved = await waitForAutoSaveDay(page, expectedDay);
+		if (saved.world.claimedMilestoneIds.includes('positive-income-store-cap')) break;
+	}
+
+	// Cap ledger on the custom base of 4: +1 campus-junction opening bonus,
+	// +1 positive-income milestone, +1 tier-1 progression claim.
+	expect(saved.storeCap).toBe(7);
+	expect(saved.progression.claims).toEqual([{ tierId: 'local-shop', claimedOnDay: 2 }]);
+	expect(saved.world.claimedMilestoneIds).toContain('positive-income-store-cap');
+	expect(saved.stores.length).toBeLessThanOrEqual(saved.storeCap);
+	expect(saved.reports.some((report) => report.companyBookValueAfter >= 70_000)).toBe(true);
+});
+
+test('scenario world map selects opened cities but never opens revealed ones, preserving the authored store cap', async ({
+	page
+}) => {
+	// Local Lifeline is the scenario counterpart of the sandbox city-opening
+	// journey: it starts at the authored storeCap 1 with industry-city already
+	// opened (it hosts the authored pump/warehouse), while the shared
+	// world-progress refresh reveals breadbasket-basin without opening it. No
+	// scenario lists openWorldCity in allowedCommands, so the world map must
+	// refuse every opening while still selecting already-opened cities.
+	await page.goto('/');
+	await openChallengeCatalog(page);
+	await challengeCard(page, 'Local Lifeline')
+		.getByRole('button', { name: 'Start Local Lifeline', exact: true })
+		.click();
+	await pauseActiveSimulation(page);
+	await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'scenario');
+	await expect(challengeStatus(page)).toContainText('Local Lifeline · Ranked');
+
+	// Scenario content excludes breadbasket-basin, so its world-map card shows
+	// the unavailable marker instead of an open affordance, and the sandbox
+	// journey's "Open for …" button must not exist anywhere in scenario mode.
+	await openMapMenuItem(page, /world map/i);
+	await expect(page.getByRole('button', { name: /breadbasket basin/i })).toContainText(
+		'Unavailable'
+	);
+	await expect(page.getByRole('button', { name: /open for/i })).toHaveCount(0);
+
+	// The already-opened industry city still navigates through the real UI...
+	await page.getByRole('button', { name: 'Industry City', exact: true }).click();
+	await expect(page.getByRole('heading', { name: /industry city/i })).toBeVisible();
+
+	// ...and a legal day settlement neither claims a tier nor moves the cap:
+	// scenario mode never claims, and the cap-granting world milestone needs a
+	// non-harbor retail city that no scenario can open.
+	await advanceChallengeDay(page);
+	const snapshot = await readChallengeSnapshot(page);
+	const run = snapshot.activeRunsByScenarioId['local-lifeline'];
+	expect(run?.game).toMatchObject({
+		storeCap: 1,
+		progression: { claims: [] }
+	});
+	// `ScenarioRunRecord.game` is the persisted unknown shape; read the
+	// world-milestone evidence through a narrowed view like the round-trip
+	// group's saved-shape reads.
+	const savedWorld = (run?.game as { world?: { claimedMilestoneIds?: string[] } } | undefined)
+		?.world;
+	expect(savedWorld?.claimedMilestoneIds).toContain('reveal-breadbasket-basin');
+	expect(savedWorld?.claimedMilestoneIds).not.toContain('positive-income-store-cap');
+
+	// The sandbox progression ladder stays hidden from the scenario Dashboard.
+	await page.getByTestId('game-menu-trigger').click();
+	const menuManagement = page.getByRole('group', { name: /management panels/i });
+	await expect(menuManagement).toBeVisible();
+	await menuManagement.getByRole('button', { name: /dashboard/i }).click();
+	const dashboard = page.getByRole('dialog', { name: /dashboard/i });
+	await expect(dashboard).toBeVisible();
+	await expect(dashboard.locator('#sandbox-progression')).toHaveCount(0);
+	await dashboard.getByRole('button', { name: /close dashboard/i }).click();
+	await expect(page.getByRole('dialog', { name: /dashboard/i })).toHaveCount(0);
+
+	// Resume round trip: return the active city to harbor-city so the reload
+	// lands on the retail map, then assert the authored cap survives with no
+	// claims materialized.
+	await openMapMenuItem(page, /world map/i);
+	await page.getByRole('button', { name: 'Harbor City', exact: true }).click();
+	await expect(page.getByRole('heading', { name: /harbor city/i })).toBeVisible();
+	await page.reload();
+	await expectRetailMapReady(page);
+	await expect(challengeRoot(page)).toHaveAttribute('data-play-mode', 'scenario');
+	const resumed = await readChallengeSnapshot(page);
+	expect(resumed.activeRunsByScenarioId['local-lifeline']?.game).toMatchObject({
+		storeCap: 1,
+		progression: { claims: [] }
+	});
 });

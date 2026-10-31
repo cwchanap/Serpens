@@ -23,6 +23,7 @@ import type {
 import {
 	cityInventoryEvidenceId,
 	encodeEvidenceSegment,
+	evaluateCondition,
 	evaluateMetric,
 	evaluateScenarioConditions,
 	marketEvidenceId,
@@ -145,6 +146,7 @@ function report(
 		netIncome,
 		cashAfter: 1_000 + netIncome,
 		outstandingPrincipalAfter: 0,
+		companyBookValueAfter: 0,
 		nextLoanPayment: null,
 		scorecard: {
 			profit: 50,
@@ -272,6 +274,7 @@ function game(overrides: Partial<GameState> = {}): GameState {
 		hiringCandidates: [],
 		events: overrides.events ?? createInitialEventRuntime(280),
 		decisions: [],
+		progression: { claims: [] },
 		reports: [],
 		...overrides
 	};
@@ -1484,6 +1487,151 @@ describe('scenario report invariants', () => {
 				value: 1
 			}
 		]);
+	});
+});
+
+describe('progression metrics', () => {
+	it('evaluates max-store-level as the current maximum and reports the top stores', () => {
+		const state = game({
+			stores: [
+				{ ...store('a'), level: 2 },
+				{ ...store('b'), level: 4 },
+				{ ...store('c'), level: 4 }
+			]
+		});
+
+		expect(evaluateMetric(state, { metric: 'max-store-level' }, { kind: 'current' })).toEqual({
+			actual: 4,
+			contributingIds: ['b', 'c'],
+			windowComplete: true
+		});
+	});
+
+	it('evaluates max-store-level as 0 with no stores', () => {
+		expect(evaluateMetric(game(), { metric: 'max-store-level' }, { kind: 'current' }).actual).toBe(
+			0
+		);
+	});
+
+	it('evaluates opened-city-count with sorted evidence ids', () => {
+		const state = game({
+			world: {
+				openedCityIds: ['industry-city', 'harbor-city']
+			} as GameState['world']
+		});
+
+		expect(evaluateMetric(state, { metric: 'opened-city-count' }, { kind: 'current' })).toEqual({
+			actual: 2,
+			contributingIds: ['harbor-city', 'industry-city'],
+			windowComplete: true
+		});
+	});
+
+	it('evaluates peak-company-book-value as the run-to-date maximum, not the latest value', () => {
+		const state = game({
+			reports: [
+				report(1, 10, [], { companyBookValueAfter: 70_000 }),
+				report(2, 10, [], { companyBookValueAfter: 90_000 }),
+				report(3, 10, [], { companyBookValueAfter: 55_000 })
+			]
+		});
+
+		expect(
+			evaluateMetric(state, { metric: 'peak-company-book-value' }, { kind: 'run-to-date' })
+		).toEqual({
+			actual: 90_000,
+			contributingIds: ['report:2'],
+			windowComplete: true
+		});
+	});
+
+	it('evaluates peak-company-book-value across negative history without clamping', () => {
+		const state = game({
+			reports: [
+				report(1, 10, [], { companyBookValueAfter: -100 }),
+				report(2, 10, [], { companyBookValueAfter: -50 })
+			]
+		});
+
+		expect(
+			evaluateMetric(state, { metric: 'peak-company-book-value' }, { kind: 'run-to-date' }).actual
+		).toBe(-50);
+	});
+
+	it('evaluates peak-company-book-value past the spread Math.max argument ceiling', () => {
+		// Math.max(...reports) throws RangeError above ~100k arguments; a sandbox
+		// long game accumulates unbounded report history.
+		const reports = Array.from({ length: 200_000 }, (_, index) =>
+			report(index + 1, 10, [], { companyBookValueAfter: index })
+		);
+		reports[150_000] = report(150_001, 10, [], { companyBookValueAfter: 999_999 });
+
+		expect(
+			evaluateMetric(
+				game({ reports }),
+				{ metric: 'peak-company-book-value' },
+				{ kind: 'run-to-date' }
+			)
+		).toEqual({
+			actual: 999_999,
+			contributingIds: ['report:150001'],
+			windowComplete: true
+		});
+	});
+
+	it('evaluates peak-company-book-value as 0 with an incomplete window when no reports exist', () => {
+		expect(
+			evaluateMetric(game(), { metric: 'peak-company-book-value' }, { kind: 'run-to-date' }, true)
+		).toEqual({
+			actual: 0,
+			contributingIds: [],
+			windowComplete: false
+		});
+	});
+
+	it('exposes evaluateCondition with comparator and window-completeness semantics', () => {
+		const passing = condition(
+			'peak-pass',
+			{ metric: 'peak-company-book-value' },
+			'gte',
+			70_000,
+			{ kind: 'run-to-date' },
+			true
+		);
+		const incomplete = condition(
+			'peak-incomplete',
+			{ metric: 'peak-company-book-value' },
+			'gte',
+			0,
+			{ kind: 'run-to-date' },
+			true
+		);
+
+		const passed = evaluateCondition(
+			passing,
+			game({ reports: [report(1, 10, [], { companyBookValueAfter: 90_000 })] })
+		);
+		expect(passed.passes).toBe(true);
+		expect(passed.evidence).toMatchObject({
+			conditionId: 'peak-pass',
+			metric: 'peak-company-book-value',
+			actual: 90_000,
+			target: 70_000,
+			windowComplete: true
+		});
+
+		const failed = evaluateCondition(
+			passing,
+			game({ reports: [report(1, 10, [], { companyBookValueAfter: 55_000 })] })
+		);
+		expect(failed.passes).toBe(false);
+		expect(failed.evidence.actual).toBe(55_000);
+
+		// Zero report history is not a completed window, so a satisfied target
+		// still fails while completeness is required.
+		const zeroHistory = evaluateCondition(incomplete, game());
+		expect(zeroHistory.passes).toBe(false);
+		expect(zeroHistory.evidence).toMatchObject({ actual: 0, windowComplete: false });
 	});
 });
 

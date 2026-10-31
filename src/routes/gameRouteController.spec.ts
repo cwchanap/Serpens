@@ -7,17 +7,31 @@ import type {
 } from '$lib/game/interCityLogistics';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import { createNewGame } from '$lib/game/state';
+import { simulateDay } from '$lib/game/simulateDay';
+import { openStoreAtTile } from '$lib/game/placement';
+import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason
+} from '$lib/game/storeFootprint';
+import {
+	STARTER_STORE_CAP,
+	openWorldCity as openWorldCityTransition,
+	refreshWorldProgress
+} from '$lib/game/world';
+import { evaluateScenario, startScenario as startScenarioTransition } from '$lib/scenarios/runtime';
 import {
 	buildIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
 import type { BrandId, EventDecisionItem, GameState, WorldCityId } from '$lib/game/types';
-import { createEmptySaveStore } from '$lib/persistence/saveCodec';
+import { createEmptySaveStore, decodeSaveStoreSnapshot } from '$lib/persistence/saveCodec';
 import {
 	SaveRepositoryFromDriver,
 	type SaveStoreDriver
 } from '$lib/persistence/saveStoreRepository';
 import type { SaveRepository } from '$lib/persistence/saveRepository';
+import type { DecodeSaveStoreResult, SaveStoreSnapshot } from '$lib/persistence/saveTypes';
 import { createScenarioMemoryRepository } from '$lib/persistence/scenarioMemoryRepository';
 import type { ScenarioMemoryRepository } from '$lib/persistence/scenarioMemoryRepository';
 import type { ScenarioRepository, ScenarioSaveOutcome } from '$lib/persistence/scenarioRepository';
@@ -37,11 +51,11 @@ import {
 class MemorySaveStoreDriver implements SaveStoreDriver {
 	constructor(private snapshot: unknown = createEmptySaveStore()) {}
 
-	async read(): Promise<never> {
-		return structuredClone(this.snapshot) as never;
+	async read(): Promise<DecodeSaveStoreResult> {
+		return decodeSaveStoreSnapshot(this.snapshot);
 	}
 
-	async write(snapshot: never): Promise<void> {
+	async write(snapshot: SaveStoreSnapshot): Promise<void> {
 		this.snapshot = structuredClone(snapshot);
 	}
 }
@@ -159,6 +173,7 @@ interface ControllerHarness {
 }
 
 function createHarness(options?: {
+	saveRepository?: SaveRepository;
 	scenarioRepository?: ScenarioRepository;
 	createScenarioRepository?: () => Promise<ScenarioRepository>;
 	resolveDefinition?: (ref: ScenarioDefinitionRef) => ScenarioDefinition | undefined;
@@ -177,7 +192,7 @@ function createHarness(options?: {
 		states.push({ ...state });
 	});
 
-	const saveRepository = createSaveRepository();
+	const saveRepository = options?.saveRepository ?? createSaveRepository();
 	const resolveDefinition = options?.resolveDefinition ?? resolveScenarioDefinition;
 	const scenarioRepository =
 		options?.scenarioRepository ?? createScenarioMemoryRepository(undefined, resolveDefinition);
@@ -2193,6 +2208,204 @@ describe('GameRouteController', () => {
 			});
 			expect(result.status).toBe('sandbox-committed');
 			expect(harness.controller.state.sandboxGame).not.toBeNull();
+		});
+	});
+
+	describe('commitMutation sandbox progression claims', () => {
+		/** Inflates the newest real report so the tier-1 peak-book-value goal passes. */
+		function withTier1PeakEvidence(simulated: GameState): GameState {
+			return {
+				...simulated,
+				reports: simulated.reports.map((report, index) =>
+					index === simulated.reports.length - 1
+						? { ...report, companyBookValueAfter: 80_000 }
+						: report
+				)
+			};
+		}
+
+		/** Tier-1-ready game: two stores plus a decoded report peaking above $70k. */
+		function createTier1ReadyGame(): GameState {
+			const funded = {
+				...withTier1PeakEvidence(simulateDay(createNewGame('convenience', 20260512))),
+				cash: 60_000
+			};
+			return refreshWorldProgress(
+				openStoreAtTile(funded, {
+					tileId: findPlaceableTile(funded),
+					archetypeId: 'convenience'
+				})
+			);
+		}
+
+		/** Same, but with a single store so the next purchase completes tier 1. */
+		function createTier1PurchaseReadyGame(): GameState {
+			return refreshWorldProgress({
+				...withTier1PeakEvidence(simulateDay(createNewGame('convenience', 20260512))),
+				cash: 60_000
+			});
+		}
+
+		function findPlaceableTile(game: GameState): string {
+			const city = game.cities.find((candidate) => candidate.id === game.activeCityId)!;
+			const tileLookup = createCityTileLookup(city);
+			const occupiedTileIds = getOccupiedStoreTileIds(city, game.stores, tileLookup);
+			const tile = city.tiles.find(
+				(candidate) =>
+					getStoreFootprintPlacementBlockReason(tileLookup, candidate, occupiedTileIds) === null
+			)!;
+			return tile.id;
+		}
+
+		it('claims earned progression tiers on an accepted sandbox advanceDay', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createTier1ReadyGame();
+			harness.controller.loadSandboxGame(game);
+
+			const result = await harness.controller.advanceDay();
+
+			expect(result).toEqual({ status: 'sandbox-committed', changed: true });
+			const next = harness.controller.state.sandboxGame!;
+			expect(next.progression.claims).toEqual([{ tierId: 'local-shop', claimedOnDay: next.day }]);
+			// Exactly +1 store slot for the one new claim, on top of any world cap change.
+			expect(next.storeCap).toBe(game.storeCap + 1);
+			expect(
+				next.decisions.some((decision) => decision.id === 'progression-tier-claimed-local-shop')
+			).toBe(true);
+
+			const [previous, published] = harness.onAcceptedGameChange.mock.calls[0]!;
+			expect(previous).toBe(game);
+			expect(published).toBe(next);
+		});
+
+		it('claims earned progression tiers on a mid-day store purchase', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createTier1PurchaseReadyGame();
+			harness.controller.loadSandboxGame(game);
+
+			const result = await harness.controller.openStore(findPlaceableTile(game), 'convenience');
+
+			expect(result).toEqual({ status: 'sandbox-committed', changed: true });
+			const next = harness.controller.state.sandboxGame!;
+			expect(next.stores).toHaveLength(2);
+			expect(next.progression.claims).toEqual([{ tierId: 'local-shop', claimedOnDay: next.day }]);
+			expect(next.storeCap).toBe(game.storeCap + 1);
+		});
+
+		it('awards the world city cap bonus and the tier claim in one sandbox commit', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createTier1ReadyGame();
+			harness.controller.loadSandboxGame(game);
+			expect(game.world.revealedCityIds).toContain('campus-junction');
+
+			const result = await harness.controller.openWorldCity('campus-junction');
+
+			expect(result).toEqual({ status: 'sandbox-committed', changed: true });
+			const next = harness.controller.state.sandboxGame!;
+			expect(next.world.openedCityIds).toContain('campus-junction');
+			expect(next.progression.claims).toEqual([{ tierId: 'local-shop', claimedOnDay: next.day }]);
+			// +1 campus storeCapBonus (+ any same-commit world milestone), +1 claim
+			// reward — the claim lands on top of the world's own cap transition.
+			expect(next.storeCap).toBe(openWorldCityTransition(game, 'campus-junction').storeCap + 1);
+		});
+
+		it('autosaves the claimed game and keeps rewards exactly-once across save/reload', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createTier1ReadyGame();
+			harness.controller.loadSandboxGame(game);
+			await harness.controller.advanceDay();
+			const claimed = harness.controller.state.sandboxGame!;
+
+			await flushMicrotasks();
+			expect(harness.onAutoSaveError).not.toHaveBeenCalled();
+			expect(harness.onAutoSave).toHaveBeenCalledTimes(1);
+
+			const reloaded = createHarness({ saveRepository: harness.saveRepository });
+			await reloaded.controller.initializeSaves();
+			expect(await reloaded.controller.resumeAutoSave()).toBe('loaded');
+			const resumed = reloaded.controller.state.sandboxGame!;
+			expect(resumed.progression.claims).toEqual(claimed.progression.claims);
+			expect(resumed.storeCap).toBe(claimed.storeCap);
+
+			// The reloaded game is a claim fixed point: the next command awards nothing new.
+			await reloaded.controller.advanceDay();
+			const later = reloaded.controller.state.sandboxGame!;
+			expect(later.progression.claims).toEqual(claimed.progression.claims);
+			expect(later.storeCap).toBe(claimed.storeCap);
+			await flushMicrotasks();
+			expect(reloaded.onAutoSaveError).not.toHaveBeenCalled();
+		});
+
+		it('does not award claims when founding a fresh sandbox game', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 1);
+
+			await harness.controller.foundStore({
+				archetypeId: 'convenience',
+				city: game.cities[0]!,
+				tileId: 'harbor-city-1-1',
+				seed: 123
+			});
+
+			const founded = harness.controller.state.sandboxGame!;
+			expect(founded.progression.claims).toEqual([]);
+			expect(founded.storeCap).toBe(STARTER_STORE_CAP);
+		});
+
+		it('never claims progression tiers on scenario commits', async () => {
+			const base = firstProfitDefinition();
+			const definition: ScenarioDefinition = {
+				...base,
+				requiredObjectives: [
+					{
+						id: 'unreachable',
+						labelKey: 'scenarioDefinitions.firstProfit.objectives.cumulativeNetIncome',
+						query: { metric: 'cash' } as const,
+						comparator: 'gte' as const,
+						target: 1_000_000_000,
+						window: { kind: 'current' } as const
+					}
+				],
+				failures: []
+			};
+			const started = startScenarioTransition(definition, definition.officialSeed);
+			if (!started.ok) throw new Error('scenario setup failed');
+			// A scenario game that satisfies tier-1 goals must still not claim.
+			const funded = {
+				...withTier1PeakEvidence(simulateDay(started.value.game)),
+				cash: 60_000
+			};
+			const scenarioGame = refreshWorldProgress(
+				openStoreAtTile(funded, {
+					tileId: findPlaceableTile(funded),
+					archetypeId: 'convenience'
+				})
+			);
+			const run: ScenarioRun = {
+				...started.value,
+				game: scenarioGame,
+				evaluation: evaluateScenario(definition, scenarioGame, false)
+			};
+			const repository = createScenarioMemoryRepository(undefined, () => definition);
+			const harness = createHarness({
+				scenarioRepository: repository,
+				resolveDefinition: () => definition
+			});
+			await repository.saveActiveRun(run);
+			await harness.controller.initializeScenarios();
+
+			const result = await harness.controller.advanceDay();
+
+			expect(result).toEqual({ status: 'committed' });
+			const after = harness.controller.state.activeScenarioRun!;
+			expect(after.status).toBe('active');
+			expect(after.game.progression.claims).toEqual([]);
+			expect(after.game.storeCap).toBe(scenarioGame.storeCap);
 		});
 	});
 

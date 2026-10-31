@@ -322,6 +322,10 @@ export const ja = {
 		overwrite: '上書き',
 		delete: '削除',
 		noManualSlots: '手動スロットはまだありません。',
+		droppedRecords: {
+			one: '保存データ{count}件を読み込めずスキップしました。',
+			other: '保存データ{count}件を読み込めずスキップしました。'
+		},
 		storeCount: {
 			one: '{count} 店',
 			other: '{count} 店'
@@ -1741,6 +1745,10 @@ export const ja = {
 			openedSummary: '{storeCount} 店舗・{buildingCount} 工業施設'
 		},
 		decisions: {
+			progressionTierClaimed: {
+				title: 'マイルストーン達成',
+				context: '{tier}を達成：店舗上限 +1、与信基準額と上限額が+$25,000。'
+			},
 			cashPressure: {
 				title: '資金繰り圧力',
 				context: '現金がマイナスです。ブランドを守りながら営業を続ける方法を選びます。',
@@ -1907,6 +1915,57 @@ export const ja = {
 				warehouseOverflow: '{quantity} 単位が都市在庫から超過しています。',
 				warehouseAvailable: '都市在庫の容量に余裕があります。'
 			}
+		}
+	},
+	progression: {
+		panel: {
+			title: '会社の発展',
+			bookValue: '会社帳簿価値',
+			nextMilestone: '次のマイルストーン：{tier}',
+			reward:
+				'達成報酬：店舗枠 +{storeSlots}、与信基準額 +{credit}、与信上限額 +{creditBound}。与信余力が伸びる可能性があり、融資額は保証されません。',
+			completeHeading: 'すべての段階を達成',
+			claimedOnDay: '最終段階を{day}日に達成',
+			lastClaimed: '直近の達成：{tier}（{day}日目）',
+			peakBookValue: '会社帳簿価値のピーク：{value}',
+			storeCap: '現在の店舗上限：{cap}'
+		},
+		tiers: {
+			'local-shop': {
+				title: 'ローカルショップ',
+				description: '2店目を構えて会社の価値を創業時より伸ばしましょう。'
+			},
+			'neighborhood-chain': {
+				title: 'ネイバーフッドチェーン',
+				description: '複数の都市にまたがるレベルアップしたチェーンを展開します。'
+			},
+			'regional-supplier': {
+				title: 'リージョナルサプライヤー',
+				description: '地場生産の生活基本品を地域規模で届けます。'
+			},
+			'multi-city-operator': {
+				title: 'マルチシティオペレーター',
+				description: '地域の大半の都市でレベルアップした店舗を運営します。'
+			},
+			'market-leader': {
+				title: 'マーケットリーダー',
+				description: '地域全体を代表する企業価値を築きます。'
+			}
+		},
+		goals: {
+			localShopStoreCount: '{target}店舗を運営する',
+			localShopPeakBookValue: '報告済み会社帳簿価値のピークを{target}に伸ばす',
+			neighborhoodChainStoreCount: '{target}店舗を運営する',
+			neighborhoodChainMaxStoreLevel: '店舗をレベル{target}にアップグレードする',
+			neighborhoodChainOpenedCities: '{target}都市を開放する（スターター2都市を含む）',
+			regionalSupplierOpenedCities: '{target}都市を開放する',
+			regionalSupplierLocalUnits: '店舗で扱う地場生産品を{target}ユニット届ける',
+			multiCityOperatorStoreCount: '{target}店舗を運営する',
+			multiCityOperatorOpenedCities: '{target}都市を開放する',
+			multiCityOperatorMaxStoreLevel: '店舗をレベル{target}にアップグレードする',
+			marketLeaderStoreCount: '{target}店舗を運営する',
+			marketLeaderOpenedCities: '全{target}都市を開放する',
+			marketLeaderPeakBookValue: '報告済み会社帳簿価値のピークを{target}に伸ばす'
 		}
 	},
 	scenarioDefinitions: {

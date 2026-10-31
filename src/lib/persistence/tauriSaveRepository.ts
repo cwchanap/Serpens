@@ -1,8 +1,12 @@
 import { load } from '@tauri-apps/plugin-store';
-import { createEmptySaveStore, validateSaveStoreSnapshot } from './saveCodec';
+import {
+	createEmptySaveStore,
+	decodeSaveStoreSnapshot,
+	validateSaveStoreSnapshot
+} from './saveCodec';
 import type { SaveRepository } from './saveRepository';
 import { SaveRepositoryFromDriver, type SaveStoreDriver } from './saveStoreRepository';
-import type { SaveStoreSnapshot } from './saveTypes';
+import type { DecodeSaveStoreResult, SaveStoreSnapshot } from './saveTypes';
 
 export const SAVE_STORE_FILE = 'serpens-saves.json';
 export const SAVE_STORE_KEY = 'saves';
@@ -16,10 +20,12 @@ export interface StoreLike {
 class TauriSaveStoreDriver implements SaveStoreDriver {
 	constructor(private readonly storePromise: Promise<StoreLike>) {}
 
-	async read(): Promise<SaveStoreSnapshot> {
+	async read(): Promise<DecodeSaveStoreResult> {
 		const store = await this.storePromise;
 		const snapshot = await store.get<unknown>(SAVE_STORE_KEY);
-		return snapshot === undefined ? createEmptySaveStore() : validateSaveStoreSnapshot(snapshot);
+		return snapshot === undefined
+			? { snapshot: createEmptySaveStore(), diagnostics: [] }
+			: decodeSaveStoreSnapshot(snapshot);
 	}
 
 	async write(snapshot: SaveStoreSnapshot): Promise<void> {

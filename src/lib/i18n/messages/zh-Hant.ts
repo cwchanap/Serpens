@@ -320,6 +320,10 @@ export const zhHant = {
 		overwrite: '覆寫',
 		delete: '刪除',
 		noManualSlots: '尚未有手動存檔槽。',
+		droppedRecords: {
+			one: '有 {count} 筆存檔記錄無法讀取，已略過。',
+			other: '有 {count} 筆存檔記錄無法讀取，已略過。'
+		},
 		storeCount: {
 			one: '{count} 間店',
 			other: '{count} 間店'
@@ -1717,6 +1721,10 @@ export const zhHant = {
 			openedSummary: '{storeCount} 間商店 - {buildingCount} 座工業建築'
 		},
 		decisions: {
+			progressionTierClaimed: {
+				title: '里程碑達成',
+				context: '達成「{tier}」：店鋪上限 +1，信用核給基準與硬上限各 +$25,000。'
+			},
 			cashPressure: {
 				title: '現金壓力',
 				context: '現金低於零。請選擇如何維持營運，同時保護品牌。',
@@ -1882,6 +1890,57 @@ export const zhHant = {
 				warehouseOverflow: '{quantity} 單位正在城市庫存溢出。',
 				warehouseAvailable: '城市庫存容量仍有空間。'
 			}
+		}
+	},
+	progression: {
+		panel: {
+			title: '公司發展',
+			bookValue: '公司帳簿價值',
+			nextMilestone: '下一個里程碑：{tier}',
+			reward:
+				'達成獎勵：店面額度 +{storeSlots}，信用核給基準 +{credit}，信用硬上限 +{creditBound}。提高可能的信用額度，不保證核貸金額。',
+			completeHeading: '階梯全部達成',
+			claimedOnDay: '最終階層已於第 {day} 天領取',
+			lastClaimed: '最近領取：{tier} — 第 {day} 天',
+			peakBookValue: '公司帳簿價值峰值：{value}',
+			storeCap: '目前店面上限：{cap}'
+		},
+		tiers: {
+			'local-shop': {
+				title: '在地小店',
+				description: '開出第二間店，讓公司價值超越創業規模。'
+			},
+			'neighborhood-chain': {
+				title: '社區連鎖',
+				description: '跨多個開放城市經營升級後的連鎖店。'
+			},
+			'regional-supplier': {
+				title: '區域供應商',
+				description: '以區域規模配送在地生產的基本商品。'
+			},
+			'multi-city-operator': {
+				title: '多城市營運者',
+				description: '在區域內大多數城市經營升級後的店鋪。'
+			},
+			'market-leader': {
+				title: '市場領導者',
+				description: '以全區域最強的公司價值領導市場。'
+			}
+		},
+		goals: {
+			localShopStoreCount: '經營 {target} 間店鋪',
+			localShopPeakBookValue: '將已回報的公司帳面價值峰值提升到 {target}',
+			neighborhoodChainStoreCount: '經營 {target} 間店鋪',
+			neighborhoodChainMaxStoreLevel: '將一間店鋪升級到等級 {target}',
+			neighborhoodChainOpenedCities: '開放 {target} 個城市（含兩個起始城市）',
+			regionalSupplierOpenedCities: '開放 {target} 個城市',
+			regionalSupplierLocalUnits: '配送 {target} 個門市有販售的在地生產單位',
+			multiCityOperatorStoreCount: '經營 {target} 間店鋪',
+			multiCityOperatorOpenedCities: '開放 {target} 個城市',
+			multiCityOperatorMaxStoreLevel: '將一間店鋪升級到等級 {target}',
+			marketLeaderStoreCount: '經營 {target} 間店鋪',
+			marketLeaderOpenedCities: '開放全部 {target} 個城市',
+			marketLeaderPeakBookValue: '將已回報的公司帳面價值峰值提升到 {target}'
 		}
 	},
 	scenarioDefinitions: {

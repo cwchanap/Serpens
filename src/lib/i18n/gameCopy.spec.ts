@@ -46,6 +46,7 @@ import {
 	decisionContextIndustrialUnknownTile,
 	decisionContextLocationBlocked,
 	decisionContextLocationGeneric,
+	decisionContextProgressionTierClaimed,
 	decisionContextWorldCityNotAvailableYet,
 	decisionContextWorldCityOpeningCost,
 	decisionContextWorldCityUnknown,
@@ -3062,6 +3063,55 @@ describe('game copy builders', () => {
 		};
 		const localized = localizeProductChainGraph(graph, en);
 		expect(localized.nodes[0]?.statLine).toContain(en.format.decimal(10.5));
+	});
+
+	it('localizes progression-tier-claimed notices with tier title and acknowledge option in every locale', () => {
+		expect.assertions(7);
+		const notice: DecisionItem = {
+			kind: 'system',
+			id: 'progression-tier-claimed-local-shop',
+			title: 'Milestone reached',
+			context: decisionContextProgressionTierClaimed('local-shop'),
+			expiresOnDay: 11,
+			options: [
+				{
+					id: 'acknowledge',
+					label: 'Acknowledge',
+					description: 'Return to operations planning.'
+				}
+			]
+		};
+
+		const english = localizeDecision(notice, createI18n('en'));
+		expect(english.title).toBe('Milestone reached');
+		expect(english.context).toBe(
+			'Local Shop claimed: +1 store slot and +$25,000 credit underwriting base and hard bound.'
+		);
+		expect(english.options[0]?.label).toBe('Acknowledge');
+
+		for (const locale of ['ja', 'zh-Hant'] as const) {
+			const localized = localizeDecision(notice, createI18n(locale));
+			expect(localized.title).not.toBe('Milestone reached');
+			expect(localized.context).toContain(locale === 'ja' ? 'ローカルショップ' : '在地小店');
+		}
+	});
+
+	it('does not rewrite a progression-prefixed decision whose context is unrelated', () => {
+		expect.assertions(2);
+		// A stored decision reusing the id prefix with a different context code
+		// must keep its retained title and options (same guard as world-city).
+		const forged: DecisionItem = {
+			kind: 'system',
+			id: 'progression-tier-claimed-local-shop',
+			title: 'Forged entry',
+			context: decisionContextExpansionUnavailable(3),
+			expiresOnDay: 11,
+			options: [{ id: 'custom', label: 'Custom option', description: 'Keep me.' }]
+		};
+
+		const localized = localizeDecision(forged, createI18n('en'));
+		expect(localized.title).toBe('Forged entry');
+		expect(localized.options[0]?.label).toBe('Custom option');
 	});
 });
 

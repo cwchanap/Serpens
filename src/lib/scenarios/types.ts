@@ -234,6 +234,9 @@ export type ScenarioMetricQuery =
 	| { metric: 'player-market-share'; productIds: readonly ProductId[] }
 	| { metric: 'scorecard'; score: ScoreKey }
 	| { metric: 'store-count' }
+	| { metric: 'max-store-level' }
+	| { metric: 'opened-city-count' }
+	| { metric: 'peak-company-book-value' }
 	| { metric: 'industrial-building-count'; buildingTypeIds: readonly IndustrialBuildingTypeId[] }
 	| { metric: 'city-inventory-quantity'; cityId: WorldCityId; materialId: MaterialId }
 	| {

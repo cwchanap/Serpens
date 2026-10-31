@@ -435,6 +435,59 @@ export const METRIC_REGISTRY = {
 			contributingIds: sortedIds(game.stores.map((store) => store.id))
 		})
 	},
+	'max-store-level': {
+		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: stateMetricComplete,
+		evaluate: ({ game }) => {
+			const maxLevel = game.stores.reduce((level, store) => Math.max(level, store.level), 0);
+			return {
+				actual: maxLevel,
+				contributingIds: sortedIds(
+					game.stores.filter((store) => store.level === maxLevel).map((store) => store.id)
+				)
+			};
+		}
+	},
+	'opened-city-count': {
+		supportedWindows: CURRENT,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: stateMetricComplete,
+		evaluate: ({ game }) => ({
+			actual: game.world.openedCityIds.length,
+			contributingIds: sortedIds([...game.world.openedCityIds])
+		})
+	},
+	'peak-company-book-value': {
+		supportedWindows: RUN_TO_DATE,
+		productScoped: false,
+		format: 'currency',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		// Zero report history is not a completed window (design §2).
+		isComplete: ({ reports }) => reports.length > 0,
+		evaluate: ({ reports }) => {
+			if (reports.length === 0) return { actual: 0, contributingIds: [] };
+			// Spread Math.max throws RangeError once report history passes ~100k
+			// entries; a reduce scan has no argument-count ceiling.
+			const peak = reports.reduce(
+				(max, report) => Math.max(max, report.companyBookValueAfter),
+				Number.NEGATIVE_INFINITY
+			);
+			return {
+				actual: peak,
+				contributingIds: reportIds(
+					reports.filter((report) => report.companyBookValueAfter === peak)
+				)
+			};
+		}
+	},
 	'industrial-building-count': {
 		supportedWindows: CURRENT,
 		productScoped: false,
@@ -505,8 +558,19 @@ export const METRIC_REGISTRY = {
 	}
 } satisfies Record<MetricId, MetricRegistration>;
 
+// Report arrays are append-only snapshots (transitions never mutate them in
+// place), so the day-sorted view can be memoized per array reference. Every
+// goal evaluation routes through `selectReports`, which used to copy and
+// re-sort the full history once per goal — a dozen sorts of the same array
+// per `evaluateProgression`/save-codec pass.
+const sortedReportsCache = new WeakMap<readonly DailyReport[], DailyReport[]>();
+
 function sortedReports(reports: readonly DailyReport[]): DailyReport[] {
-	return [...reports].sort((first, second) => first.day - second.day);
+	const cached = sortedReportsCache.get(reports);
+	if (cached) return cached;
+	const sorted = [...reports].sort((first, second) => first.day - second.day);
+	sortedReportsCache.set(reports, sorted);
+	return sorted;
 }
 
 function selectReports(game: GameState, window: ScenarioMetricWindow): DailyReport[] {
@@ -606,7 +670,7 @@ export function scenarioConditionPasses(
 	return windowComplete && comparatorPasses(actual, condition.comparator, condition.target);
 }
 
-function evaluateCondition(condition: ScenarioCondition, game: GameState) {
+export function evaluateCondition(condition: ScenarioCondition, game: GameState) {
 	const evaluation = evaluateMetric(
 		game,
 		condition.query,

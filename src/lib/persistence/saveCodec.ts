@@ -53,16 +53,20 @@ import type {
 	PolicyOverrideScope,
 	ProductId,
 	ProductStockLot,
+	ProgressionTierId,
 	MarketCompetitor,
 	StoreProduct,
 	WorldCityId
 } from '$lib/game/types';
 import { getWorldCityDefinition, isWorldCityId, refreshWorldProgress } from '$lib/game/world';
+import { PROGRESSION_TIERS, evaluateProgression } from '$lib/game/progression';
 import {
 	AUTO_SAVE_SLOT_ID,
 	SAVE_SCHEMA_VERSION,
+	type DecodeSaveStoreResult,
 	type SaveRecord,
 	type SaveSlotKind,
+	type SaveStoreDiagnostic,
 	type SaveStoreSnapshot,
 	type SaveSummary
 } from './saveTypes';
@@ -240,10 +244,14 @@ export function createManualSlotId(name: string, updatedAt: Date): string {
 	return `manual-${slug || 'slot'}-${updatedAt.getTime()}`;
 }
 
-export function createSaveSummary(snapshot: SaveStoreSnapshot): SaveSummary {
+export function createSaveSummary(
+	snapshot: SaveStoreSnapshot,
+	diagnostics: SaveStoreDiagnostic[] = []
+): SaveSummary {
 	return {
 		autoSave: snapshot.autoSave ? { ...snapshot.autoSave.metadata } : null,
-		manualSlots: snapshot.manualSlots.map((record) => ({ ...record.metadata }))
+		manualSlots: snapshot.manualSlots.map((record) => ({ ...record.metadata })),
+		diagnostics
 	};
 }
 
@@ -258,16 +266,19 @@ export function cloneSaveStoreSnapshot(snapshot: SaveStoreSnapshot): SaveStoreSn
 	}
 }
 
-export function parseSaveStoreSnapshot(serialized: string): SaveStoreSnapshot {
+export function parseSaveStoreSnapshot(serialized: string): DecodeSaveStoreResult {
+	let parsed: unknown;
 	try {
-		return validateSaveStoreSnapshot(JSON.parse(serialized));
-	} catch (error) {
-		if (error instanceof SaveDataError) {
-			throw error;
-		}
-
-		throw new SaveDataError('Save data is not valid JSON');
+		parsed = JSON.parse(serialized);
+	} catch {
+		return {
+			snapshot: createEmptySaveStore(),
+			diagnostics: [
+				{ code: 'invalid-record', path: 'saveStore', detail: 'Save data is not valid JSON' }
+			]
+		};
 	}
+	return decodeSaveStoreSnapshot(parsed);
 }
 
 export function validateSaveStoreSnapshot(value: unknown): SaveStoreSnapshot {
@@ -297,6 +308,70 @@ function validateSaveStoreSnapshotInternal(value: unknown): SaveStoreSnapshot {
 	};
 }
 
+/**
+ * Salvage decode for reads (mirrors `decodeScenarioStoreSnapshot`): each slot
+ * is validated independently, records that fail `validateSaveRecord` are
+ * dropped with a diagnostic, and the valid siblings still load. One corrupt
+ * record must never erase the whole store — under the strict
+ * `validateSaveStoreSnapshot` a single bad slot threw `SaveDataError`, the
+ * repository substituted an empty store, and the next autosave persisted
+ * `{...empty, autoSave}` over every manual slot.
+ *
+ * Reads only: writes keep the strict validator — salvage on write would
+ * silently discard records. Store-level failures (not a record, wrong
+ * schema version, `manualSlots` not an array, survivors violating slot
+ * invariants) still degrade to an empty store plus a diagnostic, the
+ * pre-release reset path.
+ */
+export function decodeSaveStoreSnapshot(value: unknown): DecodeSaveStoreResult {
+	const diagnostics: SaveStoreDiagnostic[] = [];
+
+	const salvageRecord = (path: string, recordValue: unknown): SaveRecord | null => {
+		try {
+			return validateSaveRecord(recordValue);
+		} catch (error) {
+			if (error instanceof SaveDataError) {
+				diagnostics.push({ code: 'invalid-record', path, detail: error.message });
+				return null;
+			}
+			throw error;
+		}
+	};
+
+	try {
+		const sourceStore = createPlainSnapshot(value, 'Save store');
+		const record = requireRecord(sourceStore, 'Save store');
+		const schemaVersion = requireNumber(record.schemaVersion, 'Save store schemaVersion');
+
+		if (schemaVersion !== SAVE_SCHEMA_VERSION) {
+			throw new SaveDataError(`Unsupported save schema version: ${schemaVersion}`);
+		}
+
+		const autoSave = record.autoSave === null ? null : salvageRecord('autoSave', record.autoSave);
+		const manualSlots = requireArray(record.manualSlots, 'manualSlots').flatMap((slot, index) => {
+			const salvaged = salvageRecord(`manualSlots[${index}]`, slot);
+			return salvaged === null ? [] : [salvaged];
+		});
+		validateSlotInvariants(autoSave, manualSlots);
+
+		return {
+			snapshot: {
+				...(record as unknown as SaveStoreSnapshot),
+				schemaVersion: SAVE_SCHEMA_VERSION,
+				autoSave,
+				manualSlots
+			},
+			diagnostics
+		};
+	} catch (error) {
+		if (error instanceof SaveDataError) {
+			diagnostics.push({ code: 'invalid-record', path: 'saveStore', detail: error.message });
+			return { snapshot: createEmptySaveStore(), diagnostics };
+		}
+		throw error;
+	}
+}
+
 export function validateSaveRecord(value: unknown): SaveRecord {
 	return withSaveDataBoundary('Save-record validation', () => validateSaveRecordInternal(value));
 }
@@ -314,6 +389,11 @@ function validateSaveRecordInternal(value: unknown): SaveRecord {
 	const game = validateCurrentGameStateInternal(
 		regenerateLegacyRetailCitiesForStrictValidation(record.game)
 	);
+	// Sandbox-only earned-claim invariants (design §3), run after the shared
+	// validator has decoded historical reports so monotone-goal evidence is the
+	// decoded report evidence. Scenarios validate through
+	// validateCurrentGameState only and never reach this check.
+	assertClaimsAreEarned(game);
 	const kind = requireString(metadata.kind, 'Save metadata kind');
 
 	if (kind !== 'auto' && kind !== 'manual') {
@@ -392,6 +472,7 @@ function validateCurrentGameStateInternal(value: unknown): GameState {
 	}
 	validateSavedFinance(game.finance, gameDay, 'Saved game finance');
 	const world = validateSavedWorld(game.world, 'Saved game world');
+	validateSavedProgression(game.progression, gameDay, 'Saved game progression');
 	for (const field of POLICY_FIELDS) {
 		validatePolicyValue(policy[field], `Saved game policy ${field}`, field);
 	}
@@ -1177,6 +1258,74 @@ function validateSavedWorld(value: unknown, label: string): GameState['world'] {
 		openedCityIds: [...new Set(openedCityIds)],
 		claimedMilestoneIds: [...new Set(claimedMilestoneIds)]
 	};
+}
+
+/**
+ * Shared claim-receipt shape check (design §3): known tier ids sourced from
+ * the PROGRESSION_TIERS catalog (not a duplicated list), unique contiguous
+ * prefix order, integer claimedOnDay within [0, day]. The sandbox-only
+ * earned-claim re-verification lives in validateSaveRecordInternal;
+ * scenarios only ever carry empty claims.
+ */
+const PROGRESSION_CATALOG_TIER_IDS = PROGRESSION_TIERS.map((tier) => tier.id);
+
+function validateSavedProgression(value: unknown, gameDay: number, label: string): void {
+	const progression = requireRecord(value, label);
+	const claims = requireArray(progression.claims, `${label} claims`);
+	// claimEarnedTiers stamps every appended receipt with the current game
+	// day, so a genuine receipt list is a contiguous catalog prefix whose
+	// claimedOnDay values never decrease in ladder order.
+	let previousClaimedOnDay = 0;
+	claims.forEach((claimValue, index) => {
+		const claimLabel = `${label} claims[${index}]`;
+		const claim = requireRecord(claimValue, claimLabel);
+		const tierId = requireOneOf(
+			requireString(claim.tierId, `${claimLabel} tierId`),
+			`${claimLabel} tierId`,
+			PROGRESSION_CATALOG_TIER_IDS
+		);
+		if (tierId !== PROGRESSION_CATALOG_TIER_IDS[index]) {
+			throw new SaveDataError(
+				`${claimLabel} must extend the tier catalog as a contiguous prefix; expected ${PROGRESSION_CATALOG_TIER_IDS[index]}`
+			);
+		}
+		const claimedOnDay = requireNumber(claim.claimedOnDay, `${claimLabel} claimedOnDay`);
+		if (!Number.isInteger(claimedOnDay) || claimedOnDay < 0 || claimedOnDay > gameDay) {
+			throw new SaveDataError(
+				`${claimLabel} claimedOnDay must be an integer between 0 and the saved day (${gameDay})`
+			);
+		}
+		if (claimedOnDay < previousClaimedOnDay) {
+			throw new SaveDataError(
+				`${claimLabel} claimedOnDay must not be earlier than the previous claim's day (${previousClaimedOnDay})`
+			);
+		}
+		previousClaimedOnDay = claimedOnDay;
+	});
+}
+
+/**
+ * Sandbox-only earned-claim invariants (design §3): a saved receipt must be a
+ * fixed point of `claimEarnedTiers` (no earned tier left unclaimed — never
+ * auto-claim) and every claimed tier must still satisfy its monotone goals
+ * against the decoded report evidence. Forged, stale or evidence-free claims
+ * are rejected, never repaired. One `evaluateProgression` pass covers both
+ * directions: every claimed tier passes, and the first unclaimed tier does
+ * not (the shared validator already enforced the contiguous-prefix shape, so
+ * an earned-but-unclaimed tier can only sit at the prefix boundary).
+ */
+function assertClaimsAreEarned(game: GameState): void {
+	const evaluation = evaluateProgression(game);
+	for (const tierEvaluation of evaluation.tiers) {
+		if (tierEvaluation.claimed && !tierEvaluation.allGoalsPass) {
+			throw new SaveDataError(
+				`Saved game progression claim no longer satisfies its goals: ${tierEvaluation.tier.id}`
+			);
+		}
+	}
+	if (evaluation.currentTier?.allGoalsPass) {
+		throw new SaveDataError('Saved game progression claims must cover every earned tier');
+	}
 }
 
 function validateUniqueCityIds(cities: unknown[], label: string): void {
@@ -2804,6 +2953,15 @@ function validateSavedDecisionContext(value: unknown, label: string): DecisionCo
 			return { code };
 		case 'industrialTileHasRail':
 			return { code };
+		case 'progressionTierClaimed': {
+			const tierId = requireString(ctx.tierId, `${label} context tierId`);
+			if (!(PROGRESSION_CATALOG_TIER_IDS as readonly string[]).includes(tierId)) {
+				throw new SaveDataError(
+					`${label} context tierId must be a known progression tier id: ${tierId}`
+				);
+			}
+			return { code, tierId: tierId as ProgressionTierId };
+		}
 		default:
 			throw new SaveDataError(`${label} context code must be a known decision context code`);
 	}
@@ -3753,6 +3911,7 @@ function validateSavedReport(
 	}
 	requireNumber(report.netIncome, `${label} netIncome`);
 	requireNumber(report.cashAfter, `${label} cashAfter`);
+	requireInteger(report.companyBookValueAfter, `${label} companyBookValueAfter`);
 	const inventoryLossExpense = requireNonNegativeFiniteNumber(
 		report.inventoryLossExpense,
 		`${label} inventoryLossExpense`
