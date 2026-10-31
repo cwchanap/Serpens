@@ -92,6 +92,13 @@ id; stores/staff/candidates/loans by lowest id; cities by lowest
 RNG outside the engine's seeded draws. Every command outcome (including
 rejections and deferrals) is recorded in the ledger.
 
+**Post-review harness correction:** `bestExpansionCandidate` originally kept
+the first equal-score tile in `city.tiles` array order instead of the lowest
+tile id promised above. The §3–§9 figures are re-measured under the
+implemented tie-break: idle controls, the seed-20260503 reference
+trajectory, T2/T3 reach and every archetype split are unchanged; tier-1
+reach moved 183 → 184 and a few tail distributions shifted slightly.
+
 ## 2. Seed definitions
 
 - **Reference seed `20260503`** (the ticket seed): convenience archetype,
@@ -108,22 +115,22 @@ rejections and deferrals) is recorded in the ledger.
 
 ## 3. Per-tier completion distribution (200 progression runs, 365 days)
 
-Actual runtime of the final sweep: **444.0 s** for all 400 runs
+Actual runtime of the final sweep: **437.4 s** for all 400 runs
 (progression + idle) on the dev machine; a single reference trace takes ~1 s.
 
 | Tier | Reached | Rate | p10 | Median | p90 | Min | Max | Never claimed |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 Local Shop | 183/200 | 91.5% | day 30 | day 56 | day 239 | 30 | 360 | 17 (all convenience) |
+| 1 Local Shop | 184/200 | 92% | day 30 | day 56.5 | day 240 | 30 | 360 | 16 (all convenience) |
 | 2 Neighborhood Chain | 172/200 | 86% | day 50 | day 57 | day 267 | 50 | 358 | 28 (convenience 21, grocery 7) |
-| 3 Regional Supplier | 72/200 | 36% | day 85 | day 232 | day 323 | 58 | 358 | 128 (boutique 50, electronics 50, convenience 21, grocery 7) |
+| 3 Regional Supplier | 72/200 | 36% | day 85 | day 232 | day 329 | 58 | 358 | 128 (boutique 50, electronics 50, convenience 21, grocery 7) |
 | 4 Multi-City Operator | 0/200 | 0% | — | — | — | — | — | 200 (see §6) |
 | 5 Market Leader | 0/200 | 0% | — | — | — | — | — | 200 (see §6) |
 
 Seed-level outliers (claim day strictly above the tier's p90) are listed in
 `docs/balance/generated/progression-calibration.json` (`tiers[].outliers`);
 the extreme late tail is convenience-only (e.g. seed 20260503 T1 at day 327,
-20260506 at day 359) — boutique/electronics claim T1 by day ~30–60 and
-grocery by ~day 50–120.
+20260506 at day 359) — boutique claims T1 in days 30–45, electronics in
+47–82, grocery in 58–209.
 
 Final-state aggregates over progression runs: book value min −$23,416 /
 median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
@@ -175,7 +182,7 @@ median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
     (chemical-feedstock-well, pulpwood-grove, pulp-mill, plastic-plant,
     packaging-plant, gift-workshop, warehouse + rails), produces (70 gift
     units sitting in the workshop buffer at day 365), and stores sell
-    31,656 gift units — but every unit is served by **imports**; the trickle
+    30,995 gift units — but every unit is served by **imports**; the trickle
     of chain output never transfers into the warehouse/city inventory, so
     local deliveries stay 0. Flagged for engine follow-up (rail surplus-push
     vs slow trickle production); out of scope for this step, whose mandate
@@ -186,13 +193,15 @@ median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
   Two independent blockers:
   1. **Contiguous-prefix gate.** `claimEarnedTiers` claims only the
      contiguous prefix, so runs whose tier-4/tier-5 goals *pass* cannot claim
-     them while tier-3 is unsatisfied. Measured: boutique runs finish with
-     **8 stores, all 6 cities opened, a level-4 store and peak book value
-     ≈ $1.06M–$1.13M** — every tier-4 and tier-5 goal metric holds at day 365
-     — but the boutique tier-3 blocker (above) pins the ladder at tier 2.
+     them while tier-3 is unsatisfied. Measured: all 50 boutique runs finish
+     with **8 stores**, and 45/50 hold every tier-4 and tier-5 goal metric at
+     day 365 (all 6 cities opened, a level-4 store, peak book value
+     $244,665–$1,223,497) — but the boutique tier-3 blocker (above) pins the
+     ladder at tier 2.
   2. **Goal shortfalls in the remaining archetypes.** Convenience/grocery
-     runs max out at 3–5 stores, ≤5 cities, store level 2–3 and peaks well
-     under $150k (blocker counts: tier-4 store-count 115, opened-cities 124,
+     runs max out at 2–4 stores, ≤5 cities and store level 2–3 (convenience
+     peaks ≤ $111,267; grocery peaks ≤ $166,003, two runs above the $150k
+     tier-5 bar) (blocker counts: tier-4 store-count 115, opened-cities 126,
      max-store-level 154 of 200; tier-5 store-count 129, opened-cities 155,
      peak 112). The measured marginal economics are the cause: each extra
      store adds ≈ +$12–28/day against a $22.4k setup, and cumulative
@@ -208,9 +217,9 @@ median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
   still uses the static $15,000/$100,000 terms, so no loan in this sweep
   could have "borrowed more" because of it. What the sweep measured under
   current terms: all 200 progression runs used credit
-  (2,183 borrows, $22.25M total principal advanced, max single borrow
-  $39,000, 997 `payOffLoan` closures totaling $4.07M repaid). Borrow count by
-  claims held at borrow time: 850 at 0 claims, 353 at 1, 947 at 2, 33 at 3 —
+  (2,182 borrows, $22.14M total principal advanced, max single borrow
+  $39,000, 988 `payOffLoan` closures totaling $4.02M repaid). Borrow count by
+  claims held at borrow time: 854 at 0 claims, 346 at 1, 947 at 2, 35 at 3 —
   i.e. credit is used before and after claims, and the reference bot's
   borrowing is working-capital churn (the $2,000 floor) plus tier-critical
   gap-closing, never speculation. Step 5 must re-derive the counterfactual
@@ -227,12 +236,31 @@ median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
 | 5 | Market Leader | stores ≥ 7; cities ≥ 6; peak book value ≥ $150k | unchanged (draft-blocked) |
 
 **One revision — tier-3 product set.** The authored set
-`[bottled-water, produce, pantry]` is deliverable only by convenience stores
-(measured: 29/200 overall reach before revision). It is widened in
-`progression.ts` to every industry-linked product
-`[bottled-water, produce, pantry, snacks, soft-drinks, essentials, gifts]`,
-raising measured reach to 72/200 (grocery's produce/pantry chains qualify).
-Locale copy updated to match (see below); all numeric targets and the
+`[bottled-water, produce, pantry]` is widened in `progression.ts` to every
+industry-linked product
+`[bottled-water, produce, pantry, snacks, soft-drinks, essentials, gifts]`.
+
+Corrected rationale (post-review re-measurement): the trio was never
+convenience-only — grocery stocks `produce`/`pantry`, which always counted.
+Re-running this exact sweep with the trio restored produces
+**byte-identical** claims and final local units in all 200 runs (tier-3
+72/200; convenience 29/50 and grocery 43/50; local-units ≥ 25 in all 100
+convenience + grocery runs): the widening moved *no* measured outcome,
+because the widened-only chains delivered 0 local units everywhere —
+boutique's `gifts` stall at the workshop buffer (the §6 flow blocker) and
+convenience's `snacks`/`soft-drinks`/`essentials` secondaries produce no
+countable deliveries inside 365 days. The earlier draft's "raised measured
+reach to 72/200 (grocery's produce/pantry chains qualify)" was wrong on both
+counts; the 29 → 72 reach change seen during Step-4 calibration came from
+mid-calibration bot revisions, not from the product set.
+
+The widened set is kept for goal correctness, not reach: the bot builds
+supply chains only for products its stores stock, so under the trio a
+boutique run stocks no countable product at all and the goal is
+unsatisfiable for it even if the §6 delivery blocker were fixed. The widened
+set makes the goal attainable in principle for every archetype stocking at
+least one industry-linked product (electronics still stocks none). Locale
+copy updated to match (see below); all numeric targets and the
 `store-count`/`level`/`city` goals are byte-identical to the pre-calibration
 authored values, and `progression.spec.ts` pins the frozen numbers.
 
@@ -269,11 +297,12 @@ wired terms (carry-over acceptance item 4 from the Step-4 calibration). The
 
 What was run (harness unchanged, `tests/balance/progressionRun.ts`):
 
-- Reference seed `20260503`, convenience, 365 days, `--trace` — 3.1 s.
+- Reference seed `20260503`, convenience, 365 days, `--trace` — ~1 s per
+  terms variant.
 - Focused sample: seeds `20260501`–`20260510` × `convenience`, `grocery`
-  (the two archetypes that reach tier 3) — 20 progression + 20 idle runs,
-  59.7 s. Not a full 200-run re-sweep; actual seeds and runtime recorded here
-  per the carry-over requirement.
+  (the two archetypes that reach tier 3) — 20 progression + 20 idle runs per
+  terms variant, 58.6 s static / 65.8 s wired. Not a full 200-run re-sweep;
+  actual seeds and runtime recorded here per the carry-over requirement.
 
 Reference seed `20260503` (static vs wired):
 
@@ -297,8 +326,8 @@ Focused sample (10 seeds × 2 archetypes, static vs wired):
 
 | Metric | Static | Wired |
 | --- | --- | --- |
-| Borrows | 158 | 156 |
-| Total principal advanced | $1,041,000 | $1,189,000 (+14%) |
+| Borrows | 156 | 158 |
+| Total principal advanced | $1,004,000 | $1,199,000 (+19%) |
 | Max single borrow | $21,000 | $28,000 |
 | Claims reached (T1–T3) | 46 | 40 |
 

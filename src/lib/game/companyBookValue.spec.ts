@@ -373,6 +373,32 @@ describe('getCompanyBookValue', () => {
 		expect(breakdown.total).toBe(105); // single rounding of 100 + 4.5
 	});
 
+	test('fractional totals in (-0.5, 0) normalize to +0, not -0', () => {
+		const game = createNewGame('convenience', 20260508);
+		const nearZero: GameState = {
+			...game,
+			cash: -10.9,
+			finance: { ...game.finance, loans: [] },
+			stores: game.stores.map((store) =>
+				store.id === 'store-1'
+					? { ...store, products: [makeProduct('pantry', 7)] } // 7 × $1.50 = $10.50
+					: { ...store, products: [] }
+			),
+			industrialBuildings: [],
+			industryCities: game.industryCities.map((city) => ({ ...city, rails: [] })),
+			cityInventories: game.cityInventories.map((inventory) => ({
+				...inventory,
+				materials: {}
+			})),
+			logistics: { ...game.logistics, transferOrders: [] }
+		};
+
+		const breakdown = getCompanyBookValue(nearZero);
+		expect(breakdown.inventory).toBe(10.5);
+		expect(breakdown.total).toBe(0);
+		expect(Object.is(breakdown.total, -0)).toBe(false);
+	});
+
 	test('negative totals are preserved, never clamped to zero', () => {
 		const game = createNewGame('convenience', 20260508);
 		const underwater: GameState = {

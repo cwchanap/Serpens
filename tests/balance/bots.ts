@@ -1082,7 +1082,7 @@ function runProgressionStoreUpgrade(
 }
 
 /** Best legal expansion tile across ALL opened retail cities. */
-function bestExpansionCandidate(game: GameState): { city: City; tile: CityTile } | null {
+export function bestExpansionCandidate(game: GameState): { city: City; tile: CityTile } | null {
 	let best: { city: City; tile: CityTile; score: number } | null = null;
 	for (const city of [...game.cities].sort(byId)) {
 		const lookup = createCityTileLookup(city);
@@ -1097,7 +1097,13 @@ function bestExpansionCandidate(game: GameState): { city: City; tile: CityTile }
 			const score = tile.demand + tile.footTraffic;
 			// Ascending city ids + strict improvement give the deterministic
 			// tie-break: highest score, then lowest city id, then lowest tile id.
-			if (!best || score > best.score) best = { city, tile, score };
+			if (
+				!best ||
+				score > best.score ||
+				(score === best.score && best.city.id === city.id && tile.id < best.tile.id)
+			) {
+				best = { city, tile, score };
+			}
 		}
 	}
 	return best ? { city: best.city, tile: best.tile } : null;

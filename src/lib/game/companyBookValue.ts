@@ -146,9 +146,10 @@ export function getCompanyBookValue(game: GameState): CompanyBookValueBreakdown 
 	const inventory = getInventoryValue(game);
 	const debt = getTotalDebt(game);
 
-	const total = Math.round(
+	const rounded = Math.round(
 		cash + retailAssets + cityAccessAssets + industryAssets + railAssets + inventory - debt
 	);
+	const total = rounded === 0 ? 0 : rounded;
 
 	return {
 		total,

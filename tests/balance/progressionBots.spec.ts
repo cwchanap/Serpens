@@ -11,9 +11,15 @@
 
 import { describe, expect, it } from 'vitest';
 import { claimEarnedTiers, evaluateProgression } from '$lib/game/progression';
-import type { ArchetypeId } from '$lib/game/types';
+import { createNewGame } from '$lib/game/state';
+import type { ArchetypeId, City, CityTile } from '$lib/game/types';
 import type { ScenarioCommand } from '$lib/scenarios/types';
-import { runBot, runProgressionBot, type ProgressionRunDigest } from './bots';
+import {
+	bestExpansionCandidate,
+	runBot,
+	runProgressionBot,
+	type ProgressionRunDigest
+} from './bots';
 import { median, quantile } from './progressionCalibration';
 
 const REFERENCE_SEED = 20260503;
@@ -162,6 +168,90 @@ describe('progression bot (HPA-318 Step 4)', { timeout: 30_000 }, () => {
 		expect(tier1.goals.find((goal) => goal.goal.id === 'local-shop-peak-book-value')!.passes).toBe(
 			false
 		);
+	});
+});
+
+/**
+ * Synthetic-city fixtures for `bestExpansionCandidate`: every candidate
+ * anchor's 2×2 store footprint is fully present and unblocked. `score` is
+ * `demand + footTraffic` (set on `demand` alone here).
+ */
+function makeTieBreakTile(
+	cityId: string,
+	id: string,
+	x: number,
+	y: number,
+	score: number
+): CityTile {
+	return {
+		id,
+		cityId,
+		x,
+		y,
+		neighborhood: 'downtown',
+		terrain: 'green',
+		feature: null,
+		demand: score,
+		rent: 0,
+		footTraffic: 0,
+		customerFit: 0,
+		locked: false
+	};
+}
+
+function makeTieBreakCity(cityId: string, width: number, height: number, tiles: CityTile[]): City {
+	return { id: cityId, name: cityId, width, height, tiles };
+}
+
+function bbbCity(topScore = 50): City {
+	return makeTieBreakCity('bbb-city', 4, 2, [
+		// 'tile-10' sits earlier in the array than the lower 'tile-02' id:
+		// array-order traversal would keep 'tile-10', the documented
+		// tie-break must pick 'tile-02'.
+		makeTieBreakTile('bbb-city', 'tile-10', 0, 0, 50),
+		makeTieBreakTile('bbb-city', 'tile-11', 1, 0, 10),
+		makeTieBreakTile('bbb-city', 'tile-02', 2, 0, topScore),
+		makeTieBreakTile('bbb-city', 'tile-03', 3, 0, 10),
+		makeTieBreakTile('bbb-city', 'tile-04', 0, 1, 10),
+		makeTieBreakTile('bbb-city', 'tile-05', 1, 1, 10),
+		makeTieBreakTile('bbb-city', 'tile-06', 2, 1, 10),
+		makeTieBreakTile('bbb-city', 'tile-07', 3, 1, 10)
+	]);
+}
+
+function aaaCity(score: number): City {
+	return makeTieBreakCity('aaa-city', 2, 2, [
+		makeTieBreakTile('aaa-city', 'tile-00', 0, 0, score),
+		makeTieBreakTile('aaa-city', 'tile-01', 1, 0, 10),
+		makeTieBreakTile('aaa-city', 'tile-02', 0, 1, 10),
+		makeTieBreakTile('aaa-city', 'tile-03', 1, 1, 10)
+	]);
+}
+
+function expansionFixture(cities: City[]) {
+	return { ...createNewGame('convenience', REFERENCE_SEED), stores: [], cities };
+}
+
+describe('progression expansion tie-breaks (documented order: score, city id, tile id)', () => {
+	it('picks the lowest tile id among same-city equal scores, not array order', () => {
+		const candidate = bestExpansionCandidate(expansionFixture([bbbCity()]));
+		expect(candidate?.city.id).toBe('bbb-city');
+		expect(candidate?.tile.id).toBe('tile-02');
+	});
+
+	it('picks the lowest city id among cross-city equal scores', () => {
+		// 'bbb-city' is listed first in game.cities; sorted traversal makes the
+		// lexicographically lower 'aaa-city' the tie-break winner anyway.
+		const candidate = bestExpansionCandidate(expansionFixture([bbbCity(), aaaCity(50)]));
+		expect(candidate?.city.id).toBe('aaa-city');
+		expect(candidate?.tile.id).toBe('tile-00');
+	});
+
+	it('score dominates city id order', () => {
+		// Higher score in the lexicographically later city still wins.
+		const candidate = bestExpansionCandidate(expansionFixture([aaaCity(50), bbbCity(60)]));
+		expect(candidate?.city.id).toBe('bbb-city');
+		expect(candidate?.tile.id).toBe('tile-02');
 	});
 });
 
