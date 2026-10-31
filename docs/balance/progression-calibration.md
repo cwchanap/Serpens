@@ -14,7 +14,16 @@ match these values.
 - Harness: `tests/balance/bots.ts` (`runProgressionBot`),
   `tests/balance/progressionCalibration.ts` (aggregation),
   `tests/balance/progressionRun.ts` (CLI).
-- Regenerate both artifacts (git-ignored, deterministic, byte-identical):
+- Regenerate both artifacts (git-ignored, deterministic). Both recorded
+  artifacts are the **static-terms** record: they reproduce only under the
+  pre-Step-5 `assessCredit` terms — the same tree with the two
+  `PROGRESSION_TIER_REWARD` credit bonuses removed from `finance.ts` (§9).
+  On the current wired-terms tree the same commands deterministically
+  produce the §9 wired variants instead (e.g. the reference trace claims
+  `local-shop` day 327 only, 2 stores, 5 opened cities, storeCap 7). The
+  recorded trace's ledger also predates the `commandKind` field added in
+  Step 7 — outcome-identical, not byte-identical, under a static-terms
+  re-run.
 
 ```bash
 bun run tests/balance/progressionRun.ts --seeds 20260501,...,20260550 --days 365
@@ -136,6 +145,13 @@ Final-state aggregates over progression runs: book value min −$23,416 /
 median $84,634 / max $1,132,586; store count min 2 / median 4 / max 8.
 
 ## 4. Reference trace summary — seed `20260503`, convenience, 365 days
+
+**Static-terms record.** Like the rest of §3–§6, this trace was measured
+under the pre-Step-5 credit terms that froze the goals (`15_000`/`100_000`,
+no claim bonuses — §9). Re-running the `--trace` command above on the
+current wired-terms engine deterministically produces the §9 wired variant:
+`local-shop` day 327 only (T2/T3 slip past day 365), 2 stores, 5 opened
+cities, storeCap 7, cash −$16,370, book value $62,101.
 
 - Founding: tile `harbor-city-25-32`, cash $32,000 (founding store free;
   founding loan $8,000 ⇒ founding book value $24,000).
@@ -324,6 +340,7 @@ Reference seed `20260503` (static vs wired):
 | Borrows | 13 totaling $56,000, max $15,000 | 13 totaling $62,000, max $21,000 |
 | Highest `grossPrincipalLimit` observed | $18,895 | $34,931 |
 | Final cash / book value / storeCap | −$23,825 / $52,153 / 8 | −$16,370 / $62,101 / 7 |
+| Final stores / opened cities | 3 / 4 | 2 / 5 |
 
 **Direct claim-raised-limit evidence (same seed, same claim day):** tier 1 is
 claimed on day 327 in both runs; on day 330 the wired bot borrows **$21,000
