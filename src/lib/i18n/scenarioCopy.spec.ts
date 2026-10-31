@@ -470,6 +470,25 @@ describe('scenario copy', () => {
 		expect(rows[0]?.contributorLabels).toEqual(['Harbor Shop', 'Harbor City', 'Day 3 report']);
 	});
 
+	it('renders the ordinal fallback for unnamed store contributors', () => {
+		expect.assertions(2);
+		const i18n = createI18n('en');
+		const sandboxGame = {
+			stores: [
+				{ id: 'store-1', name: '' },
+				{ id: 'store-2', name: 'Harbor Shop' },
+				{ id: 'store-3', name: '' }
+			],
+			world: { openedCityIds: [] },
+			industrialBuildings: []
+		} as unknown as GameState;
+
+		expect(resolveScenarioContributorLabel(sandboxGame, 'store-3', i18n)).toBe('Store #3');
+		expect(resolveScenarioContributorLabel(sandboxGame, 'report:5/store:store-1', i18n)).toBe(
+			'Store #1'
+		);
+	});
+
 	it('localizes catalog card titles, eligibility, medals, and scores for ja and zh-Hant', () => {
 		expect.assertions(12);
 		const definitions = [

@@ -42,9 +42,11 @@ const TIER_REWARD: ProgressionTierReward = {
 /**
  * Tier-3 local-delivery product set: every industry-linked product (a
  * productionMaterialId exists), so any archetype that stocks at least one of
- * them can legally satisfy the 25-unit goal — the original tier-1-onboarding
- * trio was deliverable only by convenience stores (step-4 calibration
- * finding). Electronics stocks none and stays structurally blocked.
+ * them can legally satisfy the 25-unit goal. The original tier-1-onboarding
+ * trio counted only `bottled-water` for convenience and `produce`/`pantry`
+ * for grocery — boutique and electronics stocked no countable product at all
+ * (step-4 calibration finding). Electronics still stocks none and stays
+ * structurally blocked.
  */
 const REGIONAL_SUPPLIER_PRODUCT_IDS = [
 	'bottled-water',
