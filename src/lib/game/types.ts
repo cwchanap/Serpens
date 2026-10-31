@@ -1223,27 +1223,42 @@ export interface FinanceState {
 	currentDayActivity: FinanceDayActivity;
 }
 
-/** Stable ladder ids for the five-step authored progression (design §2). */
-export type ProgressionTierId =
-	| 'local-shop'
-	| 'neighborhood-chain'
-	| 'regional-supplier'
-	| 'multi-city-operator'
-	| 'market-leader';
-
+/**
+ * Stable ladder ids for the five-step authored progression (design §2). The
+ * union is derived from this array so the id list exists exactly once.
+ */
 export const PROGRESSION_TIER_IDS = [
 	'local-shop',
 	'neighborhood-chain',
 	'regional-supplier',
 	'multi-city-operator',
 	'market-leader'
-] as const satisfies readonly ProgressionTierId[];
+] as const;
 
-// Errors when a ProgressionTierId is added without extending PROGRESSION_TIER_IDS.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- compile-time exhaustiveness check
-type ProgressionTierIdsExhaustive = AssertExhausted<
-	Exclude<ProgressionTierId, (typeof PROGRESSION_TIER_IDS)[number]>
->;
+export type ProgressionTierId = (typeof PROGRESSION_TIER_IDS)[number];
+
+export interface ProgressionTierReward {
+	/** Store slots added to the persisted storeCap per claimed tier. */
+	storeCapacityBonus: number;
+	/**
+	 * Credit underwriting base and gross-principal hard bound added per
+	 * claimed tier, applied by `finance.ts:assessCredit`. Description only —
+	 * nothing here touches loans.
+	 */
+	creditUnderwritingBaseBonus: number;
+	creditGrossPrincipalHardBoundBonus: number;
+}
+
+/**
+ * Uniform per-tier reward (design §2/§3); identical for every tier. The
+ * single source for the reward amounts — the tier catalog and
+ * `assessCredit` both read this rather than restating the numbers.
+ */
+export const PROGRESSION_TIER_REWARD: ProgressionTierReward = {
+	storeCapacityBonus: 1,
+	creditUnderwritingBaseBonus: 25_000,
+	creditGrossPrincipalHardBoundBonus: 25_000
+};
 
 /** Persisted receipt for one claimed ladder tier; claimed day only, nothing derived. */
 export interface ProgressionClaim {

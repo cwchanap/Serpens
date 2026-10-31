@@ -9,7 +9,7 @@
  */
 
 import { getCompanyBookValue } from '$lib/game/companyBookValue';
-import { evaluateProgression, PROGRESSION_TIERS } from '$lib/game/progression';
+import { claimEarnedTiers, evaluateProgression, PROGRESSION_TIERS } from '$lib/game/progression';
 import type { ArchetypeId, GameState, ProgressionTierId } from '$lib/game/types';
 import type { ProgressionRunResult } from './bots';
 
@@ -131,6 +131,13 @@ export interface IdleRunSummary {
 	seed: number;
 	archetypeId: ArchetypeId;
 	claimCount: number;
+	/**
+	 * Tiers the idle state has earned but never claimed — the real negative
+	 * control. The idle bot never calls `claimEarnedTiers`, so `claimCount`
+	 * is structurally zero; this delta is what must also stay zero for the
+	 * control to mean "idling earns nothing".
+	 */
+	earnedUnclaimedClaims: number;
 	/** Book value right after founding (cash − founding debt; founding store free). */
 	foundingBookValue: number;
 	/** Max `companyBookValueAfter` over the idle run's daily reports. */
@@ -148,6 +155,8 @@ export function summarizeIdleRun(
 		seed,
 		archetypeId,
 		claimCount: idleGame.progression.claims.length,
+		earnedUnclaimedClaims:
+			claimEarnedTiers(idleGame).progression.claims.length - idleGame.progression.claims.length,
 		foundingBookValue: getCompanyBookValue(founded).total,
 		peakReportBookValue: idleGame.reports.reduce(
 			(peak, report) => Math.max(peak, report.companyBookValueAfter),
@@ -253,6 +262,8 @@ export interface IdleControlCalibration {
 	runs: number;
 	zeroClaimRuns: number;
 	totalClaims: number;
+	/** Sum of `earnedUnclaimedClaims` — must stay 0 for the control to hold. */
+	totalEarnedUnclaimed: number;
 	foundingBookValue: { min: number; median: number; max: number };
 	peakReportBookValue: { min: number; median: number; max: number };
 	finalBookValue: { min: number; median: number; max: number };
@@ -263,6 +274,7 @@ export function calibrateIdle(runs: readonly IdleRunSummary[]): IdleControlCalib
 		runs: runs.length,
 		zeroClaimRuns: runs.filter((run) => run.claimCount === 0).length,
 		totalClaims: runs.reduce((total, run) => total + run.claimCount, 0),
+		totalEarnedUnclaimed: runs.reduce((total, run) => total + run.earnedUnclaimedClaims, 0),
 		foundingBookValue: minMedianMax(runs.map((run) => run.foundingBookValue)),
 		peakReportBookValue: minMedianMax(runs.map((run) => run.peakReportBookValue)),
 		finalBookValue: minMedianMax(runs.map((run) => run.finalBookValue))

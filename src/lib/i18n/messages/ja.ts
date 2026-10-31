@@ -322,6 +322,10 @@ export const ja = {
 		overwrite: '上書き',
 		delete: '削除',
 		noManualSlots: '手動スロットはまだありません。',
+		droppedRecords: {
+			one: '保存データ{count}件を読み込めずスキップしました。',
+			other: '保存データ{count}件を読み込めずスキップしました。'
+		},
 		storeCount: {
 			one: '{count} 店',
 			other: '{count} 店'
@@ -1919,7 +1923,7 @@ export const ja = {
 			bookValue: '会社帳簿価値',
 			nextMilestone: '次のマイルストーン：{tier}',
 			reward:
-				'達成報酬：店舗枠 +1 と与信基準額・上限額 +$25,000。与信余力が伸びる可能性があり、融資額は保証されません。',
+				'達成報酬：店舗枠 +{storeSlots}、与信基準額 +{credit}、与信上限額 +{creditBound}。与信余力が伸びる可能性があり、融資額は保証されません。',
 			completeHeading: 'すべての段階を達成',
 			claimedOnDay: '最終段階を{day}日に達成',
 			lastClaimed: '直近の達成：{tier}（{day}日目）',
@@ -1949,20 +1953,19 @@ export const ja = {
 			}
 		},
 		goals: {
-			localShopStoreCount: '2店目の店舗を出す',
-			localShopPeakBookValue: '報告済み会社帳簿価値のピークを$70,000に伸ばす',
-			neighborhoodChainStoreCount: '3店舗を運営する',
-			neighborhoodChainMaxStoreLevel: '店舗をレベル2にアップグレードする',
-			neighborhoodChainOpenedCities: '3都市を開放する（スターター2都市を含む）',
-			regionalSupplierOpenedCities: '4都市を開放する',
-			regionalSupplierLocalUnits: '店舗で扱う地場生産品を25ユニット届ける',
-			regionalSupplierPeakBookValue: '報告済み会社帳簿価値のピークを$60,000に伸ばす',
-			multiCityOperatorStoreCount: '5店舗を運営する',
-			multiCityOperatorOpenedCities: '5都市を開放する',
-			multiCityOperatorMaxStoreLevel: '店舗をレベル4にアップグレードする',
-			marketLeaderStoreCount: '7店舗を運営する',
-			marketLeaderOpenedCities: '全6都市を開放する',
-			marketLeaderPeakBookValue: '報告済み会社帳簿価値のピークを$150,000に伸ばす'
+			localShopStoreCount: '{target}店舗を運営する',
+			localShopPeakBookValue: '報告済み会社帳簿価値のピークを{target}に伸ばす',
+			neighborhoodChainStoreCount: '{target}店舗を運営する',
+			neighborhoodChainMaxStoreLevel: '店舗をレベル{target}にアップグレードする',
+			neighborhoodChainOpenedCities: '{target}都市を開放する（スターター2都市を含む）',
+			regionalSupplierOpenedCities: '{target}都市を開放する',
+			regionalSupplierLocalUnits: '店舗で扱う地場生産品を{target}ユニット届ける',
+			multiCityOperatorStoreCount: '{target}店舗を運営する',
+			multiCityOperatorOpenedCities: '{target}都市を開放する',
+			multiCityOperatorMaxStoreLevel: '店舗をレベル{target}にアップグレードする',
+			marketLeaderStoreCount: '{target}店舗を運営する',
+			marketLeaderOpenedCities: '全{target}都市を開放する',
+			marketLeaderPeakBookValue: '報告済み会社帳簿価値のピークを{target}に伸ばす'
 		}
 	},
 	scenarioDefinitions: {

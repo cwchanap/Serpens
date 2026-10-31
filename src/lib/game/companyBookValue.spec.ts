@@ -269,6 +269,23 @@ describe('getCompanyBookValue', () => {
 		expect(getCompanyBookValue(maxed).retailAssets).toBe(12_000 + expectedUpgrades);
 	});
 
+	test('rail cells value cumulative per-step upgrade spend, not a flat per-level charge', () => {
+		const game = createNewGame('convenience', 20260508);
+		const railAssets = (level: number) =>
+			getCompanyBookValue({
+				...game,
+				industryCities: [{ ...game.industryCities[0]!, rails: [{ x: 10, y: 10, level }] }]
+			}).railAssets;
+
+		// Reaching level L costs 30·(1+…+L−1) per cell on top of the $40 build —
+		// upgrading 2→3 alone costs $60/cell, so a level-3 cell is $130 of sunk
+		// spend, not $100 under a flat $30-per-level reading.
+		expect(railAssets(1)).toBe(RAIL_BUILD_COST_PER_CELL);
+		expect(railAssets(2)).toBe(70);
+		expect(railAssets(3)).toBe(130);
+		expect(railAssets(4)).toBe(220);
+	});
+
 	test('demolished industry buildings and removed rail cells contribute zero', () => {
 		const withAssets = buildHandFixtureGame();
 		const stripped: GameState = {

@@ -28,7 +28,27 @@ export interface SaveStoreSnapshot {
 	manualSlots: SaveRecord[];
 }
 
+/**
+ * One record dropped during a salvage decode: `code` identifies the failure
+ * class, `path` locates the entry inside the store (`autoSave`,
+ * `manualSlots[<index>]`, or `saveStore` for a store-level failure), and
+ * `detail` carries the underlying validation message.
+ */
+export interface SaveStoreDiagnostic {
+	code: 'invalid-record';
+	path: string;
+	detail: string;
+}
+
+/** Read-path result: the salvaged snapshot plus every dropped record. */
+export interface DecodeSaveStoreResult {
+	snapshot: SaveStoreSnapshot;
+	diagnostics: SaveStoreDiagnostic[];
+}
+
 export interface SaveSummary {
 	autoSave: SaveSlotMetadata | null;
 	manualSlots: SaveSlotMetadata[];
+	/** Records dropped by the most recent salvage read; empty on a clean store. */
+	diagnostics: SaveStoreDiagnostic[];
 }

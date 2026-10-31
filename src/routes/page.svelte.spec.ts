@@ -94,7 +94,7 @@ function createSaveRepositoryHarness(
 ) {
 	const events = input.events ?? [];
 	const repository: SaveRepository = {
-		getSummary: vi.fn(async () => ({ autoSave: null, manualSlots: [] })),
+		getSummary: vi.fn(async () => ({ autoSave: null, manualSlots: [], diagnostics: [] })),
 		getAutoSave: vi.fn(async () => (input.autoGame ? record(input.autoGame) : null)),
 		saveAuto: vi.fn(async (game) => {
 			events.push('autosave');

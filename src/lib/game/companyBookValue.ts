@@ -86,7 +86,13 @@ function getRailAssets(game: GameState): number {
 	let total = 0;
 	for (const city of game.industryCities) {
 		for (const cell of city.rails) {
-			total += RAIL_BUILD_COST_PER_CELL + (cell.level - 1) * RAIL_UPGRADE_COST_PER_CELL_PER_LEVEL;
+			// Upgrading a cell from level k to k+1 costs
+			// RAIL_UPGRADE_COST_PER_CELL_PER_LEVEL × k (the segment minLevel
+			// price), so the sunk upgrade cost to reach `level` is the
+			// triangular sum 30×(1+…+(level−1)), not a flat 30 per level.
+			total +=
+				RAIL_BUILD_COST_PER_CELL +
+				(RAIL_UPGRADE_COST_PER_CELL_PER_LEVEL * cell.level * (cell.level - 1)) / 2;
 		}
 	}
 	return total;

@@ -9,10 +9,16 @@ import {
 	createSaveSummary
 } from './saveCodec';
 import type { SaveRepository } from './saveRepository';
-import type { SaveRecord, SaveSlotMetadata, SaveStoreSnapshot, SaveSummary } from './saveTypes';
+import type {
+	DecodeSaveStoreResult,
+	SaveRecord,
+	SaveSlotMetadata,
+	SaveStoreSnapshot,
+	SaveSummary
+} from './saveTypes';
 
 export interface SaveStoreDriver {
-	read(): Promise<SaveStoreSnapshot>;
+	read(): Promise<DecodeSaveStoreResult>;
 	write(snapshot: SaveStoreSnapshot): Promise<void>;
 }
 
@@ -25,16 +31,17 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 	) {}
 
 	async getSummary(): Promise<SaveSummary> {
-		return createSaveSummary(await this.readSnapshot());
+		const { snapshot, diagnostics } = await this.readSnapshot();
+		return createSaveSummary(snapshot, diagnostics);
 	}
 
 	async getAutoSave(): Promise<SaveRecord | null> {
-		return (await this.readSnapshot()).autoSave;
+		return (await this.readSnapshot()).snapshot.autoSave;
 	}
 
 	async saveAuto(game: GameState): Promise<SaveSlotMetadata> {
 		return this.mutate(async () => {
-			const snapshot = await this.readSnapshot();
+			const { snapshot } = await this.readSnapshot();
 			const autoSave = createAutoSaveRecord(game, this.now());
 			await this.writeSnapshot({ ...snapshot, autoSave });
 			return { ...autoSave.metadata };
@@ -43,7 +50,7 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 
 	async createManualSlot(name: string, game: GameState): Promise<SaveSlotMetadata> {
 		return this.mutate(async () => {
-			const snapshot = await this.readSnapshot();
+			const { snapshot } = await this.readSnapshot();
 			const updatedAt = this.now();
 			const slot = createSaveRecord(game, {
 				id: createUniqueManualSlotId(name, updatedAt, snapshot.manualSlots),
@@ -65,7 +72,7 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 		game: GameState
 	): Promise<SaveSlotMetadata> {
 		return this.mutate(async () => {
-			const snapshot = await this.readSnapshot();
+			const { snapshot } = await this.readSnapshot();
 
 			if (!snapshot.manualSlots.some((slot) => slot.metadata.id === slotId)) {
 				throw new SaveDataError(`Manual save slot not found: ${slotId}`, 'slot-not-found');
@@ -88,13 +95,13 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 	}
 
 	async loadManualSlot(slotId: string): Promise<SaveRecord | null> {
-		const snapshot = await this.readSnapshot();
+		const { snapshot } = await this.readSnapshot();
 		return snapshot.manualSlots.find((slot) => slot.metadata.id === slotId) ?? null;
 	}
 
 	async deleteManualSlot(slotId: string): Promise<void> {
 		return this.mutate(async () => {
-			const snapshot = await this.readSnapshot();
+			const { snapshot } = await this.readSnapshot();
 			await this.writeSnapshot({
 				...snapshot,
 				manualSlots: snapshot.manualSlots.filter((slot) => slot.metadata.id !== slotId)
@@ -102,12 +109,20 @@ export class SaveRepositoryFromDriver implements SaveRepository {
 		});
 	}
 
-	private async readSnapshot(): Promise<SaveStoreSnapshot> {
+	private async readSnapshot(): Promise<DecodeSaveStoreResult> {
 		try {
-			return cloneSaveStoreSnapshot(await this.driver.read());
+			const result = await this.driver.read();
+			// The driver already decoded and validated every record; clone
+			// without re-validating (cloneSaveStoreSnapshot would run the full
+			// strict pass — including the earned-claim goal re-evaluation — a
+			// second time on every slot).
+			return { snapshot: structuredClone(result.snapshot), diagnostics: result.diagnostics };
 		} catch (error) {
 			if (error instanceof SaveDataError) {
-				return createEmptySaveStore();
+				return {
+					snapshot: createEmptySaveStore(),
+					diagnostics: [{ code: 'invalid-record', path: 'saveStore', detail: error.message }]
+				};
 			}
 
 			throw error;

@@ -320,6 +320,10 @@ export const zhHant = {
 		overwrite: '覆寫',
 		delete: '刪除',
 		noManualSlots: '尚未有手動存檔槽。',
+		droppedRecords: {
+			one: '有 {count} 筆存檔記錄無法讀取，已略過。',
+			other: '有 {count} 筆存檔記錄無法讀取，已略過。'
+		},
 		storeCount: {
 			one: '{count} 間店',
 			other: '{count} 間店'
@@ -1894,7 +1898,7 @@ export const zhHant = {
 			bookValue: '公司帳簿價值',
 			nextMilestone: '下一個里程碑：{tier}',
 			reward:
-				'達成獎勵：店面額度 +1，信用核給基準與硬上限 +$25,000。提高可能的信用額度，不保證核貸金額。',
+				'達成獎勵：店面額度 +{storeSlots}，信用核給基準 +{credit}，信用硬上限 +{creditBound}。提高可能的信用額度，不保證核貸金額。',
 			completeHeading: '階梯全部達成',
 			claimedOnDay: '最終階層已於第 {day} 天領取',
 			lastClaimed: '最近領取：{tier} — 第 {day} 天',
@@ -1924,20 +1928,19 @@ export const zhHant = {
 			}
 		},
 		goals: {
-			localShopStoreCount: '開設第二間店鋪',
-			localShopPeakBookValue: '將已回報的公司帳面價值峰值提升到 $70,000',
-			neighborhoodChainStoreCount: '經營 3 間店鋪',
-			neighborhoodChainMaxStoreLevel: '將一間店鋪升級到等級 2',
-			neighborhoodChainOpenedCities: '開放 3 個城市（含兩個起始城市）',
-			regionalSupplierOpenedCities: '開放 4 個城市',
-			regionalSupplierLocalUnits: '配送 25 個門市有販售的在地生產單位',
-			regionalSupplierPeakBookValue: '將已回報的公司帳面價值峰值提升到 $60,000',
-			multiCityOperatorStoreCount: '經營 5 間店鋪',
-			multiCityOperatorOpenedCities: '開放 5 個城市',
-			multiCityOperatorMaxStoreLevel: '將一間店鋪升級到等級 4',
-			marketLeaderStoreCount: '經營 7 間店鋪',
-			marketLeaderOpenedCities: '開放全部 6 個城市',
-			marketLeaderPeakBookValue: '將已回報的公司帳面價值峰值提升到 $150,000'
+			localShopStoreCount: '經營 {target} 間店鋪',
+			localShopPeakBookValue: '將已回報的公司帳面價值峰值提升到 {target}',
+			neighborhoodChainStoreCount: '經營 {target} 間店鋪',
+			neighborhoodChainMaxStoreLevel: '將一間店鋪升級到等級 {target}',
+			neighborhoodChainOpenedCities: '開放 {target} 個城市（含兩個起始城市）',
+			regionalSupplierOpenedCities: '開放 {target} 個城市',
+			regionalSupplierLocalUnits: '配送 {target} 個門市有販售的在地生產單位',
+			multiCityOperatorStoreCount: '經營 {target} 間店鋪',
+			multiCityOperatorOpenedCities: '開放 {target} 個城市',
+			multiCityOperatorMaxStoreLevel: '將一間店鋪升級到等級 {target}',
+			marketLeaderStoreCount: '經營 {target} 間店鋪',
+			marketLeaderOpenedCities: '開放全部 {target} 個城市',
+			marketLeaderPeakBookValue: '將已回報的公司帳面價值峰值提升到 {target}'
 		}
 	},
 	scenarioDefinitions: {

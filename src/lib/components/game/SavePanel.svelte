@@ -1,12 +1,14 @@
 <script lang="ts">
 	import type { GameState } from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
-	import type { SaveSlotMetadata } from '$lib/persistence/saveTypes';
+	import type { SaveSlotMetadata, SaveStoreDiagnostic } from '$lib/persistence/saveTypes';
 
 	interface Props {
 		activeGame: GameState | null;
 		autoSave: SaveSlotMetadata | null;
 		slots: SaveSlotMetadata[];
+		/** Stored records dropped by the last salvage read; empty on a clean store. */
+		diagnostics: SaveStoreDiagnostic[];
 		status: string;
 		error: string | null;
 		i18n: I18nBundle;
@@ -21,6 +23,7 @@
 		activeGame,
 		autoSave,
 		slots,
+		diagnostics,
 		status,
 		error,
 		i18n,
@@ -170,6 +173,16 @@
 			{/if}
 		</section>
 
+		{#if diagnostics.length > 0}
+			<p class="diagnostics" role="alert">
+				{i18n.t(
+					(diagnostics.length === 1
+						? 'savePanel.droppedRecords.one'
+						: 'savePanel.droppedRecords.other') as never,
+					{ count: i18n.format.integer(diagnostics.length) }
+				)}
+			</p>
+		{/if}
 		{#if status}
 			<p class="status" role="status">{status}</p>
 		{/if}
@@ -387,6 +400,11 @@
 
 	.status {
 		color: var(--moss);
+		font-family: var(--font-body);
+	}
+
+	.diagnostics {
+		color: var(--brass-700);
 		font-family: var(--font-body);
 	}
 

@@ -6,7 +6,7 @@ import {
 } from './saveCodec';
 import type { SaveRepository } from './saveRepository';
 import { SaveRepositoryFromDriver, type SaveStoreDriver } from './saveStoreRepository';
-import type { SaveStoreSnapshot } from './saveTypes';
+import type { DecodeSaveStoreResult, SaveStoreSnapshot } from './saveTypes';
 
 export const BROWSER_SAVE_STORAGE_KEY = 'serpens.saves.v2';
 
@@ -19,9 +19,11 @@ export interface StorageLike {
 class BrowserSaveStoreDriver implements SaveStoreDriver {
 	constructor(private readonly storage: StorageLike) {}
 
-	async read(): Promise<SaveStoreSnapshot> {
+	async read(): Promise<DecodeSaveStoreResult> {
 		const serialized = this.storage.getItem(BROWSER_SAVE_STORAGE_KEY);
-		return serialized === null ? createEmptySaveStore() : parseSaveStoreSnapshot(serialized);
+		return serialized === null
+			? { snapshot: createEmptySaveStore(), diagnostics: [] }
+			: parseSaveStoreSnapshot(serialized);
 	}
 
 	async write(snapshot: SaveStoreSnapshot): Promise<void> {

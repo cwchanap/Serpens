@@ -104,7 +104,7 @@ describe('SandboxProgression', () => {
 		await expect
 			.element(page.getByRole('heading', { name: 'Next milestone: Local Shop' }))
 			.toBeVisible();
-		await expect.element(page.getByText('Open a second store')).toBeVisible();
+		await expect.element(page.getByText('Operate 2 stores')).toBeVisible();
 		await expect.element(page.getByText('Actual 1 · Target 2')).toBeVisible();
 		await expect
 			.element(page.getByText('Grow reported peak company book value to $70,000'))
