@@ -96,7 +96,7 @@ rejections and deferrals) is recorded in the ledger.
 the first equal-score tile in `city.tiles` array order instead of the lowest
 tile id promised above. The §3–§9 figures are re-measured under the
 implemented tie-break: idle controls, the seed-20260503 reference
-trajectory, T2/T3 reach and every archetype split are unchanged; tier-1
+trajectory, T2/T3 reach and their archetype splits are unchanged; tier-1
 reach moved 183 → 184 and a few tail distributions shifted slightly.
 
 ## 2. Seed definitions
