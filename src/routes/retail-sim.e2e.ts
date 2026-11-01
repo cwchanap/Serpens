@@ -4039,10 +4039,11 @@ test('player builds convenience production and refills from city inventory', asy
 
 	expect(neededUnits).toBeGreaterThan(0);
 	expect(bottledWaterReport.endingStock).toBe(preWeeklyBottledWater.targetStock);
-	// The rail-fed city inventory supplies part of the weekly refill and external imports
-	// cover the rest. A level-1 rail moves ~1 unit/day, far below the store's
-	// weekly need, so both sources are exercised and together they exactly meet
-	// the refill quantity (the store always refills to target).
+	// The rail-fed city inventory supplies most of the weekly refill and
+	// external imports cover the rest. A level-1 rail moves up to 10 units/day,
+	// so the bottled water banked since the buildings went up covers most but
+	// not all of the refill — both sources are exercised and together they
+	// exactly meet the refill quantity (the store always refills to target).
 	expect(bottledWaterReport.warehouseUnits).toBeGreaterThan(0);
 	expect(bottledWaterReport.importedUnits).toBeGreaterThan(0);
 	expect(bottledWaterReport.warehouseUnits + bottledWaterReport.importedUnits).toBe(neededUnits);
@@ -5487,13 +5488,9 @@ test('rail-fed production connects two industrial buildings and records a rail s
 	await expect(industryCanvas).toHaveAttribute('data-rail-cell-count', /^[1-9]\d*$/);
 
 	// Day 2 production: a freshly-built rail segment is level 1, whose
-	// bottleneck capacity is 1 unit/day regardless of path length (the design
-	// doc's own test note: "an 8-cell level-1 path moves 1/day"). Pantry-works
-	// still needs 6 flour/day, so only 1 unit arrives via rail and 5 remain
-	// imported — the status stays 'imported-inputs' rather than flipping to
-	// 'produced'. This is the brief's documented fallback: assert the rail
-	// cell count, a nonzero rail shipment, and a drop in imports instead of a
-	// full status flip.
+	// 10 units/day capacity covers pantry-works' whole 6 flour/day need
+	// regardless of path length — every unit arrives via rail, no flour is
+	// imported, and the status flips from 'imported-inputs' to 'produced'.
 	await advanceSimulationDay(page);
 	game = await waitForAutoSaveDay(page, 3);
 
@@ -5513,11 +5510,11 @@ test('rail-fed production connects two industrial buildings and records a rail s
 
 	expect(railFlourShipments.length).toBeGreaterThan(0);
 	expect(railFlourQuantity).toBeGreaterThan(0);
-	expect(postRailImportedFlour).toBeLessThan(preRailImportedFlour);
+	expect(postRailImportedFlour).toBe(0);
 	expect(Object.keys(postRailReport.productionReport.railUsage).length).toBeGreaterThan(0);
 
-	// The consuming building's status is still 'imported-inputs' (per the
-	// bottleneck math above), never a synthetic "rail-supplied" status — the
+	// With the rail covering its whole flour need the consuming building's
+	// status is 'produced', never a synthetic "rail-supplied" status — the
 	// spec is explicit that no such status exists.
 	await clickCanvasTile(page, industryCanvas, pantryTile.x, pantryTile.y);
 	await expect(industryInspector).toBeVisible();
@@ -5526,7 +5523,7 @@ test('rail-fed production connects two industrial buildings and records a rail s
 		industryInspector
 			.getByRole('region', { name: /industrial building details/i })
 			.getByRole('definition')
-			.filter({ hasText: /^Imported inputs$/i })
+			.filter({ hasText: /^Produced$/i })
 	).toBeVisible();
 });
 

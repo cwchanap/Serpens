@@ -2080,7 +2080,7 @@ export const en = {
 			briefing:
 				'Breadbasket Basin has opened a warehouse but no water source. Ship at least 150 units of water there with a recurring route before day 21. Manual dispatches are forbidden: only recurring routes count, and their lead times and freight rates come from the official city-pair quote. Negative cash fails the run.',
 			strategyHint:
-				'Open the logistics panel, create a recurring route from Industry City to Breadbasket Basin, and size its capacity so the seeded warehouse stock arrives early. The water pump tops the warehouse up through its rail corridor at five units a day.',
+				'Open the logistics panel, create a recurring route from Industry City to Breadbasket Basin, and size its capacity so the seeded warehouse stock arrives early. The warehouse starts full, so the water pump only refills it over the rail corridor once your route draws the stock down.',
 			objectives: {
 				deliverWaterUnits: 'Deliver water to Breadbasket Basin with a recurring route'
 			},

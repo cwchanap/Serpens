@@ -866,8 +866,9 @@ const twoCitySupplyRun = {
 			debt: 0,
 			storeCap: 1,
 			cityInventoryMaterials: [
-				// Seeded warehouse stock is the bulk of the deliverable water; the
-				// pump's rail corridor tops it up by five units per day.
+				// Seeded warehouse stock is the bulk of the deliverable water; it
+				// fills the warehouse to capacity, so the pump's rail corridor
+				// only refills it once a route draws the stock down.
 				{ cityId: 'industry-city', materials: { water: 200 } },
 				{ cityId: 'breadbasket-basin', materials: {} }
 			],

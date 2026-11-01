@@ -1579,7 +1579,7 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 	it.each([
 		['first-profit', FIRST_PROFIT_REFERENCE_OPENING, 4, 'gold'],
 		['import-squeeze', IMPORT_SQUEEZE_REFERENCE_OPENING, 15, 'gold'],
-		['local-lifeline', LOCAL_LIFELINE_REFERENCE_OPENING, 15, 'gold']
+		['local-lifeline', LOCAL_LIFELINE_REFERENCE_OPENING, 8, 'gold']
 	] as const)(
 		'%s documented reference trace completes on day %i with the expected medal',
 		(scenarioId, opening, completionDay, medal) => {
@@ -1592,6 +1592,13 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 				// gameplay RNG, so this reference score is stable at 862 (the
 				// round-2 founding economics re-seated it from 950).
 				expect(run.result?.score).toBe(862);
+			}
+			if (scenarioId === 'local-lifeline') {
+				// HPA-679: at 10 units per rail level the authored level-5
+				// corridors no longer throttle the 10/day bottler, so the
+				// reference completes on day 8 (was 15) with every score
+				// component at full bonus — 1,000 instead of 877.
+				expect(run.result?.score).toBe(1000);
 			}
 		}
 	);
