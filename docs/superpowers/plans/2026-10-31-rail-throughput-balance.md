@@ -1,10 +1,15 @@
 # HPA-679 — Rail Throughput Balance: Single-PR Implementation Plan
 
-**Issue:** https://linear.app/cwchanap/issue/HPA-679/balance-make-local-production-meaningful-with-rail-throughput-tuning  
-**Design:** `docs/superpowers/specs/2026-10-31-rail-throughput-balance-design.md`  
-**Review:** https://github.com/cwchanap/Serpens/pull/69#issuecomment-6552660356  
-**Branch / PR:** `docs/hpa-679-rail-throughput-balance` / https://github.com/cwchanap/Serpens/pull/69 — **one ticket, one draft PR**  
-**Inspected baseline:** `main` @ `c79806038172f050b235c82e8fde1b37018bab16`  
+**Issue:** https://linear.app/cwchanap/issue/HPA-679/balance-make-local-production-meaningful-with-rail-throughput-tuning
+
+**Design:** `docs/superpowers/specs/2026-10-31-rail-throughput-balance-design.md`
+
+**Review:** https://github.com/cwchanap/Serpens/pull/69#issuecomment-6552660356
+
+**Branch / PR:** `docs/hpa-679-rail-throughput-balance` / https://github.com/cwchanap/Serpens/pull/69 — **one ticket, one draft PR**
+
+**Inspected baseline:** `main` @ `c79806038172f050b235c82e8fde1b37018bab16`
+
 **Status:** docs-only updated planning checkpoint. **No production changes, test executions or measured k=10 final result are claimed by this plan.** The review's throwaway probes are evidence to reproduce.
 
 ## Non-negotiable boundaries
