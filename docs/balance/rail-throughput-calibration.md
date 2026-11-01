@@ -141,8 +141,9 @@ cmp "$EV/sweep-k10-run1.json" "$EV/sweep-k10.json" \
 ```
 
 Each sweep emits `<output>.json` + `<output>.md` (450 runs: 400
-idle/retail-steady + 50 advisor); each progression run emits
-`<output>.json` + `<output>.md` (200 progression + 200 idle controls); the
+idle/retail-steady + 50 advisor); each progression run emits only
+`<output>.json` (200 progression + 200 idle controls — progressionRun.ts
+writes no Markdown); the
 bucket probe emits one JSON with 50 per-seed advisor cost buckets
 (payroll, gross revenue, retail/industrial `importSpend`, production
 `operatingCost`/`overflowCost`/`overflowUnits`, opening days, cash/debt
@@ -157,6 +158,7 @@ worktree, no checkout of real history. Both recorded invocations:
 ```bash
 for SHA in 0ce5db7e 5a13a1e8; do
 	SNAP="$STEP6/legacy-$SHA"
+	rm -rf -- "$SNAP"
 	mkdir -p "$SNAP"
 	git archive "$SHA" | tar -x -C "$SNAP"
 	ln -sfn "$ROOT/node_modules" "$SNAP/node_modules"
@@ -811,6 +813,9 @@ for (const k of allKeys) {
 console.log(
 	`non-advisor runs: k1=${m1.size} k10=${m10.size} shared-keys=${allKeys.length} byte-identical=${mismatches === 0} (mismatches ${mismatches})`
 );
+// The §1.4 recipe runs this under `set -e -o pipefail`: a failed byte-identity
+// check must abort the recipe, not just print `byte-identical=false`.
+if (mismatches > 0) process.exitCode = 1;
 
 // --- 2. Gate A verdicts ------------------------------------------------------
 for (const [label, report] of [
@@ -929,8 +934,14 @@ if (paths.length === 0) throw new Error('usage: gate-eval.ts <sweep.json> [...]'
 
 for (const path of paths) {
 	const report = JSON.parse(readFileSync(path, 'utf8')) as SweepReport;
-	const hasByDay = (report.runs[0] as unknown as LegacyRun).operatingIncomeByDay !== undefined;
 	console.log(`\n== ${path}`);
+	// An empty report has no schema to detect and nothing to evaluate — skip
+	// with a clear line instead of crashing on `runs[0]` (TypeError under set -e).
+	if (report.runs.length === 0) {
+		console.log('   empty report — no runs');
+		continue;
+	}
+	const hasByDay = (report.runs[0] as unknown as LegacyRun).operatingIncomeByDay !== undefined;
 	console.log(`   runs ${report.runs.length}, schema has operatingIncomeByDay: ${hasByDay}`);
 	if (hasByDay) {
 		const verdict = evaluateGateA(report);
@@ -949,6 +960,13 @@ for (const path of paths) {
 	let viabilityPass = true;
 	for (const arch of SWEEP_ARCHETYPES) {
 		const rs = byCombo('retail-steady', arch);
+		// Mirror evaluateGateA's missing-run guard: an absent archetype fails
+		// instead of passing vacuously on a 0/0 ratio.
+		if (rs.length === 0) {
+			viabilityPass = false;
+			parts.push(`${arch} no runs`);
+			continue;
+		}
 		const viable = rs.filter(
 			(r) => r.firstPositiveWindow30 !== null && r.firstPositiveWindow30.endDay <= 90
 		).length;
@@ -981,6 +999,12 @@ for (const path of paths) {
 		const managed = new Map(byCombo('retail-steady', arch).map((r) => [r.seed, r]));
 		const idle = new Map(byCombo('idle', arch).map((r) => [r.seed, r]));
 		const paired = [...managed.keys()].filter((s) => idle.has(s)).sort();
+		// Same guard as viability: zero paired seeds must fail, not vacuously pass.
+		if (paired.length === 0) {
+			mviPass = false;
+			mParts.push(`${arch} no paired seeds`);
+			continue;
+		}
 		const wins = paired.filter(
 			(s) =>
 				(managed.get(s)!.operatingIncomeDays61To90 ?? 0) >
@@ -1001,14 +1025,17 @@ for (const path of paths) {
 	const idleOpenings = runs
 		.filter((r) => r.bot === 'idle')
 		.reduce((t, r) => t + r.forecastOutcomes.length, 0);
+	// Zero completed forecasts is an explicit fail, not a NaN-driven one.
+	const forecastPass = complete.length > 0 && within / complete.length >= 0.8;
 	console.log(
-		`   forecast: ${within / complete.length >= 0.8 ? 'PASS' : 'FAIL'} — ${within}/${complete.length}/${outcomes.length} eligible within ±25%; excluded ${outcomes.length - complete.length} incomplete, ${idleOpenings} idle`
+		`   forecast: ${forecastPass ? 'PASS' : 'FAIL'} — ${within}/${complete.length}/${outcomes.length} eligible within ±25%; excluded ${outcomes.length - complete.length} incomplete, ${idleOpenings} idle`
 	);
 	// Item 5 advisor
 	const adv = runs.filter((r) => r.bot === 'advisor');
 	const served = adv.filter((r) => r.advisorChain.served).length;
+	const advisorPass = adv.length > 0 && served / adv.length >= 0.8;
 	console.log(
-		`   advisor: ${served / adv.length >= 0.8 ? 'PASS' : 'FAIL'} — ${served}/${adv.length} served (${((served / adv.length) * 100).toFixed(1)}%)`
+		`   advisor: ${advisorPass ? 'PASS' : 'FAIL'} — ${served}/${adv.length} served (${adv.length === 0 ? 'no runs' : ((served / adv.length) * 100).toFixed(1) + '%'})`
 	);
 	// Coverage
 	const expected = SWEEP_ARCHETYPES.flatMap((a) =>
@@ -1021,6 +1048,13 @@ for (const path of paths) {
 			if (!seen.has(`${seed} ${combo}`)) missing.push(`${seed} ${combo}`);
 	console.log(
 		`   coverage: ${missing.length === 0 ? 'complete approved matrix' : `${missing.length} missing`}`
+	);
+	// Mirror evaluateGateA's allPassed: item verdicts only count on the complete
+	// approved matrix — a partial sweep is diagnostic, never an official PASS.
+	const itemsPassed =
+		viabilityPass && boundPass && mviPass && forecastPass && advisorPass;
+	console.log(
+		`   overall: ${itemsPassed && missing.length === 0 ? 'PASS' : 'FAIL'} — all items pass only on the complete approved matrix`
 	);
 }
 ```
@@ -1201,6 +1235,19 @@ const load = (path: string): Report => JSON.parse(readFileSync(path, 'utf8')) as
 const a = load(k1Path);
 const b = load(k10Path);
 
+// Deltas require identical populations — a missing or duplicated k10 row must
+// fail the comparison, not silently shrink or reweight it.
+const keyList = (runs: RunSummary[]): string[] =>
+	runs.map((r) => `${r.seed}|${r.archetypeId}`).sort();
+const tierList = (tiers: TierStat[]): string[] => tiers.map((t) => t.tierId).sort();
+if (
+	JSON.stringify(keyList(a.runs)) !== JSON.stringify(keyList(b.runs)) ||
+	JSON.stringify(tierList(a.tiers)) !== JSON.stringify(tierList(b.tiers))
+) {
+	console.error('progression-compare: k1 and k10 reports cover different runs or tiers');
+	process.exit(1);
+}
+
 const fmt = (v: number | null): string => (v === null ? '-' : String(Math.round(v * 10) / 10));
 
 console.log('=== per-tier (k1 -> k10) ===');
@@ -1239,11 +1286,8 @@ console.log('\n=== per-run diffs (claim counts/days, unreached distinct) ===');
 const bRuns = new Map(b.runs.map((r) => [`${r.seed}|${r.archetypeId}`, r]));
 let diffRuns = 0;
 for (const ra of a.runs) {
-	const rb = bRuns.get(`${ra.seed}|${ra.archetypeId}`);
-	if (!rb) {
-		console.log(`  ${ra.seed} ${ra.archetypeId}: missing in k10`);
-		continue;
-	}
+	// Non-null: the key-set check above guarantees every k1 run exists in k10.
+	const rb = bRuns.get(`${ra.seed}|${ra.archetypeId}`)!;
 	const claimsA = new Map(ra.claims.map((c) => [c.tierId, c.claimedOnDay]));
 	const claimsB = new Map(rb.claims.map((c) => [c.tierId, c.claimedOnDay]));
 	const tierIds = [...new Set([...claimsA.keys(), ...claimsB.keys()])].sort();
@@ -1328,6 +1372,16 @@ const load = (path: string): SeedBuckets[] =>
 	(JSON.parse(readFileSync(path, 'utf8')) as { runs: SeedBuckets[] }).runs;
 const a = load(k1Path);
 const b = load(k10Path);
+
+// Deltas require identical seed populations — a missing k10 row must fail the
+// comparison, not silently shrink it.
+const seedList = (runs: SeedBuckets[]): number[] =>
+	runs.map((r) => r.seed).sort((x, y) => x - y);
+if (JSON.stringify(seedList(a)) !== JSON.stringify(seedList(b))) {
+	console.error('buckets-compare: k1 and k10 probes cover different seeds');
+	process.exit(1);
+}
+
 const bBySeed = new Map(b.map((run) => [run.seed, run]));
 
 const SUM_FIELDS: readonly (keyof SeedBuckets)[] = [
@@ -1368,8 +1422,8 @@ for (const field of SUM_FIELDS) {
 const fmtDays = (days: readonly number[]): string => `[${days.join(', ')}]`;
 console.log('\nseeds where openingDays differ:');
 for (const run of a) {
-	const other = bBySeed.get(run.seed);
-	if (!other) continue;
+	// Non-null: the seed-set check above guarantees every k1 seed exists in k10.
+	const other = bBySeed.get(run.seed)!;
 	if (JSON.stringify(run.openingDays) !== JSON.stringify(other.openingDays)) {
 		console.log(`  ${run.seed} ${fmtDays(run.openingDays)} -> ${fmtDays(other.openingDays)}`);
 	}
@@ -1388,8 +1442,7 @@ console.log(
 	'\nseed | openDays | endCash1->10 | dCash | payroll1->10 | dPay | opInc1->10 | prodOp1->10 | retImp1->10 | indImp1->10 | rev1->10'
 );
 for (const run of a) {
-	const other = bBySeed.get(run.seed);
-	if (!other) continue;
+	const other = bBySeed.get(run.seed)!;
 	const cols = PIVOT_FIELDS.map(
 		(field) => `${run[field]} -> ${other[field]} ${(other[field] as number) - (run[field] as number)}`
 	);
