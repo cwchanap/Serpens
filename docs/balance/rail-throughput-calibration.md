@@ -24,58 +24,97 @@ and the Step 4 scenario re-pins), measured on HEAD `922c37ee` of
   factors; bidirectional pacing shifts spanning −105…+98 days on nine
   material runs fully disclosed with trace-probe mechanism evidence in §7
   for review accept/reject.
-
 ## 1. Runs, exact commands, determinism — full reproduction recipe
 
-Everything below is copy-pasteable from a clean checkout of this commit and
-reproduces every artifact §§3–7 cite. No committed helper is needed: the
-committed harness is `tests/balance/` and every scratch collector/analyzer
-used is embedded verbatim in **Appendix A**. Evidence output paths are
-shown under `.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/`
-(the git-ignored workspace used for the recorded run); any equivalent
-destination works — see the *recorded vs equivalent* note at the end of
-this section.
-
-The 50 explicit seeds, used verbatim in every command below (`$SEEDS`
-expands to the identical argv the recorded run received):
+Every fenced block in this section is executable as written from a clean
+checkout of this commit: no placeholders, no comment-only steps, and the
+whole sequence parses under `bash -n`. The committed harness is
+`tests/balance/`; every scratch collector/analyzer is embedded verbatim in
+**Appendix A** (save them under the `$STEP6` path below — or any directory
+exactly four levels below the repo root — so the `../../../../tests/balance/*`
+imports resolve; `.superpowers/` is git-ignored). Evidence paths shown are
+the recorded ones; any equivalent destination works — see the *recorded vs
+equivalent* note in §1.6.
 
 ```bash
+# Environment for everything below — captured, quoted repo root (no
+# placeholders): run from anywhere inside this worktree.
+ROOT="$(git rev-parse --show-toplevel)" && cd "$ROOT"
 SEEDS=20260501,20260502,20260503,20260504,20260505,20260506,20260507,20260508,20260509,20260510,20260511,20260512,20260513,20260514,20260515,20260516,20260517,20260518,20260519,20260520,20260521,20260522,20260523,20260524,20260525,20260526,20260527,20260528,20260529,20260530,20260531,20260532,20260533,20260534,20260535,20260536,20260537,20260538,20260539,20260540,20260541,20260542,20260543,20260544,20260545,20260546,20260547,20260548,20260549,20260550
-EV=.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/evidence
-mkdir -p "$EV"
+STEP6=.superpowers/sdd/2026-10-31-rail-throughput-balance/step6
+EV=$STEP6/evidence
+RAIL=src/lib/game/rail.ts
+mkdir -p "$EV" "$STEP6/trace-probes"
 ```
 
-### 1.1 k=1 control factor (temporary one-literal edit, then inverse)
+### 1.1 k=1 control factor — guarded switch, auto-revert
 
 Both factors use the **same committed harness** (`tests/balance/`),
 unchanged HPA-502 bot code, and the same warehouse-cap code path; the only
 difference is the single committed literal `RAIL_UNITS_PER_LEVEL` in
-`src/lib/game/rail.ts` (line 8). The k=1 control is produced by:
+`src/lib/game/rail.ts` (line 8). The control window below is executable: a
+guard refuses to run over a dirty `rail.ts` or unexpected source, a
+subshell `EXIT` trap restores the committed literal on **any** failure or
+interruption, and a post-window check proves the tree is clean:
 
 ```bash
-# 1. apply the control edit (tracked source temporarily changes 10 -> 1)
-#    src/lib/game/rail.ts: export const RAIL_UNITS_PER_LEVEL = 1;
+# no-preexisting-change guard: refuse if rail.ts is already dirty
+# (unstaged or staged) or the expected committed literal is absent.
+git diff --quiet -- "$RAIL" && git diff --cached --quiet -- "$RAIL" \
+  || { echo "ABORT: $RAIL has pre-existing changes"; exit 1; }
+grep -q 'RAIL_UNITS_PER_LEVEL = 10;' "$RAIL" \
+  || { echo "ABORT: expected 'RAIL_UNITS_PER_LEVEL = 10;' in $RAIL"; exit 1; }
 
-# 2. run all three artifact generators while the edit is in place
-bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$EV/sweep-k1"
-bun tests/balance/progressionRun.ts --seeds $SEEDS --days 365 --output "$EV/progression-k1"
-bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/bucket-probe.ts "$EV/buckets-k1.json"
+set_factor() { # set_factor <1|10>: rewrite the one literal, then verify it
+	perl -pi -e "s/RAIL_UNITS_PER_LEVEL = (?:1|10);/RAIL_UNITS_PER_LEVEL = $1;/" "$RAIL" \
+	  && grep -q "RAIL_UNITS_PER_LEVEL = $1;" "$RAIL"
+}
 
-# 3. reverse the edit by the exact inverse patch (10 restored) and verify:
-#    git diff -- src/lib/game/rail.ts   # must be empty
-#    git status --porcelain             # must be clean
+(                                           # subshell: failures stay inside
+	set -e                                  # abort the window on first error
+	trap 'set_factor 10' EXIT               # auto-revert on ANY exit reason
+	set_factor 1
+	bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$EV/sweep-k1"
+	bun tests/balance/progressionRun.ts --seeds $SEEDS --days 365 --output "$EV/progression-k1"
+	bun "$STEP6/bucket-probe.ts" "$EV/buckets-k1.json"
+	# k=1 side of the §7 trace-probe set (one invocation per seed/archetype):
+	bun tests/balance/progressionRun.ts --seeds 20260539 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260539-convenience-k1.json"
+	bun tests/balance/progressionRun.ts --seeds 20260537 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260537-convenience-k1.json"
+	bun tests/balance/progressionRun.ts --seeds 20260508 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260508-convenience-k1.json"
+	bun tests/balance/progressionRun.ts --seeds 20260504 --days 365 --archetypes grocery --trace "$STEP6/trace-probes/20260504-grocery-k1.json"
+)
+# trap already restored the committed literal — prove it:
+grep -q 'RAIL_UNITS_PER_LEVEL = 10;' "$RAIL" && git diff --quiet -- "$RAIL" \
+  || { echo "REVERT FAILED: $RAIL still modified"; exit 1; }
 ```
 
-The recorded run reversed the edit immediately after step 2; `git diff` was
-empty and HEAD unchanged (`922c37ee`) — the tracked tree contains no
-control hack.
+The recorded run used exactly this window (edit applied, three artifact
+generators + the k=1 trace probes, inverse edit verified); `git diff` was
+empty and HEAD `922c37ee` throughout — the tracked tree contains no control
+hack. Output-side discriminator: k=1 artifacts show
+`advisorChain.localDeliveryUnits` = 336/seed (3,360 at k=10).
 
 ### 1.2 k=10 candidate factor (committed tree as-is)
 
 ```bash
+grep -q 'RAIL_UNITS_PER_LEVEL = 10;' "$RAIL" \
+  || { echo "ABORT: committed factor is not 10 — k=1 window residue"; exit 1; }
 bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$EV/sweep-k10"
 bun tests/balance/progressionRun.ts --seeds $SEEDS --days 365 --output "$EV/progression-k10"
-bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/bucket-probe.ts "$EV/buckets-k10.json"
+bun "$STEP6/bucket-probe.ts" "$EV/buckets-k10.json"
+# k=10 side of the §7 trace-probe set:
+bun tests/balance/progressionRun.ts --seeds 20260539 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260539-convenience-k10.json"
+bun tests/balance/progressionRun.ts --seeds 20260537 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260537-convenience-k10.json"
+bun tests/balance/progressionRun.ts --seeds 20260508 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260508-convenience-k10.json"
+bun tests/balance/progressionRun.ts --seeds 20260504 --days 365 --archetypes grocery --trace "$STEP6/trace-probes/20260504-grocery-k10.json"
+
+# determinism check — first outputs aside, rerun the IDENTICAL command, cmp:
+cp "$EV/sweep-k10.json" "$EV/sweep-k10-run1.json"
+cp "$EV/sweep-k10.md" "$EV/sweep-k10-run1.md"
+bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$EV/sweep-k10"
+cmp "$EV/sweep-k10-run1.json" "$EV/sweep-k10.json" \
+  && cmp "$EV/sweep-k10-run1.md" "$EV/sweep-k10.md" \
+  && echo "determinism: sweep JSON + MD byte-identical"
 ```
 
 Each sweep emits `<output>.json` + `<output>.md` (450 runs: 400
@@ -84,19 +123,22 @@ idle/retail-steady + 50 advisor); each progression run emits
 bucket probe emits one JSON with 50 per-seed advisor cost buckets
 (payroll, gross revenue, retail/industrial `importSpend`, production
 `operatingCost`/`overflowCost`/`overflowUnits`, opening days, cash/debt
-extrema — the §§5.2–5.4 inputs the sweep JSON does not persist).
+extrema — the §§5.2–5.4 inputs the sweep JSON does not persist; its
+optional `[seedsCsv]` arg exists only for lightweight checks, see A.1).
 
 ### 1.3 Legacy frozen-artifact reconstruction (for §2 comparisons)
 
+Non-worktree snapshots inside the ignored plan workspace — no branch, no
+worktree, no checkout of real history. Both recorded invocations:
+
 ```bash
-# non-worktree snapshot inside the ignored plan workspace — no branch,
-# no worktree, no checkout of real history:
-mkdir -p .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-0ce5db7e
-git archive 0ce5db7e | tar -x -C .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-0ce5db7e
-cd .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-0ce5db7e
-ln -s <worktree>/node_modules node_modules          # reuse installed deps
-mkdir -p .svelte-kit
-cat > .svelte-kit/tsconfig.json <<'EOF'
+for SHA in 0ce5db7e 5a13a1e8; do
+	SNAP="$STEP6/legacy-$SHA"
+	mkdir -p "$SNAP"
+	git archive "$SHA" | tar -x -C "$SNAP"
+	ln -sfn "$ROOT/node_modules" "$SNAP/node_modules"
+	mkdir -p "$SNAP/.svelte-kit"
+	cat > "$SNAP/.svelte-kit/tsconfig.json" <<'TSEOF'
 {
 	"compilerOptions": {
 		"paths": { "$lib": ["../src/lib"], "$lib/*": ["../src/lib/*"] },
@@ -110,43 +152,34 @@ cat > .svelte-kit/tsconfig.json <<'EOF'
 	},
 	"include": ["../src/**/*.ts", "../tests/**/*.ts"]
 }
-EOF
-bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output ../evidence/legacy-0ce5db7e-sweep
-cd <worktree>
-# identical recipe with 5a13a1e8 -> step6/legacy-5a13a1e8 and
-# ../evidence/legacy-5a13a1e8-sweep
+TSEOF
+	(cd "$SNAP" && bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$ROOT/$EV/legacy-$SHA-sweep")
+done
 ```
 
-(`<worktree>` = the absolute repo path; the snapshot's harness imports only
-`src/lib/game/*` + `tests/balance/*`, so the `.svelte-kit` shim exists solely
-to satisfy the `$lib` path alias — no Svelte/`$app` module is loaded.)
+(The snapshot's harness imports only `src/lib/game/*` + `tests/balance/*`,
+so the `.svelte-kit` shim exists solely to satisfy the `$lib` path alias —
+no Svelte/`$app` module is loaded.)
 
 ### 1.4 Analysis and comparison commands
 
-All analyzers are embedded in Appendix A; save them under
-`.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/` (or any
-directory exactly four levels below the repo root — all but
-`legacy-compare` import `../../../../tests/balance/*`, and placing all five
-at that depth keeps the recipe uniform). Then:
+All six analyzers are embedded in Appendix A at the `$STEP6` paths used
+below:
 
 ```bash
-STEP6=.superpowers/sdd/2026-10-31-rail-throughput-balance/step6
-# non-advisor byte-identity + Gate A verdicts + advisor aggregates (§3, §4, §5.1):
-bun $STEP6/analyze-sweep.ts $EV/sweep-k1.json $EV/sweep-k10.json | tee $EV/analyze-k1-vs-k10.txt
-# same-schema legacy gating (§2):
-bun $STEP6/gate-eval.ts $EV/legacy-0ce5db7e-sweep.json $EV/legacy-5a13a1e8-sweep.json $EV/sweep-k1.json | tee $EV/gate-eval-legacy-k1.txt
-# legacy-vs-new field projection diff (§2):
-bun $STEP6/legacy-compare.ts $EV/legacy-0ce5db7e-sweep.json $EV/sweep-k1.json | tee $EV/legacy-0ce5db7e-vs-k1.diff.txt
-bun $STEP6/legacy-compare.ts $EV/legacy-5a13a1e8-sweep.json $EV/sweep-k1.json | tee $EV/legacy-5a13a1e8-vs-k1.diff.txt
-# progression paired-delta table (§7):
-bun $STEP6/progression-compare.ts $EV/progression-k1.json $EV/progression-k10.json | tee $EV/progression-compare.txt
-# §5.2–5.4 cost-bucket table is produced by summing buckets-{k1,k10}.json
-# per seed (field names are self-describing; the recorded pivot is
-# preserved in evidence/buckets-compare.txt).
-# §7 mechanism probes — one invocation per (seed, archetype, factor);
-# the recorded set is 20260539/20260537/20260508 convenience + 20260504
-# grocery, at k=10 (committed tree) and at k=1 (inside the §1.1 edit window):
-bun tests/balance/progressionRun.ts --seeds 20260539 --days 365 --archetypes convenience --trace $STEP6/trace-probes/20260539-convenience-k10.json
+# §3 non-advisor byte-identity + §4 Gate A verdicts + §5.1 advisor aggregates:
+bun "$STEP6/analyze-sweep.ts" "$EV/sweep-k1.json" "$EV/sweep-k10.json" | tee "$EV/analyze-k1-vs-k10.txt"
+# §2/§4 gate evaluation incl. the legacy 0ce5db7e schema:
+bun "$STEP6/gate-eval.ts" "$EV/legacy-0ce5db7e-sweep.json" "$EV/legacy-5a13a1e8-sweep.json" "$EV/sweep-k1.json" | tee "$EV/gate-eval-legacy-k1.txt"
+# §2 legacy-vs-new field projection diff:
+bun "$STEP6/legacy-compare.ts" "$EV/legacy-0ce5db7e-sweep.json" "$EV/sweep-k1.json" | tee "$EV/legacy-0ce5db7e-vs-k1.diff.txt"
+bun "$STEP6/legacy-compare.ts" "$EV/legacy-5a13a1e8-sweep.json" "$EV/sweep-k1.json" | tee "$EV/legacy-5a13a1e8-vs-k1.diff.txt"
+# §7 progression paired-delta table:
+bun "$STEP6/progression-compare.ts" "$EV/progression-k1.json" "$EV/progression-k10.json" | tee "$EV/progression-compare.txt"
+# §§5.2–5.4 cost-bucket aggregate table + opening-days + per-seed pivot:
+bun "$STEP6/buckets-compare.ts" "$EV/buckets-k1.json" "$EV/buckets-k10.json" | tee "$EV/buckets-compare.txt"
+# artifact hashes (must match §1.6):
+shasum -a 256 "$EV/sweep-k1.json" "$EV/sweep-k10.json" "$EV/legacy-0ce5db7e-sweep.json" "$EV/legacy-5a13a1e8-sweep.json"
 ```
 
 ### 1.5 Scenario suite and affected E2E (committed k=10 tree only)
@@ -158,11 +191,11 @@ bunx playwright test src/routes/retail-sim.e2e.ts -g "player builds convenience 
 
 ### 1.6 Determinism and artifact hashes
 
-The k=10 candidate sweep was run **twice under byte-identical CLI
-arguments** (including the `--output` destination): the first outputs were
-copied aside to `sweep-k10-run1.{json,md}`, the identical command was run
-again, and `cmp` found both the JSON and the Markdown byte-identical.
-Artifact SHA-256:
+The executable determinism check is in §1.2: the k=10 sweep ran **twice
+under byte-identical CLI arguments** (including the `--output`
+destination); the first outputs were copied aside to
+`sweep-k10-run1.{json,md}` and `cmp` found both the JSON and the Markdown
+byte-identical. Artifact SHA-256:
 
 | artifact | SHA-256 |
 | --- | --- |
@@ -191,7 +224,6 @@ Artifacts (git-ignored) under
 `evidence/legacy-*-vs-k1.diff.txt`), and the §7 mechanism probes
 `trace-probes/20260504-grocery-k{1,10}.json`,
 `trace-probes/20260{508,537,539}-convenience-k{1,10}.json`.
-
 ## 2. Historical-comparison method (legacy projection)
 
 The HPA-502 after-sweep JSON was **regenerated and hash-verified**: `git
@@ -423,9 +455,9 @@ claim-day differences. **The paired reached-tier delta range is −105 to
 
 **Mechanism — observed, not hypothesized:** paired `--trace` probes were run
 on four extreme seeds at both factors (artifacts
-`step6/trace-probes/<seed>-<archetype>-k{1,10}.json`, generated by the §1.4
-probe command; seeds 20260539, 20260537, 20260508 convenience and 20260504
-grocery). In every
+`step6/trace-probes/<seed>-<archetype>-k{1,10}.json`, generated by the
+probe invocations inside the §1.1/§1.2 factor windows; seeds 20260539,
+20260537, 20260508 convenience and 20260504 grocery). In every
 trace, the NC+RS pair claims on the **same in-game day the bot's
 `openStore` action for store-3 (campus-junction, ~$22.5–23.4k) applies** —
 tier-2's binding goal is `neighborhood-chain-store-count ≥ 3`, while
@@ -508,28 +540,37 @@ authored 365-day matrix is deferred to the reviewer.
 
 ## Appendix A — Executable helper recipes (verbatim sources)
 
-The five scratch helpers §1 references are reproduced below **verbatim**
-(exactly the sources that produced the recorded artifacts). Save each under
+The six scratch helpers §1 references are reproduced below **verbatim**
+(the exact sources on disk in the recorded workspace; `bucket-probe` gained
+an optional `[seedsCsv]` argument for lightweight checks — its no-argument
+behavior and output are unchanged). Save each under
 `.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/` — or any
 directory **exactly four levels below the repo root**, since four of the
-five resolve the committed harness via `../../../../tests/balance/*`
-(`legacy-compare` is path-agnostic). Anything
+six resolve the committed harness via `../../../../tests/balance/*`
+(`legacy-compare` and `buckets-compare` are path-agnostic). Anything
 under `.superpowers/` is git-ignored, so placing them there keeps the
 tracked tree clean. No committed file is added or modified; a clean
-checkout plus these five files reproduces §§2–7 end-to-end via §1.1–1.6.
+checkout plus these six files reproduces §§2–7 end-to-end via §1.1–1.6.
 
 Validation: each block below was re-extracted from this document into a
 fresh ignored scratch dir
 (`.superpowers/sdd/2026-10-31-rail-throughput-balance/recipe-check/`, four
 levels deep) and executed against the recorded artifacts —
 `analyze-sweep`, `gate-eval`, `legacy-compare` and `progression-compare`
-outputs were byte-identical to the recorded `.txt` evidence, a fresh
-`bucket-probe` run at k=10 reproduced `buckets-k10.json` byte-for-byte,
-and a single-seed sweep inside the §1.3 `5a13a1e8` snapshot reproduced all
-9 of that seed's run rows from the recorded full artifact with 0
-mismatches.
-
-### A.1 `bucket-probe.ts` — the §§5.2–5.4 cost-bucket collector: runs the committed `advisor` convenience bot over `SWEEP_SEEDS` × 365 days and dumps per-seed cost buckets (payroll, gross revenue, retail/industrial import spend, production operating/overflow cost, opening days, cash/debt extrema, rail-shipment and post-rail delivery/imported water units). Usage: `bun <dir>/bucket-probe.ts <output.json>` — run once per factor inside/outside the §1.1 edit window.
+outputs were byte-identical to the recorded `.txt` evidence;
+`buckets-compare` on the recorded buckets reproduced
+`buckets-compare.txt` byte-for-byte; a fresh `bucket-probe` run at k=10
+reproduced `buckets-k10.json` byte-for-byte; and a single-seed sweep inside
+the §1.3 `5a13a1e8` snapshot reproduced all 9 of that seed's run rows from
+the recorded full artifact with 0 mismatches. Round 2 additionally ran the
+documented shell sequence end-to-end on one seed in a fresh ignored
+scratch dir (guarded switch → control artifacts → auto-revert → candidate
+artifacts → both legacy snapshots → all analyzers): `rail.ts` returned to
+the committed literal with `git diff` clean, the k=1 outputs show the
+control factor (336 local units/seed), the k=10 outputs the candidate
+factor (3,360/seed), and a deliberately failed control window still
+auto-reverted cleanly.
+### A.1 `bucket-probe.ts` — the §§5.2–5.4 cost-bucket collector: runs the committed `advisor` convenience bot over `SWEEP_SEEDS` × 365 days and dumps per-seed cost buckets (payroll, gross revenue, retail/industrial import spend, production operating/overflow cost, opening days, cash/debt extrema, rail-shipment and post-rail delivery/imported water units). Usage: `bun <dir>/bucket-probe.ts <output.json> [seedsCsv]` — run once per factor inside/outside the §1.1 edit window. The optional `seedsCsv` argument exists only for lightweight single-seed checks; the recorded artifacts used the no-argument form (its output is unchanged by the addition).
 
 ```ts
 /**
@@ -540,9 +581,12 @@ mismatches.
  * days, end/min cash and debt — plus bottled-water production, rail-shipment
  * and post-rail local-delivery units for volume context.
  *
- *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/bucket-probe.ts <output.json>
+ *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/bucket-probe.ts <output.json> [seedsCsv]
  *
  * Run once per rail factor; outputs are compared same-seed offline.
+ * The optional `seedsCsv` (comma-separated) overrides SWEEP_SEEDS and exists
+ * only for lightweight single-seed checks; the recorded artifacts used the
+ * no-argument form.
  */
 
 import { writeFileSync } from 'node:fs';
@@ -550,7 +594,10 @@ import { runBot } from '../../../../tests/balance/bots';
 import { SWEEP_SEEDS } from '../../../../tests/balance/measure';
 
 const output = process.argv[2];
-if (!output) throw new Error('usage: bucket-probe.ts <output.json>');
+if (!output) throw new Error('usage: bucket-probe.ts <output.json> [seedsCsv]');
+const seeds = process.argv[3]
+	? process.argv[3].split(',').map((part) => Number(part.trim()))
+	: SWEEP_SEEDS;
 
 const DAYS = 365;
 
@@ -587,7 +634,7 @@ interface SeedBuckets {
 }
 
 const runs: SeedBuckets[] = [];
-for (const seed of SWEEP_SEEDS) {
+for (const seed of seeds) {
 	const { game, ledger } = runBot('advisor', 'convenience', seed, DAYS);
 	const advisorRailDays = ledger.actions
 		.filter(
@@ -681,7 +728,6 @@ for (const seed of SWEEP_SEEDS) {
 writeFileSync(output, `${JSON.stringify({ days: DAYS, runs }, null, 2)}\n`);
 console.log(`bucket-probe: wrote ${runs.length} advisor seed buckets to ${output}`);
 ```
-
 ### A.2 `analyze-sweep.ts` — the §3 non-advisor byte-identity check, §4 Gate A verdicts (`evaluateGateA` from the committed harness) and §5.1 advisor aggregates/ratios. Usage: `bun <dir>/analyze-sweep.ts <k1.json> <k10.json>`.
 
 ```ts
@@ -788,7 +834,6 @@ for (const [label, report] of [
 	}
 }
 ```
-
 ### A.3 `gate-eval.ts` — the §2/§4 gate evaluator that also accepts the legacy `0ce5db7e` schema (no `operatingIncomeByDay`), mirroring `evaluateGateA` item-for-item on stored fields. Usage: `bun <dir>/gate-eval.ts <sweep.json> [...]`.
 
 ```ts
@@ -938,7 +983,6 @@ for (const path of paths) {
 	);
 }
 ```
-
 ### A.4 `legacy-compare.ts` — the §2 legacy-vs-new field-by-field projection diff (projects new-only `advisorChain` keys away, reports every value mismatch). Usage: `bun <dir>/legacy-compare.ts <legacy.json> <new.json>`.
 
 ```ts
@@ -1039,7 +1083,6 @@ console.log(`value mismatches: ${diffs.length}`);
 for (const line of diffs.slice(0, 400)) console.log(`  ${line}`);
 if (diffs.length > 400) console.log(`  ... +${diffs.length - 400} more`);
 ```
-
 ### A.5 `progression-compare.ts` — the §7 paired progression comparator: per-tier reached/p10/median/p90, idle-control invariants, credit totals, and every per-run claim-day diff. Usage: `bun <dir>/progression-compare.ts <k1.json> <k10.json>`.
 
 ```ts
@@ -1189,5 +1232,126 @@ for (const [label, r] of [
 			`  ${label} ${t.tierId}: ${t.outliers.map((o) => `${o.seed}/${o.archetypeId}@${o.claimedOnDay}`).join(', ')}`
 		);
 	}
+}
+```
+### A.6 `buckets-compare.ts` — the §§5.2–5.4 cost-bucket comparator: aggregate field sums, the opening-days-diff seed list, and the per-seed F5 pivot used for §5.3. Usage: `bun <dir>/buckets-compare.ts <buckets-k1.json> <buckets-k10.json>` — its output on the recorded buckets is byte-identical to the recorded `buckets-compare.txt`.
+
+```ts
+/**
+ * Step 6 scratch analysis (HPA-679): pivots two bucket-probe outputs
+ * (k=1 control vs k=10 candidate) into the recorded comparison table —
+ * an aggregate field-sum table, the opening-days-diff seed list, and a
+ * per-seed pivot of the F5 timing-attribution buckets.
+ *
+ *   bun <dir>/buckets-compare.ts <buckets-k1.json> <buckets-k10.json>
+ */
+
+import { readFileSync } from 'node:fs';
+
+const [k1Path, k10Path] = process.argv.slice(2);
+if (!k1Path || !k10Path) throw new Error('usage: buckets-compare.ts <k1.json> <k10.json>');
+
+interface SeedBuckets {
+	seed: number;
+	openingDays: number[];
+	firstNegativeCashDay: number | null;
+	minCash: number;
+	minCashDay: number;
+	endCash: number;
+	endDebt: number;
+	grossRetailRevenue: number;
+	payrollCost: number;
+	operatingIncome: number;
+	operatingCosts: number;
+	totalImportSpend: number;
+	retailImportSpend: number;
+	industryImportSpend: number;
+	productionOperatingCost: number;
+	productionOverflowUnits: number;
+	productionOverflowCost: number;
+	interestAccrued: number;
+	producedWaterUnits: number;
+	producedAllUnits: number;
+	railShipmentCount: number;
+	railShipmentUnits: number;
+	pushWarehouseWaterUnits: number;
+	pullProducerWaterUnits: number;
+	pullWarehouseWaterUnits: number;
+	postRailLocalWaterUnits: number;
+	postRailImportedWaterUnits: number;
+	firstRailShipmentDay: number | null;
+	lastRailShipmentDay: number | null;
+}
+
+const load = (path: string): SeedBuckets[] =>
+	(JSON.parse(readFileSync(path, 'utf8')) as { runs: SeedBuckets[] }).runs;
+const a = load(k1Path);
+const b = load(k10Path);
+const bBySeed = new Map(b.map((run) => [run.seed, run]));
+
+const SUM_FIELDS: readonly (keyof SeedBuckets)[] = [
+	'grossRetailRevenue',
+	'payrollCost',
+	'operatingIncome',
+	'operatingCosts',
+	'totalImportSpend',
+	'retailImportSpend',
+	'industryImportSpend',
+	'productionOperatingCost',
+	'productionOverflowUnits',
+	'productionOverflowCost',
+	'interestAccrued',
+	'producedWaterUnits',
+	'producedAllUnits',
+	'railShipmentCount',
+	'railShipmentUnits',
+	'pushWarehouseWaterUnits',
+	'pullProducerWaterUnits',
+	'pullWarehouseWaterUnits',
+	'postRailLocalWaterUnits',
+	'postRailImportedWaterUnits',
+	'endCash',
+	'endDebt',
+	'minCash'
+];
+
+console.log(`${'field'.padEnd(38)}${'k1 total'.padStart(8)}${'k10 total'.padStart(16)}${'delta'.padStart(16)}`);
+for (const field of SUM_FIELDS) {
+	const v1 = a.reduce((total, run) => total + (run[field] as number), 0);
+	const v10 = b.reduce((total, run) => total + (run[field] as number), 0);
+	console.log(
+		`${field.padEnd(38)}${String(Math.trunc(v1)).padStart(8)}${String(Math.trunc(v10)).padStart(16)}${String(Math.trunc(v10 - v1)).padStart(16)}`
+	);
+}
+
+const fmtDays = (days: readonly number[]): string => `[${days.join(', ')}]`;
+console.log('\nseeds where openingDays differ:');
+for (const run of a) {
+	const other = bBySeed.get(run.seed);
+	if (!other) continue;
+	if (JSON.stringify(run.openingDays) !== JSON.stringify(other.openingDays)) {
+		console.log(`  ${run.seed} ${fmtDays(run.openingDays)} -> ${fmtDays(other.openingDays)}`);
+	}
+}
+
+const PIVOT_FIELDS: readonly (keyof SeedBuckets)[] = [
+	'endCash',
+	'payrollCost',
+	'operatingIncome',
+	'productionOperatingCost',
+	'retailImportSpend',
+	'industryImportSpend',
+	'grossRetailRevenue'
+];
+console.log(
+	'\nseed | openDays | endCash1->10 | dCash | payroll1->10 | dPay | opInc1->10 | prodOp1->10 | retImp1->10 | indImp1->10 | rev1->10'
+);
+for (const run of a) {
+	const other = bBySeed.get(run.seed);
+	if (!other) continue;
+	const cols = PIVOT_FIELDS.map(
+		(field) => `${run[field]} -> ${other[field]} ${(other[field] as number) - (run[field] as number)}`
+	);
+	console.log(`${run.seed} ${fmtDays(run.openingDays)} -> ${fmtDays(other.openingDays)} | ${cols.join(' | ')}`);
 }
 ```
