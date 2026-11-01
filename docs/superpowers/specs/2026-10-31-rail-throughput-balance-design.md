@@ -1,9 +1,13 @@
 # HPA-679 — Rail Throughput Balance: Make Local Supply Useful
 
-**Issue:** https://linear.app/cwchanap/issue/HPA-679/balance-make-local-production-meaningful-with-rail-throughput-tuning  
-**PR:** https://github.com/cwchanap/Serpens/pull/69 (single draft PR for design and implementation)  
-**Reference:** `docs/balance/after.md` `7, original `docs/superpowers/specs/2026-07-13-industry-rail-transport-design.md`  
-**Inspected code baseline:** `main` @ `c79806038172f050b235c82e8fde1b37018bab16`  
+**Issue:** https://linear.app/cwchanap/issue/HPA-679/balance-make-local-production-meaningful-with-rail-throughput-tuning
+
+**PR:** https://github.com/cwchanap/Serpens/pull/69 (single draft PR for design and implementation)
+
+**Reference:** `docs/balance/after.md` `7, original `docs/superpowers/specs/2026-07-13-industry-rail-transport-design.md`
+
+**Inspected code baseline:** `main` @ `c79806038172f050b235c82e8fde1b37018bab16`
+
 **Status:** revised planning checkpoint after the [GitHub design review](https://github.com/cwchanap/Serpens/pull/69#issuecomment-6552660356). The comment reports throwaway experiments; **they are not committed implementation or independently re-run passing results**.
 
 ## Outcome and deliberate scope
