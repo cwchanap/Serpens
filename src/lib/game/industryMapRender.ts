@@ -6,7 +6,13 @@ import {
 	getOccupiedIndustryTileIds
 } from './industryFootprint';
 import type { PlacementPreview } from './placementPreview';
-import { buildRailNetwork, getRailNeighborKeys, parseRailCellKey, railUsageKey } from './rail';
+import {
+	buildRailNetwork,
+	getRailCellDailyCapacity,
+	getRailNeighborKeys,
+	parseRailCellKey,
+	railUsageKey
+} from './rail';
 import type { RailNetwork } from './rail';
 import type {
 	GameState,
@@ -47,7 +53,7 @@ export interface IndustryMapRailRender {
 	y: number;
 	level: number;
 	connections: number; // bitmask N=1, E=2, S=4, W=8
-	utilization: number; // 0..1: yesterday's units through this cell / level
+	utilization: number; // 0..1: yesterday's units through this cell / its daily capacity
 }
 
 export interface IndustryMapRailPreviewRender {
@@ -164,9 +170,11 @@ function createRailRender(
 	}
 
 	const usage = railUsage[railUsageKey(cityId, cell.x, cell.y)] ?? 0;
-	// cell.level is 1..RAIL_MAX_LEVEL by invariant; Math.max guards the divisor
-	// against a 0 the type allows, so utilization can never render NaN.
-	const utilization = Math.min(1, Math.max(0, usage / Math.max(1, cell.level)));
+	// Utilization divides recorded units by the shared helper's units-per-day
+	// capacity. cell.level is 1..RAIL_MAX_LEVEL by invariant; the capacity
+	// guard keeps a zero-capacity fixture cell at 0 instead of NaN/Infinity.
+	const cellCapacity = getRailCellDailyCapacity(cell.level);
+	const utilization = cellCapacity > 0 ? Math.min(1, Math.max(0, usage / cellCapacity)) : 0;
 
 	return {
 		x: cell.x,

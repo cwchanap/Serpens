@@ -52,7 +52,7 @@ describe('RailSegmentInspector coverage fallbacks', () => {
 
 		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('1');
 		await expect.element(page.getByTestId('rail-segment-level')).toHaveTextContent('2 / 5');
-		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent('2');
+		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent('20');
 		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('0%');
 		await expect.element(page.getByRole('button', { name: /upgrade/i })).toBeEnabled();
 	});
@@ -64,7 +64,9 @@ describe('RailSegmentInspector coverage fallbacks', () => {
 			cellKeys: ['8,8'],
 			minLevel: 2
 		};
-		const game = makeGame([], { [`${CITY_ID}:8,8`]: 10 });
+		// Missing from the network → falls back to minLevel capacity 20/day;
+		// 25 recorded units exceeds it, so utilization clamps to 100%.
+		const game = makeGame([], { [`${CITY_ID}:8,8`]: 25 });
 
 		render(RailSegmentInspector, props(game, CITY_ID, [segment]));
 
