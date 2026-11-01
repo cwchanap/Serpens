@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		buildRailNetwork,
+		getRailCellDailyCapacity,
 		parseRailCellKey,
 		railUsageKey,
 		RAIL_MAX_LEVEL,
@@ -68,11 +69,13 @@
 
 	const cellCount = $derived(selectedSegment?.cellKeys.length ?? 0);
 	const level = $derived(selectedSegment?.minLevel ?? 0);
-	// A serial rail chain's daily throughput is the bottleneck cell level
-	// (the minimum), not the sum — matching getPathCapacity's min-over-path
-	// model. Summing cell levels would overstate capacity for multi-cell
-	// segments (e.g. 3 cells at level 2 → 2/day, not 6/day).
-	const capacity = $derived(selectedSegment?.minLevel ?? 0);
+	// A serial rail chain's daily throughput is the bottleneck cell's
+	// capacity (the minimum level), not the sum — matching getPathCapacity's
+	// min-over-path model. Summing cell capacities would overstate throughput
+	// for multi-cell segments (e.g. 3 cells at level 2 → 20/day, not 60/day).
+	const capacity = $derived(
+		selectedSegment ? getRailCellDailyCapacity(selectedSegment.minLevel) : 0
+	);
 	const utilization = $derived.by(() => {
 		if (!selectedSegment) {
 			return 0;
@@ -82,13 +85,14 @@
 		for (const key of selectedSegment.cellKeys) {
 			const { x, y } = parseRailCellKey(key);
 			const cellLevel = network.cells.get(key)?.level ?? selectedSegment.minLevel;
-			if (cellLevel <= 0) {
+			const cellCapacity = getRailCellDailyCapacity(cellLevel);
+			if (cellCapacity <= 0) {
 				continue;
 			}
 			const usage = railUsage[railUsageKey(cityId, x, y)] ?? 0;
-			max = Math.max(max, usage / Math.max(1, cellLevel));
+			max = Math.max(max, usage / cellCapacity);
 		}
-		return Math.min(1, max);
+		return Math.min(1, Math.max(0, max));
 	});
 
 	const canUpgrade = $derived(selectedSegment ? selectedSegment.minLevel < RAIL_MAX_LEVEL : false);

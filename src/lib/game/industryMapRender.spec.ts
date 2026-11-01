@@ -195,15 +195,23 @@ describe('industry map render snapshot', () => {
 	});
 
 	test("computes rail utilization from yesterday's railUsage report", () => {
-		expect.assertions(2);
+		expect.assertions(4);
 		const baseGame = createNewGame('convenience', 20260512);
 		const city = baseGame.industryCities[0]!;
 		const rails: RailCell[] = [
 			{ x: 2, y: 2, level: 1 },
-			{ x: 3, y: 2, level: 4 },
+			{ x: 3, y: 2, level: 5 },
+			{ x: 4, y: 2, level: 5 },
 			{ x: 3, y: 3, level: 1 }
 		];
-		const railUsage = { [railUsageKey(city.id, 3, 2)]: 2 };
+		// Per-cell utilization = recorded units / getRailCellDailyCapacity(level),
+		// clamped to [0,1]: 5/10 on level 1, 50/50 on level 5, over-capacity
+		// clamps to 1, an unrecorded cell stays 0.
+		const railUsage = {
+			[railUsageKey(city.id, 2, 2)]: 5,
+			[railUsageKey(city.id, 3, 2)]: 50,
+			[railUsageKey(city.id, 4, 2)]: 60
+		};
 		const game = {
 			...baseGame,
 			industryCities: [withRails(city, rails), ...baseGame.industryCities.slice(1)],
@@ -212,10 +220,36 @@ describe('industry map render snapshot', () => {
 
 		const snapshot = createIndustryMapSnapshot(game, null);
 
-		const corner = snapshot.rails.find((cell) => cell.x === 3 && cell.y === 2);
-		expect(corner?.utilization).toBe(0.5);
-		const west = snapshot.rails.find((cell) => cell.x === 2 && cell.y === 2);
-		expect(west?.utilization).toBe(0);
+		const halfUsedLevelOne = snapshot.rails.find((cell) => cell.x === 2 && cell.y === 2);
+		expect(halfUsedLevelOne?.utilization).toBe(0.5);
+		const fullLevelFive = snapshot.rails.find((cell) => cell.x === 3 && cell.y === 2);
+		expect(fullLevelFive?.utilization).toBe(1);
+		const overCapacityLevelFive = snapshot.rails.find((cell) => cell.x === 4 && cell.y === 2);
+		expect(overCapacityLevelFive?.utilization).toBe(1);
+		const idle = snapshot.rails.find((cell) => cell.x === 3 && cell.y === 3);
+		expect(idle?.utilization).toBe(0);
+	});
+
+	test('renders zero utilization for a zero-capacity fixture cell', () => {
+		expect.assertions(2);
+		const baseGame = createNewGame('convenience', 20260512);
+		const city = baseGame.industryCities[0]!;
+		// A level-0 cell cannot exist in a real game but is representable in a
+		// fixture: getRailCellDailyCapacity(0) is 0, so the renderer must guard
+		// the divisor and report 0 rather than NaN or a clamped 100%.
+		const rails: RailCell[] = [{ x: 2, y: 2, level: 0 }];
+		const railUsage = { [railUsageKey(city.id, 2, 2)]: 8 };
+		const game = {
+			...baseGame,
+			industryCities: [withRails(city, rails), ...baseGame.industryCities.slice(1)],
+			reports: [makeReport(railUsage)]
+		};
+
+		const snapshot = createIndustryMapSnapshot(game, null);
+		const cell = snapshot.rails.find((candidate) => candidate.x === 2 && candidate.y === 2);
+
+		expect(cell?.utilization).toBe(0);
+		expect(cell?.utilization).not.toBeNaN();
 	});
 
 	test('passes railPreview through to the snapshot unchanged', () => {
