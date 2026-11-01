@@ -473,7 +473,10 @@ describe('daily simulation', () => {
 						originCityId: 'breadbasket-basin',
 						destinationCityId: 'industry-city',
 						materialId: 'grain',
-						quantity: 10,
+						// Supply exceeds both the 12-grain need and the 10/day
+						// rail capacity, so the pull below is provably bound by
+						// rail capacity, not by stock — and 10 units must remain.
+						quantity: 20,
 						arrivalOnDay: closingDay
 					})
 				]
@@ -489,10 +492,10 @@ describe('daily simulation', () => {
 				originCityId: 'breadbasket-basin',
 				destinationCityId: 'industry-city',
 				materialId: 'grain',
-				quantity: 10
+				quantity: 20
 			}
 		]);
-		expect(report.logistics.deliveredUnits).toBe(10);
+		expect(report.logistics.deliveredUnits).toBe(20);
 		expect(report.productionReport.warehousePulls).toContainEqual({
 			cityId: 'industry-city',
 			materialId: 'grain',
@@ -507,6 +510,11 @@ describe('daily simulation', () => {
 			value: 4,
 			source: 'import'
 		});
+		expect(
+			result.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials[
+				'grain'
+			]
+		).toBe(20 - getRailCellDailyCapacity(1));
 		expect(result.logistics.transferOrders[0]?.status).toBe('delivered');
 	});
 

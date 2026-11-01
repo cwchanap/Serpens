@@ -90,7 +90,7 @@ describe('RailSegmentInspector', () => {
 		};
 		const railUsage = {
 			'industry-city:1,1': 5, // half of the level-1 cell's 10/day
-			'industry-city:2,1': 50 // fills the level-5 cell's 50/day
+			'industry-city:2,1': 40 // 80% of the level-5 cell's 50/day
 		};
 		const game = makeGame(rails, railUsage);
 		const props = baseProps(game, [segment]);
@@ -99,7 +99,7 @@ describe('RailSegmentInspector', () => {
 		const mapUtilization = (x: number, y: number) =>
 			snapshot.rails.find((cell) => cell.x === x && cell.y === y)?.utilization;
 		expect(mapUtilization(1, 1)).toBe(0.5);
-		expect(mapUtilization(2, 1)).toBe(1);
+		expect(mapUtilization(2, 1)).toBe(0.8);
 		expect(mapUtilization(3, 1)).toBe(0);
 		// The inspector reports the busiest cell's utilization (junction-safe:
 		// a shared cell's usage is never summed across segments).
