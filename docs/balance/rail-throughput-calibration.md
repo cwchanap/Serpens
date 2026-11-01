@@ -21,41 +21,148 @@ and the Step 4 scenario re-pins), measured on HEAD `922c37ee` of
   expansion-timing side effects (earlier store-3 openings) dominate end-cash
   deltas exactly as the review warned — see §5.
 - **Progression: hard pass** — zero idle claims, zero earned-unclaimed at both
-  factors; modest bidirectional pacing shifts fully disclosed in §7 for
-  review accept/reject.
+  factors; bidirectional pacing shifts spanning −105…+98 days on nine
+  material runs fully disclosed with trace-probe mechanism evidence in §7
+  for review accept/reject.
 
-## 1. Runs, exact commands, determinism
+## 1. Runs, exact commands, determinism — full reproduction recipe
 
-Both factors use the **same committed extended harness** (`tests/balance/`),
-unchanged HPA-502 bot code, and the same warehouse-cap code path. The k=1
-control was produced by temporarily editing the single committed literal
-`RAIL_UNITS_PER_LEVEL = 10` → `1` in `src/lib/game/rail.ts`, running the
-artifacts, then reversing that exact edit; `git diff` was empty and HEAD
-unchanged (`922c37ee`) immediately after — the tracked tree contains no
+Everything below is copy-pasteable from a clean checkout of this commit and
+reproduces every artifact §§3–7 cite. No committed helper is needed: the
+committed harness is `tests/balance/` and every scratch collector/analyzer
+used is embedded verbatim in **Appendix A**. Evidence output paths are
+shown under `.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/`
+(the git-ignored workspace used for the recorded run); any equivalent
+destination works — see the *recorded vs equivalent* note at the end of
+this section.
+
+The 50 explicit seeds, used verbatim in every command below (`$SEEDS`
+expands to the identical argv the recorded run received):
+
+```bash
+SEEDS=20260501,20260502,20260503,20260504,20260505,20260506,20260507,20260508,20260509,20260510,20260511,20260512,20260513,20260514,20260515,20260516,20260517,20260518,20260519,20260520,20260521,20260522,20260523,20260524,20260525,20260526,20260527,20260528,20260529,20260530,20260531,20260532,20260533,20260534,20260535,20260536,20260537,20260538,20260539,20260540,20260541,20260542,20260543,20260544,20260545,20260546,20260547,20260548,20260549,20260550
+EV=.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/evidence
+mkdir -p "$EV"
+```
+
+### 1.1 k=1 control factor (temporary one-literal edit, then inverse)
+
+Both factors use the **same committed harness** (`tests/balance/`),
+unchanged HPA-502 bot code, and the same warehouse-cap code path; the only
+difference is the single committed literal `RAIL_UNITS_PER_LEVEL` in
+`src/lib/game/rail.ts` (line 8). The k=1 control is produced by:
+
+```bash
+# 1. apply the control edit (tracked source temporarily changes 10 -> 1)
+#    src/lib/game/rail.ts: export const RAIL_UNITS_PER_LEVEL = 1;
+
+# 2. run all three artifact generators while the edit is in place
+bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$EV/sweep-k1"
+bun tests/balance/progressionRun.ts --seeds $SEEDS --days 365 --output "$EV/progression-k1"
+bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/bucket-probe.ts "$EV/buckets-k1.json"
+
+# 3. reverse the edit by the exact inverse patch (10 restored) and verify:
+#    git diff -- src/lib/game/rail.ts   # must be empty
+#    git status --porcelain             # must be clean
+```
+
+The recorded run reversed the edit immediately after step 2; `git diff` was
+empty and HEAD unchanged (`922c37ee`) — the tracked tree contains no
 control hack.
 
-**Sweep (per factor, 450 runs — 400 idle/retail-steady + 50 advisor):**
+### 1.2 k=10 candidate factor (committed tree as-is)
 
 ```bash
-bun tests/balance/run.ts --seeds 20260501,20260502,20260503,20260504,20260505,20260506,20260507,20260508,20260509,20260510,20260511,20260512,20260513,20260514,20260515,20260516,20260517,20260518,20260519,20260520,20260521,20260522,20260523,20260524,20260525,20260526,20260527,20260528,20260529,20260530,20260531,20260532,20260533,20260534,20260535,20260536,20260537,20260538,20260539,20260540,20260541,20260542,20260543,20260544,20260545,20260546,20260547,20260548,20260549,20260550 --days 365 --bots idle,retail-steady,advisor --output docs/balance/generated/rail-sweep
+bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$EV/sweep-k10"
+bun tests/balance/progressionRun.ts --seeds $SEEDS --days 365 --output "$EV/progression-k10"
+bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/bucket-probe.ts "$EV/buckets-k10.json"
 ```
 
-**Progression matrix (per factor, 200 progression + 200 idle-control runs):**
+Each sweep emits `<output>.json` + `<output>.md` (450 runs: 400
+idle/retail-steady + 50 advisor); each progression run emits
+`<output>.json` + `<output>.md` (200 progression + 200 idle controls); the
+bucket probe emits one JSON with 50 per-seed advisor cost buckets
+(payroll, gross revenue, retail/industrial `importSpend`, production
+`operatingCost`/`overflowCost`/`overflowUnits`, opening days, cash/debt
+extrema — the §§5.2–5.4 inputs the sweep JSON does not persist).
+
+### 1.3 Legacy frozen-artifact reconstruction (for §2 comparisons)
 
 ```bash
-bun tests/balance/progressionRun.ts --seeds <same 50 seeds> --days 365 --output docs/balance/generated/rail-progression
+# non-worktree snapshot inside the ignored plan workspace — no branch,
+# no worktree, no checkout of real history:
+mkdir -p .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-0ce5db7e
+git archive 0ce5db7e | tar -x -C .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-0ce5db7e
+cd .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-0ce5db7e
+ln -s <worktree>/node_modules node_modules          # reuse installed deps
+mkdir -p .svelte-kit
+cat > .svelte-kit/tsconfig.json <<'EOF'
+{
+	"compilerOptions": {
+		"paths": { "$lib": ["../src/lib"], "$lib/*": ["../src/lib/*"] },
+		"moduleResolution": "bundler",
+		"module": "esnext",
+		"target": "esnext",
+		"verbatimModuleSyntax": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		"types": ["node"]
+	},
+	"include": ["../src/**/*.ts", "../tests/**/*.ts"]
+}
+EOF
+bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output ../evidence/legacy-0ce5db7e-sweep
+cd <worktree>
+# identical recipe with 5a13a1e8 -> step6/legacy-5a13a1e8 and
+# ../evidence/legacy-5a13a1e8-sweep
 ```
 
-**Scenario suite and affected E2E (committed k=10 tree only):**
+(`<worktree>` = the absolute repo path; the snapshot's harness imports only
+`src/lib/game/*` + `tests/balance/*`, so the `.svelte-kit` shim exists solely
+to satisfy the `$lib` path alias — no Svelte/`$app` module is loaded.)
+
+### 1.4 Analysis and comparison commands
+
+All analyzers are embedded in Appendix A; save them under
+`.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/` (or any
+directory exactly four levels below the repo root — all but
+`legacy-compare` import `../../../../tests/balance/*`, and placing all five
+at that depth keeps the recipe uniform). Then:
+
+```bash
+STEP6=.superpowers/sdd/2026-10-31-rail-throughput-balance/step6
+# non-advisor byte-identity + Gate A verdicts + advisor aggregates (§3, §4, §5.1):
+bun $STEP6/analyze-sweep.ts $EV/sweep-k1.json $EV/sweep-k10.json | tee $EV/analyze-k1-vs-k10.txt
+# same-schema legacy gating (§2):
+bun $STEP6/gate-eval.ts $EV/legacy-0ce5db7e-sweep.json $EV/legacy-5a13a1e8-sweep.json $EV/sweep-k1.json | tee $EV/gate-eval-legacy-k1.txt
+# legacy-vs-new field projection diff (§2):
+bun $STEP6/legacy-compare.ts $EV/legacy-0ce5db7e-sweep.json $EV/sweep-k1.json | tee $EV/legacy-0ce5db7e-vs-k1.diff.txt
+bun $STEP6/legacy-compare.ts $EV/legacy-5a13a1e8-sweep.json $EV/sweep-k1.json | tee $EV/legacy-5a13a1e8-vs-k1.diff.txt
+# progression paired-delta table (§7):
+bun $STEP6/progression-compare.ts $EV/progression-k1.json $EV/progression-k10.json | tee $EV/progression-compare.txt
+# §5.2–5.4 cost-bucket table is produced by summing buckets-{k1,k10}.json
+# per seed (field names are self-describing; the recorded pivot is
+# preserved in evidence/buckets-compare.txt).
+# §7 mechanism probes — one invocation per (seed, archetype, factor);
+# the recorded set is 20260539/20260537/20260508 convenience + 20260504
+# grocery, at k=10 (committed tree) and at k=1 (inside the §1.1 edit window):
+bun tests/balance/progressionRun.ts --seeds 20260539 --days 365 --archetypes convenience --trace $STEP6/trace-probes/20260539-convenience-k10.json
+```
+
+### 1.5 Scenario suite and affected E2E (committed k=10 tree only)
 
 ```bash
 bun run test:unit -- src/lib/scenarios/runtime.spec.ts --run
 bunx playwright test src/routes/retail-sim.e2e.ts -g "player builds convenience production and refills from city inventory|rail-fed production connects two industrial buildings|challenge completes Two-City Supply Run|challenge fails at the deadline and shows objective evidence"
 ```
 
-**Determinism:** the k=10 candidate sweep was run twice under **byte-identical
-CLI arguments**; JSON and Markdown are byte-identical across the two runs
-(`cmp` clean). Artifact SHA-256:
+### 1.6 Determinism and artifact hashes
+
+The k=10 candidate sweep was run **twice under byte-identical CLI
+arguments** (including the `--output` destination): the first outputs were
+copied aside to `sweep-k10-run1.{json,md}`, the identical command was run
+again, and `cmp` found both the JSON and the Markdown byte-identical.
+Artifact SHA-256:
 
 | artifact | SHA-256 |
 | --- | --- |
@@ -64,14 +171,26 @@ CLI arguments**; JSON and Markdown are byte-identical across the two runs
 | regenerated HPA-502 after-sweep @ `0ce5db7e` | `c1b627bca4cbc5dff359ae7f599aa6e1107556cd269bc130a4aebc8761c1b426` |
 | regenerated sweep @ `5a13a1e8` (HPA-502 tip) | `3cf0fbdf10fe235df27a5659c0a1779eaee738dc67e06bd4e5bdec951296e11e` |
 
-Artifacts (git-ignored):
-`.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/evidence/` —
-`sweep-k1.{json,md}`, `sweep-k10.{json,md}` + `sweep-k10-run1.{json,md}`,
-`buckets-{k1,k10}.json`, `progression-{k1,k10}.json`,
-`legacy-0ce5db7e-sweep.*`, `legacy-5a13a1e8-sweep.*`, and the comparison
-outputs (`analyze-k1-vs-k10.txt`, `buckets-compare.txt`,
-`progression-compare.txt`, `gate-eval-legacy-k1.txt`,
-`legacy-*-vs-k1.diff.txt`).
+**Recorded args vs equivalent destinations:** the sweep/progression JSON
+embeds only `config.seeds`/`config.days`/`config.archetypes` — never the
+output path — so **any `--output` destination yields byte-identical JSON**
+and the hashes above are reproducible from §1.1–1.3 verbatim. The sweep
+`.md` sidecar, by contrast, interpolates the literal `--output` argument
+into its "Regenerate" line, so reproducing the recorded `.md` bytes
+requires the recorded destination (`$EV/sweep-k10`); a different
+destination produces a `.md` differing only in that line.
+
+Artifacts (git-ignored) under
+`.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/` —
+`evidence/sweep-k1.{json,md}`, `evidence/sweep-k10.{json,md}` +
+`evidence/sweep-k10-run1.{json,md}`, `evidence/buckets-{k1,k10}.json`,
+`evidence/progression-{k1,k10}.json`, `evidence/legacy-0ce5db7e-sweep.*`,
+`evidence/legacy-5a13a1e8-sweep.*`, comparison outputs
+(`evidence/analyze-k1-vs-k10.txt`, `evidence/buckets-compare.txt`,
+`evidence/progression-compare.txt`, `evidence/gate-eval-legacy-k1.txt`,
+`evidence/legacy-*-vs-k1.diff.txt`), and the §7 mechanism probes
+`trace-probes/20260504-grocery-k{1,10}.json`,
+`trace-probes/20260{508,537,539}-convenience-k{1,10}.json`.
 
 ## 2. Historical-comparison method (legacy projection)
 
@@ -130,13 +249,19 @@ Gate-A item-level notes:
   zero-output days after the last rail** over uniformly 336 post-rail
   observed days, delivers ≥1 local unit, and repeats 0 unapplied
   recommendations. What changed is delivery *volume* (§5), not the composite.
-- **First positive 30-day windows (advisor runs, informational):** 42/50
-  window values shifted — 38 keep the same window days with operating income
-  ~$72–144 lower (the extra production operating cost is inside
-  operatingIncome while operatingCashFlow rises ~$136–240 on the import
-  savings), and 4 seeds' windows slide one day later (20260506, 20260508,
-  20260544 end 56/57→57/58; one window start 28→29). All 50 still produce a
-  positive 30-day window.
+- **First positive 30-day windows (advisor runs, informational only — this is
+  not the Gate A item-1 metric, which is retail-steady-only and unchanged
+  above):** **42/50 advisor runs reach a positive 30-day window at each
+  factor**; the same eight seeds — 20260511, 20260513, 20260515, 20260521,
+  20260523, 20260525, 20260546, 20260548 — never reach one at either factor
+  (the weak-city convenience set already documented as the viability misses
+  in `after.md`). Among the 42 reached windows, **39 keep identical window
+  days** (with operating income ~$72–144 lower — the extra production
+  operating cost sits inside `operatingIncome` while `operatingCashFlow`
+  rises ~$136–240 on the import savings) and **3 slide exactly one day
+  later**: 20260506 (28–57→29–58), 20260508 (27–56→28–57), 20260544
+  (27–56→28–57). No window becomes negative and no unreached window becomes
+  reached; the two factors have identical reach sets.
 
 ## 5. Advisor rail share and cost buckets
 
@@ -274,18 +399,89 @@ convenience 35→33, boutique 50→50, electronics 50→50, grocery 4→4; tiers
 never claimed by any run at either factor (365-day ceiling, unchanged).
 
 **Disclosed pacing shift (for reviewer accept/reject):** 48/200 runs have
-claim-day differences — small (mostly ±1–30 days), bidirectional, and
-explainable: `finalLocalUnits` rises 336→3,360 (convenience) / 2,760
-(grocery) at k=10, so tier-2/3 goals fed by local deliveries land slightly
-earlier where the run was near the boundary (four runs gain
-neighborhood-chain + regional-supplier: 20260501-grocery@232,
-20260502-convenience@239, 20260504-convenience@260,
-20260516-convenience@281), while two runs lose them because store-3 pacing
-shifted their book-value/store goals differently
-(20260538-grocery, 20260550-convenience). Credit usage is materially
-unchanged (2,144→2,142 borrows; $26.78M→$26.73M). No progression threshold,
-goal, or bot policy was touched — the shift is a downstream read of the
-same authored ladder under more local units.
+claim-day differences. **The paired reached-tier delta range is −105 to
++98 days**, not a uniformly small jitter — and it is bidirectional:
+
+- **Nine runs shift a reached tier by more than 30 days.** Every one is the
+  neighborhood-chain + regional-supplier pair moving together (claims form
+  a contiguous prefix, so the pair always shares a claim day):
+  convenience 20260539 (323→218, −105), 20260519 (323→225, −98),
+  20260544 (295→197, −98), 20260547 (204→149, −55), 20260517 (204→170, −34)
+  on the favorable side; convenience 20260537 (232→330, **+98**),
+  20260508 (232→323, **+91**) and grocery 20260504, 20260509 (both
+  85→120, **+35**) on the adverse side.
+- **Reach-status changes (reached ↔ unreached):** four runs gain the pair —
+  grocery 20260501@232, convenience 20260502@239, 20260504@260,
+  20260516@281 — and two lose it — grocery 20260538 (358→unreached),
+  convenience 20260550 (260→unreached). Both losses are blocked on
+  `neighborhood-chain-store-count` alone at k=10 (store-3 was never opened;
+  `regional-supplier`'s goal list is empty on those runs — its 4-city and
+  25-local-unit goals all pass, it is held only by the contiguous-prefix
+  rule). Net reached counts: 161→163 and 61→63.
+- The remaining ~39 diffed runs are ±1–28-day movements, mostly tier-1
+  `local-shop` claim days (56.5 median at both factors).
+
+**Mechanism — observed, not hypothesized:** paired `--trace` probes were run
+on four extreme seeds at both factors (artifacts
+`step6/trace-probes/<seed>-<archetype>-k{1,10}.json`, generated by the §1.4
+probe command; seeds 20260539, 20260537, 20260508 convenience and 20260504
+grocery). In every
+trace, the NC+RS pair claims on the **same in-game day the bot's
+`openStore` action for store-3 (campus-junction, ~$22.5–23.4k) applies** —
+tier-2's binding goal is `neighborhood-chain-store-count ≥ 3`, while
+tier-3's goals (4 opened cities, ≥25 local units) are already satisfied by
+that day, so the pair claims in one tick. The k=1↔k=10 divergence is a
+different **purchase ordering**: `openWorldCity garden-borough` costs
+$28,000 and competes with store-3 for the same credit window.
+
+- **Later claims (k=10 adverse):** at k=10 the bot buys garden-borough
+  *before* store-3 (20260537: city @239 → store @330; 20260508: city @232 →
+  store @323; grocery 20260504: city @85 → store @120). At k=1 the same
+  seeds open store-3 first and the pair claims ~35–98 days earlier.
+- **Earlier claims (k=10 favorable):** at k=1 the bot buys the extra city
+  first (20260539: garden-borough @232 → store-3 @323); at k=10 it never
+  buys the city (opened-city count 5→4) and store-3 lands @218. All five
+  favorable >30-day seeds show the 5→4 cities signature; the adverse seeds
+  show the bought-the-city-first signature — 4→5 city count on 20260537,
+  20260508 and 20260509, and a same-count ordering swap verified in the
+  20260504 trace (city @85 → store @120 vs store @85 → city @120).
+- The two lost-pair runs (20260538-grocery, 20260550-convenience) show the
+  same signature taken further: at k=10 the bot's purchases never reach
+  store-3 at all within 365 days (`storeCount` 3→2).
+
+**Correction of the previously implied cause:** *no* tier-2 goal consumes
+local deliveries — tier 2 checks store-count ≥3, max-store-level ≥2 and
+opened-city-count ≥3 (`src/lib/game/progression.ts` goals), and the only
+rail-fed goal in the ladder, tier-3 `regional-supplier-local-units` ≥25u,
+is met early at **both** factors (336u and 3,360u cumulative — it is the
+recorded blocker only for the 100 boutique/electronics runs, identically at
+both factors). **The pacing deltas are therefore a second-order cash-side
+effect, not goals being fed faster by rail volume.** The observed
+perturbation path is consistent with §5.3: the ~+$1.7k/yr rail margin
+(changed import spend vs production operating cost) shifts weekly cash by
+tens of dollars, which moves which of the bot's 7-day-cadence reserve
+checks passes first — i.e., whether the $28k city or the ~$23k store-3 is
+bought first. That upstream link (margin → weekly reserve → buy order) is
+*interpretation consistent with the measured buckets*; the purchase-order
+differences themselves are directly observed in the paired traces.
+Tier-1 `local-shop` (store-count ≥2 + peak-book-value ≥$70k) shifts are
+peak-book-value crossing dates moving under the altered debt/asset path —
+observed via `peakBookValue` field changes; the exact decomposition is not
+claimed.
+
+Credit usage is materially unchanged (2,144→2,142 borrows;
+$26.78M→$26.73M). No progression threshold, goal, or bot policy was
+touched — the shift is the unchanged authored ladder read by the unchanged
+progression bot under a perturbed cash trajectory.
+
+**Assessment for fresh review (accept/reject input):** hard gates all pass;
+the effect is confined to expansion *ordering* on 9 material + ~39 minor of
+200 runs, is bidirectional with both favorable (−105d) and adverse (+98d)
+named outliers, and no threshold/bot was retuned. The adverse cases are
+fully explained by the bot choosing a $28k city opening before store-3 —
+the same discrete choice the margin perturbation can push either way.
+Whether this magnitude of bidirectional pacing shift is acceptable for the
+authored 365-day matrix is deferred to the reviewer.
 
 ## 8. Limitations and disclosures
 
@@ -308,3 +504,690 @@ same authored ladder under more local units.
 6. Progression pacing deltas are recorded for independent reviewer
    acceptance; no thresholds or bots were retuned, and tiers 4–5 remain
    unreached at both factors under the 365-day matrix.
+
+
+## Appendix A — Executable helper recipes (verbatim sources)
+
+The five scratch helpers §1 references are reproduced below **verbatim**
+(exactly the sources that produced the recorded artifacts). Save each under
+`.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/` — or any
+directory **exactly four levels below the repo root**, since four of the
+five resolve the committed harness via `../../../../tests/balance/*`
+(`legacy-compare` is path-agnostic). Anything
+under `.superpowers/` is git-ignored, so placing them there keeps the
+tracked tree clean. No committed file is added or modified; a clean
+checkout plus these five files reproduces §§2–7 end-to-end via §1.1–1.6.
+
+Validation: each block below was re-extracted from this document into a
+fresh ignored scratch dir
+(`.superpowers/sdd/2026-10-31-rail-throughput-balance/recipe-check/`, four
+levels deep) and executed against the recorded artifacts —
+`analyze-sweep`, `gate-eval`, `legacy-compare` and `progression-compare`
+outputs were byte-identical to the recorded `.txt` evidence, a fresh
+`bucket-probe` run at k=10 reproduced `buckets-k10.json` byte-for-byte,
+and a single-seed sweep inside the §1.3 `5a13a1e8` snapshot reproduced all
+9 of that seed's run rows from the recorded full artifact with 0
+mismatches.
+
+### A.1 `bucket-probe.ts` — the §§5.2–5.4 cost-bucket collector: runs the committed `advisor` convenience bot over `SWEEP_SEEDS` × 365 days and dumps per-seed cost buckets (payroll, gross revenue, retail/industrial import spend, production operating/overflow cost, opening days, cash/debt extrema, rail-shipment and post-rail delivery/imported water units). Usage: `bun <dir>/bucket-probe.ts <output.json>` — run once per factor inside/outside the §1.1 edit window.
+
+```ts
+/**
+ * Step 6 scratch probe (HPA-679): runs the committed convenience `advisor`
+ * bot over the 50 Gate A seeds for 365 days and dumps the same-seed cost
+ * buckets the calibration needs — retail/industrial import spend, production
+ * operating + overflow cost, gross retail revenue, payroll, store opening
+ * days, end/min cash and debt — plus bottled-water production, rail-shipment
+ * and post-rail local-delivery units for volume context.
+ *
+ *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/bucket-probe.ts <output.json>
+ *
+ * Run once per rail factor; outputs are compared same-seed offline.
+ */
+
+import { writeFileSync } from 'node:fs';
+import { runBot } from '../../../../tests/balance/bots';
+import { SWEEP_SEEDS } from '../../../../tests/balance/measure';
+
+const output = process.argv[2];
+if (!output) throw new Error('usage: bucket-probe.ts <output.json>');
+
+const DAYS = 365;
+
+interface SeedBuckets {
+	seed: number;
+	openingDays: number[];
+	firstNegativeCashDay: number | null;
+	minCash: number;
+	minCashDay: number;
+	endCash: number;
+	endDebt: number;
+	grossRetailRevenue: number;
+	payrollCost: number;
+	operatingIncome: number;
+	operatingCosts: number;
+	totalImportSpend: number;
+	retailImportSpend: number;
+	industryImportSpend: number;
+	productionOperatingCost: number;
+	productionOverflowUnits: number;
+	productionOverflowCost: number;
+	interestAccrued: number;
+	producedWaterUnits: number;
+	producedAllUnits: number;
+	railShipmentCount: number;
+	railShipmentUnits: number;
+	pushWarehouseWaterUnits: number;
+	pullProducerWaterUnits: number;
+	pullWarehouseWaterUnits: number;
+	postRailLocalWaterUnits: number;
+	postRailImportedWaterUnits: number;
+	firstRailShipmentDay: number | null;
+	lastRailShipmentDay: number | null;
+}
+
+const runs: SeedBuckets[] = [];
+for (const seed of SWEEP_SEEDS) {
+	const { game, ledger } = runBot('advisor', 'convenience', seed, DAYS);
+	const advisorRailDays = ledger.actions
+		.filter(
+			(a) =>
+				a.bot === 'advisor' && a.action === 'advisor:connect-rail' && a.outcome === 'applied'
+		)
+		.map((a) => a.day)
+		.sort((a, b) => a - b);
+	const lastRailDay = advisorRailDays.length > 0 ? advisorRailDays[advisorRailDays.length - 1]! : null;
+
+	const bucket: SeedBuckets = {
+		seed,
+		openingDays: ledger.openings.map((o) => o.day).sort((a, b) => a - b),
+		firstNegativeCashDay: null,
+		minCash: ledger.foundingCash,
+		minCashDay: 0,
+		endCash: 0,
+		endDebt: 0,
+		grossRetailRevenue: 0,
+		payrollCost: 0,
+		operatingIncome: 0,
+		operatingCosts: 0,
+		totalImportSpend: 0,
+		retailImportSpend: 0,
+		industryImportSpend: 0,
+		productionOperatingCost: 0,
+		productionOverflowUnits: 0,
+		productionOverflowCost: 0,
+		interestAccrued: 0,
+		producedWaterUnits: 0,
+		producedAllUnits: 0,
+		railShipmentCount: 0,
+		railShipmentUnits: 0,
+		pushWarehouseWaterUnits: 0,
+		pullProducerWaterUnits: 0,
+		pullWarehouseWaterUnits: 0,
+		postRailLocalWaterUnits: 0,
+		postRailImportedWaterUnits: 0,
+		firstRailShipmentDay: null,
+		lastRailShipmentDay: null
+	};
+	for (const report of game.reports) {
+		if (report.cashAfter < 0 && bucket.firstNegativeCashDay === null)
+			bucket.firstNegativeCashDay = report.day;
+		if (report.cashAfter < bucket.minCash) {
+			bucket.minCash = report.cashAfter;
+			bucket.minCashDay = report.day;
+		}
+		bucket.endCash = report.cashAfter;
+		bucket.endDebt = report.outstandingPrincipalAfter;
+		bucket.grossRetailRevenue += report.revenue;
+		bucket.payrollCost += report.payrollCost;
+		bucket.operatingIncome += report.operatingIncome;
+		bucket.operatingCosts += report.operatingCosts;
+		bucket.totalImportSpend += report.importSpend;
+		bucket.interestAccrued += report.interestAccrued;
+		const production = report.productionReport;
+		bucket.industryImportSpend += production.importSpend;
+		bucket.productionOperatingCost += production.operatingCost;
+		bucket.productionOverflowUnits += production.overflowUnits;
+		bucket.productionOverflowCost += production.overflowCost;
+		for (const movement of production.produced) {
+			bucket.producedAllUnits += movement.quantity;
+			if (movement.materialId === 'bottled-water') bucket.producedWaterUnits += movement.quantity;
+		}
+		for (const shipment of production.railShipments) {
+			bucket.railShipmentCount += 1;
+			bucket.railShipmentUnits += shipment.quantity;
+			if (bucket.firstRailShipmentDay === null) bucket.firstRailShipmentDay = report.day;
+			bucket.lastRailShipmentDay = report.day;
+			if (shipment.materialId !== 'bottled-water') continue;
+			if (shipment.kind === 'push-warehouse') bucket.pushWarehouseWaterUnits += shipment.quantity;
+			else if (shipment.kind === 'pull-producer')
+				bucket.pullProducerWaterUnits += shipment.quantity;
+			else bucket.pullWarehouseWaterUnits += shipment.quantity;
+		}
+		const postRail = lastRailDay !== null && report.day > lastRailDay;
+		for (const store of report.storeReports) {
+			bucket.retailImportSpend += store.importSpend;
+			for (const product of store.productReports) {
+				if (product.productId !== 'bottled-water') continue;
+				if (!postRail) continue;
+				bucket.postRailLocalWaterUnits += product.warehouseUnits;
+				bucket.postRailImportedWaterUnits += product.importedUnits;
+			}
+		}
+	}
+	runs.push(bucket);
+}
+
+writeFileSync(output, `${JSON.stringify({ days: DAYS, runs }, null, 2)}\n`);
+console.log(`bucket-probe: wrote ${runs.length} advisor seed buckets to ${output}`);
+```
+
+### A.2 `analyze-sweep.ts` — the §3 non-advisor byte-identity check, §4 Gate A verdicts (`evaluateGateA` from the committed harness) and §5.1 advisor aggregates/ratios. Usage: `bun <dir>/analyze-sweep.ts <k1.json> <k10.json>`.
+
+```ts
+/**
+ * Step 6 scratch analysis (HPA-679): loads two same-schema sweep JSONs
+ * (k=1 control, k=10 candidate) and reports:
+ *  1. byte-identity of the 400 non-advisor runs between the two files,
+ *  2. Gate A verdict items for each file,
+ *  3. advisor-run aggregates + per-seed table for the rail-share evidence.
+ *
+ *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/analyze-sweep.ts <k1.json> <k10.json>
+ */
+
+import { readFileSync } from 'node:fs';
+import { evaluateGateA, type RunMeasurement, type SweepReport } from '../../../../tests/balance/measure';
+
+const [k1Path, k10Path] = process.argv.slice(2);
+if (!k1Path || !k10Path) throw new Error('usage: analyze-sweep.ts <k1.json> <k10.json>');
+
+const load = (path: string): SweepReport => JSON.parse(readFileSync(path, 'utf8')) as SweepReport;
+const k1 = load(k1Path);
+const k10 = load(k10Path);
+
+// --- 1. non-advisor byte identity -------------------------------------------
+const nonAdvisor = (report: SweepReport): RunMeasurement[] =>
+	report.runs.filter((run) => run.bot !== 'advisor');
+const key = (run: RunMeasurement): string => `${run.seed}|${run.archetypeId}|${run.bot}`;
+const map = (runs: RunMeasurement[]): Map<string, string> =>
+	new Map(runs.map((run) => [key(run), JSON.stringify(run)]));
+const m1 = map(nonAdvisor(k1));
+const m10 = map(nonAdvisor(k10));
+const allKeys = [...new Set([...m1.keys(), ...m10.keys()])].sort();
+let mismatches = 0;
+for (const k of allKeys) {
+	if (m1.get(k) !== m10.get(k)) {
+		mismatches += 1;
+		console.log(`NON-ADVISOR MISMATCH: ${k}`);
+	}
+}
+console.log(
+	`non-advisor runs: k1=${m1.size} k10=${m10.size} shared-keys=${allKeys.length} byte-identical=${mismatches === 0} (mismatches ${mismatches})`
+);
+
+// --- 2. Gate A verdicts ------------------------------------------------------
+for (const [label, report] of [
+	['k1', k1],
+	['k10', k10]
+] as const) {
+	const verdict = evaluateGateA(report);
+	console.log(`\nGate A ${label}: allPassed=${verdict.allPassed} coverage=${verdict.coverage.detail}`);
+	for (const item of verdict.items) {
+		console.log(`  ${item.id}: ${item.passed ? 'PASS' : 'FAIL'} — ${item.detail}`);
+	}
+}
+
+// --- 3. advisor evidence ------------------------------------------------------
+for (const [label, report] of [
+	['k1', k1],
+	['k10', k10]
+] as const) {
+	const advisor = report.runs
+		.filter((run) => run.bot === 'advisor')
+		.sort((a, b) => a.seed - b.seed);
+	const sum = (pick: (run: RunMeasurement) => number): number =>
+		advisor.reduce((total, run) => total + pick(run), 0);
+	const local = sum((r) => r.advisorChain.localDeliveryUnits);
+	const allImports = sum((r) => r.advisorChain.retailImportedUnitsAllProducts);
+	const waterImports = sum((r) => r.advisorChain.retailImportedUnitsBottledWater);
+	const postRailWaterImports = sum((r) => r.advisorChain.postRailRetailImportedUnitsBottledWater);
+	const served = advisor.filter((r) => r.advisorChain.served).length;
+	const localUnitsList = advisor.map((r) => r.advisorChain.localDeliveryUnits).sort((a, b) => a - b);
+	const ratios = advisor
+		.map((r) => r.advisorChain.localToAllImportRatio)
+		.filter((r): r is number => r !== null)
+		.sort((a, b) => a - b);
+	const fractions = advisor
+		.map((r) => r.advisorChain.postRailBottledWaterLocalFraction)
+		.filter((r): r is number => r !== null)
+		.sort((a, b) => a - b);
+	const q = (xs: number[], p: number): number | null =>
+		xs.length === 0 ? null : xs[Math.min(xs.length - 1, Math.floor(p * xs.length))]!;
+	console.log(`\nAdvisor ${label}: ${advisor.length} runs, served ${served}`);
+	console.log(
+		`  totals: local ${local}u; all-product imports ${allImports}u; water imports ${waterImports}u; post-rail water imports ${postRailWaterImports}u`
+	);
+	console.log(
+		`  aggregate ratios: local/all-import ${allImports === 0 ? 'n/a' : ((local / allImports) * 100).toFixed(4) + '%'}; matched post-rail water local fraction ${local + postRailWaterImports === 0 ? 'n/a' : ((local / (local + postRailWaterImports)) * 100).toFixed(4) + '%'}`
+	);
+	console.log(
+		`  localDeliveryUnits per-seed: min ${localUnitsList[0] ?? 'n/a'} p10 ${q(localUnitsList, 0.1)} median ${q(localUnitsList, 0.5)} p90 ${q(localUnitsList, 0.9)} max ${localUnitsList[localUnitsList.length - 1] ?? 'n/a'}`
+	);
+	console.log(
+		`  per-seed local/all-import ratio: min ${((ratios[0] ?? 0) * 100).toFixed(3)}% median ${(((q(ratios, 0.5) ?? 0) * 100)).toFixed(3)}% max ${((ratios[ratios.length - 1] ?? 0) * 100).toFixed(3)}%`
+	);
+	console.log(
+		`  per-seed matched water fraction: min ${((fractions[0] ?? 0) * 100).toFixed(3)}% median ${(((q(fractions, 0.5) ?? 0) * 100)).toFixed(3)}% max ${((fractions[fractions.length - 1] ?? 0) * 100).toFixed(3)}%`
+	);
+	console.log('  per-seed table (seed | lastRailDay | localU | allImports | waterImp | postRailWaterImp | ratio% | frac% | served | stallShape):');
+	for (const run of advisor) {
+		const c = run.advisorChain;
+		console.log(
+			`  ${run.seed} | ${c.lastRailDay ?? '-'} | ${c.localDeliveryUnits} | ${c.retailImportedUnitsAllProducts} | ${c.retailImportedUnitsBottledWater} | ${c.postRailRetailImportedUnitsBottledWater} | ${c.localToAllImportRatio === null ? '-' : (c.localToAllImportRatio * 100).toFixed(3)} | ${c.postRailBottledWaterLocalFraction === null ? '-' : (c.postRailBottledWaterLocalFraction * 100).toFixed(3)} | ${c.served} | ${c.stallShape ?? '-'}`
+		);
+	}
+}
+```
+
+### A.3 `gate-eval.ts` — the §2/§4 gate evaluator that also accepts the legacy `0ce5db7e` schema (no `operatingIncomeByDay`), mirroring `evaluateGateA` item-for-item on stored fields. Usage: `bun <dir>/gate-eval.ts <sweep.json> [...]`.
+
+```ts
+/**
+ * Step 6 scratch analysis (HPA-679): evaluates the HPA-502 Gate A items on
+ * any sweep JSON, including legacy schemas that predate
+ * `operatingIncomeByDay` (0ce5db7e). Mirrors evaluateGateA logic exactly:
+ * viability uses the first complete contiguous positive 30-day window ending
+ * <= day 90; when `operatingIncomeByDay` is absent the stored
+ * `firstPositiveWindow30` (computed by the era's own identical helper) is
+ * used instead. Managed-vs-idle uses days 61-90 operating income — equal to
+ * the stored `operatingIncomeDays61To90` field by its own definition.
+ *
+ *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/gate-eval.ts <sweep.json> [sweep2.json ...]
+ */
+
+import { readFileSync } from 'node:fs';
+import {
+	botsForArchetype,
+	evaluateGateA,
+	SWEEP_ARCHETYPES,
+	SWEEP_SEEDS,
+	type RunMeasurement,
+	type SweepReport
+} from '../../../../tests/balance/measure';
+
+interface LegacyRun {
+	seed: number;
+	archetypeId: string;
+	bot: string;
+	daysSimulated: number;
+	firstPositiveWindow30: { startDay: number; endDay: number; operatingIncome: number } | null;
+	operatingIncomeDays61To90?: number;
+	operatingIncomeByDay?: { day: number; operatingIncome: number }[];
+	maxAbsCash: number;
+	maxOutstandingPrincipal: number;
+	cumulativeImportSpend: number;
+	wasteUnits: number;
+	wasteValue: number;
+	forecastOutcomes: {
+		complete: boolean;
+		forecastDailyRevenue: number;
+		observedMeanDailyRevenue: number | null;
+	}[];
+	advisorChain: { served: boolean };
+	advisorRepeatedNoOp: unknown;
+	producerStall: { startDay: number; endDay: number; days: number } | null;
+}
+
+const paths = process.argv.slice(2);
+if (paths.length === 0) throw new Error('usage: gate-eval.ts <sweep.json> [...]');
+
+for (const path of paths) {
+	const report = JSON.parse(readFileSync(path, 'utf8')) as SweepReport;
+	const hasByDay = (report.runs[0] as unknown as LegacyRun).operatingIncomeByDay !== undefined;
+	console.log(`\n== ${path}`);
+	console.log(`   runs ${report.runs.length}, schema has operatingIncomeByDay: ${hasByDay}`);
+	if (hasByDay) {
+		const verdict = evaluateGateA(report);
+		for (const item of verdict.items) {
+			console.log(`   ${item.id}: ${item.passed ? 'PASS' : 'FAIL'} — ${item.detail}`);
+		}
+		console.log(`   overall: ${verdict.allPassed ? 'PASS' : 'FAIL'} (coverage ${verdict.coverage.detail})`);
+		continue;
+	}
+	// Legacy-schema manual evaluation mirroring the same five items.
+	const runs = report.runs as unknown as LegacyRun[];
+	const byCombo = (bot: string, arch: string) =>
+		runs.filter((r) => r.bot === bot && r.archetypeId === arch);
+	// Item 1 viability
+	const parts: string[] = [];
+	let viabilityPass = true;
+	for (const arch of SWEEP_ARCHETYPES) {
+		const rs = byCombo('retail-steady', arch);
+		const viable = rs.filter(
+			(r) => r.firstPositiveWindow30 !== null && r.firstPositiveWindow30.endDay <= 90
+		).length;
+		if (viable / rs.length < 0.8) viabilityPass = false;
+		parts.push(`${arch} ${viable}/${rs.length} (${((viable / rs.length) * 100).toFixed(1)}%)`);
+	}
+	console.log(`   viability: ${viabilityPass ? 'PASS' : 'FAIL'} — ${parts.join(', ')}`);
+	// Item 2 boundedness
+	const maxima = { cash: 0, principal: 0, imports: 0, wasteU: 0, wasteV: 0 };
+	for (const r of runs) {
+		maxima.cash = Math.max(maxima.cash, r.maxAbsCash);
+		maxima.principal = Math.max(maxima.principal, r.maxOutstandingPrincipal);
+		maxima.imports = Math.max(maxima.imports, r.cumulativeImportSpend);
+		maxima.wasteU = Math.max(maxima.wasteU, r.wasteUnits);
+		maxima.wasteV = Math.max(maxima.wasteV, r.wasteValue);
+	}
+	const boundPass =
+		maxima.cash < 1e9 &&
+		maxima.principal < 1e9 &&
+		maxima.imports < 1e9 &&
+		maxima.wasteU < 1e9 &&
+		maxima.wasteV < 1e9;
+	console.log(
+		`   boundedness: ${boundPass ? 'PASS' : 'FAIL'} — max |cash| ${maxima.cash}, principal ${maxima.principal}, cumImports ${maxima.imports}, waste ${maxima.wasteU}u/${maxima.wasteV}`
+	);
+	// Item 3 managed-vs-idle via stored operatingIncomeDays61To90
+	const mParts: string[] = [];
+	let mviPass = true;
+	for (const arch of SWEEP_ARCHETYPES) {
+		const managed = new Map(byCombo('retail-steady', arch).map((r) => [r.seed, r]));
+		const idle = new Map(byCombo('idle', arch).map((r) => [r.seed, r]));
+		const paired = [...managed.keys()].filter((s) => idle.has(s)).sort();
+		const wins = paired.filter(
+			(s) =>
+				(managed.get(s)!.operatingIncomeDays61To90 ?? 0) >
+				(idle.get(s)!.operatingIncomeDays61To90 ?? 0)
+		).length;
+		if (wins / paired.length < 0.8) mviPass = false;
+		mParts.push(`${arch} ${wins}/${paired.length} (${((wins / paired.length) * 100).toFixed(1)}%)`);
+	}
+	console.log(`   managed-vs-idle: ${mviPass ? 'PASS' : 'FAIL'} — ${mParts.join(', ')}`);
+	// Item 4 forecast
+	const outcomes = runs.filter((r) => r.bot !== 'idle').flatMap((r) => r.forecastOutcomes);
+	const complete = outcomes.filter((o) => o.complete);
+	const within = complete.filter((o) => {
+		const obs = o.observedMeanDailyRevenue;
+		if (obs === null || obs <= 0) return false;
+		return Math.abs(o.forecastDailyRevenue - obs) / obs <= 0.25;
+	}).length;
+	const idleOpenings = runs
+		.filter((r) => r.bot === 'idle')
+		.reduce((t, r) => t + r.forecastOutcomes.length, 0);
+	console.log(
+		`   forecast: ${within / complete.length >= 0.8 ? 'PASS' : 'FAIL'} — ${within}/${complete.length}/${outcomes.length} eligible within ±25%; excluded ${outcomes.length - complete.length} incomplete, ${idleOpenings} idle`
+	);
+	// Item 5 advisor
+	const adv = runs.filter((r) => r.bot === 'advisor');
+	const served = adv.filter((r) => r.advisorChain.served).length;
+	console.log(
+		`   advisor: ${served / adv.length >= 0.8 ? 'PASS' : 'FAIL'} — ${served}/${adv.length} served (${((served / adv.length) * 100).toFixed(1)}%)`
+	);
+	// Coverage
+	const expected = SWEEP_ARCHETYPES.flatMap((a) =>
+		botsForArchetype(a).map((b) => `${a}/${b}`)
+	);
+	const missing: string[] = [];
+	const seen = new Set(runs.map((r) => `${r.seed} ${r.archetypeId}/${r.bot}`));
+	for (const seed of SWEEP_SEEDS)
+		for (const combo of expected)
+			if (!seen.has(`${seed} ${combo}`)) missing.push(`${seed} ${combo}`);
+	console.log(
+		`   coverage: ${missing.length === 0 ? 'complete approved matrix' : `${missing.length} missing`}`
+	);
+}
+```
+
+### A.4 `legacy-compare.ts` — the §2 legacy-vs-new field-by-field projection diff (projects new-only `advisorChain` keys away, reports every value mismatch). Usage: `bun <dir>/legacy-compare.ts <legacy.json> <new.json>`.
+
+```ts
+/**
+ * Step 6 scratch analysis (HPA-679): deep-diff of a legacy-schema sweep JSON
+ * (regenerated HPA-502 artifact) against a new-schema sweep JSON. Compares
+ * paired runs field-by-field; advisorChain keys only present in the new
+ * schema are projected away and counted, and `localDeliveryUnits` is
+ * reported separately because its definition was re-scoped in 5a13a1e8
+ * (all-products whole-run -> bottled-water strictly-after-last-rail).
+ *
+ *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-compare.ts <legacy.json> <new.json>
+ */
+
+import { readFileSync } from 'node:fs';
+
+const [legacyPath, newPath] = process.argv.slice(2);
+if (!legacyPath || !newPath) throw new Error('usage: legacy-compare.ts <legacy.json> <new.json>');
+
+type Json = Record<string, unknown>;
+const legacy = JSON.parse(readFileSync(legacyPath, 'utf8')) as { runs: Json[] };
+const current = JSON.parse(readFileSync(newPath, 'utf8')) as { runs: Json[] };
+
+const key = (run: Json): string => `${run.seed}|${run.archetypeId}|${run.bot}`;
+const legacyMap = new Map(legacy.runs.map((run) => [key(run), run]));
+const newMap = new Map(current.runs.map((run) => [key(run), run]));
+
+const diffs: string[] = [];
+const projectedOnlyKeys = new Set<string>();
+let compared = 0;
+let identicalAfterProjection = 0;
+
+function deepDiff(path: string, a: unknown, b: unknown): void {
+	if (typeof a !== typeof b || Array.isArray(a) !== Array.isArray(b)) {
+		diffs.push(`${path}: TYPE ${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+		return;
+	}
+	if (a !== null && b !== null && typeof a === 'object') {
+		if (Array.isArray(a) && Array.isArray(b)) {
+			if (a.length !== b.length) {
+				diffs.push(`${path}: length ${a.length} vs ${b.length}`);
+				return;
+			}
+			for (let i = 0; i < a.length; i += 1) deepDiff(`${path}[${i}]`, a[i], b[i]);
+			return;
+		}
+		const ao = a as Json;
+		const bo = b as Json;
+		const keys = new Set([...Object.keys(ao), ...Object.keys(bo)]);
+		for (const k of [...keys].sort()) {
+			if (!(k in ao)) {
+				projectedOnlyKeys.add(`${path}.${k}`);
+				continue;
+			}
+			if (!(k in bo)) {
+				diffs.push(`${path}.${k}: missing in new`);
+				continue;
+			}
+			deepDiff(`${path}.${k}`, ao[k], bo[k]);
+		}
+		return;
+	}
+	if (a !== b) {
+		diffs.push(`${path}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+	}
+}
+
+for (const [k, legacyRun] of legacyMap) {
+	const newRun = newMap.get(k);
+	if (!newRun) {
+		diffs.push(`${k}: missing in new`);
+		continue;
+	}
+	compared += 1;
+	const before = diffs.length;
+	// Project new run's advisorChain to the legacy key set by deep-diffing
+	// only shared keys; new-only keys are collected, not diffed.
+	const legacyChain = legacyRun.advisorChain as Json | undefined;
+	const newChain = newRun.advisorChain as Json | undefined;
+	if (legacyChain && newChain) {
+		for (const ck of Object.keys(newChain)) {
+			if (!(ck in legacyChain)) projectedOnlyKeys.add(`advisorChain.${ck}`);
+		}
+		const projectedChain: Json = {};
+		for (const ck of Object.keys(legacyChain)) projectedChain[ck] = newChain[ck];
+		const projectedRun = { ...newRun, advisorChain: projectedChain };
+		deepDiff(k, legacyRun, projectedRun);
+	} else {
+		deepDiff(k, legacyRun, newRun);
+	}
+	if (diffs.length === before) identicalAfterProjection += 1;
+}
+
+console.log(`paired runs compared: ${compared}/${legacyMap.size} (new total ${newMap.size})`);
+console.log(`runs identical after legacy projection: ${identicalAfterProjection}`);
+console.log(`new-schema-only keys (projected away, not diffed): ${[...projectedOnlyKeys].sort().join(', ') || 'none'}`);
+console.log(`value mismatches: ${diffs.length}`);
+for (const line of diffs.slice(0, 400)) console.log(`  ${line}`);
+if (diffs.length > 400) console.log(`  ... +${diffs.length - 400} more`);
+```
+
+### A.5 `progression-compare.ts` — the §7 paired progression comparator: per-tier reached/p10/median/p90, idle-control invariants, credit totals, and every per-run claim-day diff. Usage: `bun <dir>/progression-compare.ts <k1.json> <k10.json>`.
+
+```ts
+/**
+ * Step 6 scratch analysis (HPA-679): compares two progression-calibration
+ * JSONs (k=1 control vs k=10 candidate). Per-tier reached counts,
+ * p10/median/p90 claim days (never-claimed distinct), per-seed claim-day
+ * diffs and outliers, and idle-control invariants.
+ *
+ *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/progression-compare.ts <k1.json> <k10.json>
+ */
+
+import { readFileSync } from 'node:fs';
+
+const [k1Path, k10Path] = process.argv.slice(2);
+if (!k1Path || !k10Path) throw new Error('usage: progression-compare.ts <k1.json> <k10.json>');
+
+interface TierStat {
+	tierId: string;
+	total: number;
+	reached: number;
+	neverClaimed: number;
+	claimDayMin: number | null;
+	claimDayP10: number | null;
+	claimDayMedian: number | null;
+	claimDayP90: number | null;
+	claimDayMax: number | null;
+	neverClaimedByArchetype: Record<string, number>;
+	blockerGoalCounts: Record<string, number>;
+	outliers: { seed: number; archetypeId: string; claimedOnDay: number }[];
+}
+interface RunSummary {
+	seed: number;
+	archetypeId: string;
+	claims: { tierId: string; claimedOnDay: number }[];
+	finalCash: number;
+	finalDebt: number;
+	finalBookValue: number;
+	peakBookValue: number;
+	storeCount: number;
+	openedCityCount: number;
+	maxStoreLevel: number;
+	finalLocalUnits: number;
+}
+interface Report {
+	progressionRuns: number;
+	idleRuns: number;
+	tiers: TierStat[];
+	credit: {
+		runsUsingCredit: number;
+		borrowCount: number;
+		totalBorrowed: number;
+		maxSingleBorrow: number;
+		repaidCount: number;
+		totalRepaid: number;
+	};
+	idle: {
+		runs: number;
+		zeroClaimRuns: number;
+		totalClaims: number;
+		totalEarnedUnclaimed: number;
+		peakReportBookValue: { min: number; median: number; max: number };
+	};
+	tier1NonDecorative: {
+		idlePeakReportBookValueMax: number;
+		tier1PeakTarget: number;
+		passes: boolean;
+	};
+	finalBookValue: { min: number; median: number; max: number };
+	finalStoreCount: { min: number; median: number; max: number };
+	runs: RunSummary[];
+}
+
+const load = (path: string): Report => JSON.parse(readFileSync(path, 'utf8')) as Report;
+const a = load(k1Path);
+const b = load(k10Path);
+
+const fmt = (v: number | null): string => (v === null ? '-' : String(Math.round(v * 10) / 10));
+
+console.log('=== per-tier (k1 -> k10) ===');
+console.log('tier | reached k1->k10 | p10 | median | p90 | min | max | neverClaimedByArchetype');
+const tierB = new Map(b.tiers.map((t) => [t.tierId, t]));
+for (const ta of a.tiers) {
+	const tb = tierB.get(ta.tierId);
+	if (!tb) {
+		console.log(`${ta.tierId}: missing in k10`);
+		continue;
+	}
+	console.log(
+		`${ta.tierId} | ${ta.reached}/${ta.total} -> ${tb.reached}/${tb.total} | ${fmt(ta.claimDayP10)} -> ${fmt(tb.claimDayP10)} | ${fmt(ta.claimDayMedian)} -> ${fmt(tb.claimDayMedian)} | ${fmt(ta.claimDayP90)} -> ${fmt(tb.claimDayP90)} | ${fmt(ta.claimDayMin)} -> ${fmt(tb.claimDayMin)} | ${fmt(ta.claimDayMax)} -> ${fmt(tb.claimDayMax)} | never ${JSON.stringify(ta.neverClaimedByArchetype)} -> ${JSON.stringify(tb.neverClaimedByArchetype)}`
+	);
+}
+
+console.log('\n=== idle control (k1 -> k10) ===');
+for (const [label, r] of [
+	['k1', a],
+	['k10', b]
+] as const) {
+	console.log(
+		`  ${label}: idle runs ${r.idle.runs}, zero-claim ${r.idle.zeroClaimRuns}, totalClaims ${r.idle.totalClaims}, totalEarnedUnclaimed ${r.idle.totalEarnedUnclaimed}, peakBV max ${r.idle.peakReportBookValue.max}; tier1NonDecorative passes=${r.tier1NonDecorative.passes} (idlePeak ${r.tier1NonDecorative.idlePeakReportBookValueMax} < ${r.tier1NonDecorative.tier1PeakTarget})`
+	);
+}
+
+console.log('\n=== credit (k1 -> k10) ===');
+console.log(
+	`  runsUsingCredit ${a.credit.runsUsingCredit} -> ${b.credit.runsUsingCredit}; borrows ${a.credit.borrowCount} -> ${b.credit.borrowCount}; totalBorrowed ${a.credit.totalBorrowed} -> ${b.credit.totalBorrowed}; maxSingle ${a.credit.maxSingleBorrow} -> ${b.credit.maxSingleBorrow}; repaid ${a.credit.repaidCount}/${a.credit.totalRepaid} -> ${b.credit.repaidCount}/${b.credit.totalRepaid}`
+);
+console.log(
+	`  finalBookValue min/med/max ${a.finalBookValue.min}/${a.finalBookValue.median}/${a.finalBookValue.max} -> ${b.finalBookValue.min}/${b.finalBookValue.median}/${b.finalBookValue.max}; finalStoreCount ${a.finalStoreCount.min}/${a.finalStoreCount.median}/${a.finalStoreCount.max} -> ${b.finalStoreCount.min}/${b.finalStoreCount.median}/${b.finalStoreCount.max}`
+);
+
+console.log('\n=== per-run diffs (claim counts/days, unreached distinct) ===');
+const bRuns = new Map(b.runs.map((r) => [`${r.seed}|${r.archetypeId}`, r]));
+let diffRuns = 0;
+for (const ra of a.runs) {
+	const rb = bRuns.get(`${ra.seed}|${ra.archetypeId}`);
+	if (!rb) {
+		console.log(`  ${ra.seed} ${ra.archetypeId}: missing in k10`);
+		continue;
+	}
+	const claimsA = new Map(ra.claims.map((c) => [c.tierId, c.claimedOnDay]));
+	const claimsB = new Map(rb.claims.map((c) => [c.tierId, c.claimedOnDay]));
+	const tierIds = [...new Set([...claimsA.keys(), ...claimsB.keys()])].sort();
+	const parts: string[] = [];
+	for (const t of tierIds) {
+		const da = claimsA.get(t);
+		const db = claimsB.get(t);
+		if (da === db) continue;
+		parts.push(`${t} ${da ?? 'unreached'} -> ${db ?? 'unreached'}`);
+	}
+	if (parts.length === 0) continue;
+	diffRuns += 1;
+	console.log(
+		`  ${ra.seed} ${ra.archetypeId}: ${parts.join('; ')} | cash ${ra.finalCash} -> ${rb.finalCash} | stores ${ra.storeCount} -> ${rb.storeCount} | localUnits ${ra.finalLocalUnits} -> ${rb.finalLocalUnits}`
+	);
+}
+console.log(`  runs with claim-day diffs: ${diffRuns}/${a.runs.length}`);
+
+console.log('\n=== tier outliers (runs past own-factor p90) ===');
+for (const [label, r] of [
+	['k1', a],
+	['k10', b]
+] as const) {
+	for (const t of r.tiers) {
+		if (t.outliers.length === 0) continue;
+		console.log(
+			`  ${label} ${t.tierId}: ${t.outliers.map((o) => `${o.seed}/${o.archetypeId}@${o.claimedOnDay}`).join(', ')}`
+		);
+	}
+}
+```
