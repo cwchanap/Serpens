@@ -5,6 +5,7 @@ import {
 import type { IndustrialBuilding, IndustryCity, RailCell } from './types';
 
 export const RAIL_MAX_LEVEL = 5;
+export const RAIL_UNITS_PER_LEVEL = 10;
 export const RAIL_BUILD_COST_PER_CELL = 40;
 export const RAIL_UPGRADE_COST_PER_CELL_PER_LEVEL = 30;
 export const RAIL_DEMOLISH_REFUND_RATIO = 0.5;
@@ -269,6 +270,14 @@ export function getSegmentsForCell(
 	return segments.filter((segment) => segment.cellKeys.includes(key));
 }
 
+// Shared per-cell daily throughput: the single conversion from a cell's
+// level (an upgrade index, 1..RAIL_MAX_LEVEL on real rails) into units/day.
+// Pure multiplication — no clamping — so fixture levels outside the
+// persisted range keep their arithmetic meaning in tests.
+export function getRailCellDailyCapacity(level: number): number {
+	return level * RAIL_UNITS_PER_LEVEL;
+}
+
 export interface RailBudget {
 	remaining: Map<string, number>; // cellKey → units left today
 }
@@ -277,7 +286,7 @@ export function createRailBudget(network: RailNetwork): RailBudget {
 	const remaining = new Map<string, number>();
 
 	for (const [key, cell] of network.cells) {
-		remaining.set(key, cell.level);
+		remaining.set(key, getRailCellDailyCapacity(cell.level));
 	}
 
 	return { remaining };

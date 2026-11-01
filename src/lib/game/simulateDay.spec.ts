@@ -13,6 +13,7 @@ import {
 } from './interCityLogistics.testUtils';
 import { createRngFromState } from './rng';
 import { setPolicyOverride } from './policyInheritance';
+import { getRailCellDailyCapacity } from './rail';
 import { createNewGame, resolveDecision, updatePolicy } from './state';
 import { getStaffXpForLevel } from './staffLeveling';
 import { buildStoreStockRecoveryViews } from './stockRecovery';
@@ -271,27 +272,27 @@ describe('daily simulation', () => {
 
 		expect(projectOneCityParity(after)).toMatchInlineSnapshot(`
 			{
-			  "cash": 99780,
+			  "cash": 99720,
 			  "cityInventories": [
 			    {
 			      "cityId": "industry-city",
 			      "materials": {
 			        "bottled-water": 0,
-			        "water": 190,
+			        "water": 220,
 			      },
 			    },
 			  ],
 			  "report": {
 			    "importSpend": 5,
-			    "netCashChange": -220,
+			    "netCashChange": -280,
 			    "production": {
 			      "cityInventories": [
 			        {
 			          "capacity": 200,
 			          "cityId": "industry-city",
-			          "overflowCost": 10,
-			          "overflowUnits": 5,
-			          "used": 205,
+			          "overflowCost": 70,
+			          "overflowUnits": 35,
+			          "used": 235,
 			        },
 			      ],
 			      "consumed": [
@@ -306,8 +307,8 @@ describe('daily simulation', () => {
 			      "importSpend": 0,
 			      "importedInputs": [],
 			      "operatingCost": 19,
-			      "overflowCost": 10,
-			      "overflowUnits": 5,
+			      "overflowCost": 70,
+			      "overflowUnits": 35,
 			      "produced": [
 			        {
 			          "cityId": "industry-city",
@@ -336,6 +337,15 @@ describe('daily simulation', () => {
 			        },
 			        {
 			          "cityId": "industry-city",
+			          "fromId": "pump",
+			          "kind": "push-warehouse",
+			          "materialId": "water",
+			          "quantity": 30,
+			          "toId": "warehouse",
+			          "value": 30,
+			        },
+			        {
+			          "cityId": "industry-city",
 			          "fromId": "bottler",
 			          "kind": "push-warehouse",
 			          "materialId": "bottled-water",
@@ -345,22 +355,22 @@ describe('daily simulation', () => {
 			        },
 			      ],
 			      "railUsage": {
-			        "industry-city:10,4": 10,
-			        "industry-city:11,4": 10,
-			        "industry-city:12,4": 10,
-			        "industry-city:13,4": 10,
-			        "industry-city:14,4": 10,
-			        "industry-city:15,4": 10,
-			        "industry-city:16,4": 10,
-			        "industry-city:17,4": 10,
-			        "industry-city:18,4": 10,
-			        "industry-city:3,4": 10,
-			        "industry-city:4,4": 10,
-			        "industry-city:5,4": 10,
-			        "industry-city:6,4": 10,
-			        "industry-city:7,4": 10,
-			        "industry-city:8,4": 10,
-			        "industry-city:9,4": 10,
+			        "industry-city:10,4": 40,
+			        "industry-city:11,4": 40,
+			        "industry-city:12,4": 40,
+			        "industry-city:13,4": 40,
+			        "industry-city:14,4": 40,
+			        "industry-city:15,4": 40,
+			        "industry-city:16,4": 40,
+			        "industry-city:17,4": 40,
+			        "industry-city:18,4": 40,
+			        "industry-city:3,4": 40,
+			        "industry-city:4,4": 40,
+			        "industry-city:5,4": 40,
+			        "industry-city:6,4": 40,
+			        "industry-city:7,4": 40,
+			        "industry-city:8,4": 40,
+			        "industry-city:9,4": 40,
 			      },
 			      "shopImports": [
 			        {
@@ -381,7 +391,7 @@ describe('daily simulation', () => {
 			          "value": 30,
 			        },
 			      ],
-			      "warehouseUsed": 205,
+			      "warehouseUsed": 235,
 			    },
 			  },
 			  "stores": [
@@ -460,7 +470,9 @@ describe('daily simulation', () => {
 				city.id === 'industry-city' ? { ...city, rails: straightRails(2, 2, 10) } : city
 			),
 			industrialBuildings: [
-				createLogisticsBuilding('mill', 'flour-mill', 'industry-city', 2),
+				// Level 2 so the mill's 12-grain need exceeds the level-1 line's
+				// daily capacity and the rail pull still leaves an import tail.
+				{ ...createLogisticsBuilding('mill', 'flour-mill', 'industry-city', 2), level: 2 },
 				createLogisticsBuilding('warehouse-industry-city', 'warehouse', 'industry-city', 10)
 			],
 			logistics: {
@@ -493,15 +505,15 @@ describe('daily simulation', () => {
 		expect(report.productionReport.warehousePulls).toContainEqual({
 			cityId: 'industry-city',
 			materialId: 'grain',
-			quantity: 1,
-			value: 1,
+			quantity: getRailCellDailyCapacity(1),
+			value: getRailCellDailyCapacity(1),
 			source: 'warehouse'
 		});
 		expect(report.productionReport.importedInputs).toContainEqual({
 			cityId: 'industry-city',
 			materialId: 'grain',
-			quantity: 9,
-			value: 18,
+			quantity: 2,
+			value: 4,
 			source: 'import'
 		});
 		expect(result.logistics.transferOrders[0]?.status).toBe('delivered');

@@ -7,7 +7,12 @@ import {
 } from './railShipping';
 import { simulateIndustryProduction } from './industryProduction';
 import { demolishRailSegment } from './railPlacement';
-import { buildRailNetwork, deriveRailSegments, railCellKey } from './rail';
+import {
+	buildRailNetwork,
+	deriveRailSegments,
+	getRailCellDailyCapacity,
+	railCellKey
+} from './rail';
 import { createNewGame } from './state';
 import type { GameState, CityInventory, IndustrialBuilding, IndustryCity, RailCell } from './types';
 
@@ -84,25 +89,28 @@ function createRailTickState(
 const LINE = straightRails(4, 2, 11);
 
 describe('pullViaRail', () => {
-	it('pulls from a connected producer buffer, bottlenecked at 1/day on a level-1 line', () => {
+	it('pulls from a connected producer buffer up to the level-1 line capacity', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [farm, mill]), {
 			materials: {}
 		});
-		const result = pullViaRail(state, mill, 'grain', 10);
-		expect(result.fromProducers).toBe(1); // 8-cell level-1 path → min budget 1
+		// Request above the line capacity so the path bottleneck really binds.
+		const result = pullViaRail(state, mill, 'grain', 25);
+		expect(result.fromProducers).toBe(getRailCellDailyCapacity(1)); // level-1 path → per-cell capacity bottleneck
 		expect(result.fromWarehouse).toBe(0);
-		expect(state.inventories.get('industry-building-1')!.grain).toBe(29);
+		expect(state.inventories.get('industry-building-1')!.grain).toBe(
+			30 - getRailCellDailyCapacity(1)
+		);
 		expect(state.shipments).toHaveLength(1);
 		expect(state.shipments[0]).toMatchObject({
 			kind: 'pull-producer',
 			fromId: 'industry-building-1',
 			toId: 'industry-building-2',
 			materialId: 'grain',
-			quantity: 1
+			quantity: getRailCellDailyCapacity(1)
 		});
-		expect(state.usage['industry-city:6,4']).toBe(1);
+		expect(state.usage['industry-city:6,4']).toBe(getRailCellDailyCapacity(1));
 	});
 
 	it('does not pull consumer input stock from another processor buffer', () => {
@@ -131,28 +139,30 @@ describe('pullViaRail', () => {
 		const state = createRailTickState(makeGame(makeCity(LINE), [mill, snackFactory]), {
 			materials: {}
 		});
-		const result = pullViaRail(state, snackFactory, 'flour', 10);
-		expect(result.fromProducers).toBe(1); // level-1 line → 1/day bottleneck
+		const result = pullViaRail(state, snackFactory, 'flour', 25);
+		expect(result.fromProducers).toBe(getRailCellDailyCapacity(1)); // level-1 line → per-cell capacity bottleneck
 		expect(result.fromWarehouse).toBe(0);
-		expect(state.inventories.get('industry-building-1')!.flour).toBe(29);
+		expect(state.inventories.get('industry-building-1')!.flour).toBe(
+			30 - getRailCellDailyCapacity(1)
+		);
 		expect(state.shipments).toHaveLength(1);
 		expect(state.shipments[0]).toMatchObject({
 			kind: 'pull-producer',
 			fromId: 'industry-building-1',
 			toId: 'industry-building-2',
 			materialId: 'flour',
-			quantity: 1
+			quantity: getRailCellDailyCapacity(1)
 		});
 	});
 
-	it('a level-3 line moves 3/day', () => {
-		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
+	it('a level-3 line moves three per-level units of capacity per day', () => {
+		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 50 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(
 			makeGame(makeCity(straightRails(4, 2, 11, 3)), [farm, mill]),
 			{ materials: {} }
 		);
-		expect(pullViaRail(state, mill, 'grain', 10).fromProducers).toBe(3);
+		expect(pullViaRail(state, mill, 'grain', 40).fromProducers).toBe(getRailCellDailyCapacity(3));
 	});
 
 	it('pulls from the warehouse pool through a warehouse building', () => {
@@ -161,9 +171,9 @@ describe('pullViaRail', () => {
 		const state = createRailTickState(makeGame(makeCity(LINE), [warehouse, mill]), {
 			materials: { grain: 50 }
 		});
-		const result = pullViaRail(state, mill, 'grain', 10);
-		expect(result.fromWarehouse).toBe(1);
-		expect(state.cityInventory.materials.grain).toBe(49);
+		const result = pullViaRail(state, mill, 'grain', 25);
+		expect(result.fromWarehouse).toBe(getRailCellDailyCapacity(1));
+		expect(state.cityInventory.materials.grain).toBe(50 - getRailCellDailyCapacity(1));
 		expect(state.shipments[0]!.kind).toBe('pull-warehouse');
 	});
 
@@ -181,8 +191,9 @@ describe('pullViaRail', () => {
 		// Farm at (2,2) with attach (3,4); level-1 trunk y=4 x=2..7 continues
 		// east to mill A and branches south to mill B. Mill A: footprint
 		// (8..9, 2..3), attach cell (8,4). Mill B: footprint (8..9, 6..7),
-		// attach cell (7,6). Both routes share the trunk, which carries
-		// 1/day total — after A ships 1 unit, B gets nothing.
+		// attach cell (7,6). Both routes share the trunk, which carries one
+		// cell's daily capacity total — after A ships a full-capacity load, B
+		// gets nothing.
 		const rails = [...straightRails(4, 2, 8), { x: 7, y: 5, level: 1 }, { x: 7, y: 6, level: 1 }];
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const millA = makeBuilding('industry-building-2', 'flour-mill', 8, 2);
@@ -190,9 +201,9 @@ describe('pullViaRail', () => {
 		const state = createRailTickState(makeGame(makeCity(rails), [farm, millA, millB]), {
 			materials: {}
 		});
-		const pullA = pullViaRail(state, millA, 'grain', 5);
-		const pullB = pullViaRail(state, millB, 'grain', 5);
-		expect(pullA.fromProducers).toBe(1);
+		const pullA = pullViaRail(state, millA, 'grain', 15);
+		const pullB = pullViaRail(state, millB, 'grain', 15);
+		expect(pullA.fromProducers).toBe(getRailCellDailyCapacity(1));
 		expect(pullB.fromProducers).toBe(0); // trunk exhausted
 	});
 
@@ -208,8 +219,8 @@ describe('pullViaRail', () => {
 			const state = createRailTickState(makeGame(makeCity(rails), [farm, millA, millB]), {
 				materials: {}
 			});
-			pullViaRail(state, millA, 'grain', 5);
-			pullViaRail(state, millB, 'grain', 5);
+			pullViaRail(state, millA, 'grain', 15);
+			pullViaRail(state, millB, 'grain', 15);
 			return state.shipments;
 		};
 		expect(build()).toEqual(build());
@@ -240,87 +251,97 @@ describe('pullViaRail', () => {
 			makeGame(makeCity(LINE), [connectedFarm, disconnectedFarm, mill]),
 			{ materials: {} }
 		);
-		const result = pullViaRail(state, mill, 'grain', 10);
-		// Only the connected farm ships (1/day bottleneck); the disconnected
-		// farm's stock is untouched.
-		expect(result.fromProducers).toBe(1);
+		const result = pullViaRail(state, mill, 'grain', 20);
+		// Only the connected farm ships (level-1 per-cell capacity bottleneck);
+		// the disconnected farm's stock is untouched.
+		expect(result.fromProducers).toBe(getRailCellDailyCapacity(1));
 		expect(state.inventories.get('industry-building-3')!.grain).toBe(30);
 	});
 
-	it('fully satisfies a small request and exits the pull loop cleanly', () => {
-		// Requesting exactly one unit on a level-1 line drains the budget of
-		// the bottleneck cell to zero, but remaining hits 0 first so the while
-		// loop terminates normally rather than bailing on a missing path.
+	it('fully satisfies a capacity-sized request and exits the pull loop cleanly', () => {
+		// Requesting exactly the line's daily capacity drains the bottleneck
+		// cells' budget to zero at the same time `remaining` hits 0, so the
+		// while loop terminates normally rather than bailing on a missing path.
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [farm, mill]), {
 			materials: {}
 		});
-		const result = pullViaRail(state, mill, 'grain', 1);
-		expect(result.fromProducers).toBe(1);
+		const result = pullViaRail(state, mill, 'grain', getRailCellDailyCapacity(1));
+		expect(result.fromProducers).toBe(getRailCellDailyCapacity(1));
 		expect(state.shipments).toHaveLength(1);
-		expect(state.inventories.get('industry-building-1')!.grain).toBe(29);
+		expect(state.inventories.get('industry-building-1')!.grain).toBe(
+			30 - getRailCellDailyCapacity(1)
+		);
 	});
 
 	it('splits a pull across multiple producers when the nearest source is exhausted', () => {
-		// Farm A (west, 1 grain) and Farm B (east, 10 grain) flank a mill on
-		// a level-3 line. The mill requests 5. Farm A is nearer (tied distance,
-		// lower id wins), ships its 1 unit, then the loop repeats and pulls
-		// from Farm B until the shared budget is exhausted. Total = 1 + 3 = 4.
-		const farmA = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 1 });
-		const farmB = makeBuilding('industry-building-2', 'grain-farm', 15, 2, { grain: 10 });
+		// Farm A (west, 5 grain) and Farm B (east, 40 grain) flank a mill on
+		// a level-3 line. The mill requests 50. Farm A is nearer (tied distance,
+		// lower id wins), ships its 5 units, then the loop repeats and pulls
+		// from Farm B until the shared budget is exhausted. Total = 5 + the
+		// level-3 per-cell capacity.
+		const farmA = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 5 });
+		const farmB = makeBuilding('industry-building-2', 'grain-farm', 15, 2, { grain: 40 });
 		const mill = makeBuilding('industry-building-3', 'flour-mill', 8, 2);
 		const rails = straightRails(4, 2, 16, 3);
 		const state = createRailTickState(makeGame(makeCity(rails), [farmA, farmB, mill]), {
 			materials: {}
 		});
-		const result = pullViaRail(state, mill, 'grain', 5);
-		expect(result.fromProducers).toBe(4);
+		const result = pullViaRail(state, mill, 'grain', 50);
+		expect(result.fromProducers).toBe(5 + getRailCellDailyCapacity(3));
 		expect(result.fromWarehouse).toBe(0);
 		expect(state.inventories.get('industry-building-1')!.grain).toBe(0);
-		expect(state.inventories.get('industry-building-2')!.grain).toBe(7);
+		expect(state.inventories.get('industry-building-2')!.grain).toBe(
+			40 - getRailCellDailyCapacity(3)
+		);
 		expect(state.shipments).toHaveLength(2);
 		expect(state.shipments[0]).toMatchObject({
 			fromId: 'industry-building-1',
-			quantity: 1
+			quantity: 5
 		});
 		expect(state.shipments[1]).toMatchObject({
 			fromId: 'industry-building-2',
-			quantity: 3
+			quantity: getRailCellDailyCapacity(3)
 		});
 	});
 });
 
 describe('pushSurplusViaRail', () => {
 	it('pushes leftover output to a connected warehouse', () => {
-		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 5 });
+		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 15 });
 		const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [farm, warehouse]), {
 			materials: {}
 		});
 		pushSurplusViaRail(state, farm);
-		expect(state.cityInventory.materials.grain).toBe(1); // bottlenecked at 1/day
-		expect(state.inventories.get('industry-building-1')!.grain).toBe(4);
+		expect(state.cityInventory.materials.grain).toBe(getRailCellDailyCapacity(1)); // level-1 line capacity binds
+		expect(state.inventories.get('industry-building-1')!.grain).toBe(
+			15 - getRailCellDailyCapacity(1)
+		);
 		expect(state.shipments[0]!.kind).toBe('push-warehouse');
 	});
 
 	it('pushes processor outputs while retaining buffered inputs', () => {
 		const mill = makeBuilding('industry-building-1', 'flour-mill', 2, 2, {
 			grain: 12,
-			flour: 5
+			flour: 15
 		});
 		const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 		const state = createRailTickState(makeGame(makeCity(LINE), [mill, warehouse]), {
 			materials: {}
 		});
 		pushSurplusViaRail(state, mill);
-		expect(state.cityInventory.materials.flour).toBe(1);
+		expect(state.cityInventory.materials.flour).toBe(getRailCellDailyCapacity(1));
 		expect(state.cityInventory.materials.grain).toBeUndefined();
-		expect(state.inventories.get('industry-building-1')).toEqual({ grain: 12, flour: 4 });
+		expect(state.inventories.get('industry-building-1')).toEqual({
+			grain: 12,
+			flour: 15 - getRailCellDailyCapacity(1)
+		});
 		expect(state.shipments[0]).toMatchObject({
 			kind: 'push-warehouse',
 			materialId: 'flour',
-			quantity: 1
+			quantity: getRailCellDailyCapacity(1)
 		});
 	});
 
@@ -337,7 +358,7 @@ describe('pushSurplusViaRail', () => {
 	it('skips a warehouse with no rail attach cells', () => {
 		// A disconnected warehouse (no attach cells) is ignored while the
 		// connected warehouse still receives the push.
-		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 5 });
+		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 15 });
 		const connectedWarehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 		const disconnectedWarehouse = makeBuilding('industry-building-3', 'warehouse', 20, 20);
 		const state = createRailTickState(
@@ -345,18 +366,18 @@ describe('pushSurplusViaRail', () => {
 			{ materials: {} }
 		);
 		pushSurplusViaRail(state, farm);
-		expect(state.cityInventory.materials.grain).toBe(1);
+		expect(state.cityInventory.materials.grain).toBe(getRailCellDailyCapacity(1));
 		expect(state.shipments).toHaveLength(1);
 		expect(state.shipments[0]!.toId).toBe('industry-building-2');
 	});
 
 	it('pushes surplus to two warehouses on non-overlapping paths', () => {
-		// Farm at (2,2) has 10 grain. Warehouse B (south, 6-cell path) is
+		// Farm at (2,2) has 45 grain. Warehouse B (south, 6-cell path) is
 		// nearer than warehouse A (east, 8-cell path); the two paths share no
-		// cells (one starts at attach (2,4), the other at (3,4)). On a level-3
-		// line the first push sends 3 to B, the second sends 3 to A, then both
-		// budgets are exhausted. Total pushed = 6, farm retains 4.
-		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 10 });
+		// cells (one starts at attach (2,4), the other at (3,4)). On level-3
+		// lines the first push fills B's path budget, the second sends the
+		// remainder down A's path. Total pushed = 45, farm retains 0.
+		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 45 });
 		const warehouseA = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 		const warehouseB = makeBuilding('industry-building-3', 'warehouse', 2, 10);
 		const rails: RailCell[] = [
@@ -381,17 +402,17 @@ describe('pushSurplusViaRail', () => {
 			materials: {}
 		});
 		pushSurplusViaRail(state, farm);
-		expect(state.cityInventory.materials.grain).toBe(6);
-		expect(state.inventories.get('industry-building-1')!.grain).toBe(4);
+		expect(state.cityInventory.materials.grain).toBe(45);
+		expect(state.inventories.get('industry-building-1')!.grain).toBe(0);
 		expect(state.shipments).toHaveLength(2);
 		// Nearer warehouse B (shorter path) is served first.
 		expect(state.shipments[0]).toMatchObject({
 			toId: 'industry-building-3',
-			quantity: 3
+			quantity: getRailCellDailyCapacity(3)
 		});
 		expect(state.shipments[1]).toMatchObject({
 			toId: 'industry-building-2',
-			quantity: 3
+			quantity: 45 - getRailCellDailyCapacity(3)
 		});
 	});
 });

@@ -366,7 +366,7 @@ export interface MaterialQuantity {
 export interface RailCell {
 	x: number;
 	y: number;
-	level: number; // capacity per day, 1..RAIL_MAX_LEVEL
+	level: number; // upgrade level index, 1..RAIL_MAX_LEVEL; units/day = getRailCellDailyCapacity(level)
 }
 
 export interface RailShipment {
