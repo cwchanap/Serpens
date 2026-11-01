@@ -327,7 +327,7 @@ describe('industry production simulation', () => {
 	});
 
 	test('charges only the overflowing city at production close after rail pushes', () => {
-		expect.assertions(4);
+		expect.assertions(7);
 		const starter = createNewGame('convenience', 20260805);
 		const opened = openWorldCity(
 			{
@@ -377,7 +377,7 @@ describe('industry production simulation', () => {
 			],
 			cityInventories: opened.cityInventories.map((inventory) =>
 				inventory.cityId === cityA
-					? { ...inventory, materials: { water: 200 } }
+					? { ...inventory, materials: { water: 250 } }
 					: inventory.cityId === cityB
 						? { ...inventory, materials: { water: 3 } }
 						: inventory
@@ -390,14 +390,21 @@ describe('industry production simulation', () => {
 			)
 		});
 		const overflowing = simulateIndustryProduction(baseGame);
+		const overflowingPump = overflowing.game.industrialBuildings.find(
+			(candidate) => candidate.id === 'city-a-pump'
+		)!;
+		const externalOverflow = 50;
 
+		// City A's pool arrived over capacity (250 > 200), so the 50-unit
+		// overflow is charged — but the capped surplus push adds nothing on
+		// top, and its water stays in the producer buffer.
 		expect(overflowing.report.cityInventories).toEqual([
 			{
 				cityId: cityA,
 				capacity: 200,
-				used: 200 + getRailCellDailyCapacity(10),
-				overflowUnits: getRailCellDailyCapacity(10),
-				overflowCost: getRailCellDailyCapacity(10) * WAREHOUSE_OVERFLOW_COST_PER_UNIT
+				used: 250,
+				overflowUnits: externalOverflow,
+				overflowCost: externalOverflow * WAREHOUSE_OVERFLOW_COST_PER_UNIT
 			},
 			{
 				cityId: cityB,
@@ -407,12 +414,22 @@ describe('industry production simulation', () => {
 				overflowCost: 0
 			}
 		]);
-		expect(overflowing.report.overflowUnits).toBe(getRailCellDailyCapacity(10));
+		expect(
+			overflowing.report.railShipments.filter((shipment) => shipment.kind === 'push-warehouse')
+		).toHaveLength(0);
+		expect(overflowingPump.inventory.water).toBe(120);
+		expect(overflowing.report.overflowUnits).toBe(externalOverflow);
 		expect(overflowing.report.overflowCost).toBe(
-			getRailCellDailyCapacity(10) * WAREHOUSE_OVERFLOW_COST_PER_UNIT
+			externalOverflow * WAREHOUSE_OVERFLOW_COST_PER_UNIT
 		);
+		// withinCapacity ships the full level-10 line capacity into 100 free
+		// units (used 100 → 200, no overflow); the only cash difference is the
+		// external overflow charge.
+		expect(
+			withinCapacity.report.railShipments.filter((shipment) => shipment.kind === 'push-warehouse')
+		).toHaveLength(1);
 		expect(overflowing.game.cash).toBe(
-			withinCapacity.game.cash - getRailCellDailyCapacity(10) * WAREHOUSE_OVERFLOW_COST_PER_UNIT
+			withinCapacity.game.cash - externalOverflow * WAREHOUSE_OVERFLOW_COST_PER_UNIT
 		);
 	});
 
@@ -934,6 +951,41 @@ describe('rail-fed production', () => {
 		// 30 — double-counting the pushed units in both the farm buffer and
 		// the warehouse pool.
 		expect(farm.inventory.grain ?? 0).toBe(30 - getRailCellDailyCapacity(1));
+	});
+
+	test('a full warehouse keeps surplus in the producer buffer, stalling the producer on later days', () => {
+		expect.assertions(9);
+		// City pool exactly at capacity (200) so the rail push can ship
+		// nothing; the farm's buffer fills, then stalls — surplus stays local
+		// instead of creating incremental warehouse overflow.
+		const fullPoolGame: GameState = {
+			...makeProductionGame(makeIndustryCity(straightRails(4, 2, 11, 3)), [
+				makeIndustryBuilding('farm', 'grain-farm', 2, 2, { grain: 140 }),
+				makeIndustryBuilding('wh1', 'warehouse', 10, 2)
+			]),
+			cityInventories: [{ cityId: 'industry-city', materials: { grain: 200 } }]
+		};
+
+		const day1 = simulateIndustryProduction(fullPoolGame);
+		const farm1 = day1.game.industrialBuildings.find((building) => building.id === 'farm')!;
+
+		// 10 free buffer slots → 10 produced → 150; the push ships 0.
+		expect(farm1.inventory.grain).toBe(150);
+		expect(farm1.status).toBe('stalled');
+		expect(
+			day1.report.railShipments.filter((shipment) => shipment.kind === 'push-warehouse')
+		).toHaveLength(0);
+		expect(day1.game.cityInventories[0]!.materials.grain).toBe(200);
+		expect(day1.report.overflowUnits).toBe(0);
+
+		const day2 = simulateIndustryProduction(day1.game);
+		const farm2 = day2.game.industrialBuildings.find((building) => building.id === 'farm')!;
+
+		// Backpressure persists next day: no production, no push, no overflow.
+		expect(farm2.inventory.grain).toBe(150);
+		expect(farm2.status).toBe('stalled');
+		expect(day2.game.cityInventories[0]!.materials.grain).toBe(200);
+		expect(day2.report.overflowUnits).toBe(0);
 	});
 
 	test('rail-connected mill pulls inputs from the warehouse pool and records the pull', () => {

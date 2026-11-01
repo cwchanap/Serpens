@@ -2,6 +2,8 @@ import { removeInventory } from './buildingInventory';
 import {
 	addCityInventoryMaterial,
 	getCityInventory,
+	getCityInventoryUsed,
+	getCityWarehouseCapacity,
 	removeCityInventoryMaterial,
 	resolveWorldCityId
 } from './cityInventory';
@@ -30,6 +32,10 @@ interface RailTickCity {
 	network: RailNetwork;
 	budget: RailBudget;
 	attachCellsByBuildingId: Map<string, string[]>;
+	// Derived once per tick: buildings can't appear mid-tick, so the city's
+	// warehouse capacity is stable for the whole push phase. Free space must
+	// still be recomputed from the mutable working inventory before each push.
+	warehouseCapacity: number;
 }
 
 export interface RailTickState {
@@ -78,7 +84,8 @@ export function createRailTickState(game: GameState): RailTickState {
 		citiesById.set(cityId, {
 			network,
 			budget: createRailBudget(network),
-			attachCellsByBuildingId
+			attachCellsByBuildingId,
+			warehouseCapacity: getCityWarehouseCapacity(game, cityId)
 		});
 		cityInventoriesByCityId.set(cityId, {
 			...access.inventory,
@@ -289,9 +296,16 @@ export function pullViaRail(
 }
 
 /**
- * Pushes every unit in the producer's buffer to the nearest reachable
- * warehouse building, budget-limited. City-inventory overflow is allowed here;
- * production close derives any resulting pressure from the final material state.
+ * Pushes surplus output in the producer's buffer to the nearest reachable
+ * warehouse building, budget- and warehouse-capacity-limited. Each shipment
+ * is additionally capped by the free space left in the city warehouse pool,
+ * recomputed against the mutable working inventory before every push — a
+ * same-tick warehouse pull can free room, and every shipped unit consumes it.
+ * When no space remains the push stops before touching stock, budget, or
+ * shipments; unshipped output stays in the producer buffer, where the
+ * existing buffer bounds create backpressure on later days. Overflow from
+ * non-rail sources (e.g. transfer arrivals) keeps its own semantics — the cap
+ * only bounds this surplus-push path.
  */
 export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBuilding): void {
 	const entityCity = getRailEntityCity(state, producer);
@@ -320,6 +334,20 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 		let stock = Math.max(0, inventory[materialId] ?? 0);
 
 		while (stock > 0) {
+			// Free pool space is material-agnostic (getCityInventoryUsed sums
+			// all materials) and shrinks with every push in the tick, so it is
+			// recomputed here rather than hoisted. Zero space stops the whole
+			// producer push — searching for a path would be wasted work, and
+			// no stock/budget/shipment may be touched either way.
+			const warehouseSpace = Math.max(
+				0,
+				city.warehouseCapacity - getCityInventoryUsed(entityCity.inventory)
+			);
+
+			if (warehouseSpace === 0) {
+				return;
+			}
+
 			let best: { warehouseId: string; path: string[] } | null = null;
 
 			for (const [buildingId, building] of sortedEntries) {
@@ -347,7 +375,7 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 				return;
 			}
 
-			const quantity = Math.min(stock, getPathCapacity(city.budget, best.path));
+			const quantity = Math.min(stock, getPathCapacity(city.budget, best.path), warehouseSpace);
 
 			const removal = removeInventory(inventory, materialId, quantity);
 			inventory = removal.inventory;
