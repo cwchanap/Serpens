@@ -1129,6 +1129,63 @@ describe('advisor imported-unit evidence (HPA-679 Step 5)', () => {
 		);
 	});
 
+	it('sums raw totals over advisor runs only and renders the ratio of sums', () => {
+		// Two advisor runs with deliberately unequal denominators force the
+		// aggregate to expose its arithmetic: ratio-of-sums (48/520 = 9.23%)
+		// differs from mean-of-ratios ((10.00% + 6.00%)/2 = 8.00%), and the
+		// matched fraction differs likewise (36.36% vs 32.48%).
+		const advisorA = measureRun(
+			{ reports: importedReports(35) },
+			advisorLedger([advisorAction(29, 'advisor:connect-rail')])
+		);
+		const advisorB = measureRun(
+			{
+				reports: days(10, (day) => ({
+					storeReports: [
+						fakeStore({
+							productReports: [
+								fakeProduct({ importedUnits: 8, warehouseUnits: day > 4 ? 1 : 0 }),
+								fakeProduct({ productId: 'snacks', importedUnits: 2 })
+							]
+						})
+					]
+				}))
+			},
+			advisorLedger([advisorAction(4, 'advisor:connect-rail')])
+		);
+		// The non-advisor run deliberately carries measurable chain values —
+		// an applied rail action plus import/local traffic (100 local,
+		// 3,000/3,000/2,000 import units) — so it can only be excluded by the
+		// run.bot === 'advisor' filter, not by zero chain fields.
+		const nonAdvisor = measureRun(
+			{
+				reports: days(3, () => ({
+					storeReports: [
+						fakeStore({
+							productReports: [fakeProduct({ importedUnits: 1_000, warehouseUnits: 50 })]
+						})
+					]
+				}))
+			},
+			{ ...fakeLedger(), actions: [advisorAction(1, 'advisor:connect-rail')] }
+		);
+		const markdown = renderSweepMarkdown({
+			config: { seeds: [SEED], days: 35 },
+			runs: [advisorA, advisorB, nonAdvisor]
+		});
+		// Advisor-only sums: local 42+6 = 48; all-products 420+100 = 520;
+		// water whole-run 210+80 = 290; water post-rail 36+48 = 84.
+		expect(markdown).toContain('summed over 2 advisor run(s)');
+		expect(markdown).toContain('post-rail local bottled-water deliveries 48u');
+		expect(markdown).toContain('520u all-products');
+		expect(markdown).toContain('290u bottled-water whole-run');
+		expect(markdown).toContain('84u bottled-water post-rail');
+		expect(markdown).toContain('local-to-all-import ratio 48/520 = 9.23%');
+		expect(markdown).toContain(
+			'matched post-rail bottled-water local fraction 48/(48+84) = 36.36%'
+		);
+	});
+
 	it('renders a guarded dash — never NaN or Infinity — for empty denominators', () => {
 		const measured = measureRun(
 			{ reports: days(5) },

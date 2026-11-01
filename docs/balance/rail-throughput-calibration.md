@@ -190,6 +190,10 @@ All six analyzers are embedded in Appendix A at the `$STEP6` paths used
 below:
 
 ```bash
+# Analyzer failures must not hide behind tee's exit 0: -e stops the recipe
+# on the first failure and pipefail makes each | tee pipeline return the
+# analyzer's own nonzero status.
+set -e -o pipefail
 # §3 non-advisor byte-identity + §4 Gate A verdicts + §5.1 advisor aggregates:
 bun "$STEP6/analyze-sweep.ts" "$EV/sweep-k1.json" "$EV/sweep-k10.json" | tee "$EV/analyze-k1-vs-k10.txt"
 # §2/§4 gate evaluation incl. the legacy 0ce5db7e schema:
@@ -473,7 +477,7 @@ claim-day differences. **The paired reached-tier delta range is −105 to
   `regional-supplier`'s goal list is empty on those runs — its 4-city and
   25-local-unit goals all pass, it is held only by the contiguous-prefix
   rule). Net reached counts: 161→163 and 61→63.
-- The remaining ~39 diffed runs are ±1–28-day movements, mostly tier-1
+- The remaining 33 diffed runs are ±1–28-day movements, mostly tier-1
   `local-shop` claim days (56.5 median at both factors).
 
 **Mechanism — observed, not hypothesized:** paired `--trace` probes were run
@@ -530,9 +534,10 @@ touched — the shift is the unchanged authored ladder read by the unchanged
 progression bot under a perturbed cash trajectory.
 
 **Assessment for fresh review (accept/reject input):** hard gates all pass;
-the effect is confined to expansion *ordering* on 9 material + ~39 minor of
-200 runs, is bidirectional with both favorable (−105d) and adverse (+98d)
-named outliers, and no threshold/bot was retuned. The adverse cases are
+the effect is confined to expansion *ordering* on 9 >30-day reached shifts
++ 6 reach-status flips + 33 smaller shifts of 200 runs, is bidirectional
+with both favorable (−105d) and adverse (+98d) named outliers, and no
+threshold/bot was retuned. The adverse cases are
 fully explained by the bot choosing a $28k city opening before store-3 —
 the same discrete choice the margin perturbation can push either way.
 Whether this magnitude of bidirectional pacing shift is acceptable for the
@@ -587,12 +592,25 @@ reproduced `buckets-k10.json` byte-for-byte; and a single-seed sweep inside
 the §1.3 `5a13a1e8` snapshot reproduced all 9 of that seed's run rows from
 the recorded full artifact with 0 mismatches. Round 2 additionally ran the
 documented shell sequence end-to-end on one seed in a fresh ignored
-scratch dir (guarded switch → control artifacts → auto-revert → candidate
-artifacts → both legacy snapshots → all analyzers): `rail.ts` returned to
+scratch dir (`.superpowers/sdd/2026-10-31-rail-throughput-balance/recipe-check2/`):
+`rail.ts` returned to
 the committed literal with `git diff` clean, the k=1 outputs show the
 control factor (336 local units/seed), the k=10 outputs the candidate
 factor (3,360/seed), and a deliberately failed control window still
-auto-reverted cleanly.
+auto-reverted cleanly. **Correction to that round's earlier "all
+analyzers" claim:** in the recorded lite run the two `legacy-compare`
+invocations failed with `Module not found` — the A.4 helper had not been
+extracted into that scratch dir — and the `| tee` pipelines masked the
+nonzero exits, leaving both lite `.diff.txt` outputs empty; §1.4 now sets
+`errexit`/`pipefail` so analyzer failures propagate. Both omitted
+comparisons have since been executed against the lite artifacts with the
+A.4 helper extracted from this document (byte-identical to the recorded
+helper): `5a13a1e8` vs k=1 → 9/9 runs identical, 0 value mismatches — the
+lite rows are byte-identical to the recorded artifact's rows for that
+seed, so this is the recorded 450/450 result's one-seed slice; and
+`0ce5db7e` vs k=1 → 5/9 identical, 43 field mismatches confined to the
+seed's four managed runs — the same post-`0ce5db7e` review-fix deltas the
+full comparison records.
 ### A.1 `bucket-probe.ts` — the §§5.2–5.4 cost-bucket collector: runs the committed `advisor` convenience bot over `SWEEP_SEEDS` × 365 days and dumps per-seed cost buckets (payroll, gross revenue, retail/industrial import spend, production operating/overflow cost, opening days, cash/debt extrema, rail-shipment and post-rail delivery/imported water units). Usage: `bun <dir>/bucket-probe.ts <output.json> [seedsCsv]` — run once per factor inside/outside the §1.1 edit window. The optional `seedsCsv` argument exists only for lightweight single-seed checks; the recorded artifacts used the no-argument form (its output is unchanged by the addition).
 
 ```ts
