@@ -53,9 +53,10 @@ Both factors use the **same committed harness** (`tests/balance/`),
 unchanged HPA-502 bot code, and the same warehouse-cap code path; the only
 difference is the single committed literal `RAIL_UNITS_PER_LEVEL` in
 `src/lib/game/rail.ts` (line 8). The control window below is executable: a
-guard refuses to run over a dirty `rail.ts` or unexpected source, a
-subshell `EXIT` trap restores the committed literal on **any** failure or
-interruption, and a post-window check proves the tree is clean:
+guard refuses to run over a dirty `rail.ts` or unexpected source, the
+subshell restores the committed literal on **any** failure or
+interruption, and a post-window check proves the tree is clean and stops
+the recipe if the window exited nonzero:
 
 ```bash
 # no-preexisting-change guard: refuse if rail.ts is already dirty
@@ -73,19 +74,41 @@ set_factor() { # set_factor <1|10>: rewrite the one literal, then verify it
 (                                           # subshell: failures stay inside
 	set -e                                  # abort the window on first error
 	trap 'set_factor 10' EXIT               # auto-revert on ANY exit reason
+	# Bash 3.2 can skip the EXIT trap on untrapped-signal death and defers a
+	# trapped signal until a FOREGROUND child exits — so catch HUP/INT/TERM
+	# explicitly, TERM the in-flight job, and exit nonzero (invoking EXIT).
+	# Commands run as "& wait" so the trap fires DURING the wait, not after
+	# the child finishes. Verified under system bash 3.2.57: SIGINT/SIGTERM/
+	# SIGHUP to the subshell or its process group each revert in ~1s and
+	# propagate exit 130/143/129 respectively; a mid-window command failure
+	# propagates its own nonzero status the same way.
+	trap 'kill -TERM "$!" 2>/dev/null; exit 129' HUP
+	trap 'kill -TERM "$!" 2>/dev/null; exit 130' INT
+	trap 'kill -TERM "$!" 2>/dev/null; exit 143' TERM
 	set_factor 1
-	bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$EV/sweep-k1"
-	bun tests/balance/progressionRun.ts --seeds $SEEDS --days 365 --output "$EV/progression-k1"
-	bun "$STEP6/bucket-probe.ts" "$EV/buckets-k1.json"
+	bun tests/balance/run.ts --seeds $SEEDS --days 365 --bots idle,retail-steady,advisor --output "$EV/sweep-k1" &
+	wait "$!"
+	bun tests/balance/progressionRun.ts --seeds $SEEDS --days 365 --output "$EV/progression-k1" &
+	wait "$!"
+	bun "$STEP6/bucket-probe.ts" "$EV/buckets-k1.json" &
+	wait "$!"
 	# k=1 side of the §7 trace-probe set (one invocation per seed/archetype):
-	bun tests/balance/progressionRun.ts --seeds 20260539 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260539-convenience-k1.json"
-	bun tests/balance/progressionRun.ts --seeds 20260537 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260537-convenience-k1.json"
-	bun tests/balance/progressionRun.ts --seeds 20260508 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260508-convenience-k1.json"
-	bun tests/balance/progressionRun.ts --seeds 20260504 --days 365 --archetypes grocery --trace "$STEP6/trace-probes/20260504-grocery-k1.json"
+	bun tests/balance/progressionRun.ts --seeds 20260539 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260539-convenience-k1.json" &
+	wait "$!"
+	bun tests/balance/progressionRun.ts --seeds 20260537 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260537-convenience-k1.json" &
+	wait "$!"
+	bun tests/balance/progressionRun.ts --seeds 20260508 --days 365 --archetypes convenience --trace "$STEP6/trace-probes/20260508-convenience-k1.json" &
+	wait "$!"
+	bun tests/balance/progressionRun.ts --seeds 20260504 --days 365 --archetypes grocery --trace "$STEP6/trace-probes/20260504-grocery-k1.json" &
+	wait "$!"
 )
-# trap already restored the committed literal — prove it:
+k1_status=$?    # nonzero => window interrupted or a command failed
+# trap already restored the committed literal — prove it, then stop the
+# recipe so an aborted window can't spill into §1.2's candidate steps:
 grep -q 'RAIL_UNITS_PER_LEVEL = 10;' "$RAIL" && git diff --quiet -- "$RAIL" \
   || { echo "REVERT FAILED: $RAIL still modified"; exit 1; }
+[ "$k1_status" -eq 0 ] \
+  || { echo "ABORT: k=1 window exited $k1_status — fix and rerun the window"; exit "$k1_status"; }
 ```
 
 The recorded run used exactly this window (edit applied, three artifact
