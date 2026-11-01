@@ -106,6 +106,8 @@ export interface ProducerStallMetric {
  * chain built (producer + warehouse applied), rails applied, no zero-output
  * production day after the last applied rail, ≥1 local bottled-water delivery
  * after the last applied rail, and no repeated unapplied advisor recommendation.
+ * The imported-unit totals and local-supply ratios are HPA-679 diagnostic
+ * evidence only — they never enter `served`.
  */
 export interface AdvisorChainMetric {
 	producerBuilt: boolean;
@@ -120,6 +122,24 @@ export interface AdvisorChainMetric {
 	/** Bottled-water warehouse (local) units delivered to stores strictly after
 	 * the last applied rail; 0 when no rail applied. */
 	localDeliveryUnits: number;
+	/** `importedUnits` summed over every report day, store and product (all
+	 * cities) — the historical whole-run all-product retail-import denominator
+	 * (4,018,435 in the HPA-502 after-sweep). Import-only, never total supply. */
+	retailImportedUnitsAllProducts: number;
+	/** Bottled-water `importedUnits` over the whole run (all stores/cities). */
+	retailImportedUnitsBottledWater: number;
+	/** Bottled-water `importedUnits` strictly after lastRailDay — the matched
+	 * product-and-window import leg; 0 when no rail applied. */
+	postRailRetailImportedUnitsBottledWater: number;
+	/** Historical-comparable local-to-all-import ratio
+	 * (`localDeliveryUnits / retailImportedUnitsAllProducts`; the HPA-502
+	 * after-sweep reference is 0.42%); null when the import denominator is 0 —
+	 * never NaN or Infinity. */
+	localToAllImportRatio: number | null;
+	/** Matched bottled-water post-rail local fraction
+	 * (`localDeliveryUnits / (localDeliveryUnits + postRailRetailImportedUnitsBottledWater)`);
+	 * null when both legs are 0 — never NaN or Infinity. */
+	postRailBottledWaterLocalFraction: number | null;
 	/** Informational shape of the run's producer-stall window: buildout-shaped
 	 * windows (a build/rail action inside, production resumed and sustained to
 	 * end) are construction-sequencing pauses; every other shape stays a stall. */
@@ -416,20 +436,36 @@ function measureAdvisorChain(
 	// completed chain: count only bottled-water warehouse units on days
 	// strictly after the last applied rail. Other products — or anything
 	// delivered before the chain finished connecting — cannot satisfy the leg
-	// while bottled water itself stays imported.
+	// while bottled water itself stays imported. The same pass sums
+	// `importedUnits` for the HPA-679 evidence denominators: all products over
+	// the whole run (historical comparison), bottled water over the whole
+	// run, and bottled water in the same strictly-after-last-rail window as
+	// the local deliveries (the matched product-and-window comparison).
 	let localDeliveryUnits = 0;
-	if (lastRailDay !== null) {
-		for (const report of reports) {
-			if (report.day <= lastRailDay) continue;
-			for (const store of report.storeReports) {
-				for (const product of store.productReports) {
-					if (product.productId === 'bottled-water') {
-						localDeliveryUnits += product.warehouseUnits;
-					}
-				}
+	let retailImportedUnitsAllProducts = 0;
+	let retailImportedUnitsBottledWater = 0;
+	let postRailRetailImportedUnitsBottledWater = 0;
+	for (const report of reports) {
+		const postRail = lastRailDay !== null && report.day > lastRailDay;
+		for (const store of report.storeReports) {
+			for (const product of store.productReports) {
+				retailImportedUnitsAllProducts += product.importedUnits;
+				if (product.productId !== 'bottled-water') continue;
+				retailImportedUnitsBottledWater += product.importedUnits;
+				if (!postRail) continue;
+				localDeliveryUnits += product.warehouseUnits;
+				postRailRetailImportedUnitsBottledWater += product.importedUnits;
 			}
 		}
 	}
+	// Both ratios guard a zero denominator with null — never NaN or Infinity.
+	const localToAllImportRatio =
+		retailImportedUnitsAllProducts === 0
+			? null
+			: localDeliveryUnits / retailImportedUnitsAllProducts;
+	const matchedPostRailWaterSupply = localDeliveryUnits + postRailRetailImportedUnitsBottledWater;
+	const postRailBottledWaterLocalFraction =
+		matchedPostRailWaterSupply === 0 ? null : localDeliveryUnits / matchedPostRailWaterSupply;
 	const served =
 		producerBuilt &&
 		warehouseBuilt &&
@@ -447,6 +483,11 @@ function measureAdvisorChain(
 		zeroOutputDaysAfterLastRail,
 		postRailObservedDays,
 		localDeliveryUnits,
+		retailImportedUnitsAllProducts,
+		retailImportedUnitsBottledWater,
+		postRailRetailImportedUnitsBottledWater,
+		localToAllImportRatio,
+		postRailBottledWaterLocalFraction,
 		stallShape: stall === null ? null : classifyStallShape(reports, ledger, stall),
 		served
 	};
@@ -989,6 +1030,13 @@ function fmtPct(value: number | null): string {
 	return value === null ? '-' : `${(value * 100).toFixed(1)}%`;
 }
 
+/** Two-decimal percent for the imported-unit evidence lines: the historical
+ * 0.42% reference sits below the one-decimal grid, so these keep finer
+ * precision; null (zero denominator) still renders '-'. */
+function fmtPct2(value: number | null): string {
+	return value === null ? '-' : `${(value * 100).toFixed(2)}%`;
+}
+
 function fmtCash(value: number | null): string {
 	return value === null ? '-' : String(Math.round(value));
 }
@@ -1111,6 +1159,29 @@ export function renderSweepMarkdown(
 			? `- overall: ${verdict.allPassed ? 'PASS' : 'FAIL'} (${passedCount}/${verdict.items.length} items passed)`
 			: `- overall: diagnostic only (${verdict.coverage.detail}); ${passedCount}/${verdict.items.length} items passed — not an official Gate A verdict`
 	);
+	// HPA-679 imported-unit evidence, summed over the advisor runs so the
+	// aggregate stays comparable to the historical 16,800 / 4,018,435 = 0.42%
+	// figure. Every denominator is named and printed raw; a zero denominator
+	// renders '-' instead of NaN or Infinity.
+	const advisorRuns = report.runs.filter((run) => run.bot === 'advisor');
+	if (advisorRuns.length > 0) {
+		const sumChain = (pick: (chain: AdvisorChainMetric) => number): number =>
+			advisorRuns.reduce((total, run) => total + pick(run.advisorChain), 0);
+		const local = sumChain((chain) => chain.localDeliveryUnits);
+		const allImports = sumChain((chain) => chain.retailImportedUnitsAllProducts);
+		const waterImports = sumChain((chain) => chain.retailImportedUnitsBottledWater);
+		const postRailWaterImports = sumChain((chain) => chain.postRailRetailImportedUnitsBottledWater);
+		const matchedDenominator = local + postRailWaterImports;
+		const localToAllImportRatio = allImports === 0 ? null : local / allImports;
+		const postRailBottledWaterLocalFraction =
+			matchedDenominator === 0 ? null : local / matchedDenominator;
+		lines.push(
+			`- advisor imported-unit evidence (summed over ${advisorRuns.length} advisor run(s)): post-rail local bottled-water deliveries ${local}u; retail imported units ${allImports}u all-products whole-run, ${waterImports}u bottled-water whole-run, ${postRailWaterImports}u bottled-water post-rail`
+		);
+		lines.push(
+			`- advisor local-supply ratios: local-to-all-import ratio ${local}/${allImports} = ${fmtPct2(localToAllImportRatio)} (denominator: whole-run all-product retail imports — import-only, not total supply); matched post-rail bottled-water local fraction ${local}/(${local}+${postRailWaterImports}) = ${fmtPct2(postRailBottledWaterLocalFraction)}`
+		);
+	}
 	lines.push('');
 	lines.push('## Per-run results');
 	lines.push('');

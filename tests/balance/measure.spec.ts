@@ -231,6 +231,11 @@ function servedChain(overrides: Partial<AdvisorChainMetric> = {}): AdvisorChainM
 		zeroOutputDaysAfterLastRail: 0,
 		postRailObservedDays: 61,
 		localDeliveryUnits: 336,
+		retailImportedUnitsAllProducts: 1_000_000,
+		retailImportedUnitsBottledWater: 60_000,
+		postRailRetailImportedUnitsBottledWater: 1_000,
+		localToAllImportRatio: 336 / 1_000_000,
+		postRailBottledWaterLocalFraction: 336 / (336 + 1_000),
 		stallShape: null,
 		served: true,
 		...overrides
@@ -804,6 +809,11 @@ describe('advisor served-chain composite (HPA-502 Ruling 12)', () => {
 			zeroOutputDaysAfterLastRail: 0,
 			postRailObservedDays: 6,
 			localDeliveryUnits: 42,
+			retailImportedUnitsAllProducts: 0,
+			retailImportedUnitsBottledWater: 0,
+			postRailRetailImportedUnitsBottledWater: 0,
+			localToAllImportRatio: null,
+			postRailBottledWaterLocalFraction: 1,
 			stallShape: 'construction-sequencing pause',
 			served: true
 		});
@@ -979,6 +989,167 @@ describe('advisor served-chain composite (HPA-502 Ruling 12)', () => {
 		});
 		expect(markdown).toContain('construction-sequencing pause 12d (days 18-29)');
 		expect(markdown).toContain('producer stalled 10d (days 11-20)');
+	});
+});
+
+describe('advisor imported-unit evidence (HPA-679 Step 5)', () => {
+	// Two stores' product reports in one DailyReport stand in for multiple
+	// stores across world cities: storeReports already aggregates every store
+	// the simulation reports on, so summing it covers every city.
+	function importedReports(dayCount: number): DailyReport[] {
+		return Array.from({ length: dayCount }, (_, index) => {
+			const day = index + 1;
+			return fakeReport(day, {
+				storeReports: [
+					fakeStore({
+						storeId: 'harbor-store',
+						productReports: [
+							fakeProduct({ importedUnits: 4 }),
+							fakeProduct({ productId: 'snacks', importedUnits: 6 })
+						]
+					}),
+					fakeStore({
+						storeId: 'industry-store',
+						productReports: [fakeProduct({ importedUnits: 2, warehouseUnits: day > 29 ? 7 : 0 })]
+					})
+				]
+			});
+		});
+	}
+
+	it('sums importedUnits over every day, product and store; post-rail water matches the local-delivery window', () => {
+		const chain = measureRun(
+			{ reports: importedReports(35) },
+			advisorLedger([advisorAction(29, 'advisor:connect-rail')])
+		).advisorChain;
+		// Whole run: (4 + 6 + 2) × 35 = 420 all-product units; bottled water is
+		// (4 + 2) × 35 = 210 — snacks never enter the water totals.
+		expect(chain.retailImportedUnitsAllProducts).toBe(420);
+		expect(chain.retailImportedUnitsBottledWater).toBe(210);
+		// Days 30–35 are strictly after lastRailDay 29: 6 days × 6 water units.
+		expect(chain.postRailRetailImportedUnitsBottledWater).toBe(36);
+		expect(chain.localDeliveryUnits).toBe(42);
+		expect(chain.localToAllImportRatio).toBe(42 / 420);
+		expect(chain.postRailBottledWaterLocalFraction).toBe(42 / (42 + 36));
+		// Evidence fields never leak into the served composite: with no
+		// producer/warehouse applied the run still fails the old legs.
+		expect(chain.served).toBe(false);
+	});
+
+	it('excludes the boundary day itself (lastRailDay) from the matched post-rail water total', () => {
+		const reports = [28, 29, 30].map((day) =>
+			fakeReport(day, {
+				storeReports: [fakeStore({ productReports: [fakeProduct({ importedUnits: 10 })] })]
+			})
+		);
+		const chain = measureRun(
+			{ reports },
+			advisorLedger([advisorAction(29, 'advisor:connect-rail')])
+		).advisorChain;
+		expect(chain.retailImportedUnitsBottledWater).toBe(30);
+		// Only day 30 is strictly after the last applied rail — the boundary
+		// day stays pre-connection evidence, like the local-delivery leg.
+		expect(chain.postRailRetailImportedUnitsBottledWater).toBe(10);
+	});
+
+	it('reports a zero matched-window total and a null matched fraction when no rail was ever applied', () => {
+		const chain = measureRun(
+			{
+				reports: days(5, () => ({
+					storeReports: [fakeStore({ productReports: [fakeProduct({ importedUnits: 10 })] })]
+				}))
+			},
+			advisorLedger([advisorAction(1, 'advisor:build-producer')])
+		).advisorChain;
+		expect(chain.lastRailDay).toBeNull();
+		expect(chain.retailImportedUnitsAllProducts).toBe(50);
+		expect(chain.retailImportedUnitsBottledWater).toBe(50);
+		expect(chain.postRailRetailImportedUnitsBottledWater).toBe(0);
+		// Whole-run imports still give a finite historical-comparable ratio
+		// (0 local / 50 imports)…
+		expect(chain.localToAllImportRatio).toBe(0);
+		// …but the matched fraction has no post-rail window: 0/(0+0) is null,
+		// never NaN.
+		expect(chain.postRailBottledWaterLocalFraction).toBeNull();
+		expect(chain.served).toBe(false);
+	});
+
+	it('guards zero denominators without NaN or Infinity', () => {
+		// No store reports at all: every import denominator is empty.
+		const nothing = measureRun(
+			{ reports: days(5) },
+			advisorLedger([advisorAction(2, 'advisor:connect-rail')])
+		).advisorChain;
+		expect(nothing.retailImportedUnitsAllProducts).toBe(0);
+		expect(nothing.retailImportedUnitsBottledWater).toBe(0);
+		expect(nothing.postRailRetailImportedUnitsBottledWater).toBe(0);
+		expect(nothing.localToAllImportRatio).toBeNull();
+		expect(nothing.postRailBottledWaterLocalFraction).toBeNull();
+
+		// Local deliveries with zero recorded imports: the matched fraction
+		// reaches its 100% ceiling while the all-import ratio stays null.
+		const localOnly = measureRun(
+			{
+				reports: days(5, (day) => ({
+					storeReports:
+						day > 2
+							? [
+									fakeStore({
+										productReports: [fakeProduct({ importedUnits: 0, warehouseUnits: 7 })]
+									})
+								]
+							: []
+				}))
+			},
+			advisorLedger([advisorAction(2, 'advisor:connect-rail')])
+		).advisorChain;
+		expect(localOnly.localDeliveryUnits).toBe(21);
+		expect(localOnly.postRailRetailImportedUnitsBottledWater).toBe(0);
+		expect(localOnly.postRailBottledWaterLocalFraction).toBe(1);
+		expect(localOnly.localToAllImportRatio).toBeNull();
+	});
+
+	it('renders both ratios with their explicit denominators in the sweep markdown', () => {
+		const measured = measureRun(
+			{ reports: importedReports(35) },
+			advisorLedger([advisorAction(29, 'advisor:connect-rail')])
+		);
+		const markdown = renderSweepMarkdown({
+			config: { seeds: [SEED], days: 35 },
+			runs: [measured]
+		});
+		expect(markdown).toContain('advisor imported-unit evidence');
+		expect(markdown).toContain('post-rail local bottled-water deliveries 42u');
+		expect(markdown).toContain('420u all-products');
+		expect(markdown).toContain('210u bottled-water whole-run');
+		expect(markdown).toContain('36u bottled-water post-rail');
+		expect(markdown).toContain('local-to-all-import ratio 42/420 = 10.00%');
+		expect(markdown).toContain(
+			'matched post-rail bottled-water local fraction 42/(42+36) = 53.85%'
+		);
+	});
+
+	it('renders a guarded dash — never NaN or Infinity — for empty denominators', () => {
+		const measured = measureRun(
+			{ reports: days(5) },
+			advisorLedger([advisorAction(2, 'advisor:connect-rail')])
+		);
+		const markdown = renderSweepMarkdown({
+			config: { seeds: [SEED], days: 5 },
+			runs: [measured]
+		});
+		expect(markdown).toContain('local-to-all-import ratio 0/0 = -');
+		expect(markdown).toContain('matched post-rail bottled-water local fraction 0/(0+0) = -');
+		expect(markdown).not.toMatch(/NaN|Infinity/);
+	});
+
+	it('omits the evidence block when a sweep has no advisor runs', () => {
+		const measured = measureRun({ reports: days(3) }, fakeLedger());
+		const markdown = renderSweepMarkdown({
+			config: { seeds: [SEED], days: 3 },
+			runs: [measured]
+		});
+		expect(markdown).not.toContain('advisor imported-unit evidence');
 	});
 });
 
