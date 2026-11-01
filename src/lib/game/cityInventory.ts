@@ -261,7 +261,7 @@ export function getCityInventoryStats(game: GameState, cityId: string): CityInve
 	};
 }
 
-function getCityWarehouseCapacity(game: GameState, cityId: WorldCityId): number {
+export function getCityWarehouseCapacity(game: GameState, cityId: WorldCityId): number {
 	return game.industrialBuildings.reduce((capacity, building) => {
 		if (
 			building.cityId !== cityId ||

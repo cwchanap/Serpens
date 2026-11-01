@@ -293,6 +293,64 @@ describe('rail shipping edge cases', () => {
 		expect(state.shipments).toHaveLength(0);
 	});
 
+	it('isolates the warehouse space cap per city when producers share the tick', () => {
+		expect.assertions(4);
+		const starter = createNewGame('convenience', 20260804);
+		const opened = openWorldCity(
+			{
+				...starter,
+				cash: 100_000,
+				world: {
+					...starter.world,
+					revealedCityIds: [...starter.world.revealedCityIds, 'breadbasket-basin']
+				}
+			},
+			'breadbasket-basin'
+		);
+		const cityA = 'industry-city';
+		const cityB = 'breadbasket-basin';
+		const rails = straightRails(4, 2, 11, 3);
+		const farmA = makeBuilding('a-farm', 'grain-farm', 2, 2, { grain: 30 }, cityA);
+		const farmB = makeBuilding('b-farm', 'grain-farm', 2, 2, { grain: 30 }, cityB);
+		const state = createCityRailTickState({
+			...opened,
+			industryCities: opened.industryCities.map((city) => ({ ...city, rails })),
+			industrialBuildings: [
+				farmA,
+				makeBuilding('a-warehouse', 'warehouse', 10, 2, {}, cityA),
+				farmB,
+				makeBuilding('b-warehouse', 'warehouse', 10, 2, {}, cityB)
+			],
+			cityInventories: opened.cityInventories.map((inventory) =>
+				inventory.cityId === cityA
+					? { ...inventory, materials: { water: 200 } }
+					: inventory.cityId === cityB
+						? { ...inventory, materials: { grain: 3 } }
+						: inventory
+			)
+		});
+
+		pushSurplusViaRail(state, farmA);
+		pushSurplusViaRail(state, farmB);
+
+		// City A's pool is exactly full (200 water) → farm A ships nothing.
+		expect(state.cityInventoriesByCityId.get(cityA)?.materials).toEqual({ water: 200 });
+		expect(state.inventories.get(farmA.id)?.grain).toBe(30);
+		// City B has its own capacity and used count → farm B ships normally.
+		expect(state.cityInventoriesByCityId.get(cityB)?.materials).toEqual({ grain: 33 });
+		expect(state.shipments).toEqual([
+			{
+				cityId: cityB,
+				materialId: 'grain',
+				quantity: 30,
+				value: 30,
+				kind: 'push-warehouse',
+				fromId: 'b-farm',
+				toId: 'b-warehouse'
+			}
+		]);
+	});
+
 	it('exits the push loop normally after fully draining an output', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 1 });
 		const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
