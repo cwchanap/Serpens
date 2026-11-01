@@ -1,13 +1,19 @@
 import { describe, expect, test } from 'vitest';
-import { INDUSTRIAL_BUILDING_TYPES, getIndustryTilesByResource } from './industry';
+import {
+	INDUSTRIAL_BUILDING_TYPES,
+	PRODUCTION_RECIPES,
+	getIndustryTilesByResource
+} from './industry';
 import { buildIndustrialBuilding } from './industryPlacement';
 import { quantizeAtomicRecipeRatio, simulateIndustryProduction } from './industryProduction';
 import {
+	WAREHOUSE_OVERFLOW_COST_PER_UNIT,
 	addCityInventoryMaterial,
 	getCityInventoryStats,
 	getCityInventoryUsed,
 	removeCityInventoryMaterial
 } from './cityInventory';
+import { getRailCellDailyCapacity } from './rail';
 import {
 	DEFAULT_SIMULATION_RULES,
 	type SimulationRuleSource,
@@ -264,7 +270,9 @@ describe('industry production simulation', () => {
 				city.id === cityA ? { ...city, rails } : city
 			),
 			industrialBuildings: [
-				building('city-a-pump', 'water-pump', cityA, 2),
+				// Prefilled so the level-10 line's daily capacity, not the pump's
+				// 40-unit output, bounds the push.
+				{ ...building('city-a-pump', 'water-pump', cityA, 2), inventory: { water: 80 } },
 				building('city-a-warehouse', 'warehouse', cityA, 10),
 				building('city-b-warehouse', 'warehouse', cityB, 10)
 			],
@@ -275,7 +283,7 @@ describe('industry production simulation', () => {
 
 		expect(
 			result.game.cityInventories.find((inventory) => inventory.cityId === cityA)?.materials.water
-		).toBe(10);
+		).toBe(getRailCellDailyCapacity(10));
 		expect(
 			result.game.cityInventories.find((inventory) => inventory.cityId === cityB)?.materials.water
 		).toBe(3);
@@ -284,15 +292,15 @@ describe('industry production simulation', () => {
 			fromId: 'city-a-pump',
 			kind: 'push-warehouse',
 			materialId: 'water',
-			quantity: 10,
+			quantity: getRailCellDailyCapacity(10),
 			toId: 'city-a-warehouse',
-			value: 10
+			value: getRailCellDailyCapacity(10)
 		});
 		expect(result.game.cityInventories).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
 					cityId: cityA,
-					materials: { water: 10 }
+					materials: { water: getRailCellDailyCapacity(10) }
 				}),
 				expect.objectContaining({
 					cityId: cityB,
@@ -304,7 +312,7 @@ describe('industry production simulation', () => {
 			{
 				cityId: cityA,
 				capacity: 200,
-				used: 10,
+				used: getRailCellDailyCapacity(10),
 				overflowUnits: 0,
 				overflowCost: 0
 			},
@@ -361,7 +369,9 @@ describe('industry production simulation', () => {
 				city.id === cityA ? { ...city, rails } : city
 			),
 			industrialBuildings: [
-				building('city-a-pump', 'water-pump', cityA, 2),
+				// Prefilled so the level-10 line's daily capacity, not the pump's
+				// 40-unit output, bounds the push.
+				{ ...building('city-a-pump', 'water-pump', cityA, 2), inventory: { water: 80 } },
 				building('city-a-warehouse', 'warehouse', cityA, 10),
 				building('city-b-warehouse', 'warehouse', cityB, 10)
 			],
@@ -376,7 +386,7 @@ describe('industry production simulation', () => {
 		const withinCapacity = simulateIndustryProduction({
 			...baseGame,
 			cityInventories: baseGame.cityInventories.map((inventory) =>
-				inventory.cityId === cityA ? { ...inventory, materials: { water: 190 } } : inventory
+				inventory.cityId === cityA ? { ...inventory, materials: { water: 100 } } : inventory
 			)
 		});
 		const overflowing = simulateIndustryProduction(baseGame);
@@ -385,9 +395,9 @@ describe('industry production simulation', () => {
 			{
 				cityId: cityA,
 				capacity: 200,
-				used: 210,
-				overflowUnits: 10,
-				overflowCost: 20
+				used: 200 + getRailCellDailyCapacity(10),
+				overflowUnits: getRailCellDailyCapacity(10),
+				overflowCost: getRailCellDailyCapacity(10) * WAREHOUSE_OVERFLOW_COST_PER_UNIT
 			},
 			{
 				cityId: cityB,
@@ -397,9 +407,13 @@ describe('industry production simulation', () => {
 				overflowCost: 0
 			}
 		]);
-		expect(overflowing.report.overflowUnits).toBe(10);
-		expect(overflowing.report.overflowCost).toBe(20);
-		expect(overflowing.game.cash).toBe(withinCapacity.game.cash - 20);
+		expect(overflowing.report.overflowUnits).toBe(getRailCellDailyCapacity(10));
+		expect(overflowing.report.overflowCost).toBe(
+			getRailCellDailyCapacity(10) * WAREHOUSE_OVERFLOW_COST_PER_UNIT
+		);
+		expect(overflowing.game.cash).toBe(
+			withinCapacity.game.cash - getRailCellDailyCapacity(10) * WAREHOUSE_OVERFLOW_COST_PER_UNIT
+		);
 	});
 
 	test('raw producers buffer materials locally when they have no rail connection', () => {
@@ -722,8 +736,8 @@ function makeProductionGame(city: IndustryCity, buildings: IndustrialBuilding[])
 }
 
 // farm (2,2) footprint (2..3, 2..3); mill (10,2) footprint (10..11, 2..3) —
-// same layout as railShipping.spec.ts so the rail-pull bottlenecks (1/day at
-// level 1, 3/day at level 3) are already-proven behavior.
+// same layout as railShipping.spec.ts so the rail-pull bottlenecks (the
+// level-scaled per-cell daily capacity) are already-proven behavior.
 const baseGame = makeProductionGame(makeIndustryCity([]), [
 	makeIndustryBuilding('farm', 'grain-farm', 2, 2),
 	makeIndustryBuilding('mill', 'flour-mill', 20, 20)
@@ -914,12 +928,12 @@ describe('rail-fed production', () => {
 				.grain ?? 0
 		).toBeGreaterThan(0);
 		// Guard the push-resurrect invariant: the re-read at the end of
-		// simulateIndustryProduction must reflect the push phase draining 1
-		// unit via the level-1 rail. If the re-read regressed to
+		// simulateIndustryProduction must reflect the push phase draining a
+		// level-1 line's daily capacity via rail. If the re-read regressed to
 		// buildingUpdates (post-production, pre-push), the farm would show
-		// 30 — double-counting the pushed unit in both the farm buffer and
+		// 30 — double-counting the pushed units in both the farm buffer and
 		// the warehouse pool.
-		expect(farm.inventory.grain ?? 0).toBe(29);
+		expect(farm.inventory.grain ?? 0).toBe(30 - getRailCellDailyCapacity(1));
 	});
 
 	test('rail-connected mill pulls inputs from the warehouse pool and records the pull', () => {
@@ -934,7 +948,8 @@ describe('rail-fed production', () => {
 			true
 		);
 		expect(report.warehousePulls.some((m) => m.materialId === 'grain')).toBe(true);
-		// The pool was drained by the pulled quantity (level-1 line → 1 unit).
+		// The pool was drained by the pulled quantity (the mill's 10-grain
+		// recipe need, within the level-1 line's daily capacity).
 		expect(
 			game.cityInventories.find((inventory) => inventory.cityId === 'industry-city')?.materials
 				.grain ?? 0
@@ -1013,7 +1028,7 @@ describe('rail-fed production', () => {
 					fromId: 'mill',
 					toId: 'warehouse',
 					materialId: 'flour',
-					quantity: 7
+					quantity: 8
 				}
 			]);
 		} finally {
@@ -1028,18 +1043,22 @@ describe('rail-fed production', () => {
 	test('railUsage records per-cell units for the segment inspector', () => {
 		const { report } = simulateIndustryProduction(railGame);
 
-		// Level-3 line y=4 x=2..11 between farm (2,2) and mill (10,2). Pull
-		// ships 3 grain/day along the attach-connected path; assert the full
-		// deterministic usage map for this fixture.
+		// Level-3 line y=4 x=2..11 between farm (2,2) and mill (10,2). The pull
+		// ships the mill's full daily grain recipe need along the
+		// attach-connected path; assert the full deterministic usage map for
+		// this fixture.
+		const grainNeed = PRODUCTION_RECIPES['flour-milling'].inputs.find(
+			(input) => input.materialId === 'grain'
+		)!.quantity;
 		expect(report.railUsage).toEqual({
-			'industry-city:3,4': 3,
-			'industry-city:4,4': 3,
-			'industry-city:5,4': 3,
-			'industry-city:6,4': 3,
-			'industry-city:7,4': 3,
-			'industry-city:8,4': 3,
-			'industry-city:9,4': 3,
-			'industry-city:10,4': 3
+			'industry-city:3,4': grainNeed,
+			'industry-city:4,4': grainNeed,
+			'industry-city:5,4': grainNeed,
+			'industry-city:6,4': grainNeed,
+			'industry-city:7,4': grainNeed,
+			'industry-city:8,4': grainNeed,
+			'industry-city:9,4': grainNeed,
+			'industry-city:10,4': grainNeed
 		});
 	});
 

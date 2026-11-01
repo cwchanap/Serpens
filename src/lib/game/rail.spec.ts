@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+	RAIL_MAX_LEVEL,
+	RAIL_UNITS_PER_LEVEL,
 	buildRailNetwork,
 	consumeRailBudget,
 	createRailBudget,
@@ -7,6 +9,7 @@ import {
 	findShippingPath,
 	getBuildingAttachCellKeys,
 	getPathCapacity,
+	getRailCellDailyCapacity,
 	getRailNeighborKeys,
 	getSegmentsForCell,
 	isJunctionKey,
@@ -210,8 +213,24 @@ describe('rail segments', () => {
 	});
 });
 
+describe('rail cell daily capacity', () => {
+	it('pins the shared units-per-level factor', () => {
+		expect(RAIL_UNITS_PER_LEVEL).toBe(10);
+	});
+
+	it('scales linearly with level, including out-of-range fixture levels', () => {
+		expect(getRailCellDailyCapacity(0)).toBe(0);
+		expect(getRailCellDailyCapacity(1)).toBe(RAIL_UNITS_PER_LEVEL);
+		expect(getRailCellDailyCapacity(2)).toBe(2 * RAIL_UNITS_PER_LEVEL);
+		expect(getRailCellDailyCapacity(RAIL_MAX_LEVEL)).toBe(RAIL_MAX_LEVEL * RAIL_UNITS_PER_LEVEL);
+		// Fixtures may use levels outside 1..RAIL_MAX_LEVEL; the helper stays a
+		// pure product rather than clamping, so fixture arithmetic is preserved.
+		expect(getRailCellDailyCapacity(10)).toBe(10 * RAIL_UNITS_PER_LEVEL);
+	});
+});
+
 describe('rail budgets and shipping paths', () => {
-	it('budget equals cell level', () => {
+	it('budget equals the cell daily capacity', () => {
 		const network = buildRailNetwork(
 			makeCity([
 				{ x: 1, y: 1, level: 1 },
@@ -219,8 +238,8 @@ describe('rail budgets and shipping paths', () => {
 			])
 		);
 		const budget = createRailBudget(network);
-		expect(budget.remaining.get('1,1')).toBe(1);
-		expect(budget.remaining.get('2,1')).toBe(3);
+		expect(budget.remaining.get('1,1')).toBe(getRailCellDailyCapacity(1));
+		expect(budget.remaining.get('2,1')).toBe(getRailCellDailyCapacity(3));
 	});
 
 	it('finds the shortest budget-positive path', () => {
@@ -236,14 +255,14 @@ describe('rail budgets and shipping paths', () => {
 		);
 		const budget = createRailBudget(network);
 		const path = findShippingPath(network, budget, ['2,5'], ['9,5'])!;
-		expect(getPathCapacity(budget, path)).toBe(1);
+		expect(getPathCapacity(budget, path)).toBe(getRailCellDailyCapacity(1));
 	});
 
 	it('consuming budget exhausts cells and blocks reuse', () => {
 		const network = buildRailNetwork(makeCity(straightRails(5, 2, 9)));
 		const budget = createRailBudget(network);
 		const path = findShippingPath(network, budget, ['2,5'], ['9,5'])!;
-		consumeRailBudget(budget, path, 1);
+		consumeRailBudget(budget, path, getRailCellDailyCapacity(1));
 		expect(budget.remaining.get('5,5')).toBe(0);
 		expect(findShippingPath(network, budget, ['2,5'], ['9,5'])).toBeNull();
 	});
@@ -262,7 +281,7 @@ describe('rail budgets and shipping paths', () => {
 		const budget = createRailBudget(network);
 		const direct = findShippingPath(network, budget, ['2,6'], ['9,6'])!;
 		expect(direct.some((key) => key === '5,5')).toBe(true); // N-first BFS takes the trunk
-		consumeRailBudget(budget, direct, 1);
+		consumeRailBudget(budget, direct, getRailCellDailyCapacity(1));
 		const detour = findShippingPath(network, budget, ['2,6'], ['9,6']);
 		expect(detour).not.toBeNull();
 		expect(detour!.some((key) => key === '5,7')).toBe(true);
