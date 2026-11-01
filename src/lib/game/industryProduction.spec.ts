@@ -975,7 +975,10 @@ describe('rail-fed production', () => {
 
 		try {
 			const game: GameState = {
-				...makeProductionGame(makeIndustryCity(straightRails(4, 2, 19, 10)), [
+				// Level-1 line so the earlier warehouse pull (3 units on the shared
+				// 11,4..18,4 cells) clips the mill's flour push to the remaining
+				// daily capacity — the shared pull/push budget-contention guard.
+				...makeProductionGame(makeIndustryCity(straightRails(4, 2, 19, 1)), [
 					makeIndustryBuilding('source', fakeTypeId, 2, 2, { grain: 3 }),
 					makeIndustryBuilding('mill', 'flour-mill', 10, 2, { grain: 2 }),
 					makeIndustryBuilding('warehouse', 'warehouse', 18, 2)
@@ -1028,7 +1031,9 @@ describe('rail-fed production', () => {
 					fromId: 'mill',
 					toId: 'warehouse',
 					materialId: 'flour',
-					quantity: 8
+					// Shared budget: the pull-warehouse above consumed 3 units on
+					// the same cells, so only the remaining capacity ships.
+					quantity: getRailCellDailyCapacity(1) - 3
 				}
 			]);
 		} finally {
