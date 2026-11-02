@@ -1596,12 +1596,37 @@ describe('launch scenario calibration contracts', { timeout: 30_000 }, () => {
 			if (scenarioId === 'local-lifeline') {
 				// HPA-679: at 10 units per rail level the authored level-5
 				// corridors no longer throttle the 10/day bottler, so the
-				// reference completes on day 8 (was 15) with every score
-				// component at full bonus — 1,000 instead of 877.
+				// reference completes on day 8 (was 15). The bands were
+				// retuned to keep discriminating — share runs to a fully-local
+				// 1.0 and days to the day-8 pace's 13 remaining — and the
+				// reference still maxes all three at 1,000.
 				expect(run.result?.score).toBe(1000);
 			}
 		}
 	);
+
+	it('local-lifeline slower trace completes on day 15 below Gold — retuned bands still discriminate', () => {
+		// Building the bottler on day 5 misses the day-8 restock window, so the
+		// run completes on day 15 (the only other attainable finish): the
+		// retuned days band pays 69 of 150 and the run lands Silver, not Gold.
+		const run = replayScheduledCalibration('local-lifeline', [
+			{
+				day: 5,
+				command: {
+					kind: 'buildIndustrialBuilding',
+					tileId: 'industry-city-26-8',
+					buildingTypeId: 'water-bottler'
+				}
+			}
+		]);
+		expect(run.status).toBe('completed');
+		expect(run.result).toMatchObject({
+			outcome: 'completed',
+			completionDay: 15,
+			score: 802,
+			medal: 'silver'
+		});
+	});
 
 	it('debt-turnaround no-action trace fails at the day-28 deadline below Silver', () => {
 		const run = replayScheduledCalibration('debt-turnaround', []);
