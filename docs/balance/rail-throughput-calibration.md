@@ -3,8 +3,10 @@
 **Status: measured.** This report captures the multi-seed economy, cost and
 progression calibration for the rail-throughput rebalance
 (`RAIL_UNITS_PER_LEVEL = 10`, the free-warehouse-space rail surplus-push cap,
-the final→process→raw push-phase order, and the Step 4 scenario re-pins),
-measured on HEAD `d28cb32d` of
+the final→process→raw push-phase order, the Step-5 review fixes — unified
+nearest-source rail pulls plus a finished-goods reserve at the push cap,
+supply-planner warehouse-sink gating — and the Step 4 scenario
+re-pins/retune), measured on HEAD `72af8149` of
 `docs/hpa-679-rail-throughput-balance`. It is the comparison partner for
 `baseline.md` and `after.md` (both untouched, measured-only HPA-502 records).
 
@@ -22,9 +24,11 @@ measured on HEAD `d28cb32d` of
   expansion-timing side effects (earlier store-3 openings) dominate end-cash
   deltas exactly as the review warned — see §5.
 - **Progression: hard pass** — zero idle claims, zero earned-unclaimed at both
-  factors; bidirectional pacing shifts spanning −105…+98 days on nine
-  material runs fully disclosed with trace-probe mechanism evidence in §7
-  for review accept/reject.
+  factors; the Step-5 fix additionally *unblocks* the boutique gifts chain
+  (local units 2→46 at k=1 / 12→482 at k=10 on the representative run),
+  so 40→44 boutique runs now reach tiers 4–5 — the intended volume effect,
+  fully disclosed with per-run evidence in §7 alongside the unchanged
+  bidirectional pacing population (−105…+98 days on nine named runs).
 ## 1. Runs, exact commands, determinism — full reproduction recipe
 
 Every fenced block in this section is executable as written from a clean
@@ -114,7 +118,7 @@ grep -q 'RAIL_UNITS_PER_LEVEL = 10;' "$RAIL" && git diff --quiet -- "$RAIL" \
 
 The recorded run used exactly this window (edit applied, three artifact
 generators + the k=1 trace probes, inverse edit verified); `git diff` was
-empty and HEAD `d28cb32d` throughout — the tracked tree contains no control
+empty and HEAD `72af8149` throughout — the tracked tree contains no control
 hack. Output-side discriminator: k=1 artifacts show
 `advisorChain.localDeliveryUnits` = 336/seed (3,360 at k=10).
 
@@ -229,8 +233,8 @@ byte-identical. Artifact SHA-256:
 
 | artifact | SHA-256 |
 | --- | --- |
-| k=1 sweep JSON | `1e5db455efb75eb8a818f9c3e2ed57c064775a00470f89ee14682d7e24c804ca` |
-| k=10 sweep JSON (both runs) | `4316864215fa3a071515deebf7d8acd5d48cca3065e96a4c620ac0eb50f36f6c` |
+| k=1 sweep JSON | `9417a9f399647861b2c7235e5c088c8e9e474b25423c5e51c2a18edb243d49ff` |
+| k=10 sweep JSON (both runs) | `b22d627b63b62b7eb029fb0e324bc739d4cd7a68a74ab298b45965db8a4cd776` |
 | regenerated HPA-502 after-sweep @ `0ce5db7e` | `c1b627bca4cbc5dff359ae7f599aa6e1107556cd269bc130a4aebc8761c1b426` |
 | regenerated sweep @ `5a13a1e8` (HPA-502 tip) | `3cf0fbdf10fe235df27a5659c0a1779eaee738dc67e06bd4e5bdec951296e11e` |
 
@@ -267,7 +271,7 @@ Two schema-era comparisons were then computed field-by-field:
 
 | comparison | result |
 | --- | --- |
-| new-schema k=1 control vs `5a13a1e8`-era sweep (legacy projection: drop the five Step-5 `advisorChain` fields) | **450/450 runs identical, 0 value mismatches** |
+| new-schema k=1 control vs `5a13a1e8`-era sweep (legacy projection: drop the three Step-5 `advisorChain` raw-count fields — the two derived ratios they used to carry are no longer persisted; the markdown renderer recomputes them from raw counts) | **450/450 runs identical, 0 value mismatches** |
 | new-schema k=1 control vs documented `0ce5db7e` artifact (additionally projects `operatingIncomeByDay`, `postRailObservedDays`, and the pre-`5a13a1e8` `localDeliveryUnits` definition) | 315/450 identical; **135 managed runs differ** — all HPA-502 *post-docs review fixes* landed between `0ce5db7e` and `5a13a1e8` (`e4a928f8` capped-availability yield, `cf79f5c0` staffing/forecast, `1c5244e9`, etc.). Deltas are small (e.g. cumulative import spend +38 on ~101k, cash ±100–300, missedDemandShare ~±0.0002); **no gate item flips**. |
 
 **Disclosed consequence:** the current-HEAD k=1 control reproduces the
@@ -296,7 +300,7 @@ confined to the 50 convenience/advisor runs.
 | 3 | managed-vs-idle (days 61–90 operating income) | PASS — 200/200 pairs (50/50 each archetype) | **identical** | no |
 | 4 | forecast ±25% of realized | PASS — 712/712/716 eligible (excl. 4 incomplete, 200 idle) | PASS — **714/714/717** eligible (excl. 3 incomplete, 200 idle) | yes — advisor openings only; detail below |
 | 5 | advisor served-chain composite | PASS — 50/50; 50 construction-sequencing pauses days 18–29; 0 repeated unapplied | PASS — **identical shape** (50/50; same pause windows; 0 unapplied) | yes — see §5 |
-| 6 | scenario guardrails | measured by scenario suite | **79/79 spec tests** — all 14 reference/no-action intents | yes — see §6 |
+| 6 | scenario guardrails | measured by scenario suite | **80/80 spec tests** — all 14 reference/no-action intents + the local-lifeline slower-trace discrimination pin | yes — see §6 |
 
 Gate-A item-level notes:
 
@@ -417,13 +421,22 @@ here exactly as the review required:
 
 ## 6. Scenario guardrails (14 intents) and affected E2E
 
-`bun run test:unit -- src/lib/scenarios/runtime.spec.ts --run` → **79/79
+`bun run test:unit -- src/lib/scenarios/runtime.spec.ts --run` → **80/80
 pass** on the committed tree: all seven scenarios' reference traces stay
 gold, all seven no-action traces stay below silver, and both no-action
 failures fire on the authored `dayLimit` with `negative-cash` inactive (no
-early runaway-overflow failure). The two Step-4 re-pins are load-bearing and
-verified again here: local-lifeline reference completes day 8, score 1,000,
-gold; two-city no-action fails at the day-21 deadline with **$0 overflow and
+early runaway-overflow failure). The two Step-4 pins are load-bearing and
+verified again here — but local-lifeline is now a **retune, not just a
+re-pin**: completions occur only at day 8 (fast build) or day 15 (any
+slower build) under the weekly restock cadence, so the old bands gave the
+slow pace identical component scores. Retuned bands — local-share zero at
+0.5/full at 1.0 (200 pts), imported bottled-water units zero at 80/full at
+0 (150 pts), remaining-days zero at 0/full at 13 (150 pts), medals silver
+750 / gold 900 — restore discrimination on the measured gradient: the
+reference completes day 8, score 1,000, gold; a day-5 bottler build (new
+regression pin) completes day 15, score 802, silver; a leaky day-8 variant
+lands ~900 gold; no-action still fails day 21 with the 500 base. Two-city
+no-action fails at the day-21 deadline with **$0 overflow and
 0 pushes** (the seeded-full warehouse blocks every push under the cap — vs
 the k=1-era $2,100 trickle). Unrelated scenarios are unchanged.
 
@@ -436,14 +449,17 @@ journey; sandbox production-and-refill; rail-fed pull-producer journey with
 
 50 seeds × 4 archetypes × {progression, idle} = 400 runs per factor.
 
-The final→process→raw push-phase order was added after the first recorded
-matrix and both factors were re-measured under it: sweep advisor runs, cost
-buckets and all eight §7 trace probes are byte-identical to the earlier
-record, while the progression artifacts differ only in boutique scalar fields
-(`finalCash`, `finalLocalUnits`, `finalBookValue`, `peakBookValue`,
-`totalBorrowed`, `totalRepaid` — 46/50 boutique runs at each factor). Claim
-sets, claim days, reach-status flips and every named outlier below are
-unchanged; only the credit summary moved.
+Two re-measurements separate this record from the first matrix. The
+final→process→raw push-phase order (`ce9f34b4`) was byte-neutral on the
+sweep, buckets and trace probes and moved only boutique scalar fields. The
+Step-5 review fix on this HEAD (`75ffaff6` — unified nearest-source input
+pulls plus a finished-goods reserve at the warehouse push cap) is again
+byte-neutral on every sweep/bucket/trace field modulo the two dropped
+schema fields — **but it materially changes progression**: under the prior
+cap, raw/process surplus could saturate the shared warehouse pool and
+starve finished-goods pushes entirely; the reserve restores headroom, so
+the boutique gifts chain now delivers real local units and its runs reach
+tiers they never could before. Both deltas are disclosed in full below.
 
 **Hard gates (both factors):**
 - idle: **200/200 zero-claim runs, 0 earned-unclaimed** (the control's real
@@ -460,100 +476,108 @@ distinctly):**
 | --- | --- | --- | --- | --- | --- |
 | local-shop | 184/200 → 184/200 | 30 → 30 | 56.5 → 56.5 | 240 → 238.7 | 360 → 358 |
 | neighborhood-chain | 161/200 → **163/200** | 43 → 43 | 50 → 52 | 295 → 267 | 358 → 358 |
-| regional-supplier | 61/200 → **63/200** | 85 → 85 | 204 → 204 | 330 → 328.6 | 358 → 358 |
-| multi-city-operator | 0/200 → 0/200 (never claimed) | — | — | — | — |
-| market-leader | 0/200 → 0/200 (never claimed) | — | — | — | — |
+| regional-supplier | **101/200 → 107/200** | 113 → 120 | 323 → 197 | 344 → 323 | 358 → 358 |
+| multi-city-operator | **40/200 → 44/200** | 330 → 197 | 330 → 197 | 344.7 → 225 | 358 → 288 |
+| market-leader | **40/200 → 44/200** | 330 → 197 | 330 → 197 | 344.7 → 225 | 358 → 288 |
 
 Never-claimed by archetype: local-shop convenience 16 (unchanged);
 neighborhood-chain convenience 35→33, grocery 4→4; regional-supplier
-convenience 35→33, boutique 50→50, electronics 50→50, grocery 4→4; tiers 4–5
-never claimed by any run at either factor (365-day ceiling, unchanged).
+convenience 35→33, electronics 50→50, grocery 4→4, **boutique 10→6**;
+tiers 4–5 convenience 50→50, electronics 50→50, grocery 50→50,
+**boutique 10→6** — boutique runs are now the only runs that ever reach
+tiers 4–5 (they were never claimed by any run under the prior shipping
+code at either factor).
 
-**Disclosed pacing shift (for reviewer accept/reject):** 48/200 runs have
-claim-day differences. **The paired reached-tier delta range is −105 to
-+98 days**, not a uniformly small jitter — and it is bidirectional:
+**Disclosed pacing shift (for reviewer accept/reject):** 92/200 runs have
+claim-day differences — two distinct populations:
 
-- **Nine runs shift a reached tier by more than 30 days.** Every one is the
-  neighborhood-chain + regional-supplier pair moving together (claims form
-  a contiguous prefix, so the pair always shares a claim day):
-  convenience 20260539 (323→218, −105), 20260519 (323→225, −98),
-  20260544 (295→197, −98), 20260547 (204→149, −55), 20260517 (204→170, −34)
-  on the favorable side; convenience 20260537 (232→330, **+98**),
-  20260508 (232→323, **+91**) and grocery 20260504, 20260509 (both
-  85→120, **+35**) on the adverse side.
-- **Reach-status changes (reached ↔ unreached):** four runs gain the pair —
-  grocery 20260501@232, convenience 20260502@239, 20260504@260,
-  20260516@281 — and two lose it — grocery 20260538 (358→unreached),
-  convenience 20260550 (260→unreached). Both losses are blocked on
-  `neighborhood-chain-store-count` alone at k=10 (store-3 was never opened;
-  `regional-supplier`'s goal list is empty on those runs — its 4-city and
-  25-local-unit goals all pass, it is held only by the contiguous-prefix
-  rule). Net reached counts: 161→163 and 61→63.
-- The remaining 33 diffed runs are ±1–28-day movements, mostly tier-1
-  `local-shop` claim days (56.5 median at both factors).
+- **The boutique unlock (new, systematic, −133d uniform):** all 40 boutique
+  runs that reach `regional-supplier` at k=1 claim the
+  `regional-supplier` + `multi-city-operator` + `market-leader` stack —
+  which always shares one claim day under the contiguous-prefix rule —
+  exactly 133 days earlier at k=10 (330→197, 344→211, 351→218, 358→225,
+  323→190). Four more boutique runs gain the whole stack at k=10:
+  20260513@246, 20260519@239, 20260521@253, 20260531@288.
+- **The unchanged expansion-ordering population:** the same nine
+  convenience/grocery runs from the first record move their
+  neighborhood-chain + regional-supplier pair by the same >30-day deltas —
+  favorable: convenience 20260539 (323→218, −105), 20260519 (323→225, −98),
+  20260544 (295→197, −98), 20260547 (204→149, −55), 20260517 (204→170, −34);
+  adverse: convenience 20260537 (232→330, **+98**), 20260508 (232→323,
+  **+91**), grocery 20260504/20260509 (85→120, **+35**). Same four NC+RS
+  reach gains (grocery 20260501@232, convenience 20260502@239,
+  20260504@260, 20260516@281) and same two reach losses (grocery 20260538
+  358→unreached, convenience 20260550 260→unreached — store-3 never opened
+  at k=10, and `regional-supplier`'s own goal list is empty on both: held
+  only by the contiguous-prefix rule). The remaining 33 diffed runs are
+  ±1–28-day movements, mostly tier-1 `local-shop` claim days (56.5 median
+  at both factors).
 
-**Mechanism — observed, not hypothesized:** paired `--trace` probes were run
-on four extreme seeds at both factors (artifacts
-`step6/trace-probes/<seed>-<archetype>-k{1,10}.json`, generated by the
-probe invocations inside the §1.1/§1.2 factor windows; seeds 20260539,
-20260537, 20260508 convenience and 20260504 grocery). In every
-trace, the NC+RS pair claims on the **same in-game day the bot's
-`openStore` action for store-3 (campus-junction, ~$22.5–23.4k) applies** —
-tier-2's binding goal is `neighborhood-chain-store-count ≥ 3`, while
-tier-3's goals (4 opened cities, ≥25 local units) are already satisfied by
-that day, so the pair claims in one tick. The k=1↔k=10 divergence is a
-different **purchase ordering**: `openWorldCity garden-borough` costs
-$28,000 and competes with store-3 for the same credit window.
+**Mechanism — observed, not hypothesized:**
 
-- **Later claims (k=10 adverse):** at k=10 the bot buys garden-borough
-  *before* store-3 (20260537: city @239 → store @330; 20260508: city @232 →
-  store @323; grocery 20260504: city @85 → store @120). At k=1 the same
-  seeds open store-3 first and the pair claims ~35–98 days earlier.
-- **Earlier claims (k=10 favorable):** at k=1 the bot buys the extra city
-  first (20260539: garden-borough @232 → store-3 @323); at k=10 it never
-  buys the city (opened-city count 5→4) and store-3 lands @218. All five
-  favorable >30-day seeds show the 5→4 cities signature; the adverse seeds
-  show the bought-the-city-first signature — 4→5 city count on 20260537,
-  20260508 and 20260509, and a same-count ordering swap verified in the
-  20260504 trace (city @85 → store @120 vs store @85 → city @120).
-- The two lost-pair runs (20260538-grocery, 20260550-convenience) show the
-  same signature taken further: at k=10 the bot's purchases never reach
-  store-3 at all within 365 days (`storeCount` 3→2).
+- **Boutique (the reserve working as designed):** the boutique archetype
+  plans the `gifts` chain — `gift-production` consumes
+  {paper-pulp ×4, plastic ×2, packaging ×2} → gifts ×6. Prior-code boutique
+  runs (artifact preserved at `evidence/prior-491e9ade/`) ended with
+  `finalLocalUnits` = 2 (k=1) / 12 (k=10) — raw and process surplus pushes
+  filled the shared warehouse pool and finished-goods pushes saw zero
+  headroom — and their `unclaimedTierGoalIds` shows
+  `regional-supplier-local-units` as the **sole** unmet goal on tier 3
+  (tiers 4–5 carry *empty* unmet-goal lists: they were blocked only by the
+  contiguous-prefix rule). On this HEAD the same run (20260501) ends with
+  `finalLocalUnits` = 46 (k=1) / 482 (k=10), `unclaimedTierGoalIds` = {},
+  and claims LS@30 → NC@43 → RS+MCO+ML@330 (k=1) / @197 (k=10). The claim
+  day *is* the day cumulative local units cross the ≥25 threshold, and the
+  uniform −133 shift is what ~10× delivery rate does to that crossing on
+  every reached seed. A second-order effect to disclose honestly: each
+  claim grants +1 store slot and +$25k credit base, so the newly-unlocked
+  stack lets the bot expand further — on 20260501 boutique, store count
+  8→11 and end cash 204,773→54,725 (k=1) vs the prior-code run. That is
+  the authored reward loop operating, not a deficit.
+- **Convenience/grocery (unchanged):** paired `--trace` probes were re-run
+  on the same four extreme seeds at both factors on this HEAD
+  (20260539/20260537/20260508 convenience, 20260504 grocery) and reproduce
+  the first record's mechanism verbatim: the NC+RS pair claims on the same
+  in-game day the bot's `openStore` for store-3 (campus-junction,
+  ~$22.5–23.4k) applies; the divergence is whether `openWorldCity
+  garden-borough` ($28,000) is bought first in the same credit window —
+  adverse: 20260537 city@239 → store@330, 20260508 city@232 → store@323,
+  20260504 city@85 → store@120; favorable: 20260539 skips the city (5→4
+  opened) → store@218. Tier-2's binding goal there is
+  `neighborhood-chain-store-count ≥ 3`; the tier-3 pair's own goals are
+  already met by that day.
+- **Correction carried forward:** *no* tier-2 goal consumes local
+  deliveries — tier 2 checks store-count ≥3, max-store-level ≥2 and
+  opened-city-count ≥3 (`src/lib/game/progression.ts`). For
+  convenience/grocery the pacing deltas remain a second-order cash-side
+  effect consistent with §5.3's margin→weekly-reserve→buy-order path. For
+  boutique the rail-fed goal `regional-supplier-local-units` ≥25u **is**
+  the binding constraint and now resolves: that is volume reaching the
+  ladder, the intended effect of the fix. Tier-1 `local-shop` shifts are
+  peak-book-value crossing dates moving under the altered debt/asset path
+  — observed via `peakBookValue`; the exact decomposition is not claimed.
 
-**Correction of the previously implied cause:** *no* tier-2 goal consumes
-local deliveries — tier 2 checks store-count ≥3, max-store-level ≥2 and
-opened-city-count ≥3 (`src/lib/game/progression.ts` goals), and the only
-rail-fed goal in the ladder, tier-3 `regional-supplier-local-units` ≥25u,
-is met early at **both** factors (336u and 3,360u cumulative — it is the
-recorded blocker only for the 100 boutique/electronics runs, identically at
-both factors). **The pacing deltas are therefore a second-order cash-side
-effect, not goals being fed faster by rail volume.** The observed
-perturbation path is consistent with §5.3: the ~+$1.7k/yr rail margin
-(changed import spend vs production operating cost) shifts weekly cash by
-tens of dollars, which moves which of the bot's 7-day-cadence reserve
-checks passes first — i.e., whether the $28k city or the ~$23k store-3 is
-bought first. That upstream link (margin → weekly reserve → buy order) is
-*interpretation consistent with the measured buckets*; the purchase-order
-differences themselves are directly observed in the paired traces.
-Tier-1 `local-shop` (store-count ≥2 + peak-book-value ≥$70k) shifts are
-peak-book-value crossing dates moving under the altered debt/asset path —
-observed via `peakBookValue` field changes; the exact decomposition is not
-claimed.
+Credit usage grew with the unlock: 2,144→2,320 borrows
+($26.78M→$29.92M, max single 58k→62k; repaid 866/$4.10M→1,008/$5.69M) —
+consistent with the extra store slots and credit base the new claims
+grant. `finalBookValue` min/med/max −24,553/77,320/1,177,920 →
+−24,267/78,112.5/1,142,524; `finalStoreCount` 2/4/11 → 2/4/11. No
+progression threshold, goal, or bot policy was touched — the shift is the
+unchanged authored ladder read by the unchanged progression bot under a
+perturbed (and now functioning) supply path.
 
-Credit usage is materially unchanged (2,144→2,143 borrows;
-$26.78M→$26.76M). No progression threshold, goal, or bot policy was
-touched — the shift is the unchanged authored ladder read by the unchanged
-progression bot under a perturbed cash trajectory.
-
-**Assessment for fresh review (accept/reject input):** hard gates all pass;
-the effect is confined to expansion *ordering* on 9 >30-day reached shifts
-+ 6 reach-status flips + 33 smaller shifts of 200 runs, is bidirectional
-with both favorable (−105d) and adverse (+98d) named outliers, and no
-threshold/bot was retuned. The adverse cases are
-fully explained by the bot choosing a $28k city opening before store-3 —
-the same discrete choice the margin perturbation can push either way.
-Whether this magnitude of bidirectional pacing shift is acceptable for the
-authored 365-day matrix is deferred to the reviewer.
+**Assessment for fresh review (accept/reject input):** hard gates all pass.
+The k=1→k10 delta now comprises the systematic boutique stack shift (−133d
+uniform, mechanism directly evidenced by `unclaimedTierGoalIds` and
+`finalLocalUnits` artifacts) plus the unchanged ordering population (9
+named >30-day movers, 6 reach flips, 33 smaller shifts). Separately — and
+this is the part the reviewer must accept — the fix-vs-prior delta changed
+the reach set itself: tiers 4–5 went from unreachable-by-any-run to
+claimed by 40→44 boutique runs, because raw surplus no longer permanently
+starves finished-goods pushes. Whether that reach-set change is acceptable
+for the authored ladder is deferred to the reviewer; the evidence that it
+is the intended mechanism (local units 2→46/12→482 on the representative
+run) is above.
 
 ## 8. Limitations and disclosures
 
@@ -574,8 +598,11 @@ authored 365-day matrix is deferred to the reviewer.
 5. End-cash deltas are reported with timing attribution per F5; no profit
    claim was inferred from them.
 6. Progression pacing deltas are recorded for independent reviewer
-   acceptance; no thresholds or bots were retuned, and tiers 4–5 remain
-   unreached at both factors under the 365-day matrix.
+   acceptance; no thresholds or bots were retuned. Unlike the first
+   recorded matrix, the Step-5 fix's reach-set change means tiers 4–5 are
+   now claimed by boutique runs (40→44 of 200) — mechanism and
+   accept/reject framing in §7. Convenience, electronics and grocery runs
+   still never reach tiers 4–5 under the 365-day matrix.
 
 
 ## Appendix A — Executable helper recipes (verbatim sources)
@@ -1116,11 +1143,21 @@ for (const path of paths) {
  * schema are projected away and counted, and `localDeliveryUnits` is
  * reported separately because its definition was re-scoped in 5a13a1e8
  * (all-products whole-run -> bottled-water strictly-after-last-rail).
+ * AdvisorChain keys dropped from the new schema (the per-run stored
+ * ratios — the renderer recomputes them from raw counts) are projected
+ * away on the legacy side and counted likewise.
  *
  *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-compare.ts <legacy.json> <new.json>
  */
 
 import { readFileSync } from 'node:fs';
+
+// AdvisorChain fields that existed in the recorded legacy schema but are no
+// longer persisted by the current harness.
+const LEGACY_ONLY_ADVISOR_CHAIN_KEYS = new Set([
+	'localToAllImportRatio',
+	'postRailBottledWaterLocalFraction'
+]);
 
 const [legacyPath, newPath] = process.argv.slice(2);
 if (!legacyPath || !newPath) throw new Error('usage: legacy-compare.ts <legacy.json> <new.json>');
@@ -1143,6 +1180,7 @@ const newMap = new Map(current.runs.map((run) => [key(run), run]));
 
 const diffs: string[] = [];
 const projectedOnlyKeys = new Set<string>();
+const legacyOnlyKeys = new Set<string>();
 let compared = 0;
 let identicalAfterProjection = 0;
 
@@ -1189,18 +1227,29 @@ for (const [k, legacyRun] of legacyMap) {
 	}
 	compared += 1;
 	const before = diffs.length;
-	// Project new run's advisorChain to the legacy key set by deep-diffing
-	// only shared keys; new-only keys are collected, not diffed.
+	// Project both runs' advisorChain to the shared key set by deep-diffing
+	// only shared keys; new-only and schema-dropped legacy-only keys are
+	// collected, not diffed.
 	const legacyChain = legacyRun.advisorChain as Json | undefined;
 	const newChain = newRun.advisorChain as Json | undefined;
 	if (legacyChain && newChain) {
 		for (const ck of Object.keys(newChain)) {
 			if (!(ck in legacyChain)) projectedOnlyKeys.add(`advisorChain.${ck}`);
 		}
+		for (const ck of Object.keys(legacyChain)) {
+			if (!(ck in newChain) && LEGACY_ONLY_ADVISOR_CHAIN_KEYS.has(ck)) {
+				legacyOnlyKeys.add(`advisorChain.${ck}`);
+			}
+		}
+		const projectedLegacyChain: Json = {};
 		const projectedChain: Json = {};
-		for (const ck of Object.keys(legacyChain)) projectedChain[ck] = newChain[ck];
+		for (const ck of Object.keys(legacyChain)) {
+			if (LEGACY_ONLY_ADVISOR_CHAIN_KEYS.has(ck) && !(ck in newChain)) continue;
+			projectedLegacyChain[ck] = legacyChain[ck];
+			projectedChain[ck] = newChain[ck];
+		}
 		const projectedRun = { ...newRun, advisorChain: projectedChain };
-		deepDiff(k, legacyRun, projectedRun);
+		deepDiff(k, { ...legacyRun, advisorChain: projectedLegacyChain }, projectedRun);
 	} else {
 		deepDiff(k, legacyRun, newRun);
 	}
@@ -1210,6 +1259,7 @@ for (const [k, legacyRun] of legacyMap) {
 console.log(`paired runs compared: ${compared}/${legacyMap.size} (new total ${newMap.size})`);
 console.log(`runs identical after legacy projection: ${identicalAfterProjection}`);
 console.log(`new-schema-only keys (projected away, not diffed): ${[...projectedOnlyKeys].sort().join(', ') || 'none'}`);
+console.log(`legacy-schema-only keys dropped from the current schema (projected away, not diffed): ${[...legacyOnlyKeys].sort().join(', ') || 'none'}`);
 console.log(`value mismatches: ${diffs.length}`);
 for (const line of diffs.slice(0, 400)) console.log(`  ${line}`);
 if (diffs.length > 400) console.log(`  ... +${diffs.length - 400} more`);
