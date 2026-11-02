@@ -303,12 +303,20 @@ export function simulateIndustryProduction(
 		});
 	}
 
-	// Push phase: same stage order, after every building has had a chance to
-	// produce, so surplus buffers drain to the shared warehouse for retail.
-	// buildingType is re-fetched here (already looked up in the production
-	// loop above) because the two loops are separate phases — the lookup is a
-	// cheap map read and keeping them independent avoids sharing mutable state.
-	for (const building of sorted) {
+	// Push phase: reverse stage order (final, then process, then raw), after
+	// every building has had a chance to produce, so surplus buffers drain to
+	// the shared warehouse for retail. With the free-space cap, finished goods
+	// the stores actually stock claim scarce pool space before upstream
+	// surplus — a full warehouse backpressures the 40/day raw producer, not
+	// the 10/day final good. buildingType is re-fetched here (already looked
+	// up in the production loop above) because the two loops are separate
+	// phases — the lookup is a cheap map read and keeping them independent
+	// avoids sharing mutable state.
+	const pushSorted = [...currentGame.industrialBuildings].sort(
+		compareIndustrialBuildingsByStageDesc
+	);
+
+	for (const building of pushSorted) {
 		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
 
 		if (buildingType?.recipeId) {
@@ -380,6 +388,18 @@ function compareIndustrialBuildingsByStage(
 	// stay locale-independent). The spec requires "ties by building id" so
 	// same-stage buildings process in a deterministic order regardless of
 	// the input array's insertion order.
+	return stageDiff !== 0 ? stageDiff : first.id < second.id ? -1 : first.id > second.id ? 1 : 0;
+}
+
+// Push-phase order: stage descending (final first), same "ties by building
+// id" rule as the production sort — only the stage direction is inverted.
+function compareIndustrialBuildingsByStageDesc(
+	first: IndustrialBuilding,
+	second: IndustrialBuilding
+): number {
+	const firstStage = getIndustrialBuildingStage(INDUSTRIAL_BUILDING_TYPES[first.typeId]);
+	const secondStage = getIndustrialBuildingStage(INDUSTRIAL_BUILDING_TYPES[second.typeId]);
+	const stageDiff = RECIPE_STAGE_ORDER[secondStage] - RECIPE_STAGE_ORDER[firstStage];
 	return stageDiff !== 0 ? stageDiff : first.id < second.id ? -1 : first.id > second.id ? 1 : 0;
 }
 

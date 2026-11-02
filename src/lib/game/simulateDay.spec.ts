@@ -272,19 +272,19 @@ describe('daily simulation', () => {
 
 		expect(projectOneCityParity(after)).toMatchInlineSnapshot(`
 			{
-			  "cash": 99780,
+			  "cash": 99785,
 			  "cityInventories": [
 			    {
 			      "cityId": "industry-city",
 			      "materials": {
 			        "bottled-water": 0,
-			        "water": 195,
+			        "water": 190,
 			      },
 			    },
 			  ],
 			  "report": {
-			    "importSpend": 15,
-			    "netCashChange": -220,
+			    "importSpend": 10,
+			    "netCashChange": -215,
 			    "production": {
 			      "cityInventories": [
 			        {
@@ -337,16 +337,16 @@ describe('daily simulation', () => {
 			        },
 			        {
 			          "cityId": "industry-city",
-			          "fromId": "pump",
+			          "fromId": "bottler",
 			          "kind": "push-warehouse",
-			          "materialId": "water",
+			          "materialId": "bottled-water",
 			          "quantity": 5,
 			          "toId": "warehouse",
-			          "value": 5,
+			          "value": 10,
 			        },
 			      ],
 			      "railUsage": {
-			        "industry-city:10,4": 15,
+			        "industry-city:10,4": 10,
 			        "industry-city:11,4": 5,
 			        "industry-city:12,4": 5,
 			        "industry-city:13,4": 5,
@@ -355,21 +355,21 @@ describe('daily simulation', () => {
 			        "industry-city:16,4": 5,
 			        "industry-city:17,4": 5,
 			        "industry-city:18,4": 5,
-			        "industry-city:3,4": 15,
-			        "industry-city:4,4": 15,
-			        "industry-city:5,4": 15,
-			        "industry-city:6,4": 15,
-			        "industry-city:7,4": 15,
-			        "industry-city:8,4": 15,
-			        "industry-city:9,4": 15,
+			        "industry-city:3,4": 10,
+			        "industry-city:4,4": 10,
+			        "industry-city:5,4": 10,
+			        "industry-city:6,4": 10,
+			        "industry-city:7,4": 10,
+			        "industry-city:8,4": 10,
+			        "industry-city:9,4": 10,
 			      },
 			      "shopImports": [
 			        {
 			          "cityId": "harbor-city",
 			          "materialId": "bottled-water",
-			          "quantity": 15,
+			          "quantity": 10,
 			          "source": "import",
-			          "value": 15,
+			          "value": 10,
 			        },
 			      ],
 			      "warehouseCapacity": 200,
@@ -377,9 +377,9 @@ describe('daily simulation', () => {
 			        {
 			          "cityId": "industry-city",
 			          "materialId": "bottled-water",
-			          "quantity": 5,
+			          "quantity": 10,
 			          "source": "warehouse",
-			          "value": 10,
+			          "value": 20,
 			        },
 			      ],
 			      "warehouseUsed": 200,
