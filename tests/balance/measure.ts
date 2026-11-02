@@ -131,15 +131,6 @@ export interface AdvisorChainMetric {
 	/** Bottled-water `importedUnits` strictly after lastRailDay — the matched
 	 * product-and-window import leg; 0 when no rail applied. */
 	postRailRetailImportedUnitsBottledWater: number;
-	/** Historical-comparable local-to-all-import ratio
-	 * (`localDeliveryUnits / retailImportedUnitsAllProducts`; the HPA-502
-	 * after-sweep reference is 0.42%); null when the import denominator is 0 —
-	 * never NaN or Infinity. */
-	localToAllImportRatio: number | null;
-	/** Matched bottled-water post-rail local fraction
-	 * (`localDeliveryUnits / (localDeliveryUnits + postRailRetailImportedUnitsBottledWater)`);
-	 * null when both legs are 0 — never NaN or Infinity. */
-	postRailBottledWaterLocalFraction: number | null;
 	/** Informational shape of the run's producer-stall window: buildout-shaped
 	 * windows (a build/rail action inside, production resumed and sustained to
 	 * end) are construction-sequencing pauses; every other shape stays a stall. */
@@ -458,14 +449,6 @@ function measureAdvisorChain(
 			}
 		}
 	}
-	// Both ratios guard a zero denominator with null — never NaN or Infinity.
-	const localToAllImportRatio =
-		retailImportedUnitsAllProducts === 0
-			? null
-			: localDeliveryUnits / retailImportedUnitsAllProducts;
-	const matchedPostRailWaterSupply = localDeliveryUnits + postRailRetailImportedUnitsBottledWater;
-	const postRailBottledWaterLocalFraction =
-		matchedPostRailWaterSupply === 0 ? null : localDeliveryUnits / matchedPostRailWaterSupply;
 	const served =
 		producerBuilt &&
 		warehouseBuilt &&
@@ -486,8 +469,6 @@ function measureAdvisorChain(
 		retailImportedUnitsAllProducts,
 		retailImportedUnitsBottledWater,
 		postRailRetailImportedUnitsBottledWater,
-		localToAllImportRatio,
-		postRailBottledWaterLocalFraction,
 		stallShape: stall === null ? null : classifyStallShape(reports, ledger, stall),
 		served
 	};

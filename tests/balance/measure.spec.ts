@@ -234,8 +234,6 @@ function servedChain(overrides: Partial<AdvisorChainMetric> = {}): AdvisorChainM
 		retailImportedUnitsAllProducts: 1_000_000,
 		retailImportedUnitsBottledWater: 60_000,
 		postRailRetailImportedUnitsBottledWater: 1_000,
-		localToAllImportRatio: 336 / 1_000_000,
-		postRailBottledWaterLocalFraction: 336 / (336 + 1_000),
 		stallShape: null,
 		served: true,
 		...overrides
@@ -812,8 +810,6 @@ describe('advisor served-chain composite (HPA-502 Ruling 12)', () => {
 			retailImportedUnitsAllProducts: 0,
 			retailImportedUnitsBottledWater: 0,
 			postRailRetailImportedUnitsBottledWater: 0,
-			localToAllImportRatio: null,
-			postRailBottledWaterLocalFraction: 1,
 			stallShape: 'construction-sequencing pause',
 			served: true
 		});
@@ -1029,8 +1025,6 @@ describe('advisor imported-unit evidence (HPA-679 Step 5)', () => {
 		// Days 30–35 are strictly after lastRailDay 29: 6 days × 6 water units.
 		expect(chain.postRailRetailImportedUnitsBottledWater).toBe(36);
 		expect(chain.localDeliveryUnits).toBe(42);
-		expect(chain.localToAllImportRatio).toBe(42 / 420);
-		expect(chain.postRailBottledWaterLocalFraction).toBe(42 / (42 + 36));
 		// Evidence fields never leak into the served composite: with no
 		// producer/warehouse applied the run still fails the old legs.
 		expect(chain.served).toBe(false);
@@ -1065,17 +1059,12 @@ describe('advisor imported-unit evidence (HPA-679 Step 5)', () => {
 		expect(chain.retailImportedUnitsAllProducts).toBe(50);
 		expect(chain.retailImportedUnitsBottledWater).toBe(50);
 		expect(chain.postRailRetailImportedUnitsBottledWater).toBe(0);
-		// Whole-run imports still give a finite historical-comparable ratio
-		// (0 local / 50 imports)…
-		expect(chain.localToAllImportRatio).toBe(0);
-		// …but the matched fraction has no post-rail window: 0/(0+0) is null,
-		// never NaN.
-		expect(chain.postRailBottledWaterLocalFraction).toBeNull();
 		expect(chain.served).toBe(false);
 	});
 
-	it('guards zero denominators without NaN or Infinity', () => {
-		// No store reports at all: every import denominator is empty.
+	it('guards zero denominators without NaN or Infinity in the sweep markdown', () => {
+		// No store reports at all: every import denominator is empty, so the
+		// rendered aggregate ratios fall back to '-' instead of NaN/Infinity.
 		const nothing = measureRun(
 			{ reports: days(5) },
 			advisorLedger([advisorAction(2, 'advisor:connect-rail')])
@@ -1083,11 +1072,17 @@ describe('advisor imported-unit evidence (HPA-679 Step 5)', () => {
 		expect(nothing.retailImportedUnitsAllProducts).toBe(0);
 		expect(nothing.retailImportedUnitsBottledWater).toBe(0);
 		expect(nothing.postRailRetailImportedUnitsBottledWater).toBe(0);
-		expect(nothing.localToAllImportRatio).toBeNull();
-		expect(nothing.postRailBottledWaterLocalFraction).toBeNull();
+		const markdown = renderSweepMarkdown({
+			config: { seeds: [SEED], days: 5 },
+			runs: [
+				measureRun({ reports: days(5) }, advisorLedger([advisorAction(2, 'advisor:connect-rail')]))
+			]
+		});
+		expect(markdown).toContain('local-to-all-import ratio 0/0 = -');
+		expect(markdown).toContain('local fraction 0/(0+0) = -');
 
 		// Local deliveries with zero recorded imports: the matched fraction
-		// reaches its 100% ceiling while the all-import ratio stays null.
+		// still computes a finite 100% from the raw counts.
 		const localOnly = measureRun(
 			{
 				reports: days(5, (day) => ({
@@ -1105,8 +1100,6 @@ describe('advisor imported-unit evidence (HPA-679 Step 5)', () => {
 		).advisorChain;
 		expect(localOnly.localDeliveryUnits).toBe(21);
 		expect(localOnly.postRailRetailImportedUnitsBottledWater).toBe(0);
-		expect(localOnly.postRailBottledWaterLocalFraction).toBe(1);
-		expect(localOnly.localToAllImportRatio).toBeNull();
 	});
 
 	it('renders both ratios with their explicit denominators in the sweep markdown', () => {
