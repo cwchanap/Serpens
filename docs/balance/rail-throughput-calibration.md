@@ -3,7 +3,8 @@
 **Status: measured.** This report captures the multi-seed economy, cost and
 progression calibration for the rail-throughput rebalance
 (`RAIL_UNITS_PER_LEVEL = 10`, the free-warehouse-space rail surplus-push cap,
-and the Step 4 scenario re-pins), measured on HEAD `922c37ee` of
+the final→process→raw push-phase order, and the Step 4 scenario re-pins),
+measured on HEAD `d28cb32d` of
 `docs/hpa-679-rail-throughput-balance`. It is the comparison partner for
 `baseline.md` and `after.md` (both untouched, measured-only HPA-502 records).
 
@@ -113,7 +114,7 @@ grep -q 'RAIL_UNITS_PER_LEVEL = 10;' "$RAIL" && git diff --quiet -- "$RAIL" \
 
 The recorded run used exactly this window (edit applied, three artifact
 generators + the k=1 trace probes, inverse edit verified); `git diff` was
-empty and HEAD `922c37ee` throughout — the tracked tree contains no control
+empty and HEAD `d28cb32d` throughout — the tracked tree contains no control
 hack. Output-side discriminator: k=1 artifacts show
 `advisorChain.localDeliveryUnits` = 336/seed (3,360 at k=10).
 
@@ -435,6 +436,15 @@ journey; sandbox production-and-refill; rail-fed pull-producer journey with
 
 50 seeds × 4 archetypes × {progression, idle} = 400 runs per factor.
 
+The final→process→raw push-phase order was added after the first recorded
+matrix and both factors were re-measured under it: sweep advisor runs, cost
+buckets and all eight §7 trace probes are byte-identical to the earlier
+record, while the progression artifacts differ only in boutique scalar fields
+(`finalCash`, `finalLocalUnits`, `finalBookValue`, `peakBookValue`,
+`totalBorrowed`, `totalRepaid` — 46/50 boutique runs at each factor). Claim
+sets, claim days, reach-status flips and every named outlier below are
+unchanged; only the credit summary moved.
+
 **Hard gates (both factors):**
 - idle: **200/200 zero-claim runs, 0 earned-unclaimed** (the control's real
   check), identical peak book value max 42,218.
@@ -530,8 +540,8 @@ peak-book-value crossing dates moving under the altered debt/asset path —
 observed via `peakBookValue` field changes; the exact decomposition is not
 claimed.
 
-Credit usage is materially unchanged (2,144→2,142 borrows;
-$26.78M→$26.73M). No progression threshold, goal, or bot policy was
+Credit usage is materially unchanged (2,144→2,143 borrows;
+$26.78M→$26.76M). No progression threshold, goal, or bot policy was
 touched — the shift is the unchanged authored ladder read by the unchanged
 progression bot under a perturbed cash trajectory.
 
