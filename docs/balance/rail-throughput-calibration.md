@@ -272,7 +272,7 @@ Two schema-era comparisons were then computed field-by-field:
 | comparison | result |
 | --- | --- |
 | new-schema k=1 control vs `5a13a1e8`-era sweep (legacy projection: drop the three Step-5 `advisorChain` raw-count fields — the two derived ratios they used to carry are no longer persisted; the markdown renderer recomputes them from raw counts) | **450/450 runs identical, 0 value mismatches** |
-| new-schema k=1 control vs documented `0ce5db7e` artifact (additionally projects `operatingIncomeByDay`, `postRailObservedDays`, and the pre-`5a13a1e8` `localDeliveryUnits` definition) | 315/450 identical; **135 managed runs differ** — all HPA-502 *post-docs review fixes* landed between `0ce5db7e` and `5a13a1e8` (`e4a928f8` capped-availability yield, `cf79f5c0` staffing/forecast, `1c5244e9`, etc.). Deltas are small (e.g. cumulative import spend +38 on ~101k, cash ±100–300, missedDemandShare ~±0.0002); **no gate item flips**. |
+| new-schema k=1 control vs documented `0ce5db7e` artifact (additionally projects `operatingIncomeByDay` and `postRailObservedDays`, and reports the pre-`5a13a1e8` `localDeliveryUnits` re-scope separately) | 315/450 identical; **135 managed runs differ** — all HPA-502 *post-docs review fixes* landed between `0ce5db7e` and `5a13a1e8` (`e4a928f8` capped-availability yield, `cf79f5c0` staffing/forecast, `1c5244e9`, etc.). Deltas are small (e.g. cumulative import spend +38 on ~101k, cash ±100–300, missedDemandShare ~±0.0002); **no gate item flips**. |
 
 **Disclosed consequence:** the current-HEAD k=1 control reproduces the
 HPA-502 *branch-tip* measured economy exactly, and reproduces the *documented*
@@ -904,6 +904,10 @@ for (const [label, report] of [
 		.sort((a, b) => a - b);
 	const q = (xs: number[], p: number): number | null =>
 		xs.length === 0 ? null : xs[Math.min(xs.length - 1, Math.floor(p * xs.length))]!;
+	// Zero-denominator runs are filtered out above; an empty set has no data,
+	// so format it as n/a rather than letting `?? 0` fabricate a 0.000%.
+	const pct3 = (value: number | null | undefined): string =>
+		value === null || value === undefined ? 'n/a' : `${(value * 100).toFixed(3)}%`;
 	console.log(`\nAdvisor ${label}: ${advisor.length} runs, served ${served}`);
 	console.log(
 		`  totals: local ${local}u; all-product imports ${allImports}u; water imports ${waterImports}u; post-rail water imports ${postRailWaterImports}u`
@@ -915,10 +919,10 @@ for (const [label, report] of [
 		`  localDeliveryUnits per-seed: min ${localUnitsList[0] ?? 'n/a'} p10 ${q(localUnitsList, 0.1)} median ${q(localUnitsList, 0.5)} p90 ${q(localUnitsList, 0.9)} max ${localUnitsList[localUnitsList.length - 1] ?? 'n/a'}`
 	);
 	console.log(
-		`  per-seed local/all-import ratio: min ${((ratios[0] ?? 0) * 100).toFixed(3)}% median ${(((q(ratios, 0.5) ?? 0) * 100)).toFixed(3)}% max ${((ratios[ratios.length - 1] ?? 0) * 100).toFixed(3)}%`
+		`  per-seed local/all-import ratio: min ${pct3(ratios[0])} median ${pct3(q(ratios, 0.5))} max ${pct3(ratios[ratios.length - 1])}`
 	);
 	console.log(
-		`  per-seed matched water fraction: min ${((fractions[0] ?? 0) * 100).toFixed(3)}% median ${(((q(fractions, 0.5) ?? 0) * 100)).toFixed(3)}% max ${((fractions[fractions.length - 1] ?? 0) * 100).toFixed(3)}%`
+		`  per-seed matched water fraction: min ${pct3(fractions[0])} median ${pct3(q(fractions, 0.5))} max ${pct3(fractions[fractions.length - 1])}`
 	);
 	console.log('  per-seed table (seed | lastRailDay | localU | allImports | waterImp | postRailWaterImp | ratio% | frac% | served | stallShape):');
 	for (const run of advisor) {
@@ -951,6 +955,7 @@ import { readFileSync } from 'node:fs';
 import {
 	botsForArchetype,
 	evaluateGateA,
+	GATE_A_OFFICIAL_DAYS,
 	SWEEP_ARCHETYPES,
 	SWEEP_SEEDS,
 	type RunMeasurement,
@@ -1108,12 +1113,24 @@ for (const path of paths) {
 	}
 	const missing = [...approved].filter((key) => !seen.has(key));
 	const unexpected = observed.filter((key) => !approved.has(key));
+	// Mirror sweepCoverage's horizon checks: the official verdict requires the
+	// approved horizon in both the report config and every stored run — a
+	// complete matrix on a shorter horizon is diagnostic, never a PASS.
+	const onHorizon =
+		report.config.days === GATE_A_OFFICIAL_DAYS &&
+		runs.every((r) => r.daysSimulated === GATE_A_OFFICIAL_DAYS);
 	const exactMatrix =
 		missing.length === 0 &&
 		duplicated.size === 0 &&
 		unexpected.length === 0 &&
-		observed.length === approved.size;
+		observed.length === approved.size &&
+		onHorizon;
 	const coverageParts: string[] = [];
+	if (report.config.days !== GATE_A_OFFICIAL_DAYS)
+		coverageParts.push(`horizon ${report.config.days}d, expected ${GATE_A_OFFICIAL_DAYS}d`);
+	const offHorizon = runs.filter((r) => r.daysSimulated !== GATE_A_OFFICIAL_DAYS).length;
+	if (offHorizon > 0)
+		coverageParts.push(`${offHorizon} run(s) off the ${GATE_A_OFFICIAL_DAYS}d horizon`);
 	if (missing.length > 0) coverageParts.push(`${missing.length} missing`);
 	if (duplicated.size > 0) coverageParts.push(`${duplicated.size} duplicated`);
 	if (unexpected.length > 0) coverageParts.push(`${unexpected.length} unexpected`);
@@ -1141,11 +1158,14 @@ for (const path of paths) {
  * (regenerated HPA-502 artifact) against a new-schema sweep JSON. Compares
  * paired runs field-by-field; advisorChain keys only present in the new
  * schema are projected away and counted, and `localDeliveryUnits` is
- * reported separately because its definition was re-scoped in 5a13a1e8
- * (all-products whole-run -> bottled-water strictly-after-last-rail).
- * AdvisorChain keys dropped from the new schema (the per-run stored
- * ratios — the renderer recomputes them from raw counts) are projected
- * away on the legacy side and counted likewise.
+ * compared aside from shared-field diffs and reported separately: its
+ * definition was re-scoped in 5a13a1e8 (all-products whole-run ->
+ * bottled-water strictly-after-last-rail), so a legacy chain predating
+ * the re-scope — detected by the absence of `postRailObservedDays` —
+ * carries a different meaning under the same key. AdvisorChain keys
+ * dropped from the new schema (the per-run stored ratios — the renderer
+ * recomputes them from raw counts) are projected away on the legacy side
+ * and counted likewise.
  *
  *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/legacy-compare.ts <legacy.json> <new.json>
  */
@@ -1181,6 +1201,7 @@ const newMap = new Map(current.runs.map((run) => [key(run), run]));
 const diffs: string[] = [];
 const projectedOnlyKeys = new Set<string>();
 const legacyOnlyKeys = new Set<string>();
+const redefinedKeyDiffs: string[] = [];
 let compared = 0;
 let identicalAfterProjection = 0;
 
@@ -1241,10 +1262,24 @@ for (const [k, legacyRun] of legacyMap) {
 				legacyOnlyKeys.add(`advisorChain.${ck}`);
 			}
 		}
+		// `postRailObservedDays` landed in the same 5a13a1e8 commit that
+		// re-scoped `localDeliveryUnits`; a legacy chain without it carries
+		// the old all-products meaning under the same key. Same-key deepDiff
+		// would misreport that semantics change as a value mismatch, so the
+		// key is compared aside and reported separately.
+		const legacyPredatesRescope = !('postRailObservedDays' in legacyChain);
 		const projectedLegacyChain: Json = {};
 		const projectedChain: Json = {};
 		for (const ck of Object.keys(legacyChain)) {
 			if (LEGACY_ONLY_ADVISOR_CHAIN_KEYS.has(ck) && !(ck in newChain)) continue;
+			if (ck === 'localDeliveryUnits' && legacyPredatesRescope) {
+				if (legacyChain[ck] !== newChain[ck]) {
+					redefinedKeyDiffs.push(
+						`${k}.advisorChain.${ck}: ${JSON.stringify(legacyChain[ck])} vs ${JSON.stringify(newChain[ck])}`
+					);
+				}
+				continue;
+			}
 			projectedLegacyChain[ck] = legacyChain[ck];
 			projectedChain[ck] = newChain[ck];
 		}
@@ -1260,6 +1295,8 @@ console.log(`paired runs compared: ${compared}/${legacyMap.size} (new total ${ne
 console.log(`runs identical after legacy projection: ${identicalAfterProjection}`);
 console.log(`new-schema-only keys (projected away, not diffed): ${[...projectedOnlyKeys].sort().join(', ') || 'none'}`);
 console.log(`legacy-schema-only keys dropped from the current schema (projected away, not diffed): ${[...legacyOnlyKeys].sort().join(', ') || 'none'}`);
+console.log(`redefined-key differences (advisorChain.localDeliveryUnits under the pre-5a13a1e8 all-products definition): ${redefinedKeyDiffs.length}`);
+for (const line of redefinedKeyDiffs.slice(0, 50)) console.log(`  ${line}`);
 console.log(`value mismatches: ${diffs.length}`);
 for (const line of diffs.slice(0, 400)) console.log(`  ${line}`);
 if (diffs.length > 400) console.log(`  ... +${diffs.length - 400} more`);
