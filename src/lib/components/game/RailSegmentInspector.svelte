@@ -69,13 +69,6 @@
 
 	const cellCount = $derived(selectedSegment?.cellKeys.length ?? 0);
 	const level = $derived(selectedSegment?.minLevel ?? 0);
-	// A serial rail chain's daily throughput is the bottleneck cell's
-	// capacity (the minimum level), not the sum — matching getPathCapacity's
-	// min-over-path model. Summing cell capacities would overstate throughput
-	// for multi-cell segments (e.g. 3 cells at level 2 → 20/day, not 60/day).
-	const capacity = $derived(
-		selectedSegment ? getRailCellDailyCapacity(selectedSegment.minLevel) : 0
-	);
 	const utilization = $derived.by(() => {
 		if (!selectedSegment) {
 			return 0;
@@ -186,7 +179,14 @@
 				</div>
 				<div>
 					<dt>{i18n.t('railSegmentInspector.capacity')}</dt>
-					<dd data-testid="rail-segment-capacity">{i18n.format.integer(capacity)}</dd>
+					<!-- A serial rail chain's daily throughput is the bottleneck
+						cell's capacity (the minimum level), not the sum — matching
+						getPathCapacity's min-over-path model. Summing cell
+						capacities would overstate throughput for multi-cell
+						segments (e.g. 3 cells at level 2 → 20/day, not 60/day). -->
+					<dd data-testid="rail-segment-capacity">
+						{i18n.format.integer(getRailCellDailyCapacity(selectedSegment.minLevel))}
+					</dd>
 				</div>
 				<div>
 					<dt>{i18n.t('railSegmentInspector.utilization')}</dt>

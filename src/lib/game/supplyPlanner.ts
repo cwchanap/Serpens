@@ -819,8 +819,7 @@ export function buildRequiredChainReachability(
 		? getCityInventoryUsed(inventoryAccess.inventory)
 		: Number.POSITIVE_INFINITY;
 	const warehouseCapacity = scopedBuildings.reduce(
-		(capacity, building) =>
-			capacity + (INDUSTRIAL_BUILDING_TYPES[building.typeId]?.warehouseCapacity ?? 0),
+		(capacity, building) => capacity + INDUSTRIAL_BUILDING_TYPES[building.typeId].warehouseCapacity,
 		0
 	);
 
