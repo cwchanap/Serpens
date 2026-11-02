@@ -177,6 +177,44 @@ describe('pullViaRail', () => {
 		expect(state.shipments[0]!.kind).toBe('pull-warehouse');
 	});
 
+	it('unions warehouse footprints that share a rail cell into one pool endpoint', () => {
+		// Warehouse A (5,2) footprint (5..6,2..3) attaches to rail cells
+		// (5,4),(6,4); warehouse B (4,5) footprint (4..5,5..6) attaches to
+		// (4,4),(5,4). Both claim (5,4): the pool's attach-key union must list
+		// it once, and the first warehouse in industrialBuildings order owns
+		// the endpoint label used on shipment records.
+		const warehouseA = makeBuilding('industry-building-1', 'warehouse', 5, 2);
+		const warehouseB = makeBuilding('industry-building-2', 'warehouse', 4, 5);
+		const state = createRailTickState(makeGame(makeCity(LINE), [warehouseA, warehouseB]));
+		const city = state.citiesById.get('industry-city')!;
+
+		expect(city.warehouseAttachKeys).toEqual(['5,4', '6,4', '4,4']);
+		expect(city.warehouseIdByAttachKey.get('5,4')).toBe('industry-building-1');
+		expect(city.warehouseIdByAttachKey.get('6,4')).toBe('industry-building-1');
+		expect(city.warehouseIdByAttachKey.get('4,4')).toBe('industry-building-2');
+	});
+
+	it('reads a corrupt undefined pool entry as zero when checking pool fullness', () => {
+		// A hand-edited or legacy-corrupt save can carry an undefined material
+		// quantity. The lazy pool-usage sum used for the full-pool recovery
+		// check must treat it as unavailable stock rather than throwing like
+		// strict getCityInventoryUsed — otherwise one corrupt entry would
+		// wedge every pull for the day.
+		const warehouse = makeBuilding('industry-building-1', 'warehouse', 2, 2);
+		const bottler = makeBuilding('industry-building-2', 'water-bottler', 10, 2);
+		// A water pump whose buffer holds no water entry at all is a recipe
+		// candidate that must read as zero stock — it cannot satisfy the pull.
+		const emptyPump = makeBuilding('industry-building-3', 'water-pump', 14, 2);
+		const state = createRailTickState(makeGame(makeCity(LINE), [warehouse, bottler, emptyPump]), {
+			materials: { water: 100, grain: undefined }
+		});
+
+		const result = pullViaRail(state, bottler, 'water', 10);
+
+		expect(result.fromWarehouse).toBe(getRailCellDailyCapacity(1));
+		expect(state.shipments[0]!.kind).toBe('pull-warehouse');
+	});
+
 	it('pulls from the nearest stocked source — a tied producer wins on building id', () => {
 		// Pump (west) and warehouse (east) sit at equal path length from the
 		// bottler on a level-1 line. The pump must win: pulling pooled water

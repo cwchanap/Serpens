@@ -41,8 +41,9 @@ interface RailTickCity {
 	// the union of their attach keys lets a single BFS find the nearest
 	// reachable warehouse instead of searching once per building.
 	warehouseAttachKeys: string[];
-	// attach cell key → warehouse building id (lowest id wins when footprints
-	// share a cell), used to label pull/push shipment endpoints.
+	// attach cell key → warehouse building id (the first warehouse in
+	// industrialBuildings order wins when footprints share a cell), used to
+	// label pull/push shipment endpoints.
 	warehouseIdByAttachKey: Map<string, string>;
 }
 
@@ -83,20 +84,19 @@ export function createRailTickState(game: GameState): RailTickState {
 		const network = buildRailNetwork(city);
 		const attachCellsByBuildingId = new Map<string, string[]>();
 
-		for (const building of game.industrialBuildings) {
-			if (building.cityId === cityId) {
-				attachCellsByBuildingId.set(building.id, getBuildingAttachCellKeys(network, building));
-			}
-		}
-
 		const warehouseAttachKeys: string[] = [];
 		const warehouseIdByAttachKey = new Map<string, string>();
 		for (const building of game.industrialBuildings) {
-			if (building.cityId !== cityId || building.typeId !== 'warehouse') {
+			if (building.cityId !== cityId) {
+				continue;
+			}
+			const attachKeys = getBuildingAttachCellKeys(network, building);
+			attachCellsByBuildingId.set(building.id, attachKeys);
+			if (building.typeId !== 'warehouse') {
 				continue;
 			}
 
-			for (const key of attachCellsByBuildingId.get(building.id) ?? []) {
+			for (const key of attachKeys) {
 				if (!warehouseIdByAttachKey.has(key)) {
 					warehouseIdByAttachKey.set(key, building.id);
 					warehouseAttachKeys.push(key);
@@ -261,7 +261,7 @@ export function pullViaRail(
 				continue;
 			}
 
-			const stock = Math.max(0, state.inventories.get(buildingId)?.[materialId] ?? 0);
+			const stock = Math.max(0, state.inventories.get(buildingId)![materialId] ?? 0);
 
 			if (stock > 0) {
 				candidates.push({ buildingId, kind: 'pull-producer', stock });
@@ -310,7 +310,7 @@ export function pullViaRail(
 
 		if (!poolRecovery) {
 			for (const candidate of candidates) {
-				const sourceAttach = city.attachCellsByBuildingId.get(candidate.buildingId) ?? [];
+				const sourceAttach = city.attachCellsByBuildingId.get(candidate.buildingId)!;
 
 				if (sourceAttach.length === 0) {
 					continue;
@@ -346,10 +346,12 @@ export function pullViaRail(
 			entityCity.inventory = removal.inventory;
 			result.fromWarehouse += removal.quantityRemoved;
 			removed = removal.quantityRemoved;
-			poolUsed = (poolUsed ?? 0) - removal.quantityRemoved;
+			// Non-null: a pool best implies warehouseCapacity > 0, so the
+			// recovery check above already computed poolUnitsUsed.
+			poolUsed = poolUsed! - removal.quantityRemoved;
 		} else {
 			const removal = removeInventory(
-				state.inventories.get(best.candidate.buildingId) ?? {},
+				state.inventories.get(best.candidate.buildingId)!,
 				materialId,
 				quantity
 			);

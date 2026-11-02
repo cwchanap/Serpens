@@ -1300,6 +1300,43 @@ describe('supply planner snapshot', () => {
 		expect(result.snapshot.usableBuildingIds).toContain('water-bottler-1');
 	});
 
+	it('treats a missing city inventory as a fully used pool when called directly', () => {
+		// buildSupplyPlannerSnapshot soft-fails before reachability when the
+		// inventory scope is missing, but buildRequiredChainReachability is
+		// exported for direct callers that may hold a game without the
+		// cityInventories entry. With no pool there is nothing to push into:
+		// used is treated as infinite so every warehouse sink reports zero
+		// headroom and the two-island hub collapses.
+		const base = plannerGame([product('bottled-water')], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 'industry-city', 1, 2, 2),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 2, 4),
+				building('water-bottler', 'water-bottler-1', 'industry-city', 1, 2, 11),
+				building('warehouse', 'warehouse-2', 'industry-city', 1, 2, 12)
+			],
+			cityInventories: []
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? { ...city, rails: [...verticalRails(1, 5), ...verticalRails(10, 14)] }
+					: city
+			)
+		};
+		const reachability = buildRequiredChainReachability(game, {
+			supplyCityId: 'industry-city',
+			finishedMaterialId: 'bottled-water',
+			demandPerDay: 10,
+			buildings: []
+		});
+
+		expect(reachability.usableBuildingIds).not.toContain('water-pump-1');
+		expect(reachability.disconnectedBuildingIds).toContain('water-pump-1');
+		expect(reachability.usableBuildingIds).not.toContain('water-bottler-1');
+		expect(reachability.disconnectedBuildingIds).toContain('water-bottler-1');
+	});
+
 	it('does not credit full water capacity when only one Drinks consumer branch is reachable', () => {
 		// Drinks requires water through two branches: water-filtration and
 		// syrup-production. The water-pump can only reach the water-filtration
