@@ -855,12 +855,24 @@ for (const [label, report] of [
 	const postRailWaterImports = sum((r) => r.advisorChain.postRailRetailImportedUnitsBottledWater);
 	const served = advisor.filter((r) => r.advisorChain.served).length;
 	const localUnitsList = advisor.map((r) => r.advisorChain.localDeliveryUnits).sort((a, b) => a - b);
+	// Per-seed ratios are derived from the stored raw counts — the same
+	// definitions renderSweepMarkdown uses for the aggregate evidence lines.
+	const perSeedRatio = (run: RunMeasurement): number | null =>
+		run.advisorChain.retailImportedUnitsAllProducts === 0
+			? null
+			: run.advisorChain.localDeliveryUnits / run.advisorChain.retailImportedUnitsAllProducts;
+	const perSeedFraction = (run: RunMeasurement): number | null => {
+		const matched =
+			run.advisorChain.localDeliveryUnits +
+			run.advisorChain.postRailRetailImportedUnitsBottledWater;
+		return matched === 0 ? null : run.advisorChain.localDeliveryUnits / matched;
+	};
 	const ratios = advisor
-		.map((r) => r.advisorChain.localToAllImportRatio)
+		.map(perSeedRatio)
 		.filter((r): r is number => r !== null)
 		.sort((a, b) => a - b);
 	const fractions = advisor
-		.map((r) => r.advisorChain.postRailBottledWaterLocalFraction)
+		.map(perSeedFraction)
 		.filter((r): r is number => r !== null)
 		.sort((a, b) => a - b);
 	const q = (xs: number[], p: number): number | null =>
@@ -884,8 +896,10 @@ for (const [label, report] of [
 	console.log('  per-seed table (seed | lastRailDay | localU | allImports | waterImp | postRailWaterImp | ratio% | frac% | served | stallShape):');
 	for (const run of advisor) {
 		const c = run.advisorChain;
+		const ratio = perSeedRatio(run);
+		const fraction = perSeedFraction(run);
 		console.log(
-			`  ${run.seed} | ${c.lastRailDay ?? '-'} | ${c.localDeliveryUnits} | ${c.retailImportedUnitsAllProducts} | ${c.retailImportedUnitsBottledWater} | ${c.postRailRetailImportedUnitsBottledWater} | ${c.localToAllImportRatio === null ? '-' : (c.localToAllImportRatio * 100).toFixed(3)} | ${c.postRailBottledWaterLocalFraction === null ? '-' : (c.postRailBottledWaterLocalFraction * 100).toFixed(3)} | ${c.served} | ${c.stallShape ?? '-'}`
+			`  ${run.seed} | ${c.lastRailDay ?? '-'} | ${c.localDeliveryUnits} | ${c.retailImportedUnitsAllProducts} | ${c.retailImportedUnitsBottledWater} | ${c.postRailRetailImportedUnitsBottledWater} | ${ratio === null ? '-' : (ratio * 100).toFixed(3)} | ${fraction === null ? '-' : (fraction * 100).toFixed(3)} | ${c.served} | ${c.stallShape ?? '-'}`
 		);
 	}
 }
