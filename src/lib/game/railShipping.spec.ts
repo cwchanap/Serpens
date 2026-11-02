@@ -177,6 +177,32 @@ describe('pullViaRail', () => {
 		expect(state.shipments[0]!.kind).toBe('pull-warehouse');
 	});
 
+	it('drains the warehouse pool before a nearer producer buffer', () => {
+		// The pump sits nearer to the bottler than the warehouse, but pooled
+		// material only leaves through consumption — preferring the pool
+		// keeps raw stock from stranding the pool full and starving every
+		// finished-goods push behind it.
+		const pump = makeBuilding('industry-building-1', 'water-pump', 2, 2, { water: 30 });
+		const bottler = makeBuilding('industry-building-2', 'water-bottler', 10, 2);
+		const warehouse = makeBuilding('industry-building-3', 'warehouse', 18, 2);
+		const state = createRailTickState(
+			makeGame(makeCity(straightRails(4, 2, 19)), [pump, bottler, warehouse]),
+			{ materials: { water: 50 } }
+		);
+		const result = pullViaRail(state, bottler, 'water', 10);
+		expect(result.fromWarehouse).toBe(10);
+		expect(result.fromProducers).toBe(0);
+		expect(state.inventories.get('industry-building-1')!.water).toBe(30);
+		expect(state.cityInventory.materials.water).toBe(40);
+		expect(state.shipments[0]).toMatchObject({
+			kind: 'pull-warehouse',
+			fromId: 'industry-building-3',
+			toId: 'industry-building-2',
+			materialId: 'water',
+			quantity: 10
+		});
+	});
+
 	it('returns zero when the consumer has no rail connection', () => {
 		const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 		const mill = makeBuilding('industry-building-2', 'flour-mill', 20, 20);

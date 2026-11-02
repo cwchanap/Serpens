@@ -959,6 +959,8 @@ for (const path of paths) {
 			console.log(`   ${item.id}: ${item.passed ? 'PASS' : 'FAIL'} — ${item.detail}`);
 		}
 		console.log(`   overall: ${verdict.allPassed ? 'PASS' : 'FAIL'} (coverage ${verdict.coverage.detail})`);
+		// A failed gate must not read as a clean run under `set -e -o pipefail`.
+		if (!verdict.allPassed) process.exitCode = 1;
 		continue;
 	}
 	// Legacy-schema manual evaluation mirroring the same five items.
@@ -1047,25 +1049,47 @@ for (const path of paths) {
 	console.log(
 		`   advisor: ${advisorPass ? 'PASS' : 'FAIL'} — ${served}/${adv.length} served (${adv.length === 0 ? 'no runs' : ((served / adv.length) * 100).toFixed(1) + '%'})`
 	);
-	// Coverage
+	// Coverage: PASS requires the observed run keys to equal the approved
+	// matrix exactly — unique keys, no unexpected rows, and the same count.
+	// A Set-based missing check alone would wave through duplicated or
+	// off-matrix rows as long as every approved key appeared once.
 	const expected = SWEEP_ARCHETYPES.flatMap((a) =>
 		botsForArchetype(a).map((b) => `${a}/${b}`)
 	);
-	const missing: string[] = [];
-	const seen = new Set(runs.map((r) => `${r.seed} ${r.archetypeId}/${r.bot}`));
-	for (const seed of SWEEP_SEEDS)
-		for (const combo of expected)
-			if (!seen.has(`${seed} ${combo}`)) missing.push(`${seed} ${combo}`);
+	const approved = new Set<string>();
+	for (const seed of SWEEP_SEEDS) for (const combo of expected) approved.add(`${seed} ${combo}`);
+	const observed = runs.map((r) => `${r.seed} ${r.archetypeId}/${r.bot}`);
+	const seen = new Set<string>();
+	const duplicated = new Set<string>();
+	for (const key of observed) {
+		if (seen.has(key)) duplicated.add(key);
+		seen.add(key);
+	}
+	const missing = [...approved].filter((key) => !seen.has(key));
+	const unexpected = observed.filter((key) => !approved.has(key));
+	const exactMatrix =
+		missing.length === 0 &&
+		duplicated.size === 0 &&
+		unexpected.length === 0 &&
+		observed.length === approved.size;
+	const coverageParts: string[] = [];
+	if (missing.length > 0) coverageParts.push(`${missing.length} missing`);
+	if (duplicated.size > 0) coverageParts.push(`${duplicated.size} duplicated`);
+	if (unexpected.length > 0) coverageParts.push(`${unexpected.length} unexpected`);
+	if (observed.length !== approved.size)
+		coverageParts.push(`${observed.length}/${approved.size} runs`);
 	console.log(
-		`   coverage: ${missing.length === 0 ? 'complete approved matrix' : `${missing.length} missing`}`
+		`   coverage: ${coverageParts.length === 0 ? 'complete approved matrix' : coverageParts.join(', ')}`
 	);
 	// Mirror evaluateGateA's allPassed: item verdicts only count on the complete
 	// approved matrix — a partial sweep is diagnostic, never an official PASS.
 	const itemsPassed =
 		viabilityPass && boundPass && mviPass && forecastPass && advisorPass;
 	console.log(
-		`   overall: ${itemsPassed && missing.length === 0 ? 'PASS' : 'FAIL'} — all items pass only on the complete approved matrix`
+		`   overall: ${itemsPassed && exactMatrix ? 'PASS' : 'FAIL'} — all items pass only on the complete approved matrix`
 	);
+	// A failed gate must not read as a clean run under `set -e -o pipefail`.
+	if (!itemsPassed || !exactMatrix) process.exitCode = 1;
 }
 ```
 ### A.4 `legacy-compare.ts` — the §2 legacy-vs-new field-by-field projection diff (projects new-only `advisorChain` keys away, reports every value mismatch). Usage: `bun <dir>/legacy-compare.ts <legacy.json> <new.json>`.
@@ -1092,6 +1116,14 @@ const legacy = JSON.parse(readFileSync(legacyPath, 'utf8')) as { runs: Json[] };
 const current = JSON.parse(readFileSync(newPath, 'utf8')) as { runs: Json[] };
 
 const key = (run: Json): string => `${run.seed}|${run.archetypeId}|${run.bot}`;
+// A Map silently collapses duplicated run keys to the last row — reject
+// duplicates before pairing so a duplicated report can't skew the diff.
+const hasDuplicateKeys = (runs: Json[]): boolean =>
+	new Set(runs.map(key)).size !== runs.length;
+if (hasDuplicateKeys(legacy.runs) || hasDuplicateKeys(current.runs)) {
+	console.error('legacy-compare: duplicate run rows in a report');
+	process.exit(1);
+}
 const legacyMap = new Map(legacy.runs.map((run) => [key(run), run]));
 const newMap = new Map(current.runs.map((run) => [key(run), run]));
 
@@ -1250,6 +1282,17 @@ const b = load(k10Path);
 const keyList = (runs: RunSummary[]): string[] =>
 	runs.map((r) => `${r.seed}|${r.archetypeId}`).sort();
 const tierList = (tiers: TierStat[]): string[] => tiers.map((t) => t.tierId).sort();
+// Sorted-list equality lets an identical duplicate on both sides slip
+// through — reject duplicated keys before pairing rows for diffs.
+const hasDuplicates = (keys: readonly string[]): boolean => new Set(keys).size !== keys.length;
+if (hasDuplicates(keyList(a.runs)) || hasDuplicates(keyList(b.runs))) {
+	console.error('progression-compare: duplicate run rows in a report');
+	process.exit(1);
+}
+if (hasDuplicates(tierList(a.tiers)) || hasDuplicates(tierList(b.tiers))) {
+	console.error('progression-compare: duplicate tier rows in a report');
+	process.exit(1);
+}
 if (
 	JSON.stringify(keyList(a.runs)) !== JSON.stringify(keyList(b.runs)) ||
 	JSON.stringify(tierList(a.tiers)) !== JSON.stringify(tierList(b.tiers))
@@ -1387,6 +1430,13 @@ const b = load(k10Path);
 // comparison, not silently shrink it.
 const seedList = (runs: SeedBuckets[]): number[] =>
 	runs.map((r) => r.seed).sort((x, y) => x - y);
+// Sorted-list equality lets an identical duplicate on both sides slip
+// through — reject duplicated seeds before pairing rows for diffs.
+const hasDuplicates = (seeds: readonly number[]): boolean => new Set(seeds).size !== seeds.length;
+if (hasDuplicates(seedList(a)) || hasDuplicates(seedList(b))) {
+	console.error('buckets-compare: duplicate seed rows in a probe');
+	process.exit(1);
+}
 if (JSON.stringify(seedList(a)) !== JSON.stringify(seedList(b))) {
 	console.error('buckets-compare: k1 and k10 probes cover different seeds');
 	process.exit(1);
