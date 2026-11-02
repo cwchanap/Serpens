@@ -163,9 +163,18 @@ function compareBuildingIds(a: string, b: string): number {
  * holding the material (excluding the consumer) and warehouse-type buildings
  * (stock = that city's inventory pool).
  *
+ * The warehouse pool is preferred over producer buffers regardless of
+ * distance: pooled material only leaves through consumption, so a nearer
+ * producer could otherwise satisfy every pull forever and strand the pool
+ * full — blocking every finished-goods push behind it. Only raw/process
+ * materials are recipe inputs, so draining the pool first cannot consume
+ * stock retail would have taken.
+ *
  * Determinism contract: on every iteration, candidates are sorted by
  * building id (plain string compare, no locale awareness), then exactly one
- * `findShippingPath` runs per candidate. The shortest path wins; a strictly
+ * `findShippingPath` runs per candidate. Warehouse candidates are evaluated
+ * for the shortest path first; only when none is reachable do producer
+ * candidates compete. Within each kind, the shortest path wins; a strictly
  * shorter path replaces the current best, so on a tie the earlier
  * (lowest-id) candidate is kept. Each shipment moves
  * `min(remaining, pathCapacity, sourceStock)` and the loop repeats against
@@ -232,23 +241,33 @@ export function pullViaRail(
 			}
 		}
 
-		// Nearest source wins; earlier candidate (lower id) wins ties because
-		// only strictly shorter paths replace the best.
-		let best: { candidate: ShipmentCandidate; path: string[] } | null = null;
+		// Within one kind, nearest source wins; earlier candidate (lower id)
+		// wins ties because only strictly shorter paths replace the best.
+		const findBest = (kind: ShipmentCandidate['kind']) => {
+			let best: { candidate: ShipmentCandidate; path: string[] } | null = null;
 
-		for (const candidate of candidates) {
-			const sourceAttach = city.attachCellsByBuildingId.get(candidate.buildingId) ?? [];
+			for (const candidate of candidates) {
+				if (candidate.kind !== kind) {
+					continue;
+				}
 
-			if (sourceAttach.length === 0) {
-				continue;
+				const sourceAttach = city.attachCellsByBuildingId.get(candidate.buildingId) ?? [];
+
+				if (sourceAttach.length === 0) {
+					continue;
+				}
+
+				const path = findShippingPath(city.network, city.budget, consumerAttach, sourceAttach);
+
+				if (path && (!best || path.length < best.path.length)) {
+					best = { candidate, path };
+				}
 			}
 
-			const path = findShippingPath(city.network, city.budget, consumerAttach, sourceAttach);
+			return best;
+		};
 
-			if (path && (!best || path.length < best.path.length)) {
-				best = { candidate, path };
-			}
-		}
+		const best = findBest('pull-warehouse') ?? findBest('pull-producer');
 
 		if (!best) {
 			return result;

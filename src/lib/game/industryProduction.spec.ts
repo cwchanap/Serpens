@@ -1017,6 +1017,71 @@ describe('rail-fed production', () => {
 		expect(pantry.inventory.pantry).toBe(3);
 	});
 
+	test('a raw-full pool drains through downstream pulls so finished goods recover space', () => {
+		expect.assertions(11);
+		// Ordinary construction order: pump + warehouse alone fill the
+		// 200-unit pool with raw water and stall the pump's buffer full; the
+		// bottler is connected only afterwards. Pulls prefer the shared pool
+		// over producer buffers, so the bottler drains pooled water 10/day
+		// and its bottled-water push claims the freed space the same tick —
+		// the pool rotates to finished goods instead of staying stranded.
+		const strandedPoolGame: GameState = {
+			...makeProductionGame(makeIndustryCity(straightRails(4, 2, 19, 10)), [
+				makeIndustryBuilding('pump', 'water-pump', 2, 2, { water: 200 }),
+				makeIndustryBuilding('bottler', 'water-bottler', 10, 2),
+				makeIndustryBuilding('wh1', 'warehouse', 18, 2)
+			]),
+			cityInventories: [{ cityId: 'industry-city', materials: { water: 200 } }]
+		};
+
+		const day1 = simulateIndustryProduction(strandedPoolGame);
+		const materials1 = day1.game.cityInventories[0]!.materials;
+		const day1Pushes = day1.report.railShipments.filter(
+			(shipment) => shipment.kind === 'push-warehouse'
+		);
+		const pump1 = day1.game.industrialBuildings.find((building) => building.id === 'pump')!;
+		const bottler1 = day1.game.industrialBuildings.find((building) => building.id === 'bottler')!;
+
+		expect(day1.report.railShipments[0]).toMatchObject({
+			kind: 'pull-warehouse',
+			fromId: 'wh1',
+			toId: 'bottler',
+			materialId: 'water',
+			quantity: 10
+		});
+		expect(day1Pushes).toEqual([
+			expect.objectContaining({ fromId: 'bottler', materialId: 'bottled-water', quantity: 10 })
+		]);
+		expect(materials1.water).toBe(190);
+		expect(materials1['bottled-water']).toBe(10);
+		expect(pump1.inventory.water).toBe(200);
+		expect(bottler1.status).toBe('produced');
+
+		// The drain continues 10 units/day until the pooled water is gone.
+		let game = day1.game;
+		for (let day = 2; day <= 20; day += 1) {
+			game = simulateIndustryProduction(game).game;
+		}
+		expect(game.cityInventories[0]!.materials).toEqual({ water: 0, 'bottled-water': 200 });
+
+		// With no pooled water left, the pull falls back to the pump buffer —
+		// the pool is now all finished goods, so the bottler's push waits on
+		// retail instead of being permanently starved by raw stock.
+		const day21 = simulateIndustryProduction(game);
+		const day21Pulls = day21.report.railShipments.filter(
+			(shipment) => shipment.kind === 'pull-producer'
+		);
+		const pump21 = day21.game.industrialBuildings.find((building) => building.id === 'pump')!;
+		const bottler21 = day21.game.industrialBuildings.find((building) => building.id === 'bottler')!;
+
+		expect(day21Pulls).toEqual([
+			expect.objectContaining({ fromId: 'pump', materialId: 'water', quantity: 10 })
+		]);
+		expect(day21.report.railShipments.some((s) => s.kind === 'push-warehouse')).toBe(false);
+		expect(pump21.inventory.water).toBe(190);
+		expect(bottler21.inventory['bottled-water']).toBe(10);
+	});
+
 	test('rail-connected mill pulls inputs from the warehouse pool and records the pull', () => {
 		expect.assertions(4);
 		const { game, report } = simulateIndustryProduction(warehousePullGame);
@@ -1037,7 +1102,7 @@ describe('rail-fed production', () => {
 		).toBeLessThan(50);
 	});
 
-	test('resolves inputs from own buffer, same-city producer, warehouse, then import in order', () => {
+	test('resolves inputs from own buffer, warehouse, same-city producer, then import in order', () => {
 		const fakeTypeId = 'test-grain-cache' as IndustrialBuildingTypeId;
 		const types = INDUSTRIAL_BUILDING_TYPES as Record<string, unknown>;
 		const original = types[fakeTypeId];
@@ -1078,6 +1143,9 @@ describe('rail-fed production', () => {
 				report.consumed
 					.filter((movement) => movement.materialId === 'grain')
 					.map((movement) => ({ source: movement.source, quantity: movement.quantity }))
+				// Consumed buckets stay grouped rail-then-warehouse — the report
+				// summarizes the pull's two source kinds, while railShipments
+				// below pins the actual warehouse-first pull order.
 			).toEqual([
 				{ source: 'local', quantity: 2 },
 				{ source: 'rail', quantity: 3 },
@@ -1094,15 +1162,15 @@ describe('rail-fed production', () => {
 				}))
 			).toEqual([
 				{
-					kind: 'pull-producer',
-					fromId: 'source',
+					kind: 'pull-warehouse',
+					fromId: 'warehouse',
 					toId: 'mill',
 					materialId: 'grain',
 					quantity: 3
 				},
 				{
-					kind: 'pull-warehouse',
-					fromId: 'warehouse',
+					kind: 'pull-producer',
+					fromId: 'source',
 					toId: 'mill',
 					materialId: 'grain',
 					quantity: 3
