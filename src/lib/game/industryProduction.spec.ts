@@ -988,6 +988,35 @@ describe('rail-fed production', () => {
 		expect(day2.report.overflowUnits).toBe(0);
 	});
 
+	test('finished goods claim scarce warehouse space before raw surplus pushes', () => {
+		expect.assertions(6);
+		// 5 free pool units shared by a final-stage pantry-works and a raw
+		// grain-farm on one rail line. The push phase runs final → raw, so the
+		// retail-bound pantry lands in the pool and the farm's surplus stays
+		// buffered instead of crowding it out.
+		const contestedPoolGame: GameState = {
+			...makeProductionGame(makeIndustryCity(straightRails(4, 2, 11, 10)), [
+				makeIndustryBuilding('farm', 'grain-farm', 2, 2),
+				makeIndustryBuilding('pantry', 'pantry-works', 6, 2, { flour: 10 }),
+				makeIndustryBuilding('wh1', 'warehouse', 10, 2)
+			]),
+			cityInventories: [{ cityId: 'industry-city', materials: { grain: 190, pantry: 5 } }]
+		};
+
+		const { game, report } = simulateIndustryProduction(contestedPoolGame);
+		const pushes = report.railShipments.filter((shipment) => shipment.kind === 'push-warehouse');
+		const materials = game.cityInventories[0]!.materials;
+		const farm = game.industrialBuildings.find((building) => building.id === 'farm')!;
+		const pantry = game.industrialBuildings.find((building) => building.id === 'pantry')!;
+
+		expect(pushes).toHaveLength(1);
+		expect(pushes[0]).toMatchObject({ fromId: 'pantry', materialId: 'pantry', quantity: 5 });
+		expect(materials.pantry).toBe(10);
+		expect(materials.grain).toBe(190);
+		expect(farm.inventory.grain).toBe(30);
+		expect(pantry.inventory.pantry).toBe(3);
+	});
+
 	test('rail-connected mill pulls inputs from the warehouse pool and records the pull', () => {
 		expect.assertions(4);
 		const { game, report } = simulateIndustryProduction(warehousePullGame);
