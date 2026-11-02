@@ -1,4 +1,4 @@
-import { INDUSTRIAL_BUILDING_TYPES } from './industry';
+import { INDUSTRIAL_BUILDING_TYPES, MATERIALS } from './industry';
 import {
 	compareWorldCityIds as compareCatalogWorldCityIds,
 	getWorldCityDefinition
@@ -13,6 +13,35 @@ import type {
 } from './types';
 
 export const WAREHOUSE_OVERFLOW_COST_PER_UNIT = 2;
+
+/**
+ * Share of each city's warehouse pool held for finished goods: surplus rail
+ * pushes of raw/intermediate materials may not reduce the pool's free space
+ * below this ratio of total capacity. Pooled raw stock can sit indefinitely
+ * (a nearer producer can satisfy every downstream pull forever, and
+ * recurring routes only ship on dispatch days), so without a bound upstream
+ * surplus fills the pool and permanently starves every finished-goods push
+ * behind it. Finished pushes keep the full free-space bound — they are what
+ * stores and export routes actually drain.
+ */
+export const WAREHOUSE_FINISHED_GOODS_RESERVE_RATIO = 0.5;
+
+/**
+ * Space a surplus rail push of `materialId` may claim in the city pool:
+ * `capacity - used` for finished materials, further bounded by the finished
+ * reserve for raw/intermediate ones. Returns 0 when no push is allowed.
+ */
+export function getWarehousePushHeadroom(
+	materialId: MaterialId,
+	capacity: number,
+	used: number
+): number {
+	const reserve =
+		MATERIALS[materialId].kind === 'finished'
+			? 0
+			: Math.ceil(capacity * WAREHOUSE_FINISHED_GOODS_RESERVE_RATIO);
+	return Math.max(0, capacity - reserve - used);
+}
 
 export type CityInventoryAccessFailure =
 	| 'unknown-city'

@@ -177,11 +177,12 @@ describe('pullViaRail', () => {
 		expect(state.shipments[0]!.kind).toBe('pull-warehouse');
 	});
 
-	it('drains the warehouse pool before a nearer producer buffer', () => {
-		// The pump sits nearer to the bottler than the warehouse, but pooled
-		// material only leaves through consumption — preferring the pool
-		// keeps raw stock from stranding the pool full and starving every
-		// finished-goods push behind it.
+	it('pulls from the nearest stocked source — a tied producer wins on building id', () => {
+		// Pump (west) and warehouse (east) sit at equal path length from the
+		// bottler on a level-1 line. The pump must win: pulling pooled water
+		// over the same cells the bottler's bottled-water push needs would
+		// consume the shared rail budget on days the push has no other path.
+		// The pool stays intact for pushes and export routes instead.
 		const pump = makeBuilding('industry-building-1', 'water-pump', 2, 2, { water: 30 });
 		const bottler = makeBuilding('industry-building-2', 'water-bottler', 10, 2);
 		const warehouse = makeBuilding('industry-building-3', 'warehouse', 18, 2);
@@ -190,13 +191,13 @@ describe('pullViaRail', () => {
 			{ materials: { water: 50 } }
 		);
 		const result = pullViaRail(state, bottler, 'water', 10);
-		expect(result.fromWarehouse).toBe(10);
-		expect(result.fromProducers).toBe(0);
-		expect(state.inventories.get('industry-building-1')!.water).toBe(30);
-		expect(state.cityInventory.materials.water).toBe(40);
+		expect(result.fromProducers).toBe(10);
+		expect(result.fromWarehouse).toBe(0);
+		expect(state.inventories.get('industry-building-1')!.water).toBe(20);
+		expect(state.cityInventory.materials.water).toBe(50);
 		expect(state.shipments[0]).toMatchObject({
-			kind: 'pull-warehouse',
-			fromId: 'industry-building-3',
+			kind: 'pull-producer',
+			fromId: 'industry-building-1',
 			toId: 'industry-building-2',
 			materialId: 'water',
 			quantity: 10
@@ -445,15 +446,56 @@ describe('pushSurplusViaRail', () => {
 	describe('warehouse capacity cap', () => {
 		it('caps each push at the space remaining in the city warehouse pool', () => {
 			// One warehouse building → 200 capacity; 195 used leaves 5 free,
-			// less than both the level-1 line's daily capacity and the farm's
-			// 30-unit stock — the pool, not the rail budget, must bind here.
+			// less than both the level-1 line's daily capacity and the
+			// bottler's 30-unit stock — the pool, not the rail budget, must
+			// bind here. Bottled water is finished, so it sees the full free
+			// space (the finished-goods reserve does not apply).
+			const bottler = makeBuilding('industry-building-1', 'water-bottler', 2, 2, {
+				'bottled-water': 30
+			});
+			const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
+			const state = createRailTickState(makeGame(makeCity(LINE), [bottler, warehouse]), {
+				materials: { grain: 195 }
+			});
+			pushSurplusViaRail(state, bottler);
+			expect(state.cityInventory.materials['bottled-water']).toBe(5);
+			expect(state.inventories.get('industry-building-1')!['bottled-water']).toBe(25);
+			expect(state.shipments).toEqual([
+				{
+					cityId: 'industry-city',
+					materialId: 'bottled-water',
+					quantity: 5,
+					value: 10,
+					kind: 'push-warehouse',
+					fromId: 'industry-building-1',
+					toId: 'industry-building-2'
+				}
+			]);
+			// Conservation: every shipped unit left the producer buffer and
+			// landed in the pool — nothing created, nothing lost.
+			expect(
+				(state.cityInventory.materials['bottled-water'] ?? 0) +
+					(state.inventories.get('industry-building-1')!['bottled-water'] ?? 0)
+			).toBe(30);
+			// No rail cell is oversubscribed: per-cell usage stays within the
+			// level-1 daily capacity.
+			for (const units of Object.values(state.usage)) {
+				expect(units).toBeLessThanOrEqual(getRailCellDailyCapacity(1));
+			}
+		});
+
+		it('caps raw surplus at the finished-goods reserve, not the pool limit', () => {
+			// One warehouse → 200 capacity with a 100-unit finished reserve:
+			// 95 used leaves 5 units of the raw share free — less than the
+			// level-1 line's daily capacity and the farm's 30-unit stock —
+			// even though the pool still has 105 units of literal free space.
 			const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 			const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 			const state = createRailTickState(makeGame(makeCity(LINE), [farm, warehouse]), {
-				materials: { grain: 195 }
+				materials: { grain: 95 }
 			});
 			pushSurplusViaRail(state, farm);
-			expect(state.cityInventory.materials.grain).toBe(200);
+			expect(state.cityInventory.materials.grain).toBe(100);
 			expect(state.inventories.get('industry-building-1')!.grain).toBe(25);
 			expect(state.shipments).toEqual([
 				{
@@ -466,17 +508,31 @@ describe('pushSurplusViaRail', () => {
 					toId: 'industry-building-2'
 				}
 			]);
-			// Conservation: every shipped unit left the producer buffer and
-			// landed in the pool — nothing created, nothing lost.
-			expect(
-				(state.cityInventory.materials.grain ?? 0) +
-					(state.inventories.get('industry-building-1')!.grain ?? 0)
-			).toBe(195 + 30);
-			// No rail cell is oversubscribed: per-cell usage stays within the
-			// level-1 daily capacity.
-			for (const units of Object.values(state.usage)) {
-				expect(units).toBeLessThanOrEqual(getRailCellDailyCapacity(1));
-			}
+		});
+
+		it('leaves the reserve usable by a same-tick finished-goods push', () => {
+			// Shared level-2 trunk (20/day per cell), one warehouse → 200
+			// capacity. The farm's raw push stops at the 100-unit reserve
+			// boundary (95 → 100 used); the bottler's finished push then claims
+			// the space the reserve protected — 15 units, bounded by the rail
+			// budget the farm's 5-unit shipment left on the shared cells.
+			const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
+			const bottler = makeBuilding('industry-building-2', 'water-bottler', 4, 2, {
+				'bottled-water': 30
+			});
+			const warehouse = makeBuilding('industry-building-3', 'warehouse', 10, 2);
+			const state = createRailTickState(
+				makeGame(makeCity(straightRails(4, 2, 11, 2)), [farm, bottler, warehouse]),
+				{ materials: { grain: 95 } }
+			);
+			pushSurplusViaRail(state, farm);
+			pushSurplusViaRail(state, bottler);
+			expect(state.cityInventory.materials.grain).toBe(100);
+			expect(state.cityInventory.materials['bottled-water']).toBe(15);
+			expect(state.shipments.map((shipment) => shipment.materialId)).toEqual([
+				'grain',
+				'bottled-water'
+			]);
 		});
 
 		it('stops before mutating stock, budget, or shipments when the pool is exactly full', () => {
@@ -511,36 +567,39 @@ describe('pushSurplusViaRail', () => {
 
 		it('measures free space across all pooled materials, not per material', () => {
 			// 150 flour + 45 grain = 195 used of 200 → only 5 free even though
-			// the pushed material itself has 155 units of per-material room.
-			const farm = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
+			// the pushed material itself has 200 units of per-material room.
+			const snackFactory = makeBuilding('industry-building-1', 'snack-factory', 2, 2, {
+				snacks: 30
+			});
 			const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
-			const state = createRailTickState(makeGame(makeCity(LINE), [farm, warehouse]), {
+			const state = createRailTickState(makeGame(makeCity(LINE), [snackFactory, warehouse]), {
 				materials: { flour: 150, grain: 45 }
 			});
-			pushSurplusViaRail(state, farm);
-			expect(state.cityInventory.materials).toEqual({ flour: 150, grain: 50 });
-			expect(state.inventories.get('industry-building-1')!.grain).toBe(25);
+			pushSurplusViaRail(state, snackFactory);
+			expect(state.cityInventory.materials).toEqual({ flour: 150, grain: 45, snacks: 5 });
+			expect(state.inventories.get('industry-building-1')!.snacks).toBe(25);
 			expect(state.shipments).toHaveLength(1);
-			expect(state.shipments[0]).toMatchObject({ materialId: 'grain', quantity: 5 });
+			expect(state.shipments[0]).toMatchObject({ materialId: 'snacks', quantity: 5 });
 		});
 
 		it('lets the earlier producer take the last free unit and stops the later one', () => {
-			// 199 used of 200 → one free unit. Farm A (lower id, pushed first
-			// in the tick's stage+id order) takes it; farm B sees zero space
-			// and ships nothing — deterministic priority, no race.
+			// 99 used of 200 → one unit of the raw share remains before the
+			// finished-goods reserve boundary. Farm A (lower id, pushed first
+			// in the tick's stage+id order) takes it; farm B sees zero
+			// headroom and ships nothing — deterministic priority, no race.
 			const build = () => {
 				const farmA = makeBuilding('industry-building-1', 'grain-farm', 2, 2, { grain: 30 });
 				const warehouse = makeBuilding('industry-building-2', 'warehouse', 10, 2);
 				const farmB = makeBuilding('industry-building-3', 'grain-farm', 6, 2, { grain: 30 });
 				const state = createRailTickState(makeGame(makeCity(LINE), [farmA, warehouse, farmB]), {
-					materials: { grain: 199 }
+					materials: { grain: 99 }
 				});
 				pushSurplusViaRail(state, farmA);
 				pushSurplusViaRail(state, farmB);
 				return state;
 			};
 			const state = build();
-			expect(state.cityInventory.materials.grain).toBe(200);
+			expect(state.cityInventory.materials.grain).toBe(100);
 			expect(state.inventories.get('industry-building-1')!.grain).toBe(29);
 			expect(state.inventories.get('industry-building-3')!.grain).toBe(30);
 			expect(state.shipments).toHaveLength(1);
@@ -556,10 +615,11 @@ describe('pushSurplusViaRail', () => {
 
 		it('recomputes space after a same-tick warehouse pull frees room', () => {
 			// Two disjoint rail lines sharing one city pool (two warehouses →
-			// 400 capacity, prefilled to 400). The mill's same-tick pull frees
-			// 10 units on the level-1 y=4 line; the farm's push on the level-3
-			// y=8 line (30-unit budget) then ships into exactly that freed room
-			// — and no further, retaining the unshipped 20 in its buffer.
+			// 400 capacity, prefilled with 200 grain — exactly the raw share
+			// the 200-unit finished reserve allows). The mill's same-tick pull
+			// frees 10 units on the level-1 y=4 line; the farm's push on the
+			// level-3 y=8 line (30-unit budget) then ships into exactly that
+			// freed room — and no further, retaining the unshipped 20.
 			const warehouseA = makeBuilding('industry-building-1', 'warehouse', 2, 2);
 			const mill = makeBuilding('industry-building-2', 'flour-mill', 10, 2);
 			const farm = makeBuilding('industry-building-3', 'grain-farm', 2, 6, { grain: 30 });
@@ -567,16 +627,16 @@ describe('pushSurplusViaRail', () => {
 			const rails = [...straightRails(4, 2, 11), ...straightRails(8, 2, 11, 3)];
 			const state = createRailTickState(
 				makeGame(makeCity(rails), [warehouseA, mill, farm, warehouseB]),
-				{ materials: { grain: 400 } }
+				{ materials: { grain: 200 } }
 			);
 
 			const pulled = pullViaRail(state, mill, 'grain', getRailCellDailyCapacity(1));
 			expect(pulled.fromWarehouse).toBe(getRailCellDailyCapacity(1));
-			expect(state.cityInventory.materials.grain).toBe(400 - getRailCellDailyCapacity(1));
+			expect(state.cityInventory.materials.grain).toBe(200 - getRailCellDailyCapacity(1));
 
 			pushSurplusViaRail(state, farm);
 
-			expect(state.cityInventory.materials.grain).toBe(400);
+			expect(state.cityInventory.materials.grain).toBe(200);
 			expect(state.inventories.get('industry-building-3')!.grain).toBe(
 				30 - getRailCellDailyCapacity(1)
 			);

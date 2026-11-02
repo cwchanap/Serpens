@@ -4,6 +4,7 @@ import {
 	getCityInventory,
 	getCityInventoryUsed,
 	getCityWarehouseCapacity,
+	getWarehousePushHeadroom,
 	removeCityInventoryMaterial,
 	resolveWorldCityId
 } from './cityInventory';
@@ -33,9 +34,16 @@ interface RailTickCity {
 	budget: RailBudget;
 	attachCellsByBuildingId: Map<string, string[]>;
 	// Derived once per tick: buildings can't appear mid-tick, so the city's
-	// warehouse capacity is stable for the whole push phase. Free space must
-	// still be recomputed from the mutable working inventory before each push.
+	// warehouse capacity is stable for the whole push phase. Free space is
+	// tracked per producer push instead of re-summed from the inventory.
 	warehouseCapacity: number;
+	// The pool is one logical source/sink shared by every warehouse building:
+	// the union of their attach keys lets a single BFS find the nearest
+	// reachable warehouse instead of searching once per building.
+	warehouseAttachKeys: string[];
+	// attach cell key → warehouse building id (lowest id wins when footprints
+	// share a cell), used to label pull/push shipment endpoints.
+	warehouseIdByAttachKey: Map<string, string>;
 }
 
 export interface RailTickState {
@@ -81,11 +89,28 @@ export function createRailTickState(game: GameState): RailTickState {
 			}
 		}
 
+		const warehouseAttachKeys: string[] = [];
+		const warehouseIdByAttachKey = new Map<string, string>();
+		for (const building of game.industrialBuildings) {
+			if (building.cityId !== cityId || building.typeId !== 'warehouse') {
+				continue;
+			}
+
+			for (const key of attachCellsByBuildingId.get(building.id) ?? []) {
+				if (!warehouseIdByAttachKey.has(key)) {
+					warehouseIdByAttachKey.set(key, building.id);
+					warehouseAttachKeys.push(key);
+				}
+			}
+		}
+
 		citiesById.set(cityId, {
 			network,
 			budget: createRailBudget(network),
 			attachCellsByBuildingId,
-			warehouseCapacity: getCityWarehouseCapacity(game, cityId)
+			warehouseCapacity: getCityWarehouseCapacity(game, cityId),
+			warehouseAttachKeys,
+			warehouseIdByAttachKey
 		});
 		cityInventoriesByCityId.set(cityId, {
 			...access.inventory,
@@ -160,28 +185,25 @@ function compareBuildingIds(a: string, b: string): number {
 /**
  * Repeats nearest-source BFS until `requested` is met or no budget-positive
  * path to any stocked source remains. Sources are same-city producer buffers
- * holding the material (excluding the consumer) and warehouse-type buildings
- * (stock = that city's inventory pool).
+ * holding the material (excluding the consumer) and the warehouse pool —
+ * all warehouse buildings share one city inventory, so the pool is one
+ * logical source whose nearest reachable endpoint is found with a single
+ * multi-target BFS over the union of warehouse attach cells.
  *
- * The warehouse pool is preferred over producer buffers regardless of
- * distance: pooled material only leaves through consumption, so a nearer
- * producer could otherwise satisfy every pull forever and strand the pool
- * full — blocking every finished-goods push behind it. Only raw/process
- * materials are recipe inputs, so draining the pool first cannot consume
- * stock retail would have taken.
- *
- * Determinism contract: on every iteration, candidates are sorted by
- * building id (plain string compare, no locale awareness), then exactly one
- * `findShippingPath` runs per candidate. Warehouse candidates are evaluated
- * for the shortest path first; only when none is reachable do producer
- * candidates compete. Within each kind, the shortest path wins; a strictly
- * shorter path replaces the current best, so on a tie the earlier
- * (lowest-id) candidate is kept. Each shipment moves
+ * Determinism contract: on every iteration, producer candidates are sorted
+ * by building id (plain string compare, no locale awareness) and one
+ * `findShippingPath` runs per producer plus one for the pool. The shortest
+ * path wins; ties go to the lower building id, where the pool compares as
+ * the warehouse owning the path's endpoint cell (lowest id on a shared
+ * attach cell). Among warehouses themselves the pool has no id-order
+ * tie-break — the BFS picks whichever endpoint the N/E/S/W expansion
+ * reaches first, which is deterministic but not necessarily the lowest
+ * warehouse id. Each shipment moves
  * `min(remaining, pathCapacity, sourceStock)` and the loop repeats against
  * the updated budget/stock until `remaining` hits 0 or no candidate has a
  * reachable, budget-positive path.
  *
- * Complexity: O(pulls × candidates × BFS) per tick — fine for current
+ * Complexity: O(pulls × producers × BFS) per tick — fine for current
  * building counts, but worth profiling if industry cities grow large.
  */
 export function pullViaRail(
@@ -201,6 +223,17 @@ export function pullViaRail(
 	}
 
 	let remaining = Math.max(0, requested);
+	// Pool usage is computed lazily — only when a stocked, reachable pool
+	// competes for the pull — then tracked across pull shipments for the
+	// full-pool recovery check below. Quantities clamp at 0 so a corrupt
+	// negative entry reads as "unavailable" (same tolerance as the stock
+	// check) instead of throwing on the strict inventory sum.
+	let poolUsed: number | null = null;
+	const poolUnitsUsed = () =>
+		Object.values(entityCity.inventory.materials).reduce(
+			(total, quantity) => total + Math.max(0, quantity ?? 0),
+			0
+		);
 
 	// sortedBuildings is pre-sorted by building id once per tick in
 	// createRailTickState; only stock levels change between iterations, so
@@ -208,21 +241,15 @@ export function pullViaRail(
 	const sortedEntries = state.sortedBuildings;
 
 	while (remaining > 0) {
-		// Candidate sources, sorted by building id (plain string compare).
+		// Producer candidates, sorted by building id (plain string compare).
 		const candidates: ShipmentCandidate[] = [];
 
 		for (const [buildingId, building] of sortedEntries) {
-			if (resolveWorldCityId(building.cityId) !== consumerCityId || buildingId === consumer.id) {
-				continue;
-			}
-
-			if (building.typeId === 'warehouse') {
-				const stock = Math.max(0, entityCity.inventory.materials[materialId] ?? 0);
-
-				if (stock > 0) {
-					candidates.push({ buildingId, kind: 'pull-warehouse', stock });
-				}
-
+			if (
+				resolveWorldCityId(building.cityId) !== consumerCityId ||
+				buildingId === consumer.id ||
+				building.typeId === 'warehouse'
+			) {
 				continue;
 			}
 
@@ -241,16 +268,48 @@ export function pullViaRail(
 			}
 		}
 
-		// Within one kind, nearest source wins; earlier candidate (lower id)
-		// wins ties because only strictly shorter paths replace the best.
-		const findBest = (kind: ShipmentCandidate['kind']) => {
-			let best: { candidate: ShipmentCandidate; path: string[] } | null = null;
+		// Nearest source wins; equal-length paths go to the lower building id.
+		// The pool competes as one logical source at its nearest reachable
+		// warehouse endpoint — with one recovery exception: a literally-full
+		// pool always wins over producer buffers regardless of distance.
+		// Every unit consumed then frees space a finished-goods push needs to
+		// rotate stock out (the push reserve only caps what raw surplus can
+		// add; it cannot drain a pool that is already saturated). Below
+		// capacity, distance rules — so a processor's pull never competes
+		// with its own push for the same cells' budget.
+		let best: { candidate: ShipmentCandidate; path: string[] } | null = null;
+		const poolStock = Math.max(0, entityCity.inventory.materials[materialId] ?? 0);
 
+		if (poolStock > 0 && city.warehouseAttachKeys.length > 0) {
+			const path = findShippingPath(
+				city.network,
+				city.budget,
+				consumerAttach,
+				city.warehouseAttachKeys
+			);
+
+			if (path) {
+				best = {
+					candidate: {
+						buildingId: city.warehouseIdByAttachKey.get(path[path.length - 1]!)!,
+						kind: 'pull-warehouse',
+						stock: poolStock
+					},
+					path
+				};
+			}
+		}
+
+		// `best` can only be the pool candidate at this point, so the
+		// recovery rule is just: a stocked, reachable pool on a full pool
+		// skips the producer search.
+		const poolRecovery =
+			best !== null &&
+			city.warehouseCapacity > 0 &&
+			(poolUsed ??= poolUnitsUsed()) >= city.warehouseCapacity;
+
+		if (!poolRecovery) {
 			for (const candidate of candidates) {
-				if (candidate.kind !== kind) {
-					continue;
-				}
-
 				const sourceAttach = city.attachCellsByBuildingId.get(candidate.buildingId) ?? [];
 
 				if (sourceAttach.length === 0) {
@@ -259,15 +318,16 @@ export function pullViaRail(
 
 				const path = findShippingPath(city.network, city.budget, consumerAttach, sourceAttach);
 
-				if (path && (!best || path.length < best.path.length)) {
+				if (
+					path &&
+					(!best ||
+						path.length < best.path.length ||
+						(path.length === best.path.length && candidate.buildingId < best.candidate.buildingId))
+				) {
 					best = { candidate, path };
 				}
 			}
-
-			return best;
-		};
-
-		const best = findBest('pull-warehouse') ?? findBest('pull-producer');
+		}
 
 		if (!best) {
 			return result;
@@ -286,6 +346,7 @@ export function pullViaRail(
 			entityCity.inventory = removal.inventory;
 			result.fromWarehouse += removal.quantityRemoved;
 			removed = removal.quantityRemoved;
+			poolUsed = (poolUsed ?? 0) - removal.quantityRemoved;
 		} else {
 			const removal = removeInventory(
 				state.inventories.get(best.candidate.buildingId) ?? {},
@@ -317,14 +378,17 @@ export function pullViaRail(
 /**
  * Pushes surplus output in the producer's buffer to the nearest reachable
  * warehouse building, budget- and warehouse-capacity-limited. Each shipment
- * is additionally capped by the free space left in the city warehouse pool,
- * recomputed against the mutable working inventory before every push — a
- * same-tick warehouse pull can free room, and every shipped unit consumes it.
- * When no space remains the push stops before touching stock, budget, or
- * shipments; unshipped output stays in the producer buffer, where the
+ * is additionally capped by the pool's push headroom for that material kind
+ * (getWarehousePushHeadroom): finished goods may claim all remaining space,
+ * while raw/intermediate surplus must leave the finished-goods reserve free
+ * so pooled raw stock cannot starve the finished pushes that stores and
+ * export routes actually drain. Pool usage is tracked locally (seeded once
+ * from the working inventory, incremented per shipment) rather than
+ * re-summed before every push. When headroom for a material is exhausted
+ * its push stops — unshipped output stays in the producer buffer, where the
  * existing buffer bounds create backpressure on later days. Overflow from
- * non-rail sources (e.g. transfer arrivals) keeps its own semantics — the cap
- * only bounds this surplus-push path.
+ * non-rail sources (e.g. transfer arrivals) keeps its own semantics — the
+ * cap only bounds this surplus-push path.
  */
 export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBuilding): void {
 	const entityCity = getRailEntityCity(state, producer);
@@ -332,7 +396,13 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 	const producerCityId = entityCity?.cityId;
 	const producerAttach = city?.attachCellsByBuildingId.get(producer.id) ?? [];
 
-	if (!entityCity || !city || !producerCityId || producerAttach.length === 0) {
+	if (
+		!entityCity ||
+		!city ||
+		!producerCityId ||
+		producerAttach.length === 0 ||
+		city.warehouseAttachKeys.length === 0
+	) {
 		return;
 	}
 
@@ -344,57 +414,39 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 	const recipe = buildingType?.recipeId ? PRODUCTION_RECIPES[buildingType.recipeId] : undefined;
 	// Push only recipe outputs; retain buffered inputs for local production.
 	const materialIds = (recipe?.outputs.map((output) => output.materialId) ?? []).sort();
-
-	// sortedBuildings is pre-sorted by building id once per tick in
-	// createRailTickState.
-	const sortedEntries = state.sortedBuildings;
+	// Pool usage is summed once, then tracked across this producer's pushes —
+	// re-summing the whole pool before every shipment was wasted work.
+	let poolUsed = getCityInventoryUsed(entityCity.inventory);
 
 	for (const materialId of materialIds) {
 		let stock = Math.max(0, inventory[materialId] ?? 0);
 
 		while (stock > 0) {
-			// Free pool space is material-agnostic (getCityInventoryUsed sums
-			// all materials) and shrinks with every push in the tick, so it is
-			// recomputed here rather than hoisted. Zero space stops the whole
-			// producer push — searching for a path would be wasted work, and
-			// no stock/budget/shipment may be touched either way.
-			const warehouseSpace = Math.max(
-				0,
-				city.warehouseCapacity - getCityInventoryUsed(entityCity.inventory)
-			);
+			// Headroom is per material kind: finished goods see all free space,
+			// raw/intermediate surplus must leave the finished reserve open.
+			// Exhausted headroom ends this material's push but not the
+			// producer's — a later recipe output may be finished stock that
+			// still has room.
+			const warehouseSpace = getWarehousePushHeadroom(materialId, city.warehouseCapacity, poolUsed);
 
 			if (warehouseSpace === 0) {
+				break;
+			}
+
+			// All warehouses share the city pool, so one multi-target BFS over
+			// their attach cells finds the nearest reachable endpoint.
+			const path = findShippingPath(
+				city.network,
+				city.budget,
+				producerAttach,
+				city.warehouseAttachKeys
+			);
+
+			if (!path) {
 				return;
 			}
 
-			let best: { warehouseId: string; path: string[] } | null = null;
-
-			for (const [buildingId, building] of sortedEntries) {
-				if (
-					resolveWorldCityId(building.cityId) !== producerCityId ||
-					building.typeId !== 'warehouse'
-				) {
-					continue;
-				}
-
-				const warehouseAttach = city.attachCellsByBuildingId.get(buildingId) ?? [];
-
-				if (warehouseAttach.length === 0) {
-					continue;
-				}
-
-				const path = findShippingPath(city.network, city.budget, producerAttach, warehouseAttach);
-
-				if (path && (!best || path.length < best.path.length)) {
-					best = { warehouseId: buildingId, path };
-				}
-			}
-
-			if (!best) {
-				return;
-			}
-
-			const quantity = Math.min(stock, getPathCapacity(city.budget, best.path), warehouseSpace);
+			const quantity = Math.min(stock, getPathCapacity(city.budget, path), warehouseSpace);
 
 			const removal = removeInventory(inventory, materialId, quantity);
 			inventory = removal.inventory;
@@ -402,8 +454,9 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 			const cityInventory = addCityInventoryMaterial(entityCity.inventory, materialId, quantity);
 			state.cityInventoriesByCityId.set(producerCityId, cityInventory);
 			entityCity.inventory = cityInventory;
-			consumeRailBudget(city.budget, best.path, quantity);
-			recordUsage(state, producerCityId, best.path, quantity);
+			consumeRailBudget(city.budget, path, quantity);
+			recordUsage(state, producerCityId, path, quantity);
+			poolUsed += quantity;
 			state.shipments.push({
 				cityId: producerCityId,
 				materialId,
@@ -411,7 +464,7 @@ export function pushSurplusViaRail(state: RailTickState, producer: IndustrialBui
 				value: quantity * MATERIALS[materialId].localValue,
 				kind: 'push-warehouse',
 				fromId: producer.id,
-				toId: best.warehouseId
+				toId: city.warehouseIdByAttachKey.get(path[path.length - 1]!)!
 			});
 			stock -= quantity;
 		}
