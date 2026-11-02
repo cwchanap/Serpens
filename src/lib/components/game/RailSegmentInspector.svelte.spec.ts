@@ -69,7 +69,8 @@ describe('RailSegmentInspector', () => {
 		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('3');
 		await expect.element(page.getByTestId('rail-segment-level')).toHaveTextContent('1 / 5');
 		// Capacity is getRailCellDailyCapacity(minLevel): level 1 → 10/day.
-		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent('10');
+		// Anchored match: a bare '10' substring would also pass for 100.
+		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent(/^10$/);
 		// 5 recorded units / 10-unit daily capacity → 50%.
 		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('50%');
 	});
@@ -111,7 +112,7 @@ describe('RailSegmentInspector', () => {
 
 		render(RailSegmentInspector, props);
 
-		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent('10');
+		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent(/^10$/);
 		await expect
 			.element(page.getByTestId('rail-segment-utilization'))
 			.toHaveTextContent(props.i18n.format.percent(busiestCellUtilization));
@@ -159,7 +160,7 @@ describe('RailSegmentInspector', () => {
 
 		render(RailSegmentInspector, baseProps(game, [segment]));
 
-		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent('50');
+		await expect.element(page.getByTestId('rail-segment-capacity')).toHaveTextContent(/^50$/);
 		await expect.element(page.getByTestId('rail-segment-utilization')).toHaveTextContent('100%');
 		const button = page.getByRole('button', { name: 'At max level' });
 		await expect.element(button).toBeVisible();

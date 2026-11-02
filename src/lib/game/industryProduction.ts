@@ -312,8 +312,8 @@ export function simulateIndustryProduction(
 	// up in the production loop above) because the two loops are separate
 	// phases — the lookup is a cheap map read and keeping them independent
 	// avoids sharing mutable state.
-	const pushSorted = [...currentGame.industrialBuildings].sort(
-		compareIndustrialBuildingsByStageDesc
+	const pushSorted = [...currentGame.industrialBuildings].sort((first, second) =>
+		compareIndustrialBuildingsByStage(first, second, -1)
 	);
 
 	for (const building of pushSorted) {
@@ -377,29 +377,21 @@ export function createEmptyProductionReport(): DailyProductionReport {
 	};
 }
 
+// Stage ordering shared by the production sort (ascending: raw first) and
+// the push-phase sort (descending: final first) — only the stage direction
+// differs between them.
 function compareIndustrialBuildingsByStage(
 	first: IndustrialBuilding,
-	second: IndustrialBuilding
+	second: IndustrialBuilding,
+	direction: 1 | -1 = 1
 ): number {
 	const firstStage = getIndustrialBuildingStage(INDUSTRIAL_BUILDING_TYPES[first.typeId]);
 	const secondStage = getIndustrialBuildingStage(INDUSTRIAL_BUILDING_TYPES[second.typeId]);
-	const stageDiff = RECIPE_STAGE_ORDER[firstStage] - RECIPE_STAGE_ORDER[secondStage];
+	const stageDiff = direction * (RECIPE_STAGE_ORDER[firstStage] - RECIPE_STAGE_ORDER[secondStage]);
 	// Plain string compare tie-break (never localeCompare — engine code must
 	// stay locale-independent). The spec requires "ties by building id" so
 	// same-stage buildings process in a deterministic order regardless of
 	// the input array's insertion order.
-	return stageDiff !== 0 ? stageDiff : first.id < second.id ? -1 : first.id > second.id ? 1 : 0;
-}
-
-// Push-phase order: stage descending (final first), same "ties by building
-// id" rule as the production sort — only the stage direction is inverted.
-function compareIndustrialBuildingsByStageDesc(
-	first: IndustrialBuilding,
-	second: IndustrialBuilding
-): number {
-	const firstStage = getIndustrialBuildingStage(INDUSTRIAL_BUILDING_TYPES[first.typeId]);
-	const secondStage = getIndustrialBuildingStage(INDUSTRIAL_BUILDING_TYPES[second.typeId]);
-	const stageDiff = RECIPE_STAGE_ORDER[secondStage] - RECIPE_STAGE_ORDER[firstStage];
 	return stageDiff !== 0 ? stageDiff : first.id < second.id ? -1 : first.id > second.id ? 1 : 0;
 }
 

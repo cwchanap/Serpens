@@ -1227,6 +1227,79 @@ describe('supply planner snapshot', () => {
 		expect(result.snapshot.disconnectedBuildingIds).not.toContain('water-pump-1');
 	});
 
+	it('does not treat the warehouse hub as a sink when the pool cannot accept the push', () => {
+		// Same two-island hub layout as the usable case above, but the
+		// 400-unit pool is saturated with raw water. The pump's water push is
+		// bounded by the finished-goods reserve (raw share exhausted), and the
+		// bottler's bottled-water push is bounded by literal free space (none)
+		// — the producer → warehouse → consumer route is blocked even though
+		// the rail topology is identical.
+		const base = plannerGame([product('bottled-water')], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 'industry-city', 1, 2, 2),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 2, 4),
+				building('water-bottler', 'water-bottler-1', 'industry-city', 1, 2, 11),
+				building('warehouse', 'warehouse-2', 'industry-city', 1, 2, 12)
+			],
+			cityInventories: [{ cityId: 'industry-city', materials: { water: 400 } }]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? { ...city, rails: [...verticalRails(1, 5), ...verticalRails(10, 14)] }
+					: city
+			)
+		};
+		const result = buildSupplyPlannerSnapshot(game, {
+			retailCityId: 'harbor-city',
+			productId: 'bottled-water'
+		});
+
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') return;
+		expect(result.snapshot.usableBuildingIds).not.toContain('water-pump-1');
+		expect(result.snapshot.disconnectedBuildingIds).toContain('water-pump-1');
+		expect(result.snapshot.usableBuildingIds).not.toContain('water-bottler-1');
+		expect(result.snapshot.disconnectedBuildingIds).toContain('water-bottler-1');
+	});
+
+	it('blocks only the raw side of the hub at the finished-goods reserve boundary', () => {
+		// Two warehouses → 400 capacity with a 200-unit raw share; the pool is
+		// at the reserve boundary (200 used) with 200 units of literal free
+		// space. On the same two-island hub layout, the pump's water push has
+		// zero headroom so the warehouse is not a water sink and the pump is
+		// disconnected — while the bottler's finished-goods push still has
+		// room, keeping it usable.
+		const base = plannerGame([product('bottled-water')], {
+			industrialBuildings: [
+				building('water-pump', 'water-pump-1', 'industry-city', 1, 2, 2),
+				building('warehouse', 'warehouse-1', 'industry-city', 1, 2, 4),
+				building('water-bottler', 'water-bottler-1', 'industry-city', 1, 2, 11),
+				building('warehouse', 'warehouse-2', 'industry-city', 1, 2, 12)
+			],
+			cityInventories: [{ cityId: 'industry-city', materials: { water: 200 } }]
+		});
+		const game = {
+			...base,
+			industryCities: base.industryCities.map((city) =>
+				city.id === 'industry-city'
+					? { ...city, rails: [...verticalRails(1, 5), ...verticalRails(10, 14)] }
+					: city
+			)
+		};
+		const result = buildSupplyPlannerSnapshot(game, {
+			retailCityId: 'harbor-city',
+			productId: 'bottled-water'
+		});
+
+		expect(result.status).toBe('ready');
+		if (result.status !== 'ready') return;
+		expect(result.snapshot.usableBuildingIds).not.toContain('water-pump-1');
+		expect(result.snapshot.disconnectedBuildingIds).toContain('water-pump-1');
+		expect(result.snapshot.usableBuildingIds).toContain('water-bottler-1');
+	});
+
 	it('does not credit full water capacity when only one Drinks consumer branch is reachable', () => {
 		// Drinks requires water through two branches: water-filtration and
 		// syrup-production. The water-pump can only reach the water-filtration

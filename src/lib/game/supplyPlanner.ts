@@ -1,6 +1,13 @@
-import { canonicalQuantity, compareWorldCityIds, getCityInventoryStats } from './cityInventory';
+import {
+	canonicalQuantity,
+	compareWorldCityIds,
+	getCityInventory,
+	getCityInventoryStats,
+	getCityInventoryUsed,
+	getWarehousePushHeadroom
+} from './cityInventory';
 import { resolveEffectivePolicy, isValidPolicyScope } from './policyInheritance';
-import { MATERIALS, PRODUCTION_RECIPES } from './industry';
+import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import {
 	buildingTypesForRecipe,
 	buildingsForRecipe,
@@ -654,6 +661,11 @@ interface ReachabilityContext {
 	memo: Map<string, boolean>;
 	visiting: Set<string>;
 	canReachWarehouseCache: Map<string, boolean>;
+	// City-pool state bounds the producer→warehouse side of every hub
+	// route: a chain that can only deliver through the pool is unusable
+	// while the pool could not accept the material's surplus push.
+	warehouseCapacity: number;
+	warehouseUsed: number;
 }
 
 /**
@@ -798,6 +810,20 @@ export function buildRequiredChainReachability(
 		}
 	}
 
+	// Capacity derives from the evaluated building set (synthetic
+	// warehouses would count); used comes from the live city pool. Missing
+	// inventory means there is no pool to push into — model it as
+	// infinitely used so every pool sink reports zero headroom.
+	const inventoryAccess = getCityInventory(game, snapshot.supplyCityId);
+	const warehouseUsed = inventoryAccess.ok
+		? getCityInventoryUsed(inventoryAccess.inventory)
+		: Number.POSITIVE_INFINITY;
+	const warehouseCapacity = scopedBuildings.reduce(
+		(capacity, building) =>
+			capacity + (INDUSTRIAL_BUILDING_TYPES[building.typeId]?.warehouseCapacity ?? 0),
+		0
+	);
+
 	const context: ReachabilityContext = {
 		network,
 		budget,
@@ -808,7 +834,9 @@ export function buildRequiredChainReachability(
 		sinksByMaterial: new Map(),
 		memo: new Map(),
 		visiting: new Set(),
-		canReachWarehouseCache: new Map()
+		canReachWarehouseCache: new Map(),
+		warehouseCapacity,
+		warehouseUsed
 	};
 	const usableBuildingIds = new Set<string>();
 	const disconnectedBuildingIds = new Set<string>();
@@ -916,10 +944,16 @@ function getUsableSinksForMaterial(
 	// push any recipe output to a reachable warehouse, and pullViaRail can
 	// later supply a processor from that shared inventory through another
 	// warehouse — even when the producer and consumer are on separate rail
-	// islands with no direct path between them.
-	const warehouses = context.buildings
-		.filter((building) => building.typeId === 'warehouse')
-		.map((building) => ({ building, materialId }));
+	// islands with no direct path between them. The hub only works while the
+	// pool could accept this material's surplus push: a full pool blocks
+	// finished goods outright, and raw/intermediate surplus must leave the
+	// finished-goods reserve free — so a raw-saturated pool is not a sink.
+	const warehouses =
+		getWarehousePushHeadroom(materialId, context.warehouseCapacity, context.warehouseUsed) > 0
+			? context.buildings
+					.filter((building) => building.typeId === 'warehouse')
+					.map((building) => ({ building, materialId }))
+			: [];
 
 	const material = MATERIALS[materialId];
 	if (material?.kind === 'finished') {
@@ -977,6 +1011,23 @@ function uniqueOutputs(outputs: readonly ReachabilityOutput[]): ReachabilityOutp
 
 function uniqueBuildingIds(outputs: readonly ReachabilityOutput[]): readonly string[] {
 	return [...new Set(outputs.map((output) => output.building.id))].sort(compareCodeUnitStrings);
+}
+
+/**
+ * Producer-side hub test: a producer can route surplus through the city
+ * pool only while the pool could accept the push (see
+ * getWarehousePushHeadroom). Pull-side checks use canReachAnyWarehouse
+ * directly — pulling pooled stock is not bounded by the push cap.
+ */
+function canPushToWarehouse(
+	context: ReachabilityContext,
+	building: IndustrialBuilding,
+	materialId: MaterialId
+): boolean {
+	return (
+		canReachAnyWarehouse(context, building) &&
+		getWarehousePushHeadroom(materialId, context.warehouseCapacity, context.warehouseUsed) > 0
+	);
 }
 
 /**
@@ -1159,7 +1210,7 @@ function computeReachableDemandByMaterial(
 			let anyUsableProducerCanHub = false;
 			for (const output of producers) {
 				const usable = context.memo.get(producerKey(output.building.id)) === true;
-				const canHub = canReachAnyWarehouse(context, output.building);
+				const canHub = canPushToWarehouse(context, output.building, requirement.materialId);
 				if (usable && canHub) {
 					anyUsableProducerCanHub = true;
 					byBuildingAndMaterial[producerKey(output.building.id)] = requirement.requiredPerDay;
@@ -1229,14 +1280,16 @@ function computeReachableDemandByMaterial(
 					byRailReachableProcessorIds[key] = [...merged].sort(compareCodeUnitStrings);
 				}
 
-				// Find the specific processors this producer can reach.
+				// Find the specific processors this producer can reach. The
+				// producer side of a hub route must be able to push into the
+				// pool; the processor only needs to pull from it.
 				const reachableProcessors = branchProcessors.filter((processor) => {
 					const processorUsable =
 						context.memo.get(`${processor.building.id}\u0000${processor.materialId}`) === true;
 					if (!processorUsable) return false;
 					return (
 						canBuildingReachBuilding(context, producer.building, processor.building) ||
-						(canReachAnyWarehouse(context, producer.building) &&
+						(canPushToWarehouse(context, producer.building, requirement.materialId) &&
 							canReachAnyWarehouse(context, processor.building))
 					);
 				});
