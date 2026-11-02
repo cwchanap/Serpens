@@ -441,13 +441,22 @@ const localLifeline = {
 			window: { kind: 'current' }
 		}
 	],
+	// HPA-679 retune: at 10 units per rail level the reference completes on
+	// day 8 (the earliest achievable finish — restock cadence makes day 15 the
+	// only other attainable completion) and maxed every band, so scoring no
+	// longer separated good runs from great ones. The share band now runs to
+	// a fully-local 1.0 (the reference's actual) and the days band to the
+	// day-8 pace's 13 remaining days: a day-15 finish earns ~69 of 150 speed
+	// points and lands silver even when clean (≈802 measured), while leaky or
+	// marginal passes fall to bronze (≈684 / ≈625) and no-action still fails
+	// at the 500 base.
 	scoreComponents: [
 		{
 			kind: 'metric',
 			query: { metric: 'retail-local-share', productIds: ['bottled-water'] },
 			window: { kind: 'run-to-date' },
 			zeroBonusAt: 0.5,
-			fullBonusAt: 0.8,
+			fullBonusAt: 1,
 			points: 200
 		},
 		{
@@ -458,9 +467,9 @@ const localLifeline = {
 			fullBonusAt: 0,
 			points: 150
 		},
-		{ kind: 'remaining-days', zeroBonusAt: 0, fullBonusAt: 6, points: 150 }
+		{ kind: 'remaining-days', zeroBonusAt: 0, fullBonusAt: 13, points: 150 }
 	],
-	medalThresholds: { silver: 700, gold: 850 }
+	medalThresholds: { silver: 750, gold: 900 }
 } as const satisfies ScenarioDefinition;
 
 const debtTurnaround = {
