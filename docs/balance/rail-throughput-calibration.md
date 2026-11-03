@@ -155,7 +155,8 @@ bucket probe emits one JSON with 50 per-seed advisor cost buckets
 extrema — the §§5.2–5.4 inputs the sweep JSON does not persist; its
 optional `[seedsCsv]` arg exists only for lightweight checks, and the JSON
 carries `seedCount`/`scope` labeling the population — `official` only for
-the approved 50-seed list — see A.1).
+the approved 50-seed list, matched as 50 distinct seeds so a duplicated
+seed labels the probe `partial` — see A.1).
 
 ### 1.3 Legacy frozen-artifact reconstruction (for §2 comparisons)
 
@@ -652,8 +653,12 @@ lite rows are byte-identical to the recorded artifact's rows for that
 seed, so this is the recorded 450/450 result's one-seed slice; and
 `0ce5db7e` vs k=1 → 5/9 identical, 43 field mismatches confined to the
 seed's four managed runs — the same post-`0ce5db7e` review-fix deltas the
-full comparison records.
-### A.1 `bucket-probe.ts` — the §§5.2–5.4 cost-bucket collector: runs the committed `advisor` convenience bot over `SWEEP_SEEDS` × 365 days and dumps per-seed cost buckets (payroll, gross revenue, retail/industrial import spend, production operating/overflow cost, opening days, cash/debt extrema, rail-shipment and post-rail delivery/imported water units). Usage: `bun <dir>/bucket-probe.ts <output.json> [seedsCsv]` — run once per factor inside/outside the §1.1 edit window. The optional `seedsCsv` argument exists only for lightweight checks; the recorded artifacts used the no-argument form. The emitted JSON labels the population — `seedCount` plus `scope` (`official` only for the approved 50-seed list, `lightweight-check` for a single seed, `partial` otherwise) — so a reduced probe is identified downstream rather than read as the official calibration.
+full comparison records. Round 3 pinned the `scope` label itself: a
+50-entry `seedsCsv` of 49 distinct approved seeds plus one duplicate
+(`20260549` twice, `20260550` omitted) labels the output `partial`, never
+`official`; a no-argument run still labels `official` and reproduces the
+recorded `buckets-k10.json` run payload byte-for-byte.
+### A.1 `bucket-probe.ts` — the §§5.2–5.4 cost-bucket collector: runs the committed `advisor` convenience bot over `SWEEP_SEEDS` × 365 days and dumps per-seed cost buckets (payroll, gross revenue, retail/industrial import spend, production operating/overflow cost, opening days, cash/debt extrema, rail-shipment and post-rail delivery/imported water units). Usage: `bun <dir>/bucket-probe.ts <output.json> [seedsCsv]` — run once per factor inside/outside the §1.1 edit window. The optional `seedsCsv` argument exists only for lightweight checks; the recorded artifacts used the no-argument form. The emitted JSON labels the population — `seedCount` plus `scope` (`official` only for the approved 50-seed list, matched as 50 distinct seeds so a duplicated seed can never read as full coverage, `lightweight-check` for a single seed, `partial` otherwise) — so a reduced probe is identified downstream rather than read as the official calibration.
 
 ```ts
 /**
@@ -670,7 +675,8 @@ full comparison records.
  * The optional `seedsCsv` (comma-separated) overrides SWEEP_SEEDS and exists
  * only for lightweight checks; the recorded artifacts used the no-argument
  * form. The emitted JSON always carries `seedCount` and `scope` — `official`
- * only when the run covers the approved 50-seed SWEEP_SEEDS population,
+ * only when the run covers the approved 50-seed SWEEP_SEEDS population
+ * exactly (50 distinct seeds; a duplicate labels the probe `partial`),
  * `lightweight-check` for a single seed, `partial` otherwise — so a smaller
  * probe can never be mistaken for the official calibration downstream.
  */
@@ -812,12 +818,16 @@ for (const seed of seeds) {
 }
 
 // Population label: `official` only when the probed seeds are exactly the
-// approved 50-seed SWEEP_SEEDS list; a single seed is always a lightweight
-// check; anything else is a partial probe. Downstream comparisons must
-// echo this label so partial results cannot read as the official
-// calibration.
+// approved 50-seed SWEEP_SEEDS list — 50 distinct approved seeds, so a
+// duplicated seed (which silently drops one approved seed) labels the
+// probe `partial`, never `official`. A single seed is always a
+// lightweight check; anything else is a partial probe. Downstream
+// comparisons must echo this label so partial results cannot read as the
+// official calibration.
 const scope: 'official' | 'lightweight-check' | 'partial' =
-	seeds.length === SWEEP_SEEDS.length && seeds.every((seed) => SWEEP_SEEDS.includes(seed))
+	seeds.length === SWEEP_SEEDS.length &&
+	new Set(seeds).size === SWEEP_SEEDS.length &&
+	seeds.every((seed) => SWEEP_SEEDS.includes(seed))
 		? 'official'
 		: seeds.length === 1
 			? 'lightweight-check'
