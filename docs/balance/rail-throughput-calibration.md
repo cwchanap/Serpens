@@ -153,7 +153,9 @@ bucket probe emits one JSON with 50 per-seed advisor cost buckets
 (payroll, gross revenue, retail/industrial `importSpend`, production
 `operatingCost`/`overflowCost`/`overflowUnits`, opening days, cash/debt
 extrema — the §§5.2–5.4 inputs the sweep JSON does not persist; its
-optional `[seedsCsv]` arg exists only for lightweight checks, see A.1).
+optional `[seedsCsv]` arg exists only for lightweight checks, and the JSON
+carries `seedCount`/`scope` labeling the population — `official` only for
+the approved 50-seed list — see A.1).
 
 ### 1.3 Legacy frozen-artifact reconstruction (for §2 comparisons)
 
@@ -609,8 +611,9 @@ run) is above.
 
 The six scratch helpers §1 references are reproduced below **verbatim**
 (the exact sources on disk in the recorded workspace; `bucket-probe` gained
-an optional `[seedsCsv]` argument for lightweight checks — its no-argument
-behavior and output are unchanged). Save each under
+an optional `[seedsCsv]` argument for lightweight checks — the recorded
+artifacts predate its `seedCount`/`scope` population labels, so unlabeled
+JSONs are still accepted and named as such downstream). Save each under
 `.superpowers/sdd/2026-10-31-rail-throughput-balance/step6/` — or any
 directory **exactly four levels below the repo root**, since four of the
 six resolve the committed harness via `../../../../tests/balance/*`
@@ -650,7 +653,7 @@ seed, so this is the recorded 450/450 result's one-seed slice; and
 `0ce5db7e` vs k=1 → 5/9 identical, 43 field mismatches confined to the
 seed's four managed runs — the same post-`0ce5db7e` review-fix deltas the
 full comparison records.
-### A.1 `bucket-probe.ts` — the §§5.2–5.4 cost-bucket collector: runs the committed `advisor` convenience bot over `SWEEP_SEEDS` × 365 days and dumps per-seed cost buckets (payroll, gross revenue, retail/industrial import spend, production operating/overflow cost, opening days, cash/debt extrema, rail-shipment and post-rail delivery/imported water units). Usage: `bun <dir>/bucket-probe.ts <output.json> [seedsCsv]` — run once per factor inside/outside the §1.1 edit window. The optional `seedsCsv` argument exists only for lightweight single-seed checks; the recorded artifacts used the no-argument form (its output is unchanged by the addition).
+### A.1 `bucket-probe.ts` — the §§5.2–5.4 cost-bucket collector: runs the committed `advisor` convenience bot over `SWEEP_SEEDS` × 365 days and dumps per-seed cost buckets (payroll, gross revenue, retail/industrial import spend, production operating/overflow cost, opening days, cash/debt extrema, rail-shipment and post-rail delivery/imported water units). Usage: `bun <dir>/bucket-probe.ts <output.json> [seedsCsv]` — run once per factor inside/outside the §1.1 edit window. The optional `seedsCsv` argument exists only for lightweight checks; the recorded artifacts used the no-argument form. The emitted JSON labels the population — `seedCount` plus `scope` (`official` only for the approved 50-seed list, `lightweight-check` for a single seed, `partial` otherwise) — so a reduced probe is identified downstream rather than read as the official calibration.
 
 ```ts
 /**
@@ -665,8 +668,11 @@ full comparison records.
  *
  * Run once per rail factor; outputs are compared same-seed offline.
  * The optional `seedsCsv` (comma-separated) overrides SWEEP_SEEDS and exists
- * only for lightweight single-seed checks; the recorded artifacts used the
- * no-argument form.
+ * only for lightweight checks; the recorded artifacts used the no-argument
+ * form. The emitted JSON always carries `seedCount` and `scope` — `official`
+ * only when the run covers the approved 50-seed SWEEP_SEEDS population,
+ * `lightweight-check` for a single seed, `partial` otherwise — so a smaller
+ * probe can never be mistaken for the official calibration downstream.
  */
 
 import { writeFileSync } from 'node:fs';
@@ -805,8 +811,25 @@ for (const seed of seeds) {
 	runs.push(bucket);
 }
 
-writeFileSync(output, `${JSON.stringify({ days: DAYS, runs }, null, 2)}\n`);
-console.log(`bucket-probe: wrote ${runs.length} advisor seed buckets to ${output}`);
+// Population label: `official` only when the probed seeds are exactly the
+// approved 50-seed SWEEP_SEEDS list; a single seed is always a lightweight
+// check; anything else is a partial probe. Downstream comparisons must
+// echo this label so partial results cannot read as the official
+// calibration.
+const scope: 'official' | 'lightweight-check' | 'partial' =
+	seeds.length === SWEEP_SEEDS.length && seeds.every((seed) => SWEEP_SEEDS.includes(seed))
+		? 'official'
+		: seeds.length === 1
+			? 'lightweight-check'
+			: 'partial';
+
+writeFileSync(
+	output,
+	`${JSON.stringify({ days: DAYS, seedCount: runs.length, scope, runs }, null, 2)}\n`
+);
+console.log(
+	`bucket-probe: wrote ${runs.length} advisor seed buckets to ${output} (scope: ${scope === 'official' ? `official — approved ${SWEEP_SEEDS.length}-seed calibration` : `${scope} — not the official ${SWEEP_SEEDS.length}-seed calibration`})`
+);
 ```
 ### A.2 `analyze-sweep.ts` — the §3 non-advisor byte-identity check, §4 Gate A verdicts (`evaluateGateA` from the committed harness) and §5.1 advisor aggregates/ratios. Usage: `bun <dir>/analyze-sweep.ts <k1.json> <k10.json>`.
 
@@ -935,7 +958,7 @@ for (const [label, report] of [
 	}
 }
 ```
-### A.3 `gate-eval.ts` — the §2/§4 gate evaluator that also accepts the legacy `0ce5db7e` schema (no `operatingIncomeByDay`), mirroring `evaluateGateA` item-for-item on stored fields. Usage: `bun <dir>/gate-eval.ts <sweep.json> [...]`.
+### A.3 `gate-eval.ts` — the §2/§4 gate evaluator that also accepts the legacy `0ce5db7e` schema (no `operatingIncomeByDay`), mirroring `evaluateGateA` item-for-item. Legacy runs resolve income evidence per run: recomputed from `operatingIncomeByDay` whenever it is present (stored summaries must agree), otherwise the stored `firstPositiveWindow30`/`operatingIncomeDays61To90` summaries — both required and well-formed — so a missing or inconsistent summary fails items 1/3 closed instead of reading as 0 or a pass. Usage: `bun <dir>/gate-eval.ts <sweep.json> [...]`.
 
 ```ts
 /**
@@ -943,10 +966,16 @@ for (const [label, report] of [
  * any sweep JSON, including legacy schemas that predate
  * `operatingIncomeByDay` (0ce5db7e). Mirrors evaluateGateA logic exactly:
  * viability uses the first complete contiguous positive 30-day window ending
- * <= day 90; when `operatingIncomeByDay` is absent the stored
- * `firstPositiveWindow30` (computed by the era's own identical helper) is
- * used instead. Managed-vs-idle uses days 61-90 operating income — equal to
- * the stored `operatingIncomeDays61To90` field by its own definition.
+ * <= day 90; managed-vs-idle uses days 61-90 operating income. Whenever a
+ * run carries `operatingIncomeByDay` both figures are recomputed from the
+ * daily history — the same computation evaluateGateA uses — and any stored
+ * `firstPositiveWindow30`/`operatingIncomeDays61To90` summary must agree
+ * with the recomputed value. When daily history is absent both stored
+ * summaries are required: `firstPositiveWindow30` must be present (null is
+ * a legitimate "no window reached") and well-formed, and
+ * `operatingIncomeDays61To90` must be a finite number — a missing or
+ * unvalidated summary rejects the run instead of reading as 0 or producing
+ * a pass.
  *
  *   bun .superpowers/sdd/2026-10-31-rail-throughput-balance/step6/gate-eval.ts <sweep.json> [sweep2.json ...]
  */
@@ -1013,6 +1042,113 @@ for (const path of paths) {
 	const runs = report.runs as unknown as LegacyRun[];
 	const byCombo = (bot: string, arch: string) =>
 		runs.filter((r) => r.bot === bot && r.archetypeId === arch);
+	// Income evidence per run. Mirror evaluateGateA: when a run carries
+	// operatingIncomeByDay, the 30-day viability window and the days 61-90
+	// sum are recomputed from the daily history — the committed harness's
+	// own computation — and a stored summary that disagrees rejects the
+	// run. Without daily history the stored summaries are the only income
+	// evidence, so both must be present and well-formed; a missing or
+	// unvalidated summary rejects the run for items 1 and 3 rather than
+	// reading as 0 or producing a pass.
+	const incomeRejections: string[] = [];
+	const incomeFacts = new Map<
+		LegacyRun,
+		{ windowEndDay: number | null; pairIncome: number } | null
+	>();
+	// Same computation as measure.ts's firstPositiveWindow(_, 30): the first
+	// complete, day-contiguous 30-report window whose summed operatingIncome
+	// is positive.
+	const firstWindow30 = (
+		daily: { day: number; operatingIncome: number }[]
+	): { startDay: number; endDay: number; operatingIncome: number } | null => {
+		for (let end = 29; end < daily.length; end += 1) {
+			const start = end - 29;
+			if (daily[end]!.day - daily[start]!.day !== 29) continue;
+			let operatingIncome = 0;
+			for (let i = start; i <= end; i += 1) operatingIncome += daily[i]!.operatingIncome;
+			if (operatingIncome > 0)
+				return { startDay: daily[start]!.day, endDay: daily[end]!.day, operatingIncome };
+		}
+		return null;
+	};
+	// Same window as evaluateGateA's incomeInPairWindow: days 61-90 inclusive.
+	const pairIncomeOf = (daily: { day: number; operatingIncome: number }[]): number =>
+		daily
+			.filter((entry) => entry.day >= 61 && entry.day <= 90)
+			.reduce((total, entry) => total + entry.operatingIncome, 0);
+	for (const r of runs) {
+		const tag = `${r.seed} ${r.archetypeId}/${r.bot}`;
+		const storedWindow = r.firstPositiveWindow30 as
+			| { startDay: number; endDay: number; operatingIncome: number }
+			| null
+			| undefined;
+		const storedPair = r.operatingIncomeDays61To90;
+		const reject = (reason: string) => {
+			incomeRejections.push(`${tag} ${reason}`);
+			incomeFacts.set(r, null);
+		};
+		if (r.operatingIncomeByDay !== undefined) {
+			const window = firstWindow30(r.operatingIncomeByDay);
+			const pair = pairIncomeOf(r.operatingIncomeByDay);
+			if (
+				storedWindow !== undefined &&
+				!(
+					(storedWindow === null && window === null) ||
+					(storedWindow !== null &&
+						window !== null &&
+						storedWindow.startDay === window.startDay &&
+						storedWindow.endDay === window.endDay &&
+						storedWindow.operatingIncome === window.operatingIncome)
+				)
+			) {
+				reject(
+					`stored firstPositiveWindow30 ${JSON.stringify(storedWindow)} disagrees with operatingIncomeByDay`
+				);
+				continue;
+			}
+			if (storedPair !== undefined && storedPair !== pair) {
+				reject(`stored operatingIncomeDays61To90 ${storedPair} != recomputed ${pair}`);
+				continue;
+			}
+			incomeFacts.set(r, {
+				windowEndDay: window === null ? null : window.endDay,
+				pairIncome: pair
+			});
+			continue;
+		}
+		if (storedWindow === undefined) {
+			reject('missing firstPositiveWindow30 with no operatingIncomeByDay to recompute it');
+			continue;
+		}
+		if (
+			storedWindow !== null &&
+			!(
+				Number.isFinite(storedWindow.startDay) &&
+				Number.isFinite(storedWindow.endDay) &&
+				Number.isFinite(storedWindow.operatingIncome) &&
+				storedWindow.endDay - storedWindow.startDay === 29 &&
+				storedWindow.operatingIncome > 0
+			)
+		) {
+			reject(`malformed firstPositiveWindow30 ${JSON.stringify(storedWindow)}`);
+			continue;
+		}
+		if (typeof storedPair !== 'number' || !Number.isFinite(storedPair)) {
+			reject(
+				'missing or non-finite operatingIncomeDays61To90 with no operatingIncomeByDay to recompute it'
+			);
+			continue;
+		}
+		incomeFacts.set(r, {
+			windowEndDay: storedWindow === null ? null : storedWindow.endDay,
+			pairIncome: storedPair
+		});
+	}
+	if (incomeRejections.length > 0) {
+		console.log(
+			`   income-validation: ${incomeRejections.length} run(s) rejected — ${incomeRejections.slice(0, 5).join('; ')}${incomeRejections.length > 5 ? `, +${incomeRejections.length - 5} more` : ''}`
+		);
+	}
 	// Item 1 viability
 	const parts: string[] = [];
 	let viabilityPass = true;
@@ -1025,9 +1161,17 @@ for (const path of paths) {
 			parts.push(`${arch} no runs`);
 			continue;
 		}
-		const viable = rs.filter(
-			(r) => r.firstPositiveWindow30 !== null && r.firstPositiveWindow30.endDay <= 90
-		).length;
+		const rejected = rs.filter((r) => incomeFacts.get(r) === null).length;
+		if (rejected > 0) {
+			viabilityPass = false;
+			parts.push(`${arch} ${rejected} run(s) rejected by income validation`);
+			continue;
+		}
+		const viable = rs.filter((r) => {
+			// Non-null: every non-rejected run has resolved income facts.
+			const windowEndDay = incomeFacts.get(r)!.windowEndDay;
+			return windowEndDay !== null && windowEndDay <= 90;
+		}).length;
 		if (viable / rs.length < 0.8) viabilityPass = false;
 		parts.push(`${arch} ${viable}/${rs.length} (${((viable / rs.length) * 100).toFixed(1)}%)`);
 	}
@@ -1050,7 +1194,9 @@ for (const path of paths) {
 	console.log(
 		`   boundedness: ${boundPass ? 'PASS' : 'FAIL'} — max |cash| ${maxima.cash}, principal ${maxima.principal}, cumImports ${maxima.imports}, waste ${maxima.wasteU}u/${maxima.wasteV}`
 	);
-	// Item 3 managed-vs-idle via stored operatingIncomeDays61To90
+	// Item 3 managed-vs-idle via the resolved income facts (recomputed from
+	// operatingIncomeByDay when present, validated stored
+	// operatingIncomeDays61To90 otherwise).
 	const mParts: string[] = [];
 	let mviPass = true;
 	for (const arch of SWEEP_ARCHETYPES) {
@@ -1063,10 +1209,18 @@ for (const path of paths) {
 			mParts.push(`${arch} no paired seeds`);
 			continue;
 		}
+		const rejectedPairs = paired.filter(
+			(s) => incomeFacts.get(managed.get(s)!) === null || incomeFacts.get(idle.get(s)!) === null
+		);
+		if (rejectedPairs.length > 0) {
+			mviPass = false;
+			mParts.push(`${arch} ${rejectedPairs.length} pair(s) rejected by income validation`);
+			continue;
+		}
 		const wins = paired.filter(
 			(s) =>
-				(managed.get(s)!.operatingIncomeDays61To90 ?? 0) >
-				(idle.get(s)!.operatingIncomeDays61To90 ?? 0)
+				// Non-null: non-rejected runs have resolved income facts.
+				incomeFacts.get(managed.get(s)!)!.pairIncome > incomeFacts.get(idle.get(s)!)!.pairIncome
 		).length;
 		if (wins / paired.length < 0.8) mviPass = false;
 		mParts.push(`${arch} ${wins}/${paired.length} (${((wins / paired.length) * 100).toFixed(1)}%)`);
@@ -1473,7 +1627,7 @@ for (const [label, r] of [
 	}
 }
 ```
-### A.6 `buckets-compare.ts` — the §§5.2–5.4 cost-bucket comparator: aggregate field sums, the opening-days-diff seed list, and the per-seed F5 pivot used for §5.3. Usage: `bun <dir>/buckets-compare.ts <buckets-k1.json> <buckets-k10.json>` — its output on the recorded buckets is byte-identical to the recorded `buckets-compare.txt`.
+### A.6 `buckets-compare.ts` — the §§5.2–5.4 cost-bucket comparator: aggregate field sums, the opening-days-diff seed list, and the per-seed F5 pivot used for §5.3. Usage: `bun <dir>/buckets-compare.ts <buckets-k1.json> <buckets-k10.json>`. It prints the actual seed population per side (from the probe's `scope`/`seedCount`, or `unlabeled` on the recorded pre-scope artifacts) and names non-official comparisons, so a reduced probe cannot masquerade as the approved 50-seed calibration; the comparison table itself is unchanged — on the recorded buckets the output differs from the recorded `buckets-compare.txt` only by the added population label lines.
 
 ```ts
 /**
@@ -1522,10 +1676,36 @@ interface SeedBuckets {
 	lastRailShipmentDay: number | null;
 }
 
-const load = (path: string): SeedBuckets[] =>
-	(JSON.parse(readFileSync(path, 'utf8')) as { runs: SeedBuckets[] }).runs;
-const a = load(k1Path);
-const b = load(k10Path);
+// The probe JSON labels its population: `official` only for the approved
+// 50-seed matrix, `lightweight-check` for a single seed, `partial`
+// otherwise. `seedCount`/`scope` are absent on artifacts written before the
+// label existed.
+interface ProbeFile {
+	days: number;
+	seedCount?: number;
+	scope?: 'official' | 'lightweight-check' | 'partial';
+	runs: SeedBuckets[];
+}
+
+const load = (path: string): ProbeFile => JSON.parse(readFileSync(path, 'utf8')) as ProbeFile;
+const probeA = load(k1Path);
+const probeB = load(k10Path);
+const a = probeA.runs;
+const b = probeB.runs;
+
+// A declared seedCount that disagrees with the actual rows means a corrupt
+// probe — fail it rather than echoing a wrong sample size.
+for (const [label, probe] of [
+	['k1', probeA],
+	['k10', probeB]
+] as const) {
+	if (probe.seedCount !== undefined && probe.seedCount !== probe.runs.length) {
+		console.error(
+			`buckets-compare: ${label} probe declares seedCount ${probe.seedCount} but carries ${probe.runs.length} rows`
+		);
+		process.exit(1);
+	}
+}
 
 // Deltas require identical seed populations — a missing k10 row must fail the
 // comparison, not silently shrink it.
@@ -1541,6 +1721,26 @@ if (hasDuplicates(seedList(a)) || hasDuplicates(seedList(b))) {
 if (JSON.stringify(seedList(a)) !== JSON.stringify(seedList(b))) {
 	console.error('buckets-compare: k1 and k10 probes cover different seeds');
 	process.exit(1);
+}
+
+// Sample-size honesty: the comparison prints the actual population on both
+// sides. Only two `official`-labeled probes are the approved 50-seed
+// calibration; anything else — partial, single-seed, or an unlabeled
+// pre-scope artifact — is named so it cannot be mistaken for it.
+const probeLabel = (probe: ProbeFile): string => {
+	const n = probe.seedCount ?? probe.runs.length;
+	if (probe.scope === 'official') return `official ${n}-seed calibration`;
+	if (probe.scope === 'lightweight-check') return `single-seed lightweight check`;
+	if (probe.scope === 'partial') return `partial ${n}-seed probe — lightweight check`;
+	return `unlabeled ${n}-seed probe — pre-scope artifact`;
+};
+console.log(
+	`population: ${a.length} seed(s) per side — k1 ${probeLabel(probeA)}; k10 ${probeLabel(probeB)}`
+);
+if (probeA.scope !== 'official' || probeB.scope !== 'official') {
+	console.log(
+		'note: at least one probe is not the approved 50-seed calibration — treat aggregates as a lightweight/partial comparison only'
+	);
 }
 
 const bBySeed = new Map(b.map((run) => [run.seed, run]));
