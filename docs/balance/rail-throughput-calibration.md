@@ -968,7 +968,7 @@ for (const [label, report] of [
 	}
 }
 ```
-### A.3 `gate-eval.ts` — the §2/§4 gate evaluator that also accepts the legacy `0ce5db7e` schema (no `operatingIncomeByDay`), mirroring `evaluateGateA` item-for-item. Legacy runs resolve income evidence per run: recomputed from `operatingIncomeByDay` whenever it is present (stored summaries must agree), otherwise the stored `firstPositiveWindow30`/`operatingIncomeDays61To90` summaries — both required and well-formed — so a missing or inconsistent summary fails items 1/3 closed instead of reading as 0 or a pass. Usage: `bun <dir>/gate-eval.ts <sweep.json> [...]`.
+### A.3 `gate-eval.ts` — the §2/§4 gate evaluator that also accepts the legacy `0ce5db7e` schema (no `operatingIncomeByDay`), mirroring `evaluateGateA` item-for-item. Legacy runs resolve income evidence per run: recomputed from `operatingIncomeByDay` whenever it is present (stored summaries must agree), otherwise the stored `firstPositiveWindow30`/`operatingIncomeDays61To90` summaries — both required and well-formed, the window inside the run's simulated days — so a missing or inconsistent summary fails items 1/3 closed instead of reading as 0 or a pass. Usage: `bun <dir>/gate-eval.ts <sweep.json> [...]`.
 
 ```ts
 /**
@@ -1130,12 +1130,18 @@ for (const path of paths) {
 			reject('missing firstPositiveWindow30 with no operatingIncomeByDay to recompute it');
 			continue;
 		}
+		// The window must also lie inside the simulated days: a 30-day span the
+		// run never produced (days before 1 or past daysSimulated) satisfies the
+		// shape alone but is no income evidence — reject it like any other
+		// malformed summary.
 		if (
 			storedWindow !== null &&
 			!(
 				Number.isFinite(storedWindow.startDay) &&
 				Number.isFinite(storedWindow.endDay) &&
 				Number.isFinite(storedWindow.operatingIncome) &&
+				storedWindow.startDay >= 1 &&
+				storedWindow.endDay <= r.daysSimulated &&
 				storedWindow.endDay - storedWindow.startDay === 29 &&
 				storedWindow.operatingIncome > 0
 			)
@@ -1637,7 +1643,7 @@ for (const [label, r] of [
 	}
 }
 ```
-### A.6 `buckets-compare.ts` — the §§5.2–5.4 cost-bucket comparator: aggregate field sums, the opening-days-diff seed list, and the per-seed F5 pivot used for §5.3. Usage: `bun <dir>/buckets-compare.ts <buckets-k1.json> <buckets-k10.json>`. It prints the actual seed population per side (from the probe's `scope`/`seedCount`, or `unlabeled` on the recorded pre-scope artifacts) and names non-official comparisons, so a reduced probe cannot masquerade as the approved 50-seed calibration; the comparison table itself is unchanged — on the recorded buckets the output differs from the recorded `buckets-compare.txt` only by the added population label lines.
+### A.6 `buckets-compare.ts` — the §§5.2–5.4 cost-bucket comparator: aggregate field sums, the opening-days-diff seed list, and the per-seed F5 pivot used for §5.3. Usage: `bun <dir>/buckets-compare.ts <buckets-k1.json> <buckets-k10.json>`. Mismatched probe horizons are rejected outright, and an `official` scope is honored only when the content is the approved matrix (365 days over the 50 approved seeds) — a reduced or mislabeled probe cannot masquerade as the approved 50-seed calibration. It prints the actual seed population per side (from the probe's `scope`/`seedCount`, or `unlabeled` on the recorded pre-scope artifacts) and names non-official comparisons; the comparison table itself is unchanged — on the recorded buckets the output differs from the recorded `buckets-compare.txt` only by the added population label lines.
 
 ```ts
 /**
@@ -1650,6 +1656,7 @@ for (const [label, r] of [
  */
 
 import { readFileSync } from 'node:fs';
+import { GATE_A_OFFICIAL_DAYS, SWEEP_SEEDS } from '../../../../tests/balance/measure';
 
 const [k1Path, k10Path] = process.argv.slice(2);
 if (!k1Path || !k10Path) throw new Error('usage: buckets-compare.ts <k1.json> <k10.json>');
@@ -1717,6 +1724,15 @@ for (const [label, probe] of [
 	}
 }
 
+// Field deltas are meaningless across different horizons — a 365-day control
+// vs a 1-day candidate must fail, not print a comparison.
+if (probeA.days !== probeB.days) {
+	console.error(
+		`buckets-compare: k1 probe ran ${probeA.days} days but k10 probe ran ${probeB.days}`
+	);
+	process.exit(1);
+}
+
 // Deltas require identical seed populations — a missing k10 row must fail the
 // comparison, not silently shrink it.
 const seedList = (runs: SeedBuckets[]): number[] =>
@@ -1731,6 +1747,28 @@ if (hasDuplicates(seedList(a)) || hasDuplicates(seedList(b))) {
 if (JSON.stringify(seedList(a)) !== JSON.stringify(seedList(b))) {
 	console.error('buckets-compare: k1 and k10 probes cover different seeds');
 	process.exit(1);
+}
+
+// `scope` is a claim, not proof: a probe declaring `official` must actually
+// be the approved matrix — the official horizon over exactly the 50 approved
+// seeds. Both sides share a duplicate-free seed list and a matched horizon
+// by now, so the content check collapses to one comparison; a scope that
+// disagrees fails like a wrong seedCount. Probes below the matrix keep their
+// partial/lightweight labels — the comparison itself still runs.
+const approvedMatrix =
+	probeA.days === GATE_A_OFFICIAL_DAYS &&
+	a.length === SWEEP_SEEDS.length &&
+	a.every((run) => SWEEP_SEEDS.includes(run.seed));
+for (const [label, probe] of [
+	['k1', probeA],
+	['k10', probeB]
+] as const) {
+	if (probe.scope === 'official' && !approvedMatrix) {
+		console.error(
+			`buckets-compare: ${label} probe declares scope "official" but is not the approved ${SWEEP_SEEDS.length}-seed ${GATE_A_OFFICIAL_DAYS}d matrix`
+		);
+		process.exit(1);
+	}
 }
 
 // Sample-size honesty: the comparison prints the actual population on both
