@@ -4,7 +4,7 @@
 
 **PR:** https://github.com/cwchanap/Serpens/pull/69 (single draft PR for design and implementation)
 
-**Reference:** `docs/balance/after.md` `7, original `docs/superpowers/specs/2026-07-13-industry-rail-transport-design.md`
+**Reference:** `docs/balance/after.md`, original `docs/superpowers/specs/2026-07-13-industry-rail-transport-design.md`
 
 **Inspected code baseline:** `main` @ `c79806038172f050b235c82e8fde1b37018bab16`
 
