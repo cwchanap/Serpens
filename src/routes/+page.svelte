@@ -23,11 +23,18 @@
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
 	import {
 		selectMapViewSelections,
+		selectMapHeading,
+		selectWorldCityStatuses,
 		resolveMapAlertDestination,
 		resolveWorldCitySelection,
 		resolveWorldCityOpening,
 		resolveWorldCityFinancing
 	} from './mapNavigationRoute';
+	import {
+		selectRetailInspector,
+		selectIndustryInspector,
+		selectInspectorRailSegments
+	} from './mapInspectorRoute';
 	import { createInitialEventRuntime } from '$lib/game/eventSelection';
 	import {
 		MANAGEMENT_PANEL_SHORTCUT_KEY,
@@ -44,18 +51,12 @@
 		DEFAULT_INDUSTRY_CITY_HEIGHT,
 		DEFAULT_INDUSTRY_CITY_WIDTH,
 		INDUSTRIAL_BUILDING_TYPES,
-		generateIndustryCity,
-		getIndustryTileById
+		generateIndustryCity
 	} from '$lib/game/industry';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import { resolveWorldCityId } from '$lib/game/cityInventory';
-	import {
-		buildRailNetwork,
-		deriveRailSegments,
-		getSegmentsForCell,
-		type RailSegment
-	} from '$lib/game/rail';
+	import { buildRailNetwork, deriveRailSegments, type RailSegment } from '$lib/game/rail';
 	import { buildRailPreview } from '$lib/game/railPlacement';
 	import {
 		cancelRailBuildStep,
@@ -133,18 +134,14 @@
 		type SupplyPlannerAction,
 		type SupplyPlannerActionAvailability
 	} from '$lib/game/supplyPlannerActions';
-	import { isTileInStoreFootprint } from '$lib/game/storeFootprint';
-	import { isTileInIndustryBuildingFootprint } from '$lib/game/industryFootprint';
 	import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
 	import { buildLogisticsPanelView } from '$lib/components/game/logisticsPanel';
 	import {
 		STARTER_STORE_CAP,
 		WORLD_CITY_CATALOG,
 		createInitialWorldProgress,
-		getWorldCityStatus,
 		isWorldCityId
 	} from '$lib/game/world';
-	import { decisionContextWorldCityNotAvailableYet } from '$lib/game/decisionContext';
 	import type {
 		ArchetypeId,
 		GameState,
@@ -155,7 +152,6 @@
 		TransferOrder,
 		WorldCityId
 	} from '$lib/game/types';
-	import type { WorldCityStatus } from '$lib/game/world';
 	import { SaveDataError } from '$lib/persistence/saveCodec';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata, SaveStoreDiagnostic } from '$lib/persistence/saveTypes';
@@ -702,37 +698,10 @@
 		return false;
 	});
 	let showCashRecovery = $derived(cashRecoveryPlan !== null && !cashRecoveryDismissed);
-	let mapEyebrow = $derived(
-		activeMapView === 'world'
-			? i18n.t('route.mapEyebrow.world')
-			: activeMapView === 'industry'
-				? i18n.t('route.mapEyebrow.industry')
-				: i18n.t('route.mapEyebrow.retail')
+	let { mapEyebrow, mapTitle } = $derived(
+		selectMapHeading(activeMapView, activeCity.id, industryCity.id, i18n)
 	);
-	let mapTitle = $derived(
-		activeMapView === 'world'
-			? i18n.t('route.mapTitle.world')
-			: activeMapView === 'industry'
-				? i18n.labels.worldCity(industryCity.id).name
-				: i18n.labels.worldCity(activeCity.id).name
-	);
-	let worldCityStatuses = $derived.by((): WorldCityStatus[] => {
-		const currentGame: GameState | null = game;
-		return WORLD_CITY_CATALOG.map((city) =>
-			currentGame
-				? getWorldCityStatus(currentGame, city.id)
-				: {
-						city,
-						state: city.initiallyOpened ? 'opened' : 'locked',
-						canOpen: false,
-						blockedReason: city.initiallyOpened
-							? null
-							: decisionContextWorldCityNotAvailableYet(city.id),
-						storeCount: 0,
-						buildingCount: 0
-					}
-		).filter((status): status is WorldCityStatus => status !== null);
-	});
+	let worldCityStatuses = $derived(selectWorldCityStatuses(game));
 	let logisticsRouteSummaries = $derived.by<RouteOperationalSummary[]>(() =>
 		game ? selectRouteOperations(game) : []
 	);
@@ -751,39 +720,16 @@
 			? buildLogisticsPanelView(game ?? starterMapState, i18n)
 			: null
 	);
-	let selectedTile = $derived(
-		selectedTileId ? (getTileById(activeCity, selectedTileId) ?? null) : null
+	let { selectedTile, selectedStore } = $derived(
+		selectRetailInspector(game, activeCity, selectedTileId)
 	);
-	let selectedIndustryTile = $derived(
-		selectedIndustryTileId
-			? (getIndustryTileById(industryCity, selectedIndustryTileId) ?? null)
-			: null
+	let { selectedIndustryTile, selectedIndustryBuilding } = $derived(
+		selectIndustryInspector(game, industryCity, selectedIndustryTileId)
 	);
-	let selectedStore = $derived.by(() => {
-		const currentGame: GameState | null = game;
-		const tile = selectedTile;
-
-		return currentGame && tile
-			? (currentGame.stores.find(
-					(store) => store.cityId === activeCity.id && isTileInStoreFootprint(tile, store)
-				) ?? null)
-			: null;
-	});
 	// Focused store-detail overlay state (HPA-293 deep-link), extracted into
 	// storeDetailFocus.svelte.ts so page.svelte.spec.ts can pin the open/close
 	// focus contract.
 	const storeDetailFocus = createStoreDetailFocus(() => selectedStore !== null);
-	let selectedIndustryBuilding = $derived.by(() => {
-		const currentGame: GameState | null = game;
-		const tile = selectedIndustryTile;
-
-		return currentGame && tile
-			? (currentGame.industrialBuildings.find(
-					(building) =>
-						building.cityId === industryCity.id && isTileInIndustryBuildingFootprint(tile, building)
-				) ?? null)
-			: null;
-	});
 	let latestSelectedStoreReport = $derived.by(() => {
 		const store = selectedStore;
 		return store
@@ -800,21 +746,14 @@
 		const network = buildRailNetwork(industryCity);
 		return deriveRailSegments(network, currentGame.industrialBuildings);
 	});
-	// A rail-cell click (outside build mode) resolves to the same
-	// `selectedIndustryTileId` a building click would — this derives the
-	// segment(s) at that cell so the template can show RailSegmentInspector
-	// instead of IndustryTileInspector. Junction cells return >1 segment.
-	let selectedRailSegments = $derived.by((): RailSegment[] | null => {
-		if (!selectedIndustryTileId || railBuildMode.step !== 'idle') {
-			return null;
-		}
-		const tile = getIndustryTileById(industryCity, selectedIndustryTileId);
-		if (!tile) {
-			return null;
-		}
-		const cellSegments = getSegmentsForCell(industryRailSegments, tile.x, tile.y);
-		return cellSegments.length > 0 ? cellSegments : null;
-	});
+	let selectedRailSegments = $derived(
+		selectInspectorRailSegments(
+			industryCity,
+			selectedIndustryTileId,
+			railBuildMode.step !== 'idle',
+			() => industryRailSegments
+		)
+	);
 	let isPlacementModeActive = $derived(
 		retailPlacementArchetypeId !== null ||
 			industryPlacementBuildingTypeId !== null ||
