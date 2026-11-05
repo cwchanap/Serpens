@@ -35,24 +35,14 @@
 		selectIndustryInspector,
 		selectInspectorRailSegments
 	} from './mapInspectorRoute';
-	import { createInitialEventRuntime } from '$lib/game/eventSelection';
+	import { createRoutePreviewGame } from './routePreviewGame';
 	import {
 		MANAGEMENT_PANEL_SHORTCUT_KEY,
 		resolveShortcutAction,
 		type ManagementPanelId
 	} from '$lib/game/keyboardShortcuts';
-	import {
-		DEFAULT_RETAIL_CITY_HEIGHT,
-		DEFAULT_RETAIL_CITY_WIDTH,
-		generateCity,
-		getTileById
-	} from '$lib/game/city';
-	import {
-		DEFAULT_INDUSTRY_CITY_HEIGHT,
-		DEFAULT_INDUSTRY_CITY_WIDTH,
-		INDUSTRIAL_BUILDING_TYPES,
-		generateIndustryCity
-	} from '$lib/game/industry';
+	import { getTileById } from '$lib/game/city';
+	import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import { resolveWorldCityId } from '$lib/game/cityInventory';
@@ -103,11 +93,7 @@
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
-	import {
-		createEmptyFinanceState,
-		getExpansionFinanceOffer,
-		type FinanceFailureCode
-	} from '$lib/game/finance';
+	import { getExpansionFinanceOffer, type FinanceFailureCode } from '$lib/game/finance';
 	import {
 		selectRouteGuidance,
 		resolveGuidanceHandoff,
@@ -121,7 +107,7 @@
 	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
 	import { nextMapActivityBatch, type MapActivityBatch } from '$lib/game/mapActivityFeedback';
-	import { DEFAULT_POLICY, getExpansionSetupCost } from '$lib/game/state';
+	import { getExpansionSetupCost } from '$lib/game/state';
 	import { getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
 	import {
@@ -139,12 +125,7 @@
 	} from '$lib/game/supplyPlannerActions';
 	import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
 	import { buildLogisticsPanelView } from '$lib/components/game/logisticsPanel';
-	import {
-		STARTER_STORE_CAP,
-		WORLD_CITY_CATALOG,
-		createInitialWorldProgress,
-		isWorldCityId
-	} from '$lib/game/world';
+	import { WORLD_CITY_CATALOG, isWorldCityId } from '$lib/game/world';
 	import type {
 		ArchetypeId,
 		GameState,
@@ -269,66 +250,9 @@
 		{ id: 'logistics', shortcut: MANAGEMENT_PANEL_SHORTCUT_KEY.logistics }
 	];
 
-	const starterCity = generateCity({
-		id: 'harbor-city',
-		name: 'Harbor City',
-		width: DEFAULT_RETAIL_CITY_WIDTH,
-		height: DEFAULT_RETAIL_CITY_HEIGHT,
-		seed: 20260503
-	});
-	const starterIndustryCity = generateIndustryCity({
-		id: 'industry-city',
-		name: 'Industry City',
-		width: DEFAULT_INDUSTRY_CITY_WIDTH,
-		height: DEFAULT_INDUSTRY_CITY_HEIGHT,
-		seed: 20260512
-	});
-
-	const starterMapState: GameState = {
-		seed: 20260503,
-		rngState: 0,
-		day: 1,
-		cash: 0,
-		finance: createEmptyFinanceState(1),
-		policy: { ...DEFAULT_POLICY },
-		policyOverrides: [],
-		managerDelegations: [],
-		managerActionHistory: [],
-		scorecard: {
-			profit: 0,
-			customerSatisfaction: 0,
-			staffMorale: 0,
-			marketPosition: 0
-		},
-		world: createInitialWorldProgress(),
-		storeCap: STARTER_STORE_CAP,
-		cities: [starterCity],
-		activeCityId: starterCity.id,
-		industryCities: [starterIndustryCity],
-		activeIndustryCityId: starterIndustryCity.id,
-		industrialBuildings: [],
-		cityInventories: [
-			{
-				cityId: 'industry-city',
-				materials: {}
-			}
-		],
-		retailSupplyAssignments: [{ retailCityId: 'harbor-city', supplyCityId: 'industry-city' }],
-		logistics: {
-			transferOrders: [],
-			recurringRoutes: [],
-			nextTransferSequence: 1,
-			nextRouteSequence: 1
-		},
-		stores: [],
-		competitors: [],
-		staff: [],
-		hiringCandidates: [],
-		events: createInitialEventRuntime(20260503),
-		decisions: [],
-		progression: { claims: [] },
-		reports: []
-	};
+	const starterMapState = createRoutePreviewGame();
+	const starterCity = starterMapState.cities[0]!;
+	const starterIndustryCity = starterMapState.industryCities[0]!;
 	const bgmCueByMapView: Record<MapViewId, BgmCueId> = {
 		retail: 'bgm.retail-map',
 		industry: 'bgm.industry-map',
