@@ -252,7 +252,6 @@ export interface GameRouteControllerOptions {
 	resolveScenarioDefinition(ref: ScenarioDefinitionRef): ScenarioDefinition | undefined;
 	playSfx(cueId: SfxCueId): void;
 	onStateChange?(state: Readonly<GameRouteControllerState>): void;
-	onSaveRepositoryReady?(repository: SaveRepository): void;
 	onSaveSummary?(summary: SaveSummary): void;
 	onScenarioSummary?(summary: import('$lib/scenarios/types').ScenarioPersistenceSummary): void;
 	onScenarioTerminalRun?(run: ScenarioRun): void;
@@ -395,16 +394,14 @@ export class GameRouteController {
 	}
 
 	async initializeSaves(): Promise<void> {
-		const repository = await this.options.createSaveRepository();
-		this.saveRepository = repository;
-		this.options.onSaveRepositoryReady?.(repository);
+		this.saveRepository = await this.options.createSaveRepository();
 
 		if (this.currentState.sandboxGame) {
 			await this.saveAuto(this.currentState.sandboxGame);
 			return;
 		}
 
-		this.options.onSaveSummary?.(await repository.getSummary());
+		await this.refreshSaveSummary();
 	}
 
 	async initializeScenarios(): Promise<void> {
@@ -535,6 +532,48 @@ export class GameRouteController {
 		if (!saved) return 'missing';
 		this.loadSandboxGame(saved.game, 'sfx.save.loaded');
 		return 'loaded';
+	}
+
+	/**
+	 * Persists the current game to a manual slot. Uses the raw `game` getter
+	 * (the active scenario run's game while a challenge is active, the
+	 * sandbox game otherwise): the controller stores plain non-proxy state,
+	 * so the save codec's structured-clone boundary never sees a Svelte
+	 * proxy. Returns the saved slot metadata, or `null` when the repository
+	 * or game is not ready — matching the save panel's silent no-op.
+	 */
+	async saveManualSlot(name: string, slotId?: string): Promise<SaveSlotMetadata | null> {
+		const repository = this.saveRepository;
+		const game = this.game;
+		if (!repository || !game) return null;
+		const metadata = slotId
+			? await repository.overwriteManualSlot(slotId, name, game)
+			: await repository.createManualSlot(name, game);
+		await this.refreshSaveSummary();
+		return metadata;
+	}
+
+	/**
+	 * Deletes a manual slot. Returns `false` when the repository is not
+	 * ready (silent no-op); repository errors propagate to the caller.
+	 */
+	async deleteManualSlot(slotId: string): Promise<boolean> {
+		const repository = this.saveRepository;
+		if (!repository) return false;
+		await repository.deleteManualSlot(slotId);
+		await this.refreshSaveSummary();
+		return true;
+	}
+
+	/**
+	 * Re-reads the save summary and publishes it through `onSaveSummary`.
+	 * Silently resolves when the repository is not ready; read errors
+	 * propagate so callers can surface them.
+	 */
+	async refreshSaveSummary(): Promise<void> {
+		const repository = this.saveRepository;
+		if (!repository) return;
+		this.options.onSaveSummary?.(await repository.getSummary());
 	}
 
 	selectReadOnlyTile(kind: 'retail' | 'industry', tileId: string): void {
