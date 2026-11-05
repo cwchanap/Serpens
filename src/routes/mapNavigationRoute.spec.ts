@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createNewGame } from '$lib/game/state';
+import { createI18n } from '$lib/i18n';
 import type { GameAlert } from '$lib/game/alerts';
 import type { WorldCityId } from '$lib/game/types';
 import {
 	selectMapViewSelections,
+	selectMapHeading,
+	selectWorldCityStatuses,
 	resolveMapAlertDestination,
 	resolveWorldCitySelection,
 	resolveWorldCityOpening,
@@ -55,6 +58,45 @@ describe('map view selection cleanup', () => {
 	] as const)('clears only the selections displaced by %s', (view, expected) => {
 		expect(selectMapViewSelections(view, selections)).toEqual(expected);
 		expect(selections.selectedTileId).toBe('retail-tile');
+	});
+});
+
+describe('world map presentation', () => {
+	it('shows starter cities as inspectable but never offers pre-game opening', () => {
+		const statuses = selectWorldCityStatuses(null);
+		expect(statuses.find((status) => status.city.id === 'harbor-city')).toMatchObject({
+			state: 'opened',
+			canOpen: false,
+			storeCount: 0,
+			buildingCount: 0,
+			blockedReason: null
+		});
+		expect(statuses.find((status) => status.city.id === 'campus-junction')).toMatchObject({
+			state: 'locked',
+			canOpen: false,
+			blockedReason: { code: 'worldCityNotAvailableYet' }
+		});
+		expect(statuses.every((status) => !status.canOpen)).toBe(true);
+	});
+	it('uses live world reveal state, affordability and occupancy after founding', () => {
+		const revealed = { ...game, cash: 18000, world: { ...game.world, revealedCityIds: allowed } };
+		const statuses = selectWorldCityStatuses(revealed);
+		expect(statuses.find((status) => status.city.id === 'harbor-city')?.storeCount).toBe(1);
+		expect(statuses.find((status) => status.city.id === 'campus-junction')).toMatchObject({
+			state: 'revealed',
+			canOpen: true,
+			blockedReason: null
+		});
+	});
+	it.each([
+		['world', 'World Map', 'Regional Network'],
+		['retail', 'Retail City Map', 'Campus Junction'],
+		['industry', 'Industry City Map', 'Industry City']
+	] as const)('labels the %s view using its own city', (view, eyebrow, title) => {
+		expect(selectMapHeading(view, 'campus-junction', 'industry-city', createI18n('en'))).toEqual({
+			mapEyebrow: eyebrow,
+			mapTitle: title
+		});
 	});
 });
 

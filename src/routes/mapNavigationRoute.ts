@@ -1,7 +1,14 @@
 import type { GameAlert } from '$lib/game/alerts';
 import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 import type { GameState, ProductId, WorldCityId } from '$lib/game/types';
-import { getWorldCityStatus, isWorldCityId } from '$lib/game/world';
+import {
+	getWorldCityStatus,
+	isWorldCityId,
+	WORLD_CITY_CATALOG,
+	type WorldCityStatus
+} from '$lib/game/world';
+import { decisionContextWorldCityNotAvailableYet } from '$lib/game/decisionContext';
+import type { I18nBundle } from '$lib/i18n';
 import {
 	resolveAlertNavigation,
 	resolveStockAlertDestination,
@@ -9,6 +16,43 @@ import {
 	type AlertWorldRouteNavigation
 } from './alertNavigation';
 import type { PendingFinancedPurchase } from './financePurchaseReview';
+
+export function selectMapHeading(
+	view: MapViewId,
+	retailCityId: string,
+	industryCityId: string,
+	i18n: I18nBundle
+) {
+	return {
+		mapEyebrow:
+			view === 'world'
+				? i18n.t('route.mapEyebrow.world')
+				: view === 'industry'
+					? i18n.t('route.mapEyebrow.industry')
+					: i18n.t('route.mapEyebrow.retail'),
+		mapTitle:
+			view === 'world'
+				? i18n.t('route.mapTitle.world')
+				: i18n.labels.worldCity(view === 'industry' ? industryCityId : retailCityId).name
+	};
+}
+
+export function selectWorldCityStatuses(game: GameState | null): WorldCityStatus[] {
+	return WORLD_CITY_CATALOG.map((city) =>
+		game
+			? getWorldCityStatus(game, city.id)
+			: {
+					city,
+					state: city.initiallyOpened ? 'opened' : 'locked',
+					canOpen: false,
+					blockedReason: city.initiallyOpened
+						? null
+						: decisionContextWorldCityNotAvailableYet(city.id),
+					storeCount: 0,
+					buildingCount: 0
+				}
+	).filter((status): status is WorldCityStatus => status !== null);
+}
 
 interface MapViewSelections {
 	selectedTileId: string | null;
