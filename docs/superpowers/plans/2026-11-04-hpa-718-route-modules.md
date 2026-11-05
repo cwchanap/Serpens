@@ -2,120 +2,127 @@
 
 **Issue:** https://linear.app/cwchanap/issue/HPA-718/refactor-split-the-main-game-page-into-focused-route-modules
 **Design:** `docs/superpowers/specs/2026-11-04-hpa-718-route-modules-design.md`
-**Review incorporated:** https://github.com/cwchanap/Serpens/pull/70#issuecomment-6647119067
-**Branch/PR:** `docs/hpa-718-route-modules` / https://github.com/cwchanap/Serpens/pull/70 — **one ticket, one PR**
+**Reviews addressed:** [initial review](https://github.com/cwchanap/Serpens/pull/70#issuecomment-6647119067), [revised-plan review](https://github.com/cwchanap/Serpens/pull/70#pullrequestreview-5779726136)
+**Branch / draft PR:** `docs/hpa-718-route-modules` / https://github.com/cwchanap/Serpens/pull/70 — **one ticket, one PR**
 **Inspected baseline:** `main@4fa7296dd68112daaaf799b182226af001f922b9`
-**Status:** revised **docs-only** plan. Runtime edits and green test results have **not** occurred.
+**Status:** docs-only plan; no runtime implementation or test pass claimed.
 
-## Working agreement
+## Delivery boundaries and honest line budget
 
-- **Delete duplication before extraction.** Extend the existing controller for manual saves and shared command availability rather than writing thin clones. Keep logic in the fewest sensible modules; no mandatory module count.
-- **Vertical commits, not separate PRs.** In each cohesive group, move its state + derived decisions + handlers + specs *together*; run focused verification before starting the next group.
-- **One owner per state.** Route page owns controller, cross-feature selection, effects and existing markup; a feature-local `.svelte.ts` factory may own its own runes. No giant getter/setter context, new store, duplicated overlay atoms or hidden auto-tick dependencies.
-- **No behavior change.** Preserve typed command outcomes, scenario CAS revision/identity, save timing and SFX, original overlay policy and page/Phaser Escape interplay. No changes to `src/lib/game/`, Phaser, save schema, i18n or assets.
-- **Target:** `+page.svelte` ~1,200 lines or fewer, new route modules ~500 or fewer. Baseline page has 3,639 physical lines, script to line 3,013, ~626 markup; available script/import budget is ~574. Check actual counts per commit.
-- **Svelte tooling:** follow the mandatory Svelte docs + autofixer procedure in `CLAUDE.md` for every touched Svelte file. Do not edit `AGENTS.md` symlink; update `CLAUDE.md` after code layout settles.
+- **Ticket target is unchanged:** approximately **1,200 physical lines or fewer** in `src/routes/+page.svelte` and ~500 or fewer in each newly added focused module. This is *not* silently replaced by the review's proposed ~2,000-line target.
+- **Baseline:** 3,639 physical lines; script ends at line 3,013; markup occupies ~626 lines. Therefore final script/imports budget is ~574 lines, requiring **~2,439 net lines removed from the page**.
+- **Initial review estimate, not measured result:** steps covering controller/manual save, overlay gates, rail, placement, scenario and planner eliminate ~1,450 lines, leaving **~2,180** total. Thus **~990 additional net lines** must be accounted for *before* final verification. Step 6 below is **mandatory and planned upfront**, not an optional emergency fallback.
+- **Never confuse relocation with reduction:** after every vertical slice, measure `wc -l` for page and new modules; record actual *net* source movement/deletion, module cohesion and test outcome. The extractions suggested in the review (map ~200, guidance ~100, inspector ~120) alone leave a **~570-line gap** in the estimate. Step 0 must inventory additional *non-overlapping* substantive route orchestration before any final size claim. Estimates are not guaranteed.
+- **KISS:** delete duplicate guards/repository routing before creating modules. No giant getter/setter context, global Svelte store, event bus, monolithic route state object, generic action dispatcher, new domain engine or save migration. Keep cross-feature runes, controller composition, auto-tick effects and existing markup in page.
+- **Vertical commits on this PR:** for each cohesive feature group, update tests with the code, run `bun run check` + focused route unit suite + affected E2E **before** moving on. Preserve unchanged player behavior and original tests. Keep this single PR draft until approved.
 
-## Step 0 — Establish baseline and tests before moving code
+## Step 0 — Baseline, test plan and non-overlapping size inventory
 
-1. Check current `main` and PR head to avoid stale baselines or clobbering concurrent work. Record `wc -l src/routes/+page.svelte`, per-region ownership, and existing tests.
-2. Read `+page.svelte`, `gameRouteController.ts`, `financePurchaseReview.ts`, `supplyPlannerRoute.ts`, `storeDetailFocus.svelte.ts`, `alertNavigation.ts`, `ScenarioCatalog.svelte`, `ScenarioResultsDialog.svelte`, `FinancePurchaseReviewHost.svelte`, `*Host.svelte` and `CLAUDE.md`.
-3. Establish a focused route-unit and E2E baseline. Use existing **actual test titles**, not speculative test filters. For example:
+1. Recheck current `main` and PR head; don't overwrite another agent's concurrent changes. Record page count, script/markup budget and functional source ranges.
+2. Inspect `+page.svelte`, `gameRouteController.ts`, `financePurchaseReview.ts`, `supplyPlannerRoute.ts`, `storeDetailFocus.svelte.ts`, `alertNavigation.ts`, `ScenarioCatalog.svelte`, `ScenarioResultsDialog.svelte`, `FinancePurchaseReviewHost.svelte`, `*Host.svelte` and `CLAUDE.md`.
+3. Group **all 3,013 script lines without double counting** into controller-adapter deletion, overlays, rail, placement, scenarios, planner, map navigation/world management, guidance, inspector projections, bootstrap/other real UI coordination, and retained state/lifecycle/import code. Assign estimates and budget for each against 2,439 required **net** reduction. No “we'll see at the end” or hollow wrapper to fill a gap.
+4. Run baseline route specs and existing E2E using real titles, for example:
    - `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "player can save to a manual slot|challenge returns to sandbox|challenge restart|challenge imports"`
    - `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "rail-fed production|financed expansion"`
    - `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "Escape|keyboard shortcuts|cheat sheet|modifier"`
    - `bun run test:e2e -- src/routes/time-flow.e2e.ts`
-4. Draft node tests that pin **current** overlay policy and rail waypoint behavior *from the inline implementation and its comments*. `page.svelte.spec.ts` does not mount the page and cannot directly serve as an old/new view-model oracle. Use new pure decision specs and existing E2E as the equivalence net.
-5. Explicitly pin the previously missing rail integration invariant: one canvas `buildCancelled` from Escape/right-click removes **one** waypoint, clears target/feedback, and the page Escape must not remove a second one. Add one narrowly scoped integration/E2E probe if the actual DOM event interaction cannot be established from pure reducer + policy specs alone.
+5. The existing `page.svelte.spec.ts` tests the controller/helpers, **not the mounted page**; do not claim an old/new selector comparison can import inline page code. Create pure specs derived from existing inline logic plus E2E equivalence. Pin **canvas Escape/right-click cancels exactly one rail waypoint**, without double-handling by the page, before extracting its old handler.
 
-**Checkpoint:** record baseline failures honestly; no invented green status or “identical old/new selector fixtures” claim.
+**Gate:** baseline/test gaps and a measurable line budget are explicit. Any pre-existing test failures recorded, not described as green.
 
-## Step 1 — Consolidate ownership in GameRouteController (two small vertical commits)
+## Step 1 — Delete duplicate ownership in GameRouteController (two vertical changes)
 
-### 1A. Manual save belongs to the existing controller
+### 1A. Manual saves
 
-**Files:** `gameRouteController.ts` and `gameRouteController.spec.ts`, minimal page consumer edits.
+**Files:** `gameRouteController.ts`, its existing spec, page consumers.
 
-1. Add `saveManualSlot(name, slotId?)`, `deleteManualSlot(slotId)` and `refreshSaveSummary()` using the controller's existing repository and `onSaveSummary`.
-2. Use the controller's **raw `game` getter**, not `sandboxGame` only, so manual-save behavior matches the page's current `game` in all reachable modes and does not need `$state.snapshot(game)`.
-3. Remove page-owned `saveRepository` and `onSaveRepositoryReady` callback. Preserve manual-slot name/overwrite choices, saved cue, feedback translation keys, errors and summaries.
-4. Deduplicate the successful auto/manual load reset in the page (selections, placement, opening/cash recovery guidance, simulation pause, summary refresh); missing/failed loads do not reset.
-5. Write tests for uninitialized repository, manual create/overwrite/delete, refreshed callbacks, current raw game source, errors, and no unexpected autosave.
+1. Add `saveManualSlot(name, slotId?)`, `deleteManualSlot(slotId)` and `refreshSaveSummary()` using the controller's existing repository and `onSaveSummary`. Use its **raw `game` getter** (not `sandboxGame` unconditionally), which matches the currently reachable manual-save source and avoids a Svelte proxy snapshot boundary.
+2. Delete page-owned `saveRepository` and `onSaveRepositoryReady` wiring. Keep `isSavePanelOpen`, `saveFeedback` and summaries in **the page**. **Do not create `savePanel.svelte.ts` or `saveSlotRoute.ts`** just to relocate trivial flags/formatters.
+3. Preserve saved SFX, translation keys, overwrite/name semantics and error propagation. Share the successful auto/manual post-load reset (selections, placement, recovery hints, pause), never reset on failed/missing save.
+4. Cover repository-not-ready, raw game in all reachable modes, manual create/overwrite/delete, summary callbacks, error, load and absence of duplicate autosaves.
 
-**Checkpoint:** `bun run check && bun run test:unit -- --run src/routes`; run the manual-slot E2E filter plus `src/routes/recovery-guidance.e2e.ts`. Do not proceed with broken saves.
+**Gate:** `bun run check && bun run test:unit -- --run src/routes`; manual-slot and recovery-guidance E2E.
 
-### 1B. Gate thin commands once at the existing mutation authority
+### 1B. Equivalent command gating in the controller
 
-**Files:** `gameRouteController.ts`, `gameRouteController.spec.ts`, page's thin handlers.
+**Files:** controller and spec, page wrappers removed where truly redundant.
 
-1. For mutations with an actual matching `MutationAvailability` capability, evaluate current play mode / pending / resolved scenario definition at `commitMutation` entry. Remove only equivalent page pre-gates. Avoid adding a key just to satisfy generic plumbing.
-2. Preserve **UI-gated pending ⇒ `{ status: 'unavailable' }`**, and keep lifecycle `busy` semantics. Preserve the existing `executeScenarioCommand` scenario capability enforcement, CAS and serialized persistence gate.
-3. Handle special cases explicitly: `foundStore` with no sandbox game; `selectWorldCity`'s distinct scenario-selection gate; `setRetailSupplySource`'s sandbox unchanged/rejected preflight; sandbox-only policies/brand/delegation/demolition/manual logistics; scenario-shaped recurring-route inputs without mutable rates.
-4. Keep local adapters that carry behavior: `changeStoreProduct` product lookup/`null`, `upgradeStoreHandler` `null`, `removeRecurringRoute` selection cleanup. Do not introduce `routeCommandHandlers.ts`, a string-keyed dispatcher or a second autosave.
-5. Add tests for pending return type vs `busy`, scenario permission denial, direct build-rail call, founding no-game, supply-source unchanged, sandbox-only command denial, and finance/logistics panel feedback distinctions.
+1. For commands with a meaningful `MutationAvailability` capability, evaluate the **current** mode/pending/resolved scenario definition at the existing `commitMutation` boundary. Keep `executeScenarioCommand`'s authoritative capability/CAS checks and `runPersistenceGatedOperation` unchanged.
+2. Preserve pending **UI-gated** command results as `{ status: 'unavailable' }`, not `busy` (Finance and Logistics panels distinguish these); lifecycle operations retain their existing `busy` result. No double-autosave.
+3. Exempt or handle explicitly: `foundStore` before any game, `selectWorldCity`'s separate scenario capability, `setRetailSupplySource`'s sandbox unchanged/rejected preflight, sandbox-only policy/delegation/brand/demolition/manual logistics and scenario-shaped recurring-route data.
+4. Remove ~25 thin page wrappers only where return type and live capability rules remain identical. Keep meaningful preflight/cleanup: `changeStoreProduct` `null` contract; `upgradeStoreHandler` `null`; `removeRecurringRoute` selection cleanup.
+5. Test pending vs busy, denial without state/sfx/autosave, direct rail command, first founding, unchanged supply-source and sandbox-only commands.
 
-**Checkpoint:** `bun run check && bun run test:unit -- --run src/routes`; targeted scenario and finance E2E. Audit that at least as many duplicate wrappers are *deleted* as were added to the controller.
+**Gate:** `bun run check && bun run test:unit -- --run src/routes`; scenario and finance/logistics targeted E2E.
 
-## Step 2 — Centralize overlay gate policy and Escape precedence
+## Step 2 — One typed, pure overlay/keyboard policy
 
-**Files:** new `routeOverlays.ts` + `routeOverlays.spec.ts`; relevant page wiring.
+**Files:** `routeOverlays.ts` + `routeOverlays.spec.ts`, page binding.
 
-1. Write a closed overlay ID policy table with default `pausesMap` / `blocksShortcuts` / `disablesRailKeyboard`, `ESCAPE_ORDER`, `selectOverlayGates` and `resolveEscapeTarget`. Populate policy from the current page's six memberships **before deleting the originals**.
-2. Assemble a **derived read-only snapshot** of open states from existing feature owners. Do **not** move all independent overlay state into a new giant `$state` record or duplicate `storeDetailFocus`/finance review runes.
-3. Pin exceptions: alerts block shortcuts and rail but not map; management pauses map but retains `isMenuOpen` semantics; finance confirmation leaves Phaser rendering running but owns Escape; placement keeps Phaser active; world map blocks the timer without blocking view shortcuts.
-4. Preserve dialog ownership: Scenario Catalog and Results Dialog close themselves via component key handlers; Finance review handles Escape in capture phase. Page does not double-handle them. Preserve rail waypoint canvas cancellation and the ordered fallback to selected items/hamburger.
-5. Keep `closePlannerOverlays` and `resetTransientViewState` as separate named cleanup policies with different memberships; do not collapse them into unconditional “close all” loops. Only merge exact duplicate close/reset behavior proven by tests.
+1. Define closed `OverlayId`, policy `{ pausesMap, blocksShortcuts, disablesRailKeyboard }`, `ESCAPE_ORDER`, `selectOverlayGates` and a **fully typed** `resolveEscapeTarget` decision with node specs.
+2. `OverlaySnapshot` has `openOverlays: ReadonlySet<OverlayId>` sourced from existing owner state, `isPlacementActive`, `isRailBuildActive` (**origin OR routing**), `isFinanceReviewPending`, booleans for selected world/retail/industry/logistics target and `allowMenuFallback` (no modifier/typing target). **Do not duplicate UI flags in another giant `$state`.**
+3. Return the discriminated `EscapeResolution`: `external-owned` (canvas/dialog), `close-overlay`, `cancel-placement`, `clear-selection` (world/retail/industry/logistics), `open-game-menu` or `none`. The page dispatches side effects via a short switch to existing methods; the pure helper never performs effects. Test all current priority branches, including selected-item and hamburger fallback.
+4. Preserve exact contextual exceptions: alert menu blocks shortcuts/rail but not map; management panel pauses map but retains `isMenuOpen` keyboard behavior; finance confirmation keeps map rendering yet dialog owns Escape; placement keeps map running; catalog/results dialogs close Escape internally; canvas owns rail waypoint pop; world map blocks auto-tick without blocking view shortcuts.
+5. Keep `closePlannerOverlays` and `resetTransientViewState` as **different** named cleanup operations. Never use a blanket “close all” that erases their intentional different memberships.
 
-**Checkpoint:** `bun run check && bun run test:unit -- --run src/routes`; `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "Escape|keyboard shortcuts|cheat sheet|modifier"` and `bun run test:e2e -- src/routes/time-flow.e2e.ts`. In particular, verify no double Escape.
+**Gate:** `bun run check && bun run test:unit -- --run src/routes`; retail-sim E2E matching `Escape|keyboard shortcuts|cheat sheet|modifier` and full `time-flow.e2e.ts`.
 
-## Step 3 — Extract the rail cluster as one vertical slice
+## Step 3 — Rail as a pure reducer; no extra rune factory
 
-**Files:** new `railBuild.ts` / `railBuild.svelte.ts` with specs; page updated. No `src/lib/game/rail*` modifications.
+**Files:** **`railBuild.ts` and `railBuild.spec.ts` only**, plus page edit. No `railBuild.svelte.ts` or changes to `src/lib/game/rail*`.
 
-1. Create the pure click/reducer contract and tests for no-game, origin, waypoint, invalid waypoint, first destination preview, second destination commit, cancel last waypoint and exit mode, reset stale target/feedback, plus upgrade/demolish eligibility.
-2. Use a small `.svelte.ts` factory (like `storeDetailFocus.svelte.ts`) to own `railBuildMode`, target, preview/status derivations and actions. Pass current `game`, city, locale/permissions through getters; never capture a stale controller state snapshot.
-3. Rail and retail/industry placement currently share `placementFeedback`. Make its **one owner** explicit (prefer page-owned cross-feature feedback unless a single coherent placement owner emerges). Clear the same value on rail/placement transitions.
-4. Preserve `isRailWaypointTarget`, `buildRailPreview`, map snapshot wire format and first-click/second-click sequence. Do not recreate shipping or rail placement domain rules.
+1. Implement/test pure `reduceRailBuildClick` / `cancelRailBuildStep` and `deriveRailPreviewRender` (reusing existing rail placement / waypoint helpers). Inputs include live game, industry city, mode, target and permissions; outputs are next mode/target plus feedback, SFX/commit **intents**.
+2. Keep `railBuildMode`, `railPreviewTargetBuildingId` and shared `placementFeedback` as page-local `$state`. The page calls reducer then directly applies those outputs and calls the existing controller/SFX. Avoid 5+ getter/setter/event callback injection.
+3. Pin no-game/invalid waypoint, origin selection, first valid destination preview, same-destination second click commit, waypoint backtrack, preview clearing and canvas right-click/Escape single-pop (page must not cancel again).
 
-**Checkpoint:** `bun run check && bun run test:unit -- --run src/routes`; `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "rail-fed production"` and `bun run test:e2e -- src/routes/recovery-guidance.e2e.ts`. Include the new Escape/right-click regression test before deleting the old handler.
+**Gate:** `bun run check && bun run test:unit -- --run src/routes`; retail-sim `rail-fed production` and recovery-guidance E2E, including the new cancellation integration probe.
 
-## Step 4 — Extract retail/industry placement and finance review
+## Step 4 — Placement/finance as focused route decisions
 
-**Files:** `placementRoute.ts` with spec; optionally extend `financePurchaseReview.ts` for already-pure `refreshedFinancedPurchase`; page updated.
+**Files:** `placementRoute.ts` and spec; reuse `financePurchaseReview.ts`; page simplified.
 
-1. Deduplicate the scenario-valid tile filtering with `restrictPreviewToScenario(preview, allowTile)` while retaining the existing detailed invalid-tile block feedback (do not prefilter clicks into silent no-ops).
-2. Reuse the existing `resolveExpansionPurchasePaymentPath`. Keep founding-store, cash-retail expansion, industry placement and finance-only paths readable as distinct flows. Only add a generic `resolvePlacementClick` union if the resulting code is **smaller and clearer** than these existing branches; it is not an acceptance requirement.
-3. Keep `beginFinancePurchaseConfirmation` / `settleFinancePurchaseConfirmation` generation checks, cost refresh triggers and `tick()` focus restore; keep world-city financing on the existing review path.
-4. Test invalid/blocked placement, no-game founding, scenario permissions, cash-only/finance-only branches, quote update after rejection, no duplicate confirmations, stale async results and focus restoration.
+1. Introduce the shared pure `restrictPreviewToScenario(preview, allowTile)` and reuse existing `resolveExpansionPurchasePaymentPath`. Maintain distinct founding, cash retail, industry and finance/blocked tile contracts instead of creating a generic engine by default.
+2. Keep invalid-tile-specific feedback, scenario placement restrictions, quote refresh, finance generation/cancel guard, no double submit and focus restoration after `tick()`. Move already-pure `refreshedFinancedPurchase` next to the existing finance review helpers if useful.
+3. Introduce a generic `resolvePlacementClick` only if testable and *simpler* than the branches it replaces; never require it as a planning artifact.
 
-**Checkpoint:** `bun run check && bun run test:unit -- --run src/routes`; `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "financed store opening|financed expansion|player expands"`.
+**Gate:** `bun run check && bun run test:unit -- --run src/routes`; retail-sim `financed store opening|financed expansion|player expands` E2E.
 
-## Step 5 — Scenario cluster, planner reuse, and optional map/navigation extraction
+## Step 5 — Scenario lifecycle and existing planner reuse
 
-**Files:** `scenarioRoute.ts` (optional catalog `.svelte.ts` only if beneficial), extend `supplyPlannerRoute.ts`, optional `mapNavigationRoute.ts`. New tests for each actual module.
+**Files:** `scenarioRoute.ts` with spec, extend `supplyPlannerRoute.ts`, page updated.
 
-1. Create pure `toCatalogActionResult` so start/current-version/import map confirmation and failure outcomes without repeating the same switch; preserve distinct localized confirmation text and CAS tokens (`expectedRunId` / `expectedRevision`).
-2. Put scenario content allowance in one live predicate instead of repeating `playMode === 'sandbox' || isScenarioContentAllowed(...)`; keep filters close to the selected flow, and do not wrap one-line `$lib` projections in hollow helpers.
-3. Isolate a pure scenario sync identity decision. Reset transient selections/pause **only** when `playMode`, `runId`, `status` or `scenarioRunSyncEpoch` changed. Preserve same-run resume and conflict adoption behavior; do not trigger on every reference change.
-4. If catalog UI open/results/feedback atoms are self-contained, use a small `.svelte.ts` holder; otherwise keep them in the page. Keep cross-feature selection state in one owner.
-5. Reuse the already-exported `deriveSupplyPlannerResult` for the open-gated `supplyPlannerResult` derived value and for action handoff, passing the same `$state.snapshot` function. Retain the planner's live-product validation, horizon and city handoff.
-6. Only if still needed for the size target, extract the cohesive world-city/nav selector and actions to `mapNavigationRoute.ts`; do not create generic read-model or keyboard modules.
+1. Extract one pure `toCatalogActionResult` mapper for start/current-version/import, preserving localized confirmation text and `expectedRunId`/`expectedRevision`; centralize live scenario-content allowance predicate.
+2. Extract pure run-identity sync decision, keyed by `playMode`/`runId`/`status`/`scenarioRunSyncEpoch` only. Ordinary same-run command publications must never pause simulation or reset selections. Keep catalog UI flags as page-local runes; no speculative catalog `.svelte.ts`.
+3. Reuse the existing `deriveSupplyPlannerResult` behind the original overlay-open gate for derived value and handoff, passing `$state.snapshot` as currently required for planner input. Retain current product/horizon validation, locale and city handoff.
+4. Recount. An interim page around **~2,100–2,200 lines** is reasonable by review estimate, but **is not HPA-718 completion**.
 
-**Checkpoint:** `bun run check && bun run test:unit -- --run src/routes`; `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "challenge|scenario|city-local inventory"` and `bun run test:e2e -- src/routes/time-flow.e2e.ts`.
+**Gate:** `bun run check && bun run test:unit -- --run src/routes`; retail-sim `challenge|scenario|city-local inventory` and `time-flow.e2e.ts`.
 
-## Step 6 — Audit actual size, ownership and final verification
+## Step 6 — **Mandatory** remaining route extraction (same PR, planned now)
 
-1. After **every** vertical commit, record `wc -l src/routes/+page.svelte` and each newly added route module. Final target ≤~1,200 / ≤~500 without a catch-all. If exceeded, extract another genuinely cohesive cluster on **this same PR** and explain the count; never simply waive or move it to another ticket.
-2. Leave the page's controller construction, primitive `hasGame` auto-tick dependency, Svelte effects, cross-feature selections and markup intact. Inspect for stale getter captures, duplicate game/saves authorities, unintended branch/status/copy changes, duplicated update commands, changed scenario gating and extra reactive reads.
-3. Update the route architecture description in `CLAUDE.md` only; do not edit `AGENTS.md` symlink. Run mandatory Svelte documentation/autofixer workflow on each touched Svelte file.
-4. Run and **record actual results**, not inferred success:
+This is a required work stage because Steps 1–5 alone do not cover ~2,439 net lines. Do not declare completion at a ~2,000-line intermediate milestone. Specific `wc -l` deltas override the review's rough estimates.
+
+1. **World/map/management navigation** in `mapNavigationRoute.ts`: multi-step map switching, legal city selection, world opening/financing entry, panel routing, map-specific alert handoffs, logistics focus and the relevant multi-branch map selections. Inspect original regions ~1216–1291, 1712–1900, 2743–2765 and 2790–2878, plus related projections. Keep cross-feature selections page-owned; module exports pure decisions/narrow actions, not a second controller. Add alert/city/view specs.
+2. **Guidance** in a small `routeGuidance.ts` **only for cohesive, substantial behavior**: opening/cash-recovery eligibility, UI dismissal/rearm and recovery handoffs; reuse existing `$lib/game/openingGuidance` and `cashRecovery`. Inspect derived ~697–726, handoff ~1862–1878 and load reset logic; do not reimplement guidance rules.
+3. **Inspector and world read models**: extract *multi-branch* selection and inspector preview decisions (`~727–839, 2743–2765`) into the map/navigation module or one named inspector selector module if truly separate. **Do not double count ranges already in item 1** or add hollow wrappers around one-line `$lib` calls.
+4. **Balance the remaining reduction explicitly:** the review estimates map (~200), guidance (~100), inspector (~120) for **~420 lines, still ~570 short** of its ~990-line deficit. In **Step 0**, identify other *non-overlapping* substantive remaining UI coordination such as cross-view menu workflows, world status/read-model branching and bootstrap of route-only initial presentation data. Assign a measured net deletion budget to those real candidates and update it after each commit. Do not plan an unjustified 570-line generic abstraction or assume that a few modules automatically hit the number.
+5. Run check, route unit suite and focused map/alert/inspector/guidance E2E **after each vertical extraction**. Measure and record page and module line counts. If no cohesive extraction remains that can meet ~1,200 without harming maintainability, **surface the exact shortfall and request an explicit acceptance-scope decision**, rather than silently changing HPA-718's target or fudging the numbers.
+
+**Gate:** HPA-718 size target met on the *same* PR, or a clearly identified unresolved acceptance decision. No extra PR, no unnecessary new subsystem.
+
+## Step 7 — Final audit and full verification
+
+1. Verify measured `wc -l src/routes/+page.svelte` and each newly added route module against targets; report actual before/after page lines, new module sizes and net deleted vs relocated lines, not guessed savings.
+2. Confirm the page remains the composition root for controller, shared selections and Svelte effects, with primitive `hasGame` timer dependency and identical Phaser/map/overlay behavior.
+3. Update architecture paragraph in `CLAUDE.md` only (not the `AGENTS.md` symlink). Follow its mandatory Svelte docs / autofixer workflow on **every changed Svelte file**; avoid unrelated formatting churn.
+4. Run and **record actual** commands (no invented pass claims):
    - `bun run check`
    - `bun run lint`
-   - `bun run test:unit -- --run` (all projects, including `page.svelte.spec.ts`, controller, planner, finance review and `*Host.svelte.spec.ts`)
-   - `bun run test:e2e` (full suite, including retail, recovery-guidance and time-flow)
-   - `git diff --check main...HEAD` and a changed-file audit
-5. Report before/after page/modules line counts; deleted-vs-moved LOC; all fixed regression invariants; and any accepted exceptions. Keep PR **draft** until Hapadona approves. **Do not open another PR for implementation.**
+   - `bun run test:unit -- --run` (all projects, including route/controller/planner/finance/host suites)
+   - `bun run test:e2e` (full suite, especially retail, recovery guidance and time-flow)
+   - `git diff --check main...HEAD` and changed-file audit
+5. Keep PR **draft** until Hapadona approves. All implementation and validation remain in **PR #70**.
 
-## Non-goals
+## Explicit exclusions
 
-No `src/lib/game/` domain changes, economy/rail balance/content tweaks, Phaser UI rewrite, changed translations, art/SFX, new save migrations, additional application state framework or parallel implementation PR. HPA-719 art, HPA-720 electronics chain and HPA-721 economy tuning remain separate tasks.
+No new domain gameplay/economy/rail mechanics under `src/lib/game/`, Phaser redesign, new art/SFX, scenario balance, localization changes, save migration, global reactive infrastructure or multi-PR rollout. HPA-719 (art), HPA-720 (electronics) and HPA-721 (economy) remain separate tickets.
