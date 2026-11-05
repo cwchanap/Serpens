@@ -104,11 +104,7 @@
 	} from '$lib/game/finance';
 	import { isSandboxOpeningWindow, selectOpeningGuidance } from '$lib/game/openingGuidance';
 	import { selectCashRecovery, type CashRecoveryStep } from '$lib/game/cashRecovery';
-	import type {
-		ManualTransferInput,
-		RecurringRouteInput,
-		RecurringRouteUpdateInput
-	} from '$lib/game/interCityLogistics';
+	import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
 	import {
 		selectRecentDeliveredTransfers,
 		selectRouteOperations,
@@ -150,14 +146,9 @@
 	} from '$lib/game/decisionContext';
 	import type {
 		ArchetypeId,
-		BrandId,
-		CompanyPolicy,
 		GameState,
 		IndustrialBuildingTypeId,
-		LoanTermDays,
-		ManagerDelegation,
 		MaterialId,
-		PolicyOverrideScope,
 		ProductId,
 		StoreProductPatch,
 		TransferOrder,
@@ -179,8 +170,6 @@
 		ScenarioDefinition,
 		ScenarioOperationError,
 		ScenarioPersistenceSummary,
-		ScenarioRecurringRouteInput,
-		ScenarioRecurringRouteUpdateInput,
 		ScenarioResult,
 		ScenarioRun,
 		ScenarioRunStatus
@@ -2267,104 +2256,6 @@
 		simulationSpeed = speed;
 	}
 
-	function changePolicy(patch: Partial<CompanyPolicy>) {
-		if (game && mutationAvailability.updatePolicy) {
-			void gameRouteController.updatePolicy(patch);
-		}
-	}
-
-	function setPolicyOverride(scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>): void {
-		if (game && mutationAvailability.scopedPolicy) {
-			void gameRouteController.setPolicyOverride(scope, patch);
-		}
-	}
-
-	function clearPolicyOverrideField(scope: PolicyOverrideScope, field: keyof CompanyPolicy): void {
-		if (game && mutationAvailability.scopedPolicy) {
-			void gameRouteController.clearPolicyOverrideField(scope, field);
-		}
-	}
-
-	function resetPolicyOverrideScope(scope: PolicyOverrideScope): void {
-		if (game && mutationAvailability.scopedPolicy) {
-			void gameRouteController.resetPolicyOverrideScope(scope);
-		}
-	}
-
-	function setManagerDelegation(delegation: ManagerDelegation): void {
-		if (game && mutationAvailability.delegation) {
-			void gameRouteController.setManagerDelegation(delegation);
-		}
-	}
-
-	function removeManagerDelegation(managerId: string): void {
-		if (game && mutationAvailability.delegation) {
-			void gameRouteController.removeManagerDelegation(managerId);
-		}
-	}
-
-	function chooseDecision(decisionId: string, optionId: string) {
-		if (game && mutationAvailability.resolveDecision) {
-			void gameRouteController.resolveDecision(decisionId, optionId);
-		}
-	}
-
-	function setRetailSupplySource(retailCityId: string, supplyCityId: string | null): void {
-		if (game && mutationAvailability.setRetailSupplySource) {
-			void gameRouteController.setRetailSupplySource(retailCityId, supplyCityId);
-		}
-	}
-
-	function dispatchManualTransfer(input: ManualTransferInput): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.manageLogistics) {
-			return Promise.resolve({ status: 'unavailable' });
-		}
-		return gameRouteController.dispatchManualTransfer(input);
-	}
-
-	function createRecurringRoute(
-		input: RecurringRouteInput | ScenarioRecurringRouteInput
-	): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.createRecurringRoute) {
-			return Promise.resolve({ status: 'unavailable' });
-		}
-		return gameRouteController.createRecurringRoute(input);
-	}
-
-	function updateRecurringRoute(
-		routeId: string,
-		input: RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput
-	): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.updateRecurringRoute) {
-			return Promise.resolve({ status: 'unavailable' });
-		}
-		return gameRouteController.updateRecurringRoute(routeId, input);
-	}
-
-	function pauseRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.pauseRecurringRoute) {
-			return Promise.resolve({ status: 'unavailable' });
-		}
-		return gameRouteController.pauseRecurringRoute(routeId);
-	}
-
-	function resumeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.resumeRecurringRoute) {
-			return Promise.resolve({ status: 'unavailable' });
-		}
-		return gameRouteController.resumeRecurringRoute(routeId);
-	}
-
-	function reprioritizeRecurringRoute(
-		routeId: string,
-		priority: number
-	): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.manageLogistics) {
-			return Promise.resolve({ status: 'unavailable' });
-		}
-		return gameRouteController.reprioritizeRecurringRoute(routeId, priority);
-	}
-
 	async function removeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
 		if (!game || !mutationAvailability.manageLogistics) {
 			return { status: 'unavailable' };
@@ -2375,65 +2266,6 @@
 			if (focusedLogisticsRouteId === routeId) focusedLogisticsRouteId = null;
 		}
 		return result;
-	}
-
-	function borrowWorkingCapital(
-		amount: number,
-		termDays: LoanTermDays
-	): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.borrow) return Promise.resolve({ status: 'unavailable' });
-		return gameRouteController.borrowWorkingCapital(amount, termDays);
-	}
-
-	function repayFinanceLoan(loanId: string, amount: number): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.repayLoan) return Promise.resolve({ status: 'unavailable' });
-		return gameRouteController.repayFinanceLoan(loanId, amount);
-	}
-
-	function payOffFinanceLoan(loanId: string): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.payOffLoan)
-			return Promise.resolve({ status: 'unavailable' });
-		return gameRouteController.payOffFinanceLoan(loanId);
-	}
-
-	function refinanceFinanceLoan(
-		loanId: string,
-		termDays: LoanTermDays
-	): Promise<GameRouteCommitResult> {
-		if (!game || !mutationAvailability.refinanceLoan) {
-			return Promise.resolve({ status: 'unavailable' });
-		}
-		return gameRouteController.refinanceFinanceLoan(loanId, termDays);
-	}
-
-	function hireStaff(candidateId: string) {
-		if (game && mutationAvailability.hireStaff) {
-			void gameRouteController.hireStaff(candidateId);
-		}
-	}
-
-	function assignStaff(staffId: string, storeId: string) {
-		if (game && mutationAvailability.assignStaff) {
-			void gameRouteController.assignStaff(staffId, storeId);
-		}
-	}
-
-	function unassignStoreStaff(staffId: string) {
-		if (game && mutationAvailability.unassignStaff) {
-			void gameRouteController.unassignStaff(staffId);
-		}
-	}
-
-	function releaseStaffMember(staffId: string) {
-		if (game && mutationAvailability.releaseStaff) {
-			void gameRouteController.releaseStaff(staffId);
-		}
-	}
-
-	function promoteStaffMember(staffId: string) {
-		if (game && mutationAvailability.promoteStaff) {
-			void gameRouteController.promoteStaff(staffId);
-		}
 	}
 
 	async function changeStoreProduct(
@@ -2467,20 +2299,9 @@
 		);
 	}
 
-	function changeStoreProductBrand(storeId: string, productId: ProductId, brandId: BrandId): void {
-		if (!game || !mutationAvailability.updateStoreProductBrand) return;
-		void gameRouteController.updateStoreProductBrand(storeId, productId, brandId);
-	}
-
 	async function upgradeStoreHandler(storeId: string): Promise<GameRouteCommitResult | null> {
 		if (!game || !mutationAvailability.upgradeStore) return null;
 		return gameRouteController.upgradeStore(storeId);
-	}
-
-	function upgradeBuildingHandler(buildingId: string): void {
-		if (game && mutationAvailability.upgradeIndustrialBuilding) {
-			void gameRouteController.upgradeIndustrialBuilding(buildingId);
-		}
 	}
 
 	function placeRetailAtTile(archetypeId: ArchetypeId, tileId: string): void {
@@ -3262,7 +3083,9 @@
 			canUpgradeIndustryBuilding={mutationAvailability.upgradeIndustrialBuilding}
 			canUpgradeRail={mutationAvailability.upgradeRail}
 			canDemolishRail={mutationAvailability.demolishRail}
-			onUpgradeIndustryBuilding={upgradeBuildingHandler}
+			onUpgradeIndustryBuilding={(id) => {
+				void gameRouteController.upgradeIndustrialBuilding(id);
+			}}
 			onAddIndustryRoute={(preset) => openLogisticsManagement(null, preset)}
 			canDemolishIndustryBuilding={playMode === 'sandbox' && game !== null}
 			onDemolishIndustryBuilding={(id) => {
@@ -3297,10 +3120,18 @@
 			onManageSupplySource={manageStoreSupplySource}
 			onPlanSupply={planStoreSupplyProduct}
 			onUpdateStoreProduct={changeStoreProduct}
-			onUpdateStoreProductBrand={changeStoreProductBrand}
-			onHireStaff={hireStaff}
-			onAssignStaff={assignStaff}
-			onUnassignStaff={unassignStoreStaff}
+			onUpdateStoreProductBrand={(storeId, productId, brandId) => {
+				void gameRouteController.updateStoreProductBrand(storeId, productId, brandId);
+			}}
+			onHireStaff={(id) => {
+				void gameRouteController.hireStaff(id);
+			}}
+			onAssignStaff={(staffId, storeId) => {
+				void gameRouteController.assignStaff(staffId, storeId);
+			}}
+			onUnassignStaff={(id) => {
+				void gameRouteController.unassignStaff(id);
+			}}
 			canUpdateSellingPrice={mutationAvailability.updateStoreSellingPrice}
 			canUpdateInventoryTargets={mutationAvailability.updateStoreInventoryTargets}
 			canUpdateBrand={mutationAvailability.updateStoreProductBrand}
@@ -3339,31 +3170,59 @@
 			{i18n}
 			disabledReason={mutationDisabledReason}
 			onClose={closeManagementPanel}
-			onChangePolicy={changePolicy}
-			onSetPolicyOverride={setPolicyOverride}
-			onClearPolicyOverrideField={clearPolicyOverrideField}
-			onResetPolicyOverrideScope={resetPolicyOverrideScope}
-			onSetManagerDelegation={setManagerDelegation}
-			onRemoveManagerDelegation={removeManagerDelegation}
-			onHireStaff={hireStaff}
-			onAssignStaff={assignStaff}
-			onUnassignStaff={unassignStoreStaff}
-			onReleaseStaff={releaseStaffMember}
-			onPromoteStaff={promoteStaffMember}
-			onSetRetailSupplySource={setRetailSupplySource}
-			onChooseDecision={chooseDecision}
-			onBorrow={borrowWorkingCapital}
-			onRepay={repayFinanceLoan}
-			onPayoff={payOffFinanceLoan}
-			onRefinance={refinanceFinanceLoan}
+			onChangePolicy={(patch) => {
+				void gameRouteController.updatePolicy(patch);
+			}}
+			onSetPolicyOverride={(scope, patch) => {
+				void gameRouteController.setPolicyOverride(scope, patch);
+			}}
+			onClearPolicyOverrideField={(scope, field) => {
+				void gameRouteController.clearPolicyOverrideField(scope, field);
+			}}
+			onResetPolicyOverrideScope={(scope) => {
+				void gameRouteController.resetPolicyOverrideScope(scope);
+			}}
+			onSetManagerDelegation={(delegation) => {
+				void gameRouteController.setManagerDelegation(delegation);
+			}}
+			onRemoveManagerDelegation={(id) => {
+				void gameRouteController.removeManagerDelegation(id);
+			}}
+			onHireStaff={(id) => {
+				void gameRouteController.hireStaff(id);
+			}}
+			onAssignStaff={(staffId, storeId) => {
+				void gameRouteController.assignStaff(staffId, storeId);
+			}}
+			onUnassignStaff={(id) => {
+				void gameRouteController.unassignStaff(id);
+			}}
+			onReleaseStaff={(id) => {
+				void gameRouteController.releaseStaff(id);
+			}}
+			onPromoteStaff={(id) => {
+				void gameRouteController.promoteStaff(id);
+			}}
+			onSetRetailSupplySource={(retailCityId, supplyCityId) => {
+				void gameRouteController.setRetailSupplySource(retailCityId, supplyCityId);
+			}}
+			onChooseDecision={(decisionId, optionId) => {
+				void gameRouteController.resolveDecision(decisionId, optionId);
+			}}
+			onBorrow={(amount, termDays) => gameRouteController.borrowWorkingCapital(amount, termDays)}
+			onRepay={(loanId, amount) => gameRouteController.repayFinanceLoan(loanId, amount)}
+			onPayoff={(loanId) => gameRouteController.payOffFinanceLoan(loanId)}
+			onRefinance={(loanId, termDays) => gameRouteController.refinanceFinanceLoan(loanId, termDays)}
 			onPlanProduct={planSupplyProduct}
 			{plannerProductIds}
-			onDispatchManualTransfer={dispatchManualTransfer}
-			onCreateRecurringRoute={createRecurringRoute}
-			onUpdateRecurringRoute={updateRecurringRoute}
-			onPauseRecurringRoute={pauseRecurringRoute}
-			onResumeRecurringRoute={resumeRecurringRoute}
-			onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
+			onDispatchManualTransfer={(input) => gameRouteController.dispatchManualTransfer(input)}
+			onCreateRecurringRoute={(input) => gameRouteController.createRecurringRoute(input)}
+			onUpdateRecurringRoute={(routeId, input) =>
+				gameRouteController.updateRecurringRoute(routeId, input)}
+			onPauseRecurringRoute={(routeId) => gameRouteController.pauseRecurringRoute(routeId)}
+			onResumeRecurringRoute={(routeId) => gameRouteController.resumeRecurringRoute(routeId)}
+			onReprioritizeRecurringRoute={(routeId, priority) =>
+				gameRouteController.reprioritizeRecurringRoute(routeId, priority)}
 			onRemoveRecurringRoute={removeRecurringRoute}
 		/>
 	{/if}

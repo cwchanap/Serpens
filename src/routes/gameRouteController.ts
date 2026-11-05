@@ -1743,12 +1743,25 @@ export class GameRouteController {
 		if (!this.currentState.activeScenarioRun || !repository || !scenarioCommand) {
 			return { status: 'unavailable' };
 		}
-		// The scenarioCommandGate below guards re-entrant game commands, but lifecycle
-		// ops (start/resume/restart/import/abandon) gate on scenarioCommandPending
-		// instead and do not hold the gate. Reject here so a game command cannot race
-		// an in-flight lifecycle write. The UI also disables buttons while pending,
-		// but the controller is the authoritative guard.
-		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
+		// Match the UI's live capability gate before any transition or persistence.
+		// Commands without a scenarioCommand remain sandbox-only; founding and
+		// supply-source preflight still use the sandbox path above.
+		const definition =
+			this.options.resolveScenarioDefinition(this.currentState.activeScenarioRun.definition) ??
+			null;
+		const availability = createMutationAvailability({
+			playMode: this.currentState.playMode,
+			pending: this.currentState.scenarioCommandPending,
+			definition
+		});
+		const available =
+			scenarioCommand.kind === 'selectWorldCity'
+				? !availability.pending &&
+					definition !== null &&
+					definition.allowedCommands.includes('selectWorldCity')
+				: availability[scenarioCommand.kind];
+		// UI commands report unavailable while pending; lifecycle operations keep busy.
+		if (!available) return { status: 'unavailable' };
 
 		let rejectedCode: ScenarioOperationError['code'] | null = null;
 		// The failing transition's system-decision context (e.g. blocked
