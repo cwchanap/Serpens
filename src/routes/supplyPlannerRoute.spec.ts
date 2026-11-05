@@ -239,13 +239,56 @@ describe('deriveSupplyPlannerResult', () => {
 			productId: 'bottled-water',
 			availability
 		};
-		deriveSupplyPlannerResult(input, buildPlan, snapshotGame);
+		deriveSupplyPlannerResult({ ...input, snapshotGame }, buildPlan);
 		expect(snapshotGame).toHaveBeenCalledWith(game);
 		expect(buildPlan).toHaveBeenCalledWith(
 			snapshotGame.mock.results[0]!.value,
 			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
 			availability
 		);
+	});
+
+	it('accepts the page snapshot callback in the input before building a plan', () => {
+		const game = baseGame();
+		const snapshot = { ...game, cash: 17_000 };
+		const input: SupplyPlannerDerivationInput = {
+			isOpen: true,
+			game,
+			retailCityId: 'harbor-city',
+			productId: 'bottled-water',
+			availability,
+			snapshotGame: () => snapshot
+		};
+		const buildPlan = vi.fn(() => readyResult());
+		deriveSupplyPlannerResult(input, buildPlan);
+		expect(buildPlan).toHaveBeenCalledWith(
+			snapshot,
+			{ retailCityId: 'harbor-city', productId: 'bottled-water' },
+			availability
+		);
+	});
+
+	it('does not read planner inputs or snapshot/build when the overlay is closed', () => {
+		const forbiddenRead = () => {
+			throw new Error('closed planner read');
+		};
+		const input: SupplyPlannerDerivationInput = {
+			isOpen: false,
+			get game() {
+				return forbiddenRead();
+			},
+			get retailCityId() {
+				return forbiddenRead();
+			},
+			get productId() {
+				return forbiddenRead();
+			},
+			get availability() {
+				return forbiddenRead();
+			},
+			snapshotGame: forbiddenRead
+		};
+		expect(deriveSupplyPlannerResult(input, forbiddenRead)).toBeNull();
 	});
 
 	it('uses the identity snapshot when no snapshot function is supplied', () => {

@@ -411,10 +411,10 @@ describe('supply planner route composition', () => {
 					game,
 					retailCityId: 'harbor-city',
 					productId: 'bottled-water',
-					availability
+					availability,
+					snapshotGame
 				},
-				buildSupplyPlan,
-				snapshotGame
+				buildSupplyPlan
 			)
 		).not.toThrow();
 		expect(snapshotGame).toHaveBeenCalledWith(game);

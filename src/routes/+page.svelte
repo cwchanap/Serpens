@@ -123,7 +123,6 @@
 		type SupplyPlannerUiContext
 	} from './supplyPlannerRoute';
 	import {
-		buildSupplyPlan,
 		encodeIndustrialPlacementKey,
 		type SupplyPlannerAction,
 		type SupplyPlannerActionAvailability
@@ -160,15 +159,19 @@
 		listScenarioCatalogEntries,
 		resolveScenarioDefinition
 	} from '$lib/scenarios/catalog';
-	import { isScenarioContentAllowed } from '$lib/scenarios/capabilities';
+	import {
+		isLiveScenarioContentAllowed,
+		shouldResetScenarioView,
+		toCatalogActionResult,
+		type ScenarioRouteIdentity
+	} from './scenarioRoute';
 	import { decodeScenarioShareCode } from '$lib/scenarios/shareCode';
 	import type {
 		ScenarioDefinition,
 		ScenarioOperationError,
 		ScenarioPersistenceSummary,
 		ScenarioResult,
-		ScenarioRun,
-		ScenarioRunStatus
+		ScenarioRun
 	} from '$lib/scenarios/types';
 	import {
 		GameRouteController,
@@ -510,14 +513,11 @@
 	let allowedRetailArchetypeIds = $derived.by<ArchetypeId[]>(() =>
 		retailBuildOptions
 			.map((option) => option.archetypeId)
-			.filter(
-				(archetypeId) =>
-					playMode === 'sandbox' ||
-					(activeScenarioDefinition !== null &&
-						isScenarioContentAllowed(activeScenarioDefinition, {
-							kind: 'archetype',
-							archetypeId
-						}))
+			.filter((archetypeId) =>
+				isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
+					kind: 'archetype',
+					archetypeId
+				})
 			)
 	);
 	let allowedIndustryBuildingTypeIds = $derived.by<IndustrialBuildingTypeId[]>(() =>
@@ -530,7 +530,7 @@
 				// that have at least one industrial placement slot so the player
 				// cannot arm a placement that can never commit.
 				return (
-					isScenarioContentAllowed(activeScenarioDefinition, {
+					isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
 						kind: 'building',
 						buildingTypeId
 					}) &&
@@ -542,11 +542,8 @@
 		)
 	);
 	let allowedWorldCityIds = $derived.by(() =>
-		WORLD_CITY_CATALOG.map((city) => city.id).filter(
-			(cityId) =>
-				playMode === 'sandbox' ||
-				(activeScenarioDefinition !== null &&
-					isScenarioContentAllowed(activeScenarioDefinition, { kind: 'city', cityId }))
+		WORLD_CITY_CATALOG.map((city) => city.id).filter((cityId) =>
+			isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, { kind: 'city', cityId })
 		)
 	);
 	let allowedIndustrialPlacements = $derived.by<ReadonlySet<string> | null>(() => {
@@ -563,14 +560,11 @@
 				(game?.stores ?? []).flatMap((store) => store.products.map((product) => product.productId))
 			)
 		];
-		return productIds.filter(
-			(productId) =>
-				playMode === 'sandbox' ||
-				(activeScenarioDefinition !== null &&
-					isScenarioContentAllowed(activeScenarioDefinition, {
-						kind: 'product',
-						productId
-					}))
+		return productIds.filter((productId) =>
+			isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
+				kind: 'product',
+				productId
+			})
 		);
 	});
 	let plannerProductIds = $derived.by(() =>
@@ -905,7 +899,7 @@
 		if (!isWorldCityId(activeCity.id)) return { ...preview, validTileIds: [] };
 		const cityId = activeCity.id;
 		return restrictPreviewToScenario(preview, (tileId) =>
-			isScenarioContentAllowed(activeScenarioDefinition!, {
+			isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
 				kind: 'retail-placement',
 				cityId,
 				tileId,
@@ -925,7 +919,7 @@
 		if (!isWorldCityId(industryCity.id)) return { ...preview, validTileIds: [] };
 		const cityId = industryCity.id;
 		return restrictPreviewToScenario(preview, (tileId) =>
-			isScenarioContentAllowed(activeScenarioDefinition!, {
+			isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
 				kind: 'industrial-placement',
 				cityId,
 				tileId,
@@ -964,11 +958,14 @@
 	// route-local category/horizon context remains available for reopen.
 	let supplyPlannerResult = $derived.by(() => {
 		if (!isSupplyAdvisorOpen || !game || !effectivePlannerProductId) return null;
-		return buildSupplyPlan(
-			snapshotPlannerGame(game),
-			{ retailCityId: activeCity.id as WorldCityId, productId: effectivePlannerProductId },
-			plannerActionAvailability
-		);
+		return deriveSupplyPlannerResult({
+			isOpen: true,
+			game,
+			retailCityId: activeCity.id as WorldCityId,
+			productId: effectivePlannerProductId,
+			availability: plannerActionAvailability,
+			snapshotGame: snapshotPlannerGame
+		});
 	});
 	let availableMaterialIds = $derived<MaterialId[]>(
 		isBuildMenuOpen && activeMapView === 'industry'
@@ -1315,24 +1312,14 @@
 			expectedRunId,
 			expectedRevision
 		);
-		if (result.status === 'confirmation-required') {
-			return {
-				status: 'confirmation-required',
-				message: i18n.t('scenarioCatalog.startReplacementConfirmation'),
-				expectedRunId: result.expectedRunId,
-				expectedRevision: result.expectedRevision
-			};
-		}
-		if (result.status !== 'committed') {
-			return {
-				status: 'error',
-				message: scenarioOperationError
-					? scenarioDiagnosticText(scenarioOperationError, i18n)
-					: i18n.t('scenarioDiagnostics.persistenceWriteFailed')
-			};
-		}
-		isScenarioCatalogOpen = false;
-		return { status: 'started' };
+		const action = toCatalogActionResult(
+			result,
+			'scenarioCatalog.startReplacementConfirmation',
+			scenarioOperationError,
+			i18n
+		);
+		if (action.status === 'started') isScenarioCatalogOpen = false;
+		return action;
 	}
 
 	async function startCurrentVersionCard(
@@ -1355,24 +1342,14 @@
 			expectedRunId,
 			expectedRevision
 		);
-		if (result.status === 'confirmation-required') {
-			return {
-				status: 'confirmation-required',
-				message: i18n.t('scenarioCatalog.olderVersionConfirmation'),
-				expectedRunId: result.expectedRunId,
-				expectedRevision: result.expectedRevision
-			};
-		}
-		if (result.status !== 'committed') {
-			return {
-				status: 'error',
-				message: scenarioOperationError
-					? scenarioDiagnosticText(scenarioOperationError, i18n)
-					: i18n.t('scenarioDiagnostics.persistenceWriteFailed')
-			};
-		}
-		isScenarioCatalogOpen = false;
-		return { status: 'started' };
+		const action = toCatalogActionResult(
+			result,
+			'scenarioCatalog.olderVersionConfirmation',
+			scenarioOperationError,
+			i18n
+		);
+		if (action.status === 'started') isScenarioCatalogOpen = false;
+		return action;
 	}
 
 	async function resumeScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
@@ -1450,24 +1427,14 @@
 			expectedRunId,
 			expectedRevision
 		);
-		if (result.status === 'confirmation-required') {
-			return {
-				status: 'confirmation-required',
-				message: i18n.t('scenarioCatalog.importReplacementConfirmation'),
-				expectedRunId: result.expectedRunId,
-				expectedRevision: result.expectedRevision
-			};
-		}
-		if (result.status !== 'committed') {
-			return {
-				status: 'error',
-				message: scenarioOperationError
-					? scenarioDiagnosticText(scenarioOperationError, i18n)
-					: i18n.t('scenarioDiagnostics.persistenceWriteFailed')
-			};
-		}
-		isScenarioCatalogOpen = false;
-		return { status: 'started' };
+		const action = toCatalogActionResult(
+			result,
+			'scenarioCatalog.importReplacementConfirmation',
+			scenarioOperationError,
+			i18n
+		);
+		if (action.status === 'started') isScenarioCatalogOpen = false;
+		return action;
 	}
 
 	async function copyScenarioCode(code: string): Promise<boolean> {
@@ -1715,26 +1682,7 @@
 		audioController?.updatePreferences(patch);
 	}
 
-	let previousPlayMode: 'sandbox' | 'scenario' | undefined = undefined;
-	// Track the active run's persistence identity (`runId`), lifecycle
-	// status, and external-sync epoch so the transient-state reset fires
-	// only on actual lifecycle/external transitions —
-	// start/restart/import/resume-different-run assign a fresh `runId`, a
-	// terminal command flips `status` from 'active' to 'completed'/'failed'
-	// (or clears the run), and adopting a different persisted/another-tab
-	// snapshot for the SAME `runId`/`status` bumps the controller's
-	// `scenarioRunSyncEpoch` (resume loaded a changed run, or a
-	// save/terminal conflict surfaced a run advanced/replaced by another
-	// tab). Ordinary scenario commands (policy/build/hire/etc.) spread
-	// `...run` in `executeScenarioCommand`, preserving `runId`, `status`,
-	// AND the epoch, so they must NOT trigger the reset — otherwise every
-	// command pauses the auto-tick and dismisses open panels/placements
-	// mid-interaction. The controller keeps the run object stable on a
-	// no-op resume (see resumeScenarioRun's deep-equality short-circuit),
-	// so resume-same-run preserves `runId` and selections.
-	let previousScenarioRunId: string | null | undefined = undefined;
-	let previousScenarioRunStatus: ScenarioRunStatus | null | undefined = undefined;
-	let previousScenarioRunSyncEpoch: number | undefined = undefined;
+	let previousScenarioIdentity: ScenarioRouteIdentity | undefined = undefined;
 
 	function resetTransientViewState(): void {
 		selectedTileId = null;
@@ -1770,41 +1718,16 @@
 		if (state.playMode === 'sandbox') {
 			scenarioEvidenceGame = null;
 		}
-		// Reset route-only selections, detail/advisor/build overlays, menu state,
-		// and retail/industry/rail placement modes whenever the active mode or
-		// scenario run identity/lifecycle/external-sync changes — otherwise an
-		// armed placement or inspector from the previous GameState stays active
-		// against the new one (e.g. a placement armed in sandbox remaining armed
-		// inside a challenge that forbids it, or a placement armed against a
-		// stale snapshot remaining armed after another tab advanced the same
-		// run). This is keyed on `runId` + `status` + `scenarioRunSyncEpoch`,
-		// NOT on the run object reference: every changed scenario command
-		// returns a fresh `ScenarioRun` (`executeScenarioCommand` spreads
-		// `...run`), so a reference check would reset (and pause the auto-tick)
-		// after every policy/build/hire action. `runId` is stable across
-		// ordinary commands and only changes on start/restart/import/resume-
-		// different-run; `status` only changes on a terminal transition;
-		// `scenarioRunSyncEpoch` only bumps when the controller adopts an
-		// external/persisted snapshot for the same `runId`/`status` (resume
-		// loaded a changed run, or a save/terminal conflict surfaced a run
-		// advanced/replaced by another tab). Skip on the first synchronizer
-		// call (initial state).
-		const runId = state.activeScenarioRun?.runId ?? null;
-		const runStatus = state.activeScenarioRun?.status ?? null;
-		const runSyncEpoch = state.scenarioRunSyncEpoch;
-		if (
-			previousPlayMode !== undefined &&
-			(previousPlayMode !== state.playMode ||
-				previousScenarioRunId !== runId ||
-				previousScenarioRunStatus !== runStatus ||
-				previousScenarioRunSyncEpoch !== runSyncEpoch)
-		) {
+		const identity: ScenarioRouteIdentity = {
+			playMode: state.playMode,
+			runId: state.activeScenarioRun?.runId ?? null,
+			status: state.activeScenarioRun?.status ?? null,
+			scenarioRunSyncEpoch: state.scenarioRunSyncEpoch
+		};
+		if (shouldResetScenarioView(previousScenarioIdentity, identity)) {
 			resetTransientViewState();
 		}
-		previousPlayMode = state.playMode;
-		previousScenarioRunId = runId;
-		previousScenarioRunStatus = runStatus;
-		previousScenarioRunSyncEpoch = runSyncEpoch;
+		previousScenarioIdentity = identity;
 	}
 
 	// Shared post-load reset for a successful auto/manual load: selections,
@@ -2033,17 +1956,14 @@
 	}
 
 	function currentSupplyPlannerResult(): ReturnType<typeof deriveSupplyPlannerResult> {
-		return deriveSupplyPlannerResult(
-			{
-				isOpen: true,
-				game,
-				retailCityId: activeCity.id as WorldCityId,
-				productId: effectivePlannerProductId,
-				availability: plannerActionAvailability
-			},
-			buildSupplyPlan,
-			snapshotPlannerGame
-		);
+		return deriveSupplyPlannerResult({
+			isOpen: true,
+			game,
+			retailCityId: activeCity.id as WorldCityId,
+			productId: effectivePlannerProductId,
+			availability: plannerActionAvailability,
+			snapshotGame: snapshotPlannerGame
+		});
 	}
 
 	function handleSupplyPlannerAction(action: SupplyPlannerAction): void {
