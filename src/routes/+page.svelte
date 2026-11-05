@@ -185,13 +185,18 @@
 		beginFinancePurchaseConfirmation,
 		createFinancePurchaseReviewState,
 		dismissFinancePurchaseReview,
-		isFinanceReviewEscapeOwned,
 		openFinancePurchaseReview,
 		resolveExpansionPurchasePaymentPath,
 		settleFinancePurchaseConfirmation,
 		type PendingFinancedPurchase,
 		shouldRefreshFinancedPurchase
 	} from './financePurchaseReview';
+	import {
+		resolveEscapeTarget,
+		selectOverlayGates,
+		type OverlayId,
+		type OverlaySnapshot
+	} from './routeOverlays';
 	import { createStoreDetailFocus } from './storeDetailFocus.svelte';
 	import FinancePurchaseReviewHost from './FinancePurchaseReviewHost.svelte';
 	import ManagementPanelHost from './ManagementPanelHost.svelte';
@@ -826,44 +831,37 @@
 			industryPlacementBuildingTypeId !== null ||
 			railBuildMode.step !== 'idle'
 	);
-	// Pause the Phaser render loop while an overlay covers the map or the map
-	// menu is open. The large-city render loop iterates thousands of terrain
-	// sprites every frame; pausing it frees the main thread so menu/panel
-	// interactions stay responsive (and stops e2e actionability timeouts).
-	// Placement mode is excluded because the scene must keep rendering the
-	// placement preview over the map.
-	// A confirming finance review stays open until its commit settles. The map keeps
-	// running for that window so the commit's activity batch is not dropped.
-	let isMapPaused = $derived(
-		!isPlacementModeActive &&
-			((financePurchaseReview.purchase !== null && !financePurchaseReview.confirmationPending) ||
-				isSupplyAdvisorOpen ||
-				storeDetailFocus.isOpen ||
-				isCheatSheetOpen ||
-				isBuildMenuOpen ||
-				activeManagementPanelId !== null ||
-				isSavePanelOpen ||
-				isScenarioCatalogOpen ||
-				isScenarioResultsDialogOpen ||
-				isGameMenuOpen)
-	);
-	// When false, the industry map scene suppresses its Escape-to-cancel-build
-	// listener so Escape that closes any page-level overlay does not also fire
-	// buildCancelled behind the overlay. Covers every overlay the page-level
-	// Escape handler closes, including the alerts dropdown (which does not
-	// pause the map but still competes for the Escape key).
-	let railKeyboardEnabled = $derived(
-		financePurchaseReview.purchase === null &&
-			!isSavePanelOpen &&
-			!isScenarioCatalogOpen &&
-			!isScenarioResultsDialogOpen &&
-			!isCheatSheetOpen &&
-			!isSupplyAdvisorOpen &&
-			!storeDetailFocus.isOpen &&
-			!isBuildMenuOpen &&
-			!isGameMenuOpen &&
-			!isAlertsMenuOpen &&
-			activeManagementPanelId === null
+	// Read-only projection of existing owners, not a second overlay state authority.
+	let overlaySnapshot = $derived.by<OverlaySnapshot>(() => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- Rebuilt from owners, never mutated after publication.
+		const openOverlays = new Set<OverlayId>();
+		if (financePurchaseReview.purchase !== null) openOverlays.add('finance-review');
+		if (isSavePanelOpen) openOverlays.add('save-panel');
+		if (isScenarioCatalogOpen) openOverlays.add('scenario-catalog');
+		if (isScenarioResultsDialogOpen) openOverlays.add('scenario-results');
+		if (isCheatSheetOpen) openOverlays.add('cheat-sheet');
+		if (isSupplyAdvisorOpen) openOverlays.add('supply-advisor');
+		if (storeDetailFocus.isOpen) openOverlays.add('store-detail');
+		if (isBuildMenuOpen) openOverlays.add('build-menu');
+		if (isGameMenuOpen) openOverlays.add('game-menu');
+		if (isAlertsMenuOpen) openOverlays.add('alerts-menu');
+		if (activeManagementPanelId !== null) openOverlays.add('management-panel');
+		return {
+			openOverlays,
+			isPlacementActive: isPlacementModeActive,
+			isRailBuildActive: railBuildMode.step !== 'idle',
+			isFinanceReviewPending: financePurchaseReview.confirmationPending,
+			selected: {
+				worldCity: selectedWorldCityId !== null,
+				retailTile: selectedTileId !== null,
+				industryTile: selectedIndustryTileId !== null,
+				logisticsRoute: selectedLogisticsRouteId !== null
+			},
+			allowMenuFallback: false // Set from the current keyboard event, never stored.
+		};
+	});
+	let { isMapPaused, railKeyboardEnabled, hasBlockingOverlay } = $derived(
+		selectOverlayGates(overlaySnapshot)
 	);
 	let shouldShowRetailInspector = $derived(
 		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)
@@ -1017,21 +1015,6 @@
 		}
 		return null;
 	});
-	// True when a modal/overlay that should swallow game shortcuts is open. Used both
-	// to gate the `?` cheat-sheet toggle (so it doesn't stack on an open modal) and to
-	// inform `resolveShortcutAction` that letter/Space/B keys must not fire behind it.
-	let hasBlockingOverlay = $derived(
-		financePurchaseReview.purchase !== null ||
-			isSupplyAdvisorOpen ||
-			storeDetailFocus.isOpen ||
-			isCheatSheetOpen ||
-			isSavePanelOpen ||
-			isScenarioCatalogOpen ||
-			isScenarioResultsDialogOpen ||
-			isAlertsMenuOpen ||
-			isGameMenuOpen ||
-			isPlacementModeActive
-	);
 	// The world map is a navigation/overview surface with no time controls —
 	// the ControlDesk (pause/resume + speed) is hidden there. Block the
 	// auto-tick while it owns the screen so a running simulation can't advance
@@ -2693,74 +2676,54 @@
 		}
 
 		if (event.key === 'Escape') {
-			if (isFinanceReviewEscapeOwned(financePurchaseReview)) return;
-			if (isSavePanelOpen) {
-				isSavePanelOpen = false;
-				return;
-			}
-			if (isCheatSheetOpen) {
-				isCheatSheetOpen = false;
-				return;
-			}
-			if (isSupplyAdvisorOpen) {
-				isSupplyAdvisorOpen = false;
-				return;
-			}
-			if (storeDetailFocus.isOpen) {
-				storeDetailFocus.close();
-				return;
-			}
-			if (isBuildMenuOpen) {
-				isBuildMenuOpen = false;
-				return;
-			}
-			if (isGameMenuOpen) {
-				isGameMenuOpen = false;
-				return;
-			}
-			if (isAlertsMenuOpen) {
-				isAlertsMenuOpen = false;
-				return;
-			}
-			if (railBuildMode.step !== 'idle') {
-				// The industry map canvas has its own Escape/right-click handling
-				// for rail build mode (IndustryMap's onBuildCancelled ->
-				// cancelRailBuildStep), which pops the last waypoint instead of
-				// exiting outright. Returning here (rather than falling into the
-				// generic isPlacementModeActive branch) avoids handling the same
-				// Escape keydown a second time at the page level.
-				return;
-			}
-			if (isPlacementModeActive) {
-				cancelPlacement();
-				return;
-			}
-			if (activeManagementPanelId !== null) {
-				closeManagementPanel();
-				return;
-			}
-			if (selectedWorldCityId !== null) {
-				selectedWorldCityId = null;
-				clearLogisticsRouteSelection();
-				return;
-			}
-			if (selectedTileId !== null) {
-				selectedTileId = null;
-				clearLogisticsRouteSelection();
-				return;
-			}
-			if (selectedIndustryTileId !== null) {
-				selectedIndustryTileId = null;
-				clearLogisticsRouteSelection();
-				return;
-			}
-			if (selectedLogisticsRouteId !== null) {
-				clearLogisticsRouteSelection();
-				return;
-			}
-			// Nothing else was open or selected — Escape toggles the hamburger menu open.
-			if (!hasModifier && !isTypingElement(event.target)) {
-				isGameMenuOpen = true;
+			const resolution = resolveEscapeTarget({
+				...overlaySnapshot,
+				allowMenuFallback: !hasModifier && !isTypingElement(event.target)
+			});
+			switch (resolution.type) {
+				case 'close-overlay':
+					switch (resolution.overlay) {
+						case 'save-panel':
+							isSavePanelOpen = false;
+							break;
+						case 'cheat-sheet':
+							isCheatSheetOpen = false;
+							break;
+						case 'supply-advisor':
+							isSupplyAdvisorOpen = false;
+							break;
+						case 'store-detail':
+							storeDetailFocus.close();
+							break;
+						case 'build-menu':
+							isBuildMenuOpen = false;
+							break;
+						case 'game-menu':
+							isGameMenuOpen = false;
+							break;
+						case 'alerts-menu':
+							isAlertsMenuOpen = false;
+							break;
+						case 'management-panel':
+							closeManagementPanel();
+							break;
+					}
+					break;
+				case 'cancel-placement':
+					cancelPlacement();
+					break;
+				case 'clear-selection':
+					if (resolution.kind === 'worldCity') selectedWorldCityId = null;
+					else if (resolution.kind === 'retailTile') selectedTileId = null;
+					else if (resolution.kind === 'industryTile') selectedIndustryTileId = null;
+					clearLogisticsRouteSelection();
+					break;
+				case 'open-game-menu':
+					isGameMenuOpen = true;
+					break;
+				case 'external-owned':
+				case 'none':
+					break;
 			}
 			return;
 		}
