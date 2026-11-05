@@ -546,11 +546,9 @@ export class GameRouteController {
 		const repository = this.saveRepository;
 		const game = this.game;
 		if (!repository || !game) return null;
-		const metadata = slotId
-			? await repository.overwriteManualSlot(slotId, name, game)
-			: await repository.createManualSlot(name, game);
-		await this.refreshSaveSummary();
-		return metadata;
+		return slotId
+			? repository.overwriteManualSlot(slotId, name, game)
+			: repository.createManualSlot(name, game);
 	}
 
 	/**
@@ -561,7 +559,6 @@ export class GameRouteController {
 		const repository = this.saveRepository;
 		if (!repository) return false;
 		await repository.deleteManualSlot(slotId);
-		await this.refreshSaveSummary();
 		return true;
 	}
 
