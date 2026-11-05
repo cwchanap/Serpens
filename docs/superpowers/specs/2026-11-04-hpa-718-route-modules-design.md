@@ -4,12 +4,12 @@
 **Roadmap:** https://linear.app/cwchanap/issue/HPA-717/roadmap-make-the-long-game-finishable-for-every-store-type
 **PR:** https://github.com/cwchanap/Serpens/pull/70 — **single draft PR** for design, implementation, and verification
 **Inspected baseline:** `main@4fa7296dd68112daaaf799b182226af001f922b9`
-**Review:** https://github.com/cwchanap/Serpens/pull/70#issuecomment-6647119067
+**Reviews:** [first design pass](https://github.com/cwchanap/Serpens/pull/70#issuecomment-6647119067); [revised design review](https://github.com/cwchanap/Serpens/pull/70#pullrequestreview-5779726136)
 **Status:** revised **docs-only** planning checkpoint; no runtime implementation or passing tests claimed.
 
 ## Goal and size budget
 
-Split `src/routes/+page.svelte`, preserving player behavior. At the inspected baseline it has **3,639 physical lines**, with `</script>` on line **3,013** and approximately **626 lines of markup**, plus 123 top-level functions. Aim for **~1,200 lines or fewer** in the page and **~500 lines or fewer per new focused module**, without hiding code in a monolith or creating hollow wrappers. That leaves approximately **574 lines of script/imports** in the page. Count actual results during each implementation slice; do not pretend the page can reach the target with all its present runes and host adapters left untouched.
+Split `src/routes/+page.svelte`, preserving player behavior. At the inspected baseline it has **3,639 physical lines**, with `</script>` on line **3,013** and approximately **626 lines of markup**, plus 123 top-level functions. **Keep HPA-718's ~1,200-line page acceptance target**, with **~500 lines or fewer per new focused module**. The current ~626 lines of markup leave at most **~574 lines of script/imports**; the required **net reduction is ~2,439 physical lines** from the 3,639-line baseline. The latest review estimates that controller/overlay/rail/placement/scenario/planner cleanup removes only ~1,450 lines, leaving **~2,180 total**. Those are *planning estimates*, not measured results. Therefore map/world navigation, guidance, inspector/read-model logic and other cohesive route-only UI orchestration are **in scope from the outset**, not an unplanned Step-6 fallback. Do not cut ~1,200 to ~2,000 without explicit change to Linear's acceptance; a ~2,000-line intermediate checkpoint is not final completion. Record real net reductions after each vertical slice and inspect the remaining source before adding another module. Avoid hitting a numerical target with no-op wrappers or meaningless file splitting.
 
 The right starting point is *deletion and consolidation*, not relocating every line. Existing code already has real owners:
 - `gameRouteController.ts`: raw current game (`controller.game`), scenario command/persistence gate, sandbox autosave, save repository, and state publication.
@@ -17,7 +17,7 @@ The right starting point is *deletion and consolidation*, not relocating every l
 - `supplyPlannerRoute.ts`: existing projection `deriveSupplyPlannerResult` and planner handoff.
 - `alertNavigation.ts`, `storeDetailFocus.svelte.ts`, `resolveShortcutAction` and `*Host.svelte`: focused, already-tested behavior.
 
-Keep the page as the **composition root** for the controller, cross-feature selection state, lifecycle/auto-tick effects and existing host markup. Put state runes *inside small feature-local `.svelte.ts` factories* where that state is written predominantly by one feature (reuse the established `storeDetailFocus.svelte.ts` pattern). Keep any cross-feature selections in the page. Use plain `.ts` selectors/reducers for node-testable decisions; reactive reads stay within an explicit `$derived.by` boundary in the page or the owning `.svelte.ts` factory. No new Svelte store, global bus, service locator, domain layer or runtime schema.
+Keep the page as the **composition root** for the controller, cross-feature selection state, lifecycle/auto-tick effects and existing host markup. **Default to pure `.ts` selectors/reducers plus page-owned runes**. Feature-local `.svelte.ts` is appropriate only for truly isolated leaf state (the existing `storeDetailFocus.svelte.ts` is the proven example), not for coupled flows such as rail building or trivial save-panel flags. Rail mode, target and the shared `placementFeedback` stay page-owned, while `railBuild.ts` decides next state/preview/commit intent. Keep reactive reads in explicit page `$derived.by` expressions. No new Svelte store, global bus, service locator, domain layer or runtime schema.
 
 ## Review decisions and revised module map
 
@@ -25,12 +25,13 @@ Keep the page as the **composition root** for the controller, cross-feature sele
 | --- | --- | --- |
 | **Extend** `gameRouteController.ts` | Move manual slot create/overwrite/delete and summary refresh into the existing controller; consolidate equivalent command availability guards there | The controller already owns the save repository, raw game, mutation boundary and callbacks. Delete the page's direct repository access and repetitive guards instead of moving them |
 | New `routeOverlays.ts` | A small, **pure** policy table and Escape-priority resolver | Consolidate the repeated gate membership with explicit exceptions and pin today's behavior in node tests; **do not** introduce a competing giant overlay `$state` record |
-| New `railBuild.ts` + small `railBuild.svelte.ts` | Pure transition/reducer for click/waypoint/confirm plus feature-local runes and live projections | The rail mode/target/preview is cohesive reactive state; keep rail/placement's shared feedback in one explicit owner |
+| New `railBuild.ts` **only** | Pure click/waypoint/confirm/cancel reducer and rail preview projection | Keep `railBuildMode`, `railPreviewTargetBuildingId` and shared `placementFeedback` as the existing page-owned runes; no multi-callback `.svelte.ts` factory |
 | New `placementRoute.ts` | Extract scenario preview restriction, cash/finance decision and placement-specific orchestration; reuse `financePurchaseReview.ts` | Retail founding, retail expansion and industry placement have real differences — extract common choices, not a generic dispatcher that obscures them |
 | New `scenarioRoute.ts`; optional small catalog `.svelte.ts` | Shared content-allowance predicate, result mapping, pure run-identity sync decision and catalog lifecycle/UI state where cohesive | Preserve compare-and-swap confirmation tokens and scenario adoption rules without copying controller logic |
 | **Extend** `supplyPlannerRoute.ts` | Reuse `deriveSupplyPlannerResult` for the page's derived value and existing handoff API; move only genuine planner-specific UI state/actions | No second projection or planner engine |
-| Optional small `savePanel.svelte.ts` | Feature-local save panel open flag, feedback, slots and diagnostics when that meaningfully reduces page wiring | Save **operations** belong to the controller; do not create `saveSlotRoute.ts` just for two feedback formatters |
-| Optional `mapNavigationRoute.ts` | Only if a cohesive map/navigation block remains and the page is over budget | Avoid speculative modules |
+| No new save-panel module | Keep `isSavePanelOpen`, `saveFeedback` and the slot summaries in the page; controller owns repository operations | These are trivial menu/feedback bindings, not a leaf state subsystem |
+| Required `mapNavigationRoute.ts` | Extract world/retail/industry view navigation, world-city selection, map-specific inspectors and alert handoffs | This is real existing route coordination, and it is part of reaching HPA-718's stated size gate |
+| Required `routeGuidance.ts` / inspector helpers **only where cohesive** | Extract multi-step opening/cash recovery and inspector selection/view decisions; reuse existing game selectors | Capture meaningful behavior and tests, not single-line derived wrappers; scope exact files during the early line-budget audit |
 
 **Dropped from the original proposal:** `routeCommandHandlers.ts`, `routeReadModels.ts` and `keyboardRoute.ts`. Most `$derived` already delegate to tested selectors, and most page command handlers are thin controller gates. Retain truly local adapters (`changeStoreProduct` product lookup/`null` contract, `upgradeStoreHandler` `null` contract, `removeRecurringRoute` selection cleanup), shortcut DOM target checks and view navigation close to their actual owner.
 
@@ -40,7 +41,32 @@ This is a **target shape, not a mandatory file count**. Create files only when t
 
 Today six places enumerate overlapping but non-identical conditions: `isMapPaused`, `railKeyboardEnabled`, `hasBlockingOverlay`, page Escape precedence, `closePlannerOverlays` and `resetTransientViewState`.
 
-Build a closed `OverlayId` and a table expressing default `pausesMap`, `blocksShortcuts` and `disablesRailKeyboard` policy, plus `ESCAPE_ORDER` and pure `selectOverlayGates` / `resolveEscapeTarget` helpers. The page builds a **read-only snapshot from existing owners** (save panel factory, scenario UI, finance review, store focus, management panel and menu flags), so there is still only one source of truth for each flag. Do not mirror `financePurchaseReview` or `storeDetailFocus` into an independent state record; that would duplicate authority.
+Build a closed `OverlayId`, a typed table with default `pausesMap`, `blocksShortcuts`, `disablesRailKeyboard`, an `ESCAPE_ORDER`, and pure `selectOverlayGates` / `resolveEscapeTarget`. The page assembles a **read-only snapshot from existing owners** (menus, scenario UI, finance review, store focus and management panel). There is no competing overlay `$state` record. Define explicit boundaries in `routeOverlays.ts`:
+
+```ts
+type OverlaySnapshot = {
+  openOverlays: ReadonlySet<OverlayId>;
+  isPlacementActive: boolean;
+  isRailBuildActive: boolean; // origin OR routing, not routing alone
+  isFinanceReviewPending: boolean; // map-pause exception only
+  selected: {
+    worldCity: boolean;
+    retailTile: boolean;
+    industryTile: boolean;
+    logisticsRoute: boolean;
+  };
+  allowMenuFallback: boolean; // Escape has no modifier or typing target
+};
+type EscapeResolution =
+  | { type: 'external-owned'; owner: 'canvas' | 'dialog' }
+  | { type: 'close-overlay'; overlay: OverlayId }
+  | { type: 'cancel-placement' }
+  | { type: 'clear-selection'; kind: 'worldCity' | 'retailTile' | 'industryTile' | 'logisticsRoute' }
+  | { type: 'open-game-menu' }
+  | { type: 'none' };
+```
+
+`selectOverlayGates(snapshot)` returns named booleans for map pause, shortcut blocking and rail keyboard enabled, with documented contextual overrides. `resolveEscapeTarget(snapshot)` computes **only the first intended Escape effect** in the current priority order, never performs side effects. The page dispatches the discriminated union through a short switch to existing operations (close focus, cancel placement, clear logistics selection, etc.), without adding another renderer/route state authority. The selector must account for selection fallback and no-modifier/no-typing hamburger behavior, not just active overlay IDs. Keep finance/dialog/canvas ownership semantics identical to current code.
 
 Explicit contextual exceptions are part of the contract:
 - Alert menu blocks shortcuts and rail canvas Escape, **not** Phaser map rendering.
@@ -84,7 +110,7 @@ When moving page gates, preserve the observable result: a pending *UI-gated* com
 
 **Special first-test:** canvas rail `buildCancelled` Escape/right-click and the “page Escape does not pop twice” behavior currently have no dedicated E2E assertion. Add a pure rail reducer + overlay precedence node spec **before** extraction, plus a narrow E2E integration probe if needed to verify actual double-event handling.
 
-**Size gate:** measure `wc -l` for the page and newly added modules after every commit. If it misses ~1,200, move another **cohesive** state/handler cluster. Do not inflate abstraction solely for a numerical target; record and request an explicit review decision rather than silently waive it.
+**Size gate:** measure `wc -l` for the page and newly added modules after every commit. After the first five major flow extractions, expect **~2,100–2,200** lines, not ~1,200. The **required** follow-on stage plans map/world navigation, guidance and inspector read models plus any remaining meaningful UI coordination revealed by the early audit, with a measured budget for the remaining ~900–1,000 net lines. The review's named extractions alone (~400–500) are insufficient to guarantee the target; do **not** label that subset a complete solution. Reconcile measured reductions against the 2,439-line requirement *before* final verification. If no cohesive extraction remains, report the shortfall for an explicit scope decision rather than weakening the ticket or inventing hollow helpers. No second PR.
 
 **Verification:** `bun run check`, `bun run lint`, `bun run test:unit -- --run`, `bun run test:e2e`, `git diff --check main...HEAD`, and mandatory `CLAUDE.md` Svelte documentation/autofixer flow on touched Svelte code. Update the `CLAUDE.md` architecture paragraph, not its `AGENTS.md` symlink.
 
