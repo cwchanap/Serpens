@@ -7,6 +7,8 @@ import type {
 } from '$lib/game/interCityLogistics';
 import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
 import { createNewGame } from '$lib/game/state';
+import { buildRail } from '$lib/game/railPlacement';
+import { buildRailNetwork, deriveRailSegments } from '$lib/game/rail';
 import { simulateDay } from '$lib/game/simulateDay';
 import { openStoreAtTile } from '$lib/game/placement';
 import {
@@ -2721,6 +2723,143 @@ describe('GameRouteController', () => {
 	});
 
 	describe('commitMutation scenario paths', () => {
+		it('uses live command availability without publishing, saving, or playing denial feedback', async () => {
+			let definition: ScenarioDefinition | undefined = firstProfitDefinition();
+			const harness = createHarness({ resolveDefinition: () => definition });
+			await harness.controller.initializeSaves();
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller);
+			const saveSpy = vi.spyOn(harness.scenarioRepository, 'saveActiveRun');
+			const autoSaveSpy = vi.spyOn(harness.saveRepository, 'saveAuto');
+			harness.onStateChange.mockClear();
+			harness.sfx.mockClear();
+
+			// Resolve at invocation time, not from the definition used to start the run.
+			definition = { ...definition!, allowedCommands: [] };
+			expect(await harness.controller.advanceDay()).toEqual({ status: 'unavailable' });
+			expect(await harness.controller.selectWorldCity('industry-city')).toEqual({
+				status: 'unavailable'
+			});
+			definition = undefined;
+			expect(await harness.controller.updatePolicy({ pricing: 'premium' })).toEqual({
+				status: 'unavailable'
+			});
+			expect(harness.controller.state.activeScenarioRun).toBe(run);
+			expect(harness.onStateChange).not.toHaveBeenCalled();
+			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
+			expect(harness.sfx).not.toHaveBeenCalled();
+			expect(saveSpy).not.toHaveBeenCalled();
+			expect(autoSaveSpy).not.toHaveBeenCalled();
+		});
+
+		it('returns unavailable for pending UI commands but busy for lifecycle operations', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller);
+			const gate = deferred<void>();
+			const original = harness.scenarioRepository.saveActiveRun.bind(harness.scenarioRepository);
+			const saveSpy = vi
+				.spyOn(harness.scenarioRepository, 'saveActiveRun')
+				.mockImplementation(async (...args) => {
+					await gate.promise;
+					return original(...args);
+				});
+			const first = harness.controller.advanceDay();
+			expect(harness.controller.state.scenarioCommandPending).toBe(true);
+			harness.onStateChange.mockClear();
+			harness.sfx.mockClear();
+			try {
+				expect(await harness.controller.advanceDay()).toEqual({ status: 'unavailable' });
+				expect(await harness.controller.selectWorldCity('industry-city')).toEqual({
+					status: 'unavailable'
+				});
+				expect(await harness.controller.pauseRecurringRoute('route-1')).toEqual({
+					status: 'unavailable'
+				});
+				expect(await harness.controller.startScenarioRun(firstProfitDefinition(), 42)).toEqual({
+					status: 'busy'
+				});
+				expect(await harness.controller.resumeScenarioRun('first-profit')).toEqual({
+					status: 'busy'
+				});
+				expect(await harness.controller.restartScenarioRun(FIRST_PROFIT_REF)).toEqual({
+					status: 'busy'
+				});
+				expect(
+					await harness.controller.importScenarioRun(firstProfitDefinition(), 42, false)
+				).toEqual({ status: 'busy' });
+				expect(await harness.controller.abandonScenarioRun()).toEqual({ status: 'busy' });
+				expect(harness.controller.state.activeScenarioRun).toBe(run);
+				expect(harness.onStateChange).not.toHaveBeenCalled();
+				expect(harness.sfx).not.toHaveBeenCalled();
+				expect(saveSpy).toHaveBeenCalledTimes(1);
+			} finally {
+				gate.resolve();
+			}
+			expect(await first).toEqual({ status: 'committed' });
+			expect(harness.controller.game?.day).toBe(run.game.day + 1);
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+		});
+
+		it('commits capability-gated rail demolition while industrial demolition stays sandbox-only', async () => {
+			const definition: ScenarioDefinition = {
+				...firstProfitDefinition(),
+				allowedCommands: ['demolishRail'],
+				content: {
+					...firstProfitDefinition().content,
+					buildingTypeIds: ['water-bottler', 'warehouse']
+				}
+			};
+			// Reuse runtime.spec.ts builtRailFixture's seed, buildings, and direct rail path.
+			let game = { ...createNewGame('convenience', 280_001), cash: 1_000_000 };
+			game = buildIndustrialBuilding(game, {
+				tileId: 'industry-city-26-6',
+				buildingTypeId: 'water-bottler'
+			});
+			game = buildIndustrialBuilding(game, {
+				tileId: 'industry-city-30-6',
+				buildingTypeId: 'warehouse'
+			});
+			const [origin, destination] = game.industrialBuildings;
+			game = buildRail(game, {
+				originBuildingId: origin.id,
+				waypoints: [],
+				destinationBuildingId: destination.id
+			});
+			const city = game.industryCities.find((city) => city.id === game.activeIndustryCityId)!;
+			const segment = deriveRailSegments(buildRailNetwork(city), game.industrialBuildings)[0]!;
+			const started = startScenarioTransition(definition, definition.officialSeed);
+			if (!started.ok) throw new Error('Rail demolition scenario failed to start');
+			const run = { ...started.value, game, evaluation: evaluateScenario(definition, game, false) };
+			const repository = createScenarioMemoryRepository(undefined, () => definition);
+			await repository.saveActiveRun(run);
+			const harness = createHarness({
+				scenarioRepository: repository,
+				resolveDefinition: () => definition
+			});
+			await harness.controller.initializeSaves();
+			await harness.controller.initializeScenarios();
+			const before = harness.controller.state;
+			const saveSpy = vi.spyOn(repository, 'saveActiveRun');
+			expect(await harness.controller.demolishIndustrialBuilding(origin.id)).toEqual({
+				status: 'unavailable'
+			});
+			expect(harness.controller.state).toBe(before);
+			expect(saveSpy).not.toHaveBeenCalled();
+			expect(await harness.controller.demolishRail(city.id, segment.id)).toEqual({
+				status: 'committed'
+			});
+			const nextCity = harness.controller.game!.industryCities.find(
+				(candidate) => candidate.id === city.id
+			)!;
+			expect(
+				deriveRailSegments(buildRailNetwork(nextCity), harness.controller.game!.industrialBuildings)
+			).toHaveLength(0);
+			expect(harness.controller.game!.industrialBuildings).toHaveLength(2);
+			expect(saveSpy).toHaveBeenCalledTimes(1);
+			expect(harness.onAcceptedGameChange).toHaveBeenCalledTimes(1);
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+		});
 		it('keeps scoped policy and delegation writes unavailable in scenario mode', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
@@ -2789,7 +2928,7 @@ describe('GameRouteController', () => {
 			expect(saveSpy).not.toHaveBeenCalled();
 		});
 
-		it('rejects scenario route commands in a scenario that does not allow them, without saving', async () => {
+		it('makes scenario route commands unavailable when not allowed, without saving', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
 			await startScenario(harness.controller);
@@ -2805,17 +2944,17 @@ describe('GameRouteController', () => {
 				priority: full.priority
 			};
 			expect(await harness.controller.createRecurringRoute(scenarioCreate)).toEqual({
-				status: 'rejected'
+				status: 'unavailable'
 			});
 			const scenarioUpdate = { ...scenarioCreate };
 			expect(await harness.controller.updateRecurringRoute('route-1', scenarioUpdate)).toEqual({
-				status: 'rejected'
+				status: 'unavailable'
 			});
 			expect(await harness.controller.pauseRecurringRoute('route-1')).toEqual({
-				status: 'rejected'
+				status: 'unavailable'
 			});
 			expect(await harness.controller.resumeRecurringRoute('route-1')).toEqual({
-				status: 'rejected'
+				status: 'unavailable'
 			});
 			expect(saveSpy).not.toHaveBeenCalled();
 		});
@@ -2993,7 +3132,9 @@ describe('GameRouteController', () => {
 			const first = harness.controller.borrowWorkingCapital(1_000, 56);
 			await Promise.resolve();
 			await Promise.resolve();
-			expect(await harness.controller.borrowWorkingCapital(1_000, 56)).toEqual({ status: 'busy' });
+			expect(await harness.controller.borrowWorkingCapital(1_000, 56)).toEqual({
+				status: 'unavailable'
+			});
 			releaseSave?.();
 			expect(await first).toEqual({ status: 'committed' });
 			expect(harness.controller.state.activeScenarioRun?.game.finance.loans).toHaveLength(2);
@@ -3078,7 +3219,7 @@ describe('GameRouteController', () => {
 			});
 			// openStore is not in STANDARD_RETAIL_COMMANDS.
 			expect(await harness.controller.openStore('harbor-city-2-2', 'convenience')).toEqual({
-				status: 'rejected'
+				status: 'unavailable'
 			});
 			expect(harness.onAcceptedGameChange).not.toHaveBeenCalled();
 		});
@@ -3128,14 +3269,14 @@ describe('GameRouteController', () => {
 			expect(harness.sfx).toHaveBeenCalledWith('sfx.time.advance-day');
 		});
 
-		it('returns rejected when the command is not allowed by the definition', async () => {
+		it('returns unavailable when the command is not allowed by the definition', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
 			await startScenario(harness.controller);
 			// openStore is not in STANDARD_RETAIL_COMMANDS.
 			const result = await harness.controller.openStore('harbor-city-2-2', 'convenience');
-			expect(result).toEqual({ status: 'rejected' });
-			expect(harness.controller.state.scenarioOperationError?.code).toBe('forbidden-command');
+			expect(result).toEqual({ status: 'unavailable' });
+			expect(harness.controller.state.scenarioOperationError).toBeNull();
 		});
 
 		it('returns a typed rejection when a decision target is missing', async () => {
@@ -3198,7 +3339,7 @@ describe('GameRouteController', () => {
 			expect(saveSpy).not.toHaveBeenCalled();
 		});
 
-		it('returns rejected when the definition can no longer be resolved', async () => {
+		it('returns unavailable when the definition can no longer be resolved', async () => {
 			const scenarioRepository = createScenarioMemoryRepository();
 			const harness = createHarness({ scenarioRepository });
 			await harness.controller.initializeScenarios();
@@ -3212,8 +3353,8 @@ describe('GameRouteController', () => {
 			});
 			await controller2.initializeScenarios();
 			const result = await controller2.advanceDay();
-			expect(result).toEqual({ status: 'rejected' });
-			expect(controller2.state.scenarioOperationError?.code).toBe('stale-definition');
+			expect(result).toEqual({ status: 'unavailable' });
+			expect(controller2.state.scenarioOperationError).toBeNull();
 		});
 
 		it('returns failed and arms a retry when persistence throws', async () => {
@@ -3365,16 +3506,14 @@ describe('GameRouteController', () => {
 			const disallowedSave = vi.spyOn(disallowedHarness.scenarioRepository, 'saveActiveRun');
 
 			expect(await disallowedHarness.controller.setRetailSupplySource('harbor-city', null)).toEqual(
-				{ status: 'rejected' }
+				{ status: 'unavailable' }
 			);
-			expect(disallowedHarness.controller.state.scenarioOperationError?.code).toBe(
-				'forbidden-command'
-			);
+			expect(disallowedHarness.controller.state.scenarioOperationError).toBeNull();
 			expect(disallowedHarness.controller.state.retryScenarioOperation).toBeNull();
 			expect(disallowedSave).not.toHaveBeenCalled();
 		});
 
-		it('returns busy while an allowed retail supply selection is awaiting its scenario write', async () => {
+		it('returns unavailable while an allowed retail supply selection is awaiting its scenario write', async () => {
 			const base = firstProfitDefinition();
 			const definition = { ...base, allowedCommands: ['setRetailSupplySource'] as const };
 			const harness = createHarness({ resolveDefinition: () => definition });
@@ -3396,7 +3535,7 @@ describe('GameRouteController', () => {
 			await Promise.resolve();
 			expect(harness.controller.state.scenarioCommandPending).toBe(true);
 			expect(await harness.controller.setRetailSupplySource('harbor-city', null)).toEqual({
-				status: 'busy'
+				status: 'unavailable'
 			});
 			releaseSave?.();
 			expect(await first).toEqual({ status: 'committed' });

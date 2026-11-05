@@ -1459,7 +1459,7 @@ describe('GameRouteController scenario integration', () => {
 		expect(summaries.at(-1)?.activeRunsByScenarioId[definition.id]).toBe(stored);
 	});
 
-	it('resumes independently, rejects busy commands, and keeps read-only selection callable', async () => {
+	it('resumes independently, makes pending UI commands unavailable, and keeps read-only selection callable', async () => {
 		const definition = scenarioDefinition();
 		const run = runForDefinition(definition);
 		const write = deferred<ScenarioCommitOutcome>();
@@ -1486,7 +1486,7 @@ describe('GameRouteController scenario integration', () => {
 		const second = await controller.updatePolicy({ pricing: 'discount' });
 		controller.selectReadOnlyTile('retail', run.game.cities[0]!.tiles[0]!.id);
 
-		expect(second).toMatchObject({ status: 'busy' });
+		expect(second).toMatchObject({ status: 'unavailable' });
 		expect(selected).toHaveBeenCalledOnce();
 		expect(controller.state.activeScenarioRun).toBe(run);
 		expect(events).not.toContain('sfx:sfx.policy.change');
@@ -1500,7 +1500,7 @@ describe('GameRouteController scenario integration', () => {
 		expect(events.indexOf('sfx:sfx.policy.change')).toBeGreaterThan(events.indexOf('publish'));
 	});
 
-	it('skips writes for rejected and unchanged scenario commands', async () => {
+	it('skips writes for unavailable and unchanged scenario commands', async () => {
 		const definition = scenarioDefinition({ allowedCommands: ['selectWorldCity'] });
 		const run = runForDefinition(definition);
 		const repository = createScenarioRepositoryHarness(run);
@@ -1509,9 +1509,9 @@ describe('GameRouteController scenario integration', () => {
 		);
 		await controller.initializeScenarios();
 
-		const rejected = await controller.updatePolicy({ pricing: 'premium' });
-		expect(rejected).toMatchObject({ status: 'rejected' });
-		expect(controller.state.scenarioOperationError?.code).toBe('forbidden-command');
+		const unavailable = await controller.updatePolicy({ pricing: 'premium' });
+		expect(unavailable).toMatchObject({ status: 'unavailable' });
+		expect(controller.state.scenarioOperationError).toBeNull();
 		expect(repository.saveActiveRun).not.toHaveBeenCalled();
 
 		controller.dismissScenarioOperationError();
