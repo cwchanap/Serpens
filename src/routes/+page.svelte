@@ -21,7 +21,13 @@
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
 	import { localizeGameAlert } from '$lib/i18n/gameCopy';
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
-	import { resolveAlertNavigation, resolveStockAlertDestination } from './alertNavigation';
+	import {
+		selectMapViewSelections,
+		resolveMapAlertDestination,
+		resolveWorldCitySelection,
+		resolveWorldCityOpening,
+		resolveWorldCityFinancing
+	} from './mapNavigationRoute';
 	import { createInitialEventRuntime } from '$lib/game/eventSelection';
 	import {
 		MANAGEMENT_PANEL_SHORTCUT_KEY,
@@ -1502,27 +1508,22 @@
 		playSfx('sfx.ui.panel-close');
 	}
 
-	function showRetailMap() {
-		setActiveMapView('retail');
-		selectedIndustryTileId = null;
-		selectedWorldCityId = null;
-		clearLogisticsRouteSelection();
-		cancelPlacement();
-	}
-
-	function showIndustryMap() {
-		setActiveMapView('industry');
-		selectedTileId = null;
-		selectedWorldCityId = null;
-		clearLogisticsRouteSelection();
-		cancelPlacement();
-	}
-
-	function showWorldMap(): void {
-		setActiveMapView('world');
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		isBuildMenuOpen = false;
+	function showMap(view: MapViewId): void {
+		setActiveMapView(view);
+		({
+			selectedTileId,
+			selectedIndustryTileId,
+			selectedWorldCityId,
+			selectedLogisticsRouteId,
+			focusedLogisticsRouteId
+		} = selectMapViewSelections(view, {
+			selectedTileId,
+			selectedIndustryTileId,
+			selectedWorldCityId,
+			selectedLogisticsRouteId,
+			focusedLogisticsRouteId
+		}));
+		if (view === 'world') isBuildMenuOpen = false;
 		cancelPlacement();
 	}
 
@@ -1533,30 +1534,17 @@
 
 	async function selectWorldCityNode(cityId: string): Promise<void> {
 		clearLogisticsRouteSelection();
-		if (!isWorldCityId(cityId) || !allowedWorldCityIds.includes(cityId)) {
-			return;
-		}
-		if (!game) {
-			selectedWorldCityId = cityId;
-			return;
-		}
+		const selection = resolveWorldCitySelection(
+			game,
+			cityId,
+			allowedWorldCityIds,
+			worldCitySelectionAvailable
+		);
+		if (!selection) return;
+		selectedWorldCityId = selection.cityId;
+		if (!selection.mapView) return;
 
-		const status = getWorldCityStatus(game, cityId);
-
-		if (!status) {
-			return;
-		}
-
-		// Read-only inspector selection is always available — only the
-		// opened-city transition (which switches the active map) is gated
-		// by worldCitySelectionAvailable so navigation survives pending writes.
-		selectedWorldCityId = cityId;
-
-		if (status.state !== 'opened' || !worldCitySelectionAvailable) {
-			return;
-		}
-
-		const result = await gameRouteController.selectWorldCity(status.city.id);
+		const result = await gameRouteController.selectWorldCity(selection.cityId);
 		// `unchanged` means the city is already the active one — the controller
 		// skipped the write, but navigation to its map should still proceed.
 		if (
@@ -1566,7 +1554,7 @@
 		) {
 			return;
 		}
-		setActiveMapView(status.city.kind === 'retail' ? 'retail' : 'industry');
+		setActiveMapView(selection.mapView);
 		selectedWorldCityId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
@@ -1574,42 +1562,25 @@
 	}
 
 	function openSelectedWorldCity(cityId: string): void {
-		if (!game) {
-			return;
-		}
-
-		if (
-			!isWorldCityId(cityId) ||
-			!mutationAvailability.openWorldCity ||
-			!allowedWorldCityIds.includes(cityId)
-		) {
-			return;
-		}
-		void gameRouteController.openWorldCity(cityId);
-		selectedWorldCityId = cityId;
+		const legalCityId = resolveWorldCityOpening(
+			game,
+			cityId,
+			allowedWorldCityIds,
+			mutationAvailability.openWorldCity
+		);
+		if (!legalCityId) return;
+		void gameRouteController.openWorldCity(legalCityId);
+		selectedWorldCityId = legalCityId;
 	}
 
 	function reviewSelectedWorldCityFinancing(cityId: string): void {
-		if (
-			!game ||
-			!isWorldCityId(cityId) ||
-			!mutationAvailability.financeWorldCity ||
-			!allowedWorldCityIds.includes(cityId)
-		) {
-			return;
-		}
-
-		const status = getWorldCityStatus(game, cityId);
-		if (!status?.financeOffer || game.cash >= status.city.openingCost) {
-			return;
-		}
-
-		openFinancedPurchaseReview({
-			kind: 'world',
+		const purchase = resolveWorldCityFinancing(
+			game,
 			cityId,
-			expectedCost: status.city.openingCost,
-			offer: status.financeOffer
-		});
+			allowedWorldCityIds,
+			mutationAvailability.financeWorldCity
+		);
+		if (purchase) openFinancedPurchaseReview(purchase);
 	}
 
 	function closeWorldInspector(): void {
@@ -2303,72 +2274,42 @@
 	}
 
 	async function handleSelectAlert(alert: GameAlert): Promise<void> {
-		const navigation = resolveAlertNavigation(alert);
-		if (navigation) {
-			if ('kind' in navigation) {
-				selectLogisticsRoute(navigation.routeId);
-				return;
-			}
-
-			focusedFinanceLoanId = navigation.focusedFinanceLoanId;
-			openManagementPanel(navigation.panelId);
+		const destination = resolveMapAlertDestination(
+			alert,
+			game,
+			allowedWorldCityIds,
+			worldCitySelectionAvailable
+		);
+		if (!destination) return;
+		if (destination.kind === 'world-route') {
+			selectLogisticsRoute(destination.routeId);
 			return;
 		}
-		if (alert.kind === 'store-stock') {
-			const destination = game ? resolveStockAlertDestination(alert, game) : null;
-			if (!destination || !game) return;
-
-			if (destination.cityId !== game.activeCityId) {
-				if (
-					!isWorldCityId(destination.cityId) ||
-					!worldCitySelectionAvailable ||
-					!allowedWorldCityIds.includes(destination.cityId)
-				) {
-					return;
-				}
-				const result = await gameRouteController.selectAlertCity(destination.cityId);
-				if (result.status !== 'committed' && result.status !== 'sandbox-committed') {
-					return;
-				}
-			}
-			showRetailMap();
+		if (destination.kind === 'panel') {
+			focusedFinanceLoanId = destination.focusedFinanceLoanId;
+			openManagementPanel(destination.panelId);
+			return;
+		}
+		if (destination.cityIdToSelect) {
+			const result = await gameRouteController.selectAlertCity(destination.cityIdToSelect);
+			if (result.status !== 'committed' && result.status !== 'sandbox-committed') return;
+		}
+		if (destination.kind === 'retail') {
+			showMap('retail');
 			selectedTileId = destination.tileId;
 			storeDetailFocus.openDirect(destination.productId);
 			return;
 		}
+		showMap('industry');
+		// Prefer a legal fix; otherwise inspect the building that raised the alert.
+		if (destination.fix === 'warehouse' && startWarehousePlacement()) return;
 		if (
-			(alert.kind === 'factory-blocked' ||
-				alert.kind === 'industry-warehouse-missing' ||
-				alert.kind === 'industry-rail-disconnected') &&
-			alert.tileId
-		) {
-			if (game && alert.cityId && alert.cityId !== game.activeIndustryCityId) {
-				if (
-					!isWorldCityId(alert.cityId) ||
-					!worldCitySelectionAvailable ||
-					!allowedWorldCityIds.includes(alert.cityId)
-				) {
-					return;
-				}
-				const result = await gameRouteController.selectAlertCity(alert.cityId);
-				if (result.status !== 'committed' && result.status !== 'sandbox-committed') {
-					return;
-				}
-			}
-			showIndustryMap();
-			// Link alerts go straight to the fix when it is available: arm a
-			// Warehouse placement, or start rail routing from the unlinked
-			// building. Otherwise fall back to inspecting the building.
-			if (alert.kind === 'industry-warehouse-missing' && startWarehousePlacement()) return;
-			if (
-				alert.kind === 'industry-rail-disconnected' &&
-				alert.buildingId &&
-				startRailFromBuilding(alert.buildingId)
-			) {
-				return;
-			}
-			selectedIndustryTileId = alert.tileId;
-		}
+			destination.fix === 'rail' &&
+			destination.buildingId &&
+			startRailFromBuilding(destination.buildingId)
+		)
+			return;
+		selectedIndustryTileId = destination.tileId;
 	}
 
 	function startWarehousePlacement(): boolean {
@@ -2496,13 +2437,7 @@
 		} else if (action.type === 'toggle-pause') {
 			toggleSimulationPause();
 		} else if (action.type === 'view') {
-			if (action.view === 'retail') {
-				showRetailMap();
-			} else if (action.view === 'industry') {
-				showIndustryMap();
-			} else {
-				showWorldMap();
-			}
+			showMap(action.view);
 		}
 	}
 </script>
@@ -2576,11 +2511,7 @@
 			{activeLocale}
 			onSelectAlert={handleSelectAlert}
 			{activeMapView}
-			onSelectView={(view) => {
-				if (view === 'retail') showRetailMap();
-				else if (view === 'industry') showIndustryMap();
-				else showWorldMap();
-			}}
+			onSelectView={showMap}
 			onSelectLocale={changeLocale}
 			bind:menuOpen={isGameMenuOpen}
 			bind:alertsOpen={isAlertsMenuOpen}
