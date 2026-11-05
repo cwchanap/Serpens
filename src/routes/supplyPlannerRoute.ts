@@ -68,16 +68,16 @@ export interface SupplyPlannerDerivationInput {
 	retailCityId: WorldCityId;
 	productId: ProductId | null;
 	availability: SupplyPlannerActionAvailability;
+	snapshotGame?: (game: GameState) => GameState;
 }
 
 export function deriveSupplyPlannerResult(
 	input: SupplyPlannerDerivationInput,
-	_buildPlan: typeof buildSupplyPlan = buildSupplyPlan,
-	snapshotGame: (game: GameState) => GameState = (game) => game
+	buildPlan: typeof buildSupplyPlan = buildSupplyPlan
 ): SupplyPlannerResult | null {
 	if (!input.isOpen || !input.game || !input.productId) return null;
-	return _buildPlan(
-		snapshotGame(input.game),
+	return buildPlan(
+		input.snapshotGame ? input.snapshotGame(input.game) : input.game,
 		{ retailCityId: input.retailCityId, productId: input.productId },
 		input.availability
 	);
