@@ -24,7 +24,6 @@ export interface RailBuildClickInput {
 	city: IndustryCity;
 	mode: RailBuildMode;
 	targetBuildingId: string | null;
-	canBuildRail: boolean;
 }
 
 interface RailBuildResult {
@@ -36,10 +35,10 @@ interface RailBuildResult {
 }
 
 export function reduceRailBuildClick(
-	{ game, city, mode, targetBuildingId, canBuildRail }: RailBuildClickInput,
+	{ game, city, mode, targetBuildingId }: RailBuildClickInput,
 	tileId: string
 ): RailBuildResult | null {
-	if (!game || !canBuildRail || mode.step === 'idle') return null;
+	if (!game || mode.step === 'idle') return null;
 	const tile = getIndustryTileById(city, tileId);
 	if (!tile) return null;
 	const building = game.industrialBuildings.find(

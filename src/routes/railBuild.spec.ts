@@ -58,19 +58,14 @@ function fixture() {
 		game,
 		city,
 		mode: { step: 'routing', originBuildingId: 'origin', waypoints: [] } as RailBuildMode,
-		targetBuildingId: null as string | null,
-		canBuildRail: true
+		targetBuildingId: null as string | null
 	};
 }
 
 describe('reduceRailBuildClick', () => {
-	it('ignores no-game, denied permissions, idle and unknown-tile clicks without clearing feedback', () => {
+	it('ignores no-game, idle and unknown-tile clicks without clearing feedback', () => {
 		const input = fixture();
-		for (const override of [
-			{ game: null },
-			{ canBuildRail: false },
-			{ mode: { step: 'idle' } as RailBuildMode }
-		]) {
+		for (const override of [{ game: null }, { mode: { step: 'idle' } as RailBuildMode }]) {
 			expect(reduceRailBuildClick({ ...input, ...override }, 'tile-10-2')).toBeNull();
 		}
 		expect(reduceRailBuildClick(input, 'unknown')).toBeNull();

@@ -5,7 +5,7 @@ import {
 	createRetailPlacementPreview
 } from '$lib/game/placementPreview';
 import { buildRailNetwork, deriveRailSegments } from '$lib/game/rail';
-import { buildRailPreview } from '$lib/game/railPlacement';
+import { buildRailPreview, isRailWaypointTarget } from '$lib/game/railPlacement';
 import { createNewGame } from '$lib/game/state';
 import type {
 	DecisionItem,
@@ -52,6 +52,7 @@ import {
 	type GameRouteControllerOptions
 } from './gameRouteController';
 import { createStoreDetailFocus } from './storeDetailFocus.svelte';
+import { reduceRailBuildClick, type RailBuildMode } from './railBuild';
 interface Deferred<T> {
 	promise: Promise<T>;
 	resolve(value: T): void;
@@ -1498,6 +1499,88 @@ describe('GameRouteController scenario integration', () => {
 		expect(controller.state.scenarioCommandPending).toBe(false);
 		expect(events).toContain('sfx:sfx.policy.change');
 		expect(events.indexOf('sfx:sfx.policy.change')).toBeGreaterThan(events.indexOf('publish'));
+	});
+
+	it('keeps rail clicks interactive during a pending scenario write while rejecting the rail commit', async () => {
+		const definition = scenarioDefinition({ allowedCommands: ['updatePolicy', 'buildRail'] });
+		const run = { ...runForDefinition(definition), game: withTwoWarehouses(boostedGame()) };
+		const write = deferred<ScenarioCommitOutcome>();
+		const repository = createScenarioRepositoryHarness(run, {
+			saveActiveRun: vi.fn(() => write.promise)
+		});
+		const controller = new GameRouteController(
+			controllerOptions({ scenarioRepository: repository, definition })
+		);
+		await controller.initializeScenarios();
+		const availability = () =>
+			createMutationAvailability({
+				playMode: controller.state.playMode,
+				pending: controller.state.scenarioCommandPending,
+				definition
+			});
+		expect(availability().buildRail).toBe(true);
+		const pending = controller.updatePolicy({ pricing: 'premium' });
+		expect(controller.state.scenarioCommandPending).toBe(true);
+		expect(availability().buildRail).toBe(false);
+
+		const [origin, destination] = run.game.industrialBuildings;
+		const city = run.game.industryCities[0]!;
+		const input = {
+			game: controller.game,
+			city,
+			mode: { step: 'origin' } as RailBuildMode,
+			targetBuildingId: null
+		};
+		const selected = reduceRailBuildClick(input, origin!.tileId)!;
+		expect(selected).toEqual({
+			mode: { step: 'routing', originBuildingId: origin!.id, waypoints: [] },
+			targetBuildingId: null,
+			feedback: null
+		});
+		const waypoint = city.tiles.find((tile) =>
+			isRailWaypointTarget(run.game, city.id, tile.x, tile.y)
+		)!;
+		expect(reduceRailBuildClick({ ...input, mode: selected.mode }, waypoint.id)).toEqual({
+			mode: {
+				step: 'routing',
+				originBuildingId: origin!.id,
+				waypoints: [{ x: waypoint.x, y: waypoint.y }]
+			},
+			targetBuildingId: null,
+			feedback: null
+		});
+		expect(reduceRailBuildClick({ ...input, mode: selected.mode }, origin!.tileId)).toMatchObject({
+			mode: selected.mode,
+			targetBuildingId: origin!.id,
+			feedback: { context: { code: 'railSelfConnected' } },
+			sfx: 'sfx.build.invalid'
+		});
+		const preview = reduceRailBuildClick({ ...input, mode: selected.mode }, destination!.tileId)!;
+		expect(preview).toEqual({
+			mode: selected.mode,
+			targetBuildingId: destination!.id,
+			feedback: null
+		});
+		const confirmed = reduceRailBuildClick({ ...input, ...preview }, destination!.tileId)!;
+		expect(confirmed).toEqual({
+			mode: { step: 'idle' },
+			targetBuildingId: null,
+			feedback: null,
+			commit: {
+				originBuildingId: origin!.id,
+				destinationBuildingId: destination!.id,
+				waypoints: []
+			}
+		});
+		expect(await controller.buildRail(confirmed.commit!)).toMatchObject({ status: 'unavailable' });
+		expect(controller.game).toBe(run.game);
+		expect(city.rails).toHaveLength(0);
+		expect(repository.saveActiveRun).toHaveBeenCalledTimes(1);
+
+		const persistedRun = vi.mocked(repository.saveActiveRun).mock.calls[0]![0];
+		write.resolve({ activeRun: persistedRun, terminalResult: null, bestUpdated: false });
+		await pending;
+		expect(controller.state.scenarioCommandPending).toBe(false);
 	});
 
 	it('skips writes for unavailable and unchanged scenario commands', async () => {
