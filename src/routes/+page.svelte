@@ -41,24 +41,22 @@
 		generateIndustryCity,
 		getIndustryTileById
 	} from '$lib/game/industry';
-	import {
-		createIndustryMapSnapshot,
-		type IndustryMapRailPreviewRender
-	} from '$lib/game/industryMapRender';
+	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import { resolveWorldCityId } from '$lib/game/cityInventory';
 	import {
 		buildRailNetwork,
 		deriveRailSegments,
 		getSegmentsForCell,
-		parseRailCellKey,
 		type RailSegment
 	} from '$lib/game/rail';
+	import { buildRailPreview } from '$lib/game/railPlacement';
 	import {
-		buildRailPreview,
-		buildRailWaypointPreview,
-		isRailWaypointTarget
-	} from '$lib/game/railPlacement';
+		cancelRailBuildStep,
+		deriveRailPreviewRender,
+		reduceRailBuildClick,
+		type RailBuildMode
+	} from './railBuild';
 	import {
 		createInitialVisitedMapViews,
 		markMapViewVisited,
@@ -140,10 +138,7 @@
 		getWorldCityStatus,
 		isWorldCityId
 	} from '$lib/game/world';
-	import {
-		decisionContextRailNoValidPath,
-		decisionContextWorldCityNotAvailableYet
-	} from '$lib/game/decisionContext';
+	import { decisionContextWorldCityNotAvailableYet } from '$lib/game/decisionContext';
 	import type {
 		ArchetypeId,
 		GameState,
@@ -219,14 +214,6 @@
 		messageKey: TranslationKey;
 		params?: Record<string, string | number>;
 	}
-
-	// Rail build click routing on the industry map: `origin` waits for the
-	// first building click, `routing` accumulates waypoint clicks until a
-	// second building click resolves the destination (or the player cancels).
-	type RailBuildMode =
-		| { step: 'idle' }
-		| { step: 'origin' }
-		| { step: 'routing'; originBuildingId: string; waypoints: Array<{ x: number; y: number }> };
 
 	/**
 	 * Returns `globalThis.localStorage` when accessible, or `null` when the
@@ -982,39 +969,7 @@
 			destinationBuildingId: railPreviewTargetBuildingId
 		});
 	});
-	let railPreview = $derived.by((): IndustryMapRailPreviewRender | null => {
-		const preview = railBuildPreview;
-		if (preview) {
-			const newCellKeys = new Set(preview.newCellKeys);
-			return {
-				cells: preview.pathKeys.map((key) => {
-					const { x, y } = parseRailCellKey(key);
-					return { x, y, isNew: newCellKeys.has(key) };
-				})
-			};
-		}
-		// No destination selected yet: show a partial preview so the player
-		// can see legal attach cells after selecting an origin and watch the
-		// auto-path extend through waypoints as they are added.
-		const currentGame: GameState | null = game;
-		if (railBuildMode.step === 'routing' && currentGame) {
-			const waypointPreview = buildRailWaypointPreview(
-				currentGame,
-				railBuildMode.originBuildingId,
-				railBuildMode.waypoints
-			);
-			if (waypointPreview) {
-				const newCellKeys = new Set(waypointPreview.newCellKeys);
-				return {
-					cells: waypointPreview.pathKeys.map((key) => {
-						const { x, y } = parseRailCellKey(key);
-						return { x, y, isNew: newCellKeys.has(key) };
-					})
-				};
-			}
-		}
-		return null;
-	});
+	let railPreview = $derived(deriveRailPreviewRender(game, railBuildMode, railBuildPreview));
 	// The world map is a navigation/overview surface with no time controls —
 	// the ControlDesk (pause/resume + speed) is hidden there. Block the
 	// auto-tick while it owns the screen so a running simulation can't advance
@@ -1251,122 +1206,32 @@
 		selectedWorldCityId = null;
 	}
 
-	/**
-	 * Rail build click routing (step 'origin' | 'routing' only, see
-	 * `RailBuildMode`). Origin/waypoint/destination clicks all flow through
-	 * `selectIndustryTile` above rather than the normal tile-selection path.
-	 */
 	function handleRailBuildTileClick(tileId: string): void {
-		if (!game) {
-			return;
-		}
-
-		const tile = getIndustryTileById(industryCity, tileId);
-		if (!tile) {
-			return;
-		}
-
-		const building = game.industrialBuildings.find(
-			(candidate) =>
-				candidate.cityId === industryCity.id && isTileInIndustryBuildingFootprint(tile, candidate)
+		const result = reduceRailBuildClick(
+			{
+				game,
+				city: industryCity,
+				mode: railBuildMode,
+				targetBuildingId: railPreviewTargetBuildingId,
+				canBuildRail: mutationAvailability.buildRail
+			},
+			tileId
 		);
-
-		if (railBuildMode.step === 'origin') {
-			if (!building) {
-				return; // Ignore clicks that aren't on a building footprint.
-			}
-			placementFeedback = null;
-			railBuildMode = { step: 'routing', originBuildingId: building.id, waypoints: [] };
-			return;
-		}
-
-		if (railBuildMode.step !== 'routing') {
-			return;
-		}
-
-		if (building) {
-			const input = {
-				originBuildingId: railBuildMode.originBuildingId,
-				waypoints: railBuildMode.waypoints,
-				destinationBuildingId: building.id
-			};
-			const preview = buildRailPreview(game, input);
-
-			if (preview.blockReason) {
-				railPreviewTargetBuildingId = building.id;
-				placementFeedback = { code: 'industry.rawPlacementBlocked', context: preview.blockReason };
-				playSfx('sfx.build.invalid');
-				return;
-			}
-
-			// First valid destination click only stores the target and keeps
-			// routing/preview active. A subsequent click on the same building
-			// (or an explicit confirm) commits the build.
-			if (railPreviewTargetBuildingId === building.id) {
-				void gameRouteController.buildRail(input);
-				railBuildMode = { step: 'idle' };
-				railPreviewTargetBuildingId = null;
-				placementFeedback = null;
-				return;
-			}
-
-			railPreviewTargetBuildingId = building.id;
-			placementFeedback = null;
-			return;
-		}
-
-		// Empty, rail-legal tile → push as a waypoint. Reject blocked/locked/
-		// occupied cells up front (existing rail cells stay valid) so the
-		// waypoint is reachable by findFullPath; otherwise the next
-		// destination click would always report railNoValidPath and force the
-		// player to undo the bad waypoint. Reachability to the eventual
-		// destination is still validated via buildRailPreview.
-		if (!isRailWaypointTarget(game, industryCity.id, tile.x, tile.y)) {
-			placementFeedback = {
-				code: 'industry.rawPlacementBlocked',
-				context: decisionContextRailNoValidPath()
-			};
-			playSfx('sfx.build.invalid');
-			return;
-		}
-		placementFeedback = null;
-		railBuildMode = {
-			step: 'routing',
-			originBuildingId: railBuildMode.originBuildingId,
-			waypoints: [...railBuildMode.waypoints, { x: tile.x, y: tile.y }]
-		};
+		if (!result) return;
+		if (result.commit) void gameRouteController.buildRail(result.commit);
+		railBuildMode = result.mode;
+		railPreviewTargetBuildingId = result.targetBuildingId;
+		placementFeedback = result.feedback;
+		if (result.sfx) playSfx(result.sfx);
 	}
 
-	/**
-	 * Handles the industry map's `buildCancelled` event (Escape or right-click
-	 * on the canvas while a rail is being routed): pops the last waypoint, or
-	 * exits build mode outright when there is nothing left to pop.
-	 */
-	function cancelRailBuildStep(): void {
-		if (railBuildMode.step === 'idle') {
-			return;
-		}
-
-		if (railBuildMode.step === 'routing' && railBuildMode.waypoints.length > 0) {
-			railBuildMode = {
-				step: 'routing',
-				originBuildingId: railBuildMode.originBuildingId,
-				waypoints: railBuildMode.waypoints.slice(0, -1)
-			};
-			// Popping a waypoint invalidates the last destination attempt's
-			// feedback: the shortened route may now be valid (or have a
-			// different blocker), so clear the stale error and let the next
-			// destination click recompute it. Also drop the preview target so
-			// the old path highlight does not persist for a route that no
-			// longer matches.
-			railPreviewTargetBuildingId = null;
-			placementFeedback = null;
-			return;
-		}
-
-		railBuildMode = { step: 'idle' };
-		railPreviewTargetBuildingId = null;
-		placementFeedback = null;
+	// Canvas owns Escape/right-click; the page must not cancel the same event again.
+	function handleRailBuildCancelled(): void {
+		const result = cancelRailBuildStep(railBuildMode);
+		if (!result) return;
+		railBuildMode = result.mode;
+		railPreviewTargetBuildingId = result.targetBuildingId;
+		placementFeedback = result.feedback;
 	}
 
 	function toggleRailBuildMode(): void {
@@ -2823,7 +2688,7 @@
 				{industryMapSnapshot}
 				{industryMapActivity}
 				onSelectIndustryTile={selectIndustryTile}
-				onCancelRailBuild={cancelRailBuildStep}
+				onCancelRailBuild={handleRailBuildCancelled}
 				{railKeyboardEnabled}
 			/>
 		</div>
