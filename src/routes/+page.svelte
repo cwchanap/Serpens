@@ -1212,8 +1212,7 @@
 				game,
 				city: industryCity,
 				mode: railBuildMode,
-				targetBuildingId: railPreviewTargetBuildingId,
-				canBuildRail: mutationAvailability.buildRail
+				targetBuildingId: railPreviewTargetBuildingId
 			},
 			tileId
 		);
