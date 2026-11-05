@@ -108,8 +108,11 @@
 		getExpansionFinanceOffer,
 		type FinanceFailureCode
 	} from '$lib/game/finance';
-	import { isSandboxOpeningWindow, selectOpeningGuidance } from '$lib/game/openingGuidance';
-	import { selectCashRecovery, type CashRecoveryStep } from '$lib/game/cashRecovery';
+	import {
+		selectRouteGuidance,
+		resolveGuidanceHandoff,
+		type RouteGuidanceAction
+	} from './routeGuidance';
 	import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
 	import {
 		selectRecentDeliveredTransfers,
@@ -674,21 +677,14 @@
 			? collectGameAlerts(currentGame).map((alert) => localizeGameAlert(currentGame, alert, i18n))
 			: [];
 	});
-	let openingGuidanceHint = $derived(selectOpeningGuidance(game, alerts));
-	let showOpeningGuidance = $derived(
-		openingGuidanceHint !== null &&
-			((playMode === 'scenario' && activeScenarioRun?.definition.scenarioId === 'first-profit') ||
-				(playMode === 'sandbox' &&
-					isSandboxOpeningWindow(game) &&
-					!sandboxOpeningGuidanceDismissed))
-	);
-	// Cash recovery picks up where Opening Guidance stops: sandbox only, after
-	// the opening window (whose card already covers cash risk, so dismissing it
-	// must not swap in a second card for the same alert).
-	let cashRecoveryPlan = $derived(
-		playMode === 'sandbox' && !showOpeningGuidance && !isSandboxOpeningWindow(game)
-			? selectCashRecovery(game, alerts)
-			: null
+	let { openingGuidanceHint, showOpeningGuidance, cashRecoveryPlan } = $derived(
+		selectRouteGuidance({
+			game,
+			alerts,
+			playMode,
+			scenarioId: activeScenarioRun?.definition.scenarioId ?? null,
+			openingDismissed: sandboxOpeningGuidanceDismissed
+		})
 	);
 	let cashRecoveryCrisisKind = $derived(cashRecoveryPlan?.alert.kind ?? null);
 	// Writable derived: dismissing hides the card for the current crisis only.
@@ -1542,20 +1538,14 @@
 		activeManagementPanelId = panelId;
 	}
 
-	function handleCashRecoveryStep(step: CashRecoveryStep): void {
-		switch (step.kind) {
-			case 'restock':
-			case 'finance':
-				void handleSelectAlert(step.alert);
-				return;
-			case 'assign-idle-staff':
-			case 'release-idle-staff':
-			case 'review-payroll':
-				openManagementPanel('staff');
-				return;
-			case 'pause-routes':
-				openLogisticsManagement();
-				return;
+	function handleGuidanceAction(action: RouteGuidanceAction): void {
+		const handoff = resolveGuidanceHandoff(action);
+		if (handoff.kind === 'alert') {
+			void handleSelectAlert(handoff.alert);
+		} else if (handoff.panelId === 'logistics') {
+			openLogisticsManagement();
+		} else {
+			openManagementPanel(handoff.panelId);
 		}
 	}
 
@@ -2521,10 +2511,7 @@
 				<OpeningGuidance
 					hint={openingGuidanceHint}
 					{i18n}
-					onAction={(hint) =>
-						hint.kind === 'cash-risk' || hint.kind === 'stock-recovery'
-							? handleSelectAlert(hint.alert)
-							: openManagementPanel('dashboard')}
+					onAction={handleGuidanceAction}
 					onDismiss={playMode === 'sandbox'
 						? () => (sandboxOpeningGuidanceDismissed = true)
 						: undefined}
@@ -2535,7 +2522,7 @@
 				<CashRecoveryGuidance
 					plan={cashRecoveryPlan}
 					{i18n}
-					onStep={handleCashRecoveryStep}
+					onStep={handleGuidanceAction}
 					onDismiss={() => (cashRecoveryDismissed = true)}
 				/>
 			</div>

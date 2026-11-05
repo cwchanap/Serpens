@@ -153,6 +153,26 @@ test('cash recovery appears after the opening window and releases idle staff', a
 	const card = page.getByTestId('cash-recovery-guidance');
 	await expect(card).toBeVisible();
 	await expect(page.getByTestId('opening-guidance')).toHaveCount(0);
+	await page.getByTestId('cash-recovery-dismiss').click();
+	await expect(card).toHaveCount(0);
+	// Re-localizing rebuilds alerts/plans, but the same crisis kind stays dismissed.
+	await page.getByTestId('game-menu-trigger').click();
+	await page.getByTestId('language-selector').selectOption('ja');
+	await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+	await expect(card).toHaveCount(0);
+	await page.getByTestId('game-menu-trigger').click();
+	await page.getByTestId('language-selector').selectOption('en');
+	await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+	await expect(card).toHaveCount(0);
+	// A successful load explicitly re-arms even this same-kind crisis.
+	await page.getByTestId('game-menu-trigger').click();
+	await page.getByRole('button', { name: /^saves$/i }).click();
+	await page
+		.getByRole('dialog', { name: /saves/i })
+		.getByRole('button', { name: /^resume$/i })
+		.click();
+	await page.keyboard.press('Escape');
+	await expect(card).toBeVisible();
 	await card.getByRole('button', { name: 'Release 1 idle staff member' }).click();
 
 	const staffPanel = page.getByRole('dialog', { name: /staff/i });
