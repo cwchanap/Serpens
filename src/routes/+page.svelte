@@ -76,6 +76,7 @@
 		type PlacementBlockReason
 	} from '$lib/game/placementPreview';
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
+	import { restrictPreviewToScenario } from './placementRoute';
 	import {
 		buildScenarioProgressView,
 		buildScenarioResultsView,
@@ -182,6 +183,7 @@
 		dismissFinancePurchaseReview,
 		openFinancePurchaseReview,
 		resolveExpansionPurchasePaymentPath,
+		refreshedFinancedPurchase,
 		settleFinancePurchaseConfirmation,
 		type PendingFinancedPurchase,
 		shouldRefreshFinancedPurchase
@@ -902,7 +904,7 @@
 		if (playMode === 'sandbox' || !activeScenarioDefinition) return preview;
 		if (!isWorldCityId(activeCity.id)) return { ...preview, validTileIds: [] };
 		const cityId = activeCity.id;
-		const validTileIds = preview.validTileIds.filter((tileId) =>
+		return restrictPreviewToScenario(preview, (tileId) =>
 			isScenarioContentAllowed(activeScenarioDefinition!, {
 				kind: 'retail-placement',
 				cityId,
@@ -910,16 +912,6 @@
 				archetypeId
 			})
 		);
-		return {
-			...preview,
-			validTileIds,
-			invalidTileIds: [
-				...new Set([
-					...preview.invalidTileIds,
-					...preview.validTileIds.filter((tileId) => !validTileIds.includes(tileId))
-				])
-			]
-		};
 	});
 	let industryPlacementPreview = $derived.by(() => {
 		const buildingTypeId = industryPlacementBuildingTypeId;
@@ -932,7 +924,7 @@
 		if (playMode === 'sandbox' || !activeScenarioDefinition) return preview;
 		if (!isWorldCityId(industryCity.id)) return { ...preview, validTileIds: [] };
 		const cityId = industryCity.id;
-		const validTileIds = preview.validTileIds.filter((tileId) =>
+		return restrictPreviewToScenario(preview, (tileId) =>
 			isScenarioContentAllowed(activeScenarioDefinition!, {
 				kind: 'industrial-placement',
 				cityId,
@@ -940,16 +932,6 @@
 				buildingTypeId
 			})
 		);
-		return {
-			...preview,
-			validTileIds,
-			invalidTileIds: [
-				...new Set([
-					...preview.invalidTileIds,
-					...preview.validTileIds.filter((tileId) => !validTileIds.includes(tileId))
-				])
-			]
-		};
 	});
 	let industryLockedReason = $derived<PlacementBlockReason | null>(
 		game ? null : { code: 'industry.lockedUntilRetail' }
@@ -2300,37 +2282,6 @@
 		selectedTileId = null;
 		selectedWorldCityId = null;
 		cancelPlacement();
-	}
-
-	function refreshedFinancedPurchase(
-		purchase: PendingFinancedPurchase,
-		currentGame: GameState
-	): PendingFinancedPurchase | null {
-		if (purchase.kind === 'world') {
-			const status = getWorldCityStatus(currentGame, purchase.cityId);
-			if (!status) return { ...purchase, offer: null };
-			return {
-				...purchase,
-				expectedCost: status.city.openingCost,
-				offer: status.financeOffer
-			};
-		}
-
-		if (purchase.kind === 'retail') {
-			const city = currentGame.cities.find(
-				(candidate) => candidate.id === currentGame.activeCityId
-			);
-			const tile = city ? getTileById(city, purchase.tileId) : undefined;
-			if (!tile) return { ...purchase, offer: null };
-			const expectedCost = getExpansionSetupCost(tile, purchase.archetypeId);
-			const offer = getExpansionFinanceOffer(currentGame, expectedCost);
-			return { ...purchase, expectedCost, offer };
-		}
-
-		const expectedCost = INDUSTRIAL_BUILDING_TYPES[purchase.buildingTypeId]?.buildCost;
-		if (expectedCost === undefined) return { ...purchase, offer: null };
-		const offer = getExpansionFinanceOffer(currentGame, expectedCost);
-		return { ...purchase, expectedCost, offer };
 	}
 
 	async function confirmFinancedPurchase(): Promise<void> {

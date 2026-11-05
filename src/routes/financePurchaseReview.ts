@@ -1,6 +1,15 @@
-import type { ExpansionFinanceOffer } from '$lib/game/finance';
+import { getTileById } from '$lib/game/city';
+import { getExpansionFinanceOffer, type ExpansionFinanceOffer } from '$lib/game/finance';
+import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
+import { getExpansionSetupCost } from '$lib/game/state';
+import { getWorldCityStatus } from '$lib/game/world';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
-import type { ArchetypeId, IndustrialBuildingTypeId, WorldCityId } from '$lib/game/types';
+import type {
+	ArchetypeId,
+	GameState,
+	IndustrialBuildingTypeId,
+	WorldCityId
+} from '$lib/game/types';
 
 export type PendingFinancedPurchase =
 	| {
@@ -169,6 +178,35 @@ export function settleFinancePurchaseConfirmation(
 		feedback: completion.feedback,
 		confirmationPending: false
 	};
+}
+
+export function refreshedFinancedPurchase(
+	purchase: PendingFinancedPurchase,
+	currentGame: GameState
+): PendingFinancedPurchase | null {
+	if (purchase.kind === 'world') {
+		const status = getWorldCityStatus(currentGame, purchase.cityId);
+		if (!status) return { ...purchase, offer: null };
+		return {
+			...purchase,
+			expectedCost: status.city.openingCost,
+			offer: status.financeOffer
+		};
+	}
+
+	if (purchase.kind === 'retail') {
+		const city = currentGame.cities.find((candidate) => candidate.id === currentGame.activeCityId);
+		const tile = city ? getTileById(city, purchase.tileId) : undefined;
+		if (!tile) return { ...purchase, offer: null };
+		const expectedCost = getExpansionSetupCost(tile, purchase.archetypeId);
+		const offer = getExpansionFinanceOffer(currentGame, expectedCost);
+		return { ...purchase, expectedCost, offer };
+	}
+
+	const expectedCost = INDUSTRIAL_BUILDING_TYPES[purchase.buildingTypeId]?.buildCost;
+	if (expectedCost === undefined) return { ...purchase, offer: null };
+	const offer = getExpansionFinanceOffer(currentGame, expectedCost);
+	return { ...purchase, expectedCost, offer };
 }
 
 export function hasFinancedPurchaseOffer<T>(offer: T | null): offer is T {
