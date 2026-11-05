@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ExpansionFinanceOffer } from '$lib/game/finance';
+import { createEmptyFinanceState, type ExpansionFinanceOffer } from '$lib/game/finance';
+import { createNewGame } from '$lib/game/state';
 import {
 	beginFinancePurchaseConfirmation,
 	createFinancePurchaseReviewState,
@@ -8,6 +9,7 @@ import {
 	isFinanceReviewEscapeOwned,
 	openFinancePurchaseReview,
 	resolveExpansionPurchasePaymentPath,
+	refreshedFinancedPurchase,
 	settleFinancePurchaseConfirmation,
 	shouldRefreshFinancedPurchase,
 	type PendingFinancedPurchase
@@ -27,6 +29,101 @@ const retailPurchase: PendingFinancedPurchase = {
 	expectedCost: 2_450,
 	offer
 };
+
+describe('live financed purchase quote refresh', () => {
+	const base = createNewGame('convenience', 123);
+	const game = { ...base, cash: 100, finance: createEmptyFinanceState(base.day) };
+
+	it('refreshes world cost and shortfall from the current revealed city status', () => {
+		const refreshed = refreshedFinancedPurchase(
+			{ kind: 'world', cityId: 'campus-junction', expectedCost: 1, offer },
+			{ ...game, cash: 5_000, world: { ...game.world, revealedCityIds: ['campus-junction'] } }
+		);
+		expect(refreshed).toMatchObject({
+			kind: 'world',
+			cityId: 'campus-junction',
+			expectedCost: 18_000,
+			offer: { principal: 13_000 }
+		});
+	});
+
+	it('removes a world offer when the city is no longer available to finance', () => {
+		expect(
+			refreshedFinancedPurchase(
+				{ kind: 'world', cityId: 'campus-junction', expectedCost: 1, offer },
+				game
+			)
+		).toEqual({ kind: 'world', cityId: 'campus-junction', expectedCost: 18_000, offer: null });
+	});
+
+	it('refreshes retail setup cost from the live active-city tile without mutating the old quote', () => {
+		const tile = {
+			...game.cities[0]!.tiles[0]!,
+			id: 'tile-12',
+			terrain: 'commercial' as const,
+			rent: 100,
+			demand: 50,
+			footTraffic: 50,
+			customerFit: 50
+		};
+		const refreshed = refreshedFinancedPurchase(retailPurchase, {
+			...game,
+			cash: 5_000,
+			cities: [{ ...game.cities[0]!, tiles: [tile] }]
+		});
+		expect(refreshed).toMatchObject({
+			kind: 'retail',
+			tileId: 'tile-12',
+			archetypeId: 'convenience',
+			expectedCost: 16_020,
+			offer: { principal: 11_020 }
+		});
+		expect(retailPurchase.expectedCost).toBe(2_450);
+		expect(retailPurchase.offer).toBe(offer);
+	});
+
+	it('removes the offer if the selected retail tile is absent from the active city', () => {
+		expect(
+			refreshedFinancedPurchase(retailPurchase, { ...game, activeCityId: 'missing-city' })
+		).toEqual({ ...retailPurchase, offer: null });
+	});
+
+	it('refreshes industry cost and shortfall from the selected building catalog entry', () => {
+		expect(
+			refreshedFinancedPurchase(
+				{
+					kind: 'industry',
+					tileId: 'industry-3',
+					buildingTypeId: 'water-pump',
+					expectedCost: 1,
+					offer
+				},
+				game
+			)
+		).toMatchObject({
+			kind: 'industry',
+			tileId: 'industry-3',
+			buildingTypeId: 'water-pump',
+			expectedCost: 500,
+			offer: { principal: 400 }
+		});
+	});
+
+	it('removes a stale offer when cash now covers the refreshed cost', () => {
+		expect(
+			refreshedFinancedPurchase(
+				{
+					kind: 'industry',
+					tileId: 'industry-3',
+					buildingTypeId: 'water-pump',
+					expectedCost: 1,
+					offer
+				},
+				{ ...game, cash: 500 }
+			)
+		).toMatchObject({ expectedCost: 500, offer: null });
+	});
+});
 
 describe('finance purchase review coordinator', () => {
 	it('allows selected-tile entry through either the cash or matching finance command', () => {
