@@ -2024,9 +2024,8 @@
 
 	async function saveManualSlot(name: string, slotId?: string): Promise<void> {
 		try {
-			// The controller saves its raw (non-proxy) game and refreshes the
-			// summary; `null` is the silent no-op while the repository or game
-			// is not ready, matching the panel's expectations.
+			// The controller saves its raw (non-proxy) game; `null` is the
+			// silent no-op while the repository or game is not ready.
 			const metadata = await gameRouteController.saveManualSlot(name, slotId);
 			if (!metadata) {
 				return;
@@ -2036,6 +2035,7 @@
 				messageKey: 'route.save.savedManualSlot',
 				params: { name: metadata.name }
 			};
+			await refreshSaveSummary();
 			playSfx('sfx.save.saved');
 		} catch (error) {
 			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
@@ -2070,6 +2070,7 @@
 				return;
 			}
 			saveFeedback = { kind: 'status', messageKey: 'route.save.deletedManualSlot' };
+			await refreshSaveSummary();
 		} catch (error) {
 			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}

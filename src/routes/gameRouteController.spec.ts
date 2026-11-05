@@ -65,6 +65,20 @@ class MemorySaveStoreDriver implements SaveStoreDriver {
 	}
 }
 
+function deferred<T>(): {
+	promise: Promise<T>;
+	resolve(value: T): void;
+	reject(error: unknown): void;
+} {
+	let resolve!: (value: T) => void;
+	let reject!: (error: unknown) => void;
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, resolve, reject };
+}
+
 function createSaveRepository(): SaveRepository {
 	return new SaveRepositoryFromDriver(new MemorySaveStoreDriver());
 }
@@ -694,7 +708,7 @@ describe('GameRouteController', () => {
 			expect(summary.manualSlots).toEqual([]);
 		});
 
-		it('creates a manual slot from the raw sandbox game, publishes the refreshed summary, and returns the metadata', async () => {
+		it('creates a manual slot from the raw sandbox game, leaving the summary refresh to the caller', async () => {
 			const repository = createRecordingSaveRepository();
 			const harness = createHarness({ saveRepository: repository.all });
 			await harness.controller.initializeSaves();
@@ -708,6 +722,10 @@ describe('GameRouteController', () => {
 			expect(repository.createManualSlot).toHaveBeenCalledTimes(1);
 			expect(repository.createManualSlot).toHaveBeenCalledWith('My Save', game);
 			expect(repository.overwriteManualSlot).not.toHaveBeenCalled();
+			// The write must not await the summary read: the page sets success
+			// feedback in this window, then refreshes on its own.
+			expect(harness.onSaveSummary).not.toHaveBeenCalled();
+			await harness.controller.refreshSaveSummary();
 			expect(harness.onSaveSummary).toHaveBeenCalledTimes(1);
 			expect(harness.onSaveSummary).toHaveBeenCalledWith(await repository.all.getSummary());
 			// Manual saves never route through the autosave path.
@@ -753,17 +771,21 @@ describe('GameRouteController', () => {
 			);
 		});
 
-		it('deletes a manual slot and publishes the refreshed summary', async () => {
+		it('deletes a manual slot, leaving the summary refresh to the caller', async () => {
 			const repository = createRecordingSaveRepository();
 			const harness = createHarness({ saveRepository: repository.all });
 			await harness.controller.initializeSaves();
 			harness.controller.loadSandboxGame(createNewGame('convenience', 23));
 			const created = await harness.controller.saveManualSlot('Doomed');
+			await harness.controller.refreshSaveSummary();
 			harness.onSaveSummary.mockClear();
 
 			expect(await harness.controller.deleteManualSlot(created!.id)).toBe(true);
 
 			expect(repository.deleteManualSlot).toHaveBeenCalledWith(created!.id);
+			// Delete resolves without waiting on the summary read.
+			expect(harness.onSaveSummary).not.toHaveBeenCalled();
+			await harness.controller.refreshSaveSummary();
 			const summary = await repository.all.getSummary();
 			expect(summary.manualSlots).toEqual([]);
 			expect(harness.onSaveSummary).toHaveBeenCalledTimes(1);
@@ -800,21 +822,66 @@ describe('GameRouteController', () => {
 			await expect(harness3.controller.refreshSaveSummary()).rejects.toThrow('summary boom');
 		});
 
-		it('reports a failed summary refresh after a successful slot write so callers see the error', async () => {
-			let summaryCalls = 0;
+		it('keeps a deferred summary out of the slot-write path and publishes it once it resolves', async () => {
+			// `initializeSaves` consumes the first summary read; every later
+			// read parks on the gate, like a slow Tauri store read.
+			const summaryGate = deferred<SaveSummary>();
+			let summaryReads = 0;
 			const repository = createRecordingSaveRepository({
 				getSummary: async () => {
-					summaryCalls += 1;
-					if (summaryCalls > 1) throw new Error('summary boom');
-					return { autoSave: null, manualSlots: [], diagnostics: [] };
+					summaryReads += 1;
+					return summaryReads === 1
+						? { autoSave: null, manualSlots: [], diagnostics: [] }
+						: summaryGate.promise;
 				}
 			});
 			const harness = createHarness({ saveRepository: repository.all });
 			await harness.controller.initializeSaves();
 			harness.controller.loadSandboxGame(createNewGame('convenience', 25));
-			await expect(harness.controller.saveManualSlot('Written then lost')).rejects.toThrow(
-				'summary boom'
-			);
+			harness.onSaveSummary.mockClear();
+
+			// The write resolves while the summary read is still pending, which
+			// is the window the page uses to set success feedback.
+			await expect(
+				harness.controller.saveManualSlot('Written then pending')
+			).resolves.toMatchObject({
+				name: 'Written then pending'
+			});
+			expect(harness.onSaveSummary).not.toHaveBeenCalled();
+
+			const refreshed = harness.controller.refreshSaveSummary();
+			summaryGate.resolve({ autoSave: null, manualSlots: [], diagnostics: [] });
+			await expect(refreshed).resolves.toBeUndefined();
+			expect(harness.onSaveSummary).toHaveBeenCalledTimes(1);
+			expect(harness.onSaveSummary).toHaveBeenCalledWith({
+				autoSave: null,
+				manualSlots: [],
+				diagnostics: []
+			});
+		});
+
+		it('propagates a rejected deferred summary refresh so callers surface the error after their own feedback', async () => {
+			const summaryGate = deferred<SaveSummary>();
+			let summaryReads = 0;
+			const repository = createRecordingSaveRepository({
+				getSummary: async () => {
+					summaryReads += 1;
+					return summaryReads === 1
+						? { autoSave: null, manualSlots: [], diagnostics: [] }
+						: summaryGate.promise;
+				}
+			});
+			const harness = createHarness({ saveRepository: repository.all });
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 28));
+
+			// The write still succeeds even though the summary read will fail;
+			// the rejection surfaces on the caller's refresh.
+			await expect(harness.controller.saveManualSlot('Written then lost')).resolves.toMatchObject({
+				name: 'Written then lost'
+			});
+			summaryGate.reject(new Error('summary boom'));
+			await expect(harness.controller.refreshSaveSummary()).rejects.toThrow('summary boom');
 		});
 
 		it('loading a manual slot does not trigger an autosave', async () => {
