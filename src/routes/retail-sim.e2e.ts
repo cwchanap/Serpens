@@ -5381,6 +5381,53 @@ test('supply planner logistics lifecycle hands off a route recommendation withou
 	).toHaveCount(0);
 });
 
+for (const cancellation of ['Escape', 'right-click'] as const) {
+	test(`mounted rail ${cancellation} cancels exactly one waypoint at a time`, async ({ page }) => {
+		await page.setViewportSize({ width: 1200, height: 1000 });
+		let game = { ...createNewGame('convenience', 42), cash: 1_000_000 };
+		const origin = INDUSTRIAL_BUILD_TILES[0]!;
+		game = buildIndustrialBuilding(game, {
+			tileId: `${game.activeIndustryCityId}-${origin.x}-${origin.y}`,
+			buildingTypeId: 'flour-mill'
+		});
+		expect(game.industrialBuildings).toHaveLength(1);
+		await installSandboxAutoSave(page, game);
+		await page.goto('/?ui-comparison=1');
+		await expectRetailMapReady(page);
+		await openMapMenuItem(page, /industry city map/i);
+		const canvas = await expectIndustryMapReady(page);
+		await page.getByRole('button', { name: /build rail/i }).click();
+		const status = page.getByRole('status', { name: /placement status/i });
+		await expect(status).toContainText(/select the first building/i);
+		await clickCanvasTile(page, canvas, origin.x, origin.y);
+		for (const waypoint of INDUSTRIAL_BUILD_TILES.slice(1, 3)) {
+			await clickCanvasTile(page, canvas, waypoint.x, waypoint.y);
+			await expect(status).toContainText(/select waypoints, then the destination building/i);
+		}
+
+		// Two waypoints make a page + canvas double-pop observable: after two
+		// cancellations routing must still be active; only the third exits.
+		for (let step = 0; step < 3; step++) {
+			if (cancellation === 'Escape') await page.keyboard.press('Escape');
+			else await canvas.click({ button: 'right' });
+			if (step < 2) {
+				await expect(status).toContainText(/select waypoints, then the destination building/i);
+			} else {
+				await expect(status).toHaveCount(0);
+			}
+			await expect(page.getByTestId('game-menu-trigger')).toHaveAttribute('aria-expanded', 'false');
+		}
+
+		// Origin selection is active rail build too, not just the routing step.
+		await page.getByRole('button', { name: /build rail/i }).click();
+		await expect(status).toContainText(/select the first building/i);
+		if (cancellation === 'Escape') await page.keyboard.press('Escape');
+		else await canvas.click({ button: 'right' });
+		await expect(status).toHaveCount(0);
+		await expect(page.getByTestId('game-menu-trigger')).toHaveAttribute('aria-expanded', 'false');
+	});
+}
+
 test('rail-fed production connects two industrial buildings and records a rail shipment', async ({
 	page
 }) => {
