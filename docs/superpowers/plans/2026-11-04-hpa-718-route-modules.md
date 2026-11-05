@@ -26,7 +26,7 @@
    - `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "rail-fed production|financed expansion"`
    - `bun run test:e2e -- src/routes/retail-sim.e2e.ts -g "Escape|keyboard shortcuts|cheat sheet|modifier"`
    - `bun run test:e2e -- src/routes/time-flow.e2e.ts`
-5. The existing `page.svelte.spec.ts` tests the controller/helpers, **not the mounted page**; do not claim an old/new selector comparison can import inline page code. Create pure specs derived from existing inline logic plus E2E equivalence. Pin **canvas Escape/right-click cancels exactly one rail waypoint**, without double-handling by the page, before extracting its old handler.
+5. The existing `page.svelte.spec.ts` tests the controller/helpers, **not the mounted page**; do not claim an old/new selector comparison can import inline page code. Create pure specs derived from existing inline logic plus E2E equivalence. Pin **canvas Escape/right-click cancels exactly one rail waypoint**, without double-handling by the page, before extracting its old handler. **Require a mounted-browser E2E integration probe** for the actual IndustryMap → page event path (not just the existing scene-level event emission or pure reducer tests).
 
 **Gate:** baseline/test gaps and a measurable line budget are explicit. Any pre-existing test failures recorded, not described as green.
 
@@ -49,9 +49,9 @@
 
 1. For commands with a meaningful `MutationAvailability` capability, evaluate the **current** mode/pending/resolved scenario definition at the existing `commitMutation` boundary. Keep `executeScenarioCommand`'s authoritative capability/CAS checks and `runPersistenceGatedOperation` unchanged.
 2. Preserve pending **UI-gated** command results as `{ status: 'unavailable' }`, not `busy` (Finance and Logistics panels distinguish these); lifecycle operations retain their existing `busy` result. No double-autosave.
-3. Exempt or handle explicitly: `foundStore` before any game, `selectWorldCity`'s separate scenario capability, `setRetailSupplySource`'s sandbox unchanged/rejected preflight, sandbox-only policy/delegation/brand/demolition/manual logistics and scenario-shaped recurring-route data.
+3. Exempt or handle explicitly: `foundStore` before any game, `selectWorldCity`'s separate scenario capability, `setRetailSupplySource`'s sandbox unchanged/rejected preflight, sandbox-only policy/delegation/brand/**industrial-building demolition** (`demolishIndustrialBuilding`)/manual logistics, **capability-gated rail demolition** (`demolishRail`), and scenario-shaped recurring-route data.
 4. Remove ~25 thin page wrappers only where return type and live capability rules remain identical. Keep meaningful preflight/cleanup: `changeStoreProduct` `null` contract; `upgradeStoreHandler` `null`; `removeRecurringRoute` selection cleanup.
-5. Test pending vs busy, denial without state/sfx/autosave, direct rail command, first founding, unchanged supply-source and sandbox-only commands.
+5. Test pending vs busy, denial without state/sfx/autosave, direct rail command, first founding, unchanged supply-source and sandbox-only commands. **Add a focused controller regression:** a scenario whose `allowedCommands` contains `demolishRail` successfully commits rail demolition, while `demolishIndustrialBuilding` remains unavailable in scenario mode. Reuse the existing scenario command path and runtime's rail-demolition fixture.
 
 **Gate:** `bun run check && bun run test:unit -- --run src/routes`; scenario and finance/logistics targeted E2E.
 
@@ -75,7 +75,7 @@
 2. Keep `railBuildMode`, `railPreviewTargetBuildingId` and shared `placementFeedback` as page-local `$state`. The page calls reducer then directly applies those outputs and calls the existing controller/SFX. Avoid 5+ getter/setter/event callback injection.
 3. Pin no-game/invalid waypoint, origin selection, first valid destination preview, same-destination second click commit, waypoint backtrack, preview clearing and canvas right-click/Escape single-pop (page must not cancel again).
 
-**Gate:** `bun run check && bun run test:unit -- --run src/routes`; retail-sim `rail-fed production` and recovery-guidance E2E, including the new cancellation integration probe.
+**Gate:** `bun run check && bun run test:unit -- --run src/routes`; retail-sim `rail-fed production` and recovery-guidance E2E, **including the mandatory mounted-UI cancellation integration probe** for Escape and right-click, asserting a single waypoint pop and no duplicate page-level cancellation.
 
 ## Step 4 — Placement/finance as focused route decisions
 
