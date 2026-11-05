@@ -31,7 +31,12 @@ import {
 	type SaveStoreDriver
 } from '$lib/persistence/saveStoreRepository';
 import type { SaveRepository } from '$lib/persistence/saveRepository';
-import type { DecodeSaveStoreResult, SaveStoreSnapshot } from '$lib/persistence/saveTypes';
+import type {
+	DecodeSaveStoreResult,
+	SaveSlotMetadata,
+	SaveStoreSnapshot,
+	SaveSummary
+} from '$lib/persistence/saveTypes';
 import { createScenarioMemoryRepository } from '$lib/persistence/scenarioMemoryRepository';
 import type { ScenarioMemoryRepository } from '$lib/persistence/scenarioMemoryRepository';
 import type { ScenarioRepository, ScenarioSaveOutcome } from '$lib/persistence/scenarioRepository';
@@ -62,6 +67,95 @@ class MemorySaveStoreDriver implements SaveStoreDriver {
 
 function createSaveRepository(): SaveRepository {
 	return new SaveRepositoryFromDriver(new MemorySaveStoreDriver());
+}
+
+/** A `SaveRepository` whose manual-slot methods are spies for call assertions. */
+function createRecordingSaveRepository(
+	overrides: {
+		createManualSlot?: (name: string, game: GameState) => Promise<SaveSlotMetadata>;
+		overwriteManualSlot?: (
+			slotId: string,
+			name: string,
+			game: GameState
+		) => Promise<SaveSlotMetadata>;
+		deleteManualSlot?: (slotId: string) => Promise<void>;
+		getSummary?: () => Promise<SaveSummary>;
+	} = {}
+): {
+	all: SaveRepository;
+	createManualSlot: ReturnType<typeof vi.fn>;
+	overwriteManualSlot: ReturnType<typeof vi.fn>;
+	deleteManualSlot: ReturnType<typeof vi.fn>;
+	saveAuto: ReturnType<typeof vi.fn>;
+} {
+	const slots: SaveSlotMetadata[] = [];
+	const slotMetadata = (id: string, name: string, game: GameState): SaveSlotMetadata => ({
+		id,
+		name,
+		kind: 'manual',
+		updatedAt: '2026-07-22T00:00:00.000Z',
+		day: game.day,
+		cash: game.cash,
+		storeCount: game.stores.length,
+		activeCityId: game.activeCityId
+	});
+	const createManualSlot = vi.fn(
+		overrides.createManualSlot ??
+			(async (name: string, game: GameState) => {
+				const metadata = slotMetadata(`manual-${slots.length + 1}`, name, game);
+				slots.push(metadata);
+				return metadata;
+			})
+	);
+	const overwriteManualSlot = vi.fn(
+		overrides.overwriteManualSlot ??
+			(async (slotId: string, name: string, game: GameState) => {
+				const slot = slots.find((entry) => entry.id === slotId);
+				if (!slot) throw new Error(`unknown slot ${slotId}`);
+				slot.name = name;
+				slot.day = game.day;
+				return { ...slot };
+			})
+	);
+	const deleteManualSlot = vi.fn(
+		overrides.deleteManualSlot ??
+			(async (slotId: string) => {
+				const index = slots.findIndex((entry) => entry.id === slotId);
+				if (index === -1) throw new Error(`unknown slot ${slotId}`);
+				slots.splice(index, 1);
+			})
+	);
+	const getSummary = vi.fn(
+		overrides.getSummary ??
+			(async (): Promise<SaveSummary> => ({
+				autoSave: null,
+				manualSlots: slots.map((slot) => ({ ...slot })),
+				diagnostics: []
+			}))
+	);
+	const saveAuto = vi.fn(
+		async (game: GameState): Promise<SaveSlotMetadata> => ({
+			...slotMetadata('autosave', 'autosave', game),
+			id: 'autosave',
+			name: 'autosave',
+			kind: 'auto'
+		})
+	);
+	return {
+		all: {
+			getSummary,
+			getAutoSave: vi.fn(async () => null),
+			saveAuto,
+			createManualSlot,
+			overwriteManualSlot,
+			loadManualSlot: vi.fn(async () => null),
+			deleteManualSlot
+		},
+		createManualSlot,
+		overwriteManualSlot,
+		deleteManualSlot,
+		saveAuto
+	};
 }
 
 const FIRST_PROFIT_REF: ScenarioDefinitionRef = { scenarioId: 'first-profit', version: 1 };
@@ -162,7 +256,6 @@ interface ControllerHarness {
 	saveRepository: SaveRepository;
 	scenarioRepository: ScenarioMemoryRepository;
 	onStateChange: ReturnType<typeof vi.fn>;
-	onSaveRepositoryReady: ReturnType<typeof vi.fn>;
 	onSaveSummary: ReturnType<typeof vi.fn>;
 	onScenarioSummary: ReturnType<typeof vi.fn>;
 	onScenarioTerminalRun: ReturnType<typeof vi.fn>;
@@ -180,7 +273,6 @@ function createHarness(options?: {
 }): ControllerHarness {
 	const states: GameRouteControllerState[] = [];
 	const sfx = vi.fn();
-	const onSaveRepositoryReady = vi.fn();
 	const onSaveSummary = vi.fn();
 	const onScenarioSummary = vi.fn();
 	const onScenarioTerminalRun = vi.fn();
@@ -206,7 +298,6 @@ function createHarness(options?: {
 		resolveScenarioDefinition: resolveDefinition,
 		playSfx: sfx,
 		onStateChange,
-		onSaveRepositoryReady,
 		onSaveSummary,
 		onScenarioSummary,
 		onScenarioTerminalRun,
@@ -224,7 +315,6 @@ function createHarness(options?: {
 		saveRepository,
 		scenarioRepository: scenarioRepository as ScenarioMemoryRepository,
 		onStateChange,
-		onSaveRepositoryReady,
 		onSaveSummary,
 		onScenarioSummary,
 		onScenarioTerminalRun,
@@ -388,10 +478,9 @@ describe('createMutationAvailability', () => {
 
 describe('GameRouteController', () => {
 	describe('initializeSaves', () => {
-		it('notifies save repository ready and publishes the summary when no sandbox game is loaded', async () => {
+		it('publishes the summary when no sandbox game is loaded', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeSaves();
-			expect(harness.onSaveRepositoryReady).toHaveBeenCalledWith(harness.saveRepository);
 			expect(harness.onSaveSummary).toHaveBeenCalledTimes(1);
 		});
 
@@ -583,6 +672,161 @@ describe('GameRouteController', () => {
 			const slotId = summary.manualSlots[0]!.id;
 			const result = await harness.controller.loadManualSave(slotId);
 			expect(result).toBe('loaded');
+		});
+	});
+
+	describe('manual save slots', () => {
+		it('returns silently before the save repository is ready', async () => {
+			const harness = createHarness();
+			expect(await harness.controller.saveManualSlot('Mine')).toBeNull();
+			expect(await harness.controller.deleteManualSlot('manual-1')).toBe(false);
+			await expect(harness.controller.refreshSaveSummary()).resolves.toBeUndefined();
+			expect(harness.onSaveSummary).not.toHaveBeenCalled();
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+		});
+
+		it('returns null without writing when no game is loaded in any mode', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			await harness.controller.initializeScenarios();
+			expect(await harness.controller.saveManualSlot('No game')).toBeNull();
+			const summary = await harness.saveRepository.getSummary();
+			expect(summary.manualSlots).toEqual([]);
+		});
+
+		it('creates a manual slot from the raw sandbox game, publishes the refreshed summary, and returns the metadata', async () => {
+			const repository = createRecordingSaveRepository();
+			const harness = createHarness({ saveRepository: repository.all });
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 21);
+			harness.controller.loadSandboxGame(game);
+			harness.onSaveSummary.mockClear();
+
+			const metadata = await harness.controller.saveManualSlot('My Save');
+
+			expect(metadata?.name).toBe('My Save');
+			expect(repository.createManualSlot).toHaveBeenCalledTimes(1);
+			expect(repository.createManualSlot).toHaveBeenCalledWith('My Save', game);
+			expect(repository.overwriteManualSlot).not.toHaveBeenCalled();
+			expect(harness.onSaveSummary).toHaveBeenCalledTimes(1);
+			expect(harness.onSaveSummary).toHaveBeenCalledWith(await repository.all.getSummary());
+			// Manual saves never route through the autosave path.
+			expect(repository.saveAuto).not.toHaveBeenCalled();
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
+		});
+
+		it('overwrites an existing slot when a slot id is given', async () => {
+			const repository = createRecordingSaveRepository();
+			const harness = createHarness({ saveRepository: repository.all });
+			await harness.controller.initializeSaves();
+			const game = createNewGame('convenience', 22);
+			harness.controller.loadSandboxGame(game);
+			const created = await harness.controller.saveManualSlot('First name');
+			expect(created).not.toBeNull();
+
+			const renamed = await harness.controller.saveManualSlot('Second name', created!.id);
+
+			expect(repository.overwriteManualSlot).toHaveBeenCalledTimes(1);
+			expect(repository.overwriteManualSlot).toHaveBeenCalledWith(created!.id, 'Second name', game);
+			expect(renamed?.name).toBe('Second name');
+			const summary = await repository.all.getSummary();
+			expect(summary.manualSlots).toHaveLength(1);
+			expect(summary.manualSlots[0]?.name).toBe('Second name');
+		});
+
+		it('saves the active scenario run game, not the sandbox game, while a challenge is active', async () => {
+			const repository = createRecordingSaveRepository();
+			const harness = createHarness({ saveRepository: repository.all });
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 30));
+			await harness.controller.initializeScenarios();
+			const run = await startScenario(harness.controller);
+			expect(harness.controller.state.playMode).toBe('scenario');
+
+			const metadata = await harness.controller.saveManualSlot('Challenge copy');
+
+			expect(metadata?.name).toBe('Challenge copy');
+			expect(repository.createManualSlot).toHaveBeenCalledTimes(1);
+			expect(repository.createManualSlot).toHaveBeenCalledWith('Challenge copy', run.game);
+			expect(repository.createManualSlot.mock.calls[0]?.[1]).not.toBe(
+				harness.controller.state.sandboxGame
+			);
+		});
+
+		it('deletes a manual slot and publishes the refreshed summary', async () => {
+			const repository = createRecordingSaveRepository();
+			const harness = createHarness({ saveRepository: repository.all });
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 23));
+			const created = await harness.controller.saveManualSlot('Doomed');
+			harness.onSaveSummary.mockClear();
+
+			expect(await harness.controller.deleteManualSlot(created!.id)).toBe(true);
+
+			expect(repository.deleteManualSlot).toHaveBeenCalledWith(created!.id);
+			const summary = await repository.all.getSummary();
+			expect(summary.manualSlots).toEqual([]);
+			expect(harness.onSaveSummary).toHaveBeenCalledTimes(1);
+			expect(repository.saveAuto).not.toHaveBeenCalled();
+		});
+
+		it('propagates repository errors from save, delete, and summary refresh', async () => {
+			const repository = createRecordingSaveRepository({
+				createManualSlot: async () => {
+					throw new Error('create boom');
+				}
+			});
+			const harness = createHarness({ saveRepository: repository.all });
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 24));
+			await expect(harness.controller.saveManualSlot('Failing')).rejects.toThrow('create boom');
+
+			const failingDelete = createRecordingSaveRepository({
+				deleteManualSlot: async () => {
+					throw new Error('delete boom');
+				}
+			});
+			const harness2 = createHarness({ saveRepository: failingDelete.all });
+			await harness2.controller.initializeSaves();
+			await expect(harness2.controller.deleteManualSlot('manual-1')).rejects.toThrow('delete boom');
+
+			const failingSummary = createRecordingSaveRepository({
+				getSummary: async () => {
+					throw new Error('summary boom');
+				}
+			});
+			const harness3 = createHarness({ saveRepository: failingSummary.all });
+			await expect(harness3.controller.initializeSaves()).rejects.toThrow('summary boom');
+			await expect(harness3.controller.refreshSaveSummary()).rejects.toThrow('summary boom');
+		});
+
+		it('reports a failed summary refresh after a successful slot write so callers see the error', async () => {
+			let summaryCalls = 0;
+			const repository = createRecordingSaveRepository({
+				getSummary: async () => {
+					summaryCalls += 1;
+					if (summaryCalls > 1) throw new Error('summary boom');
+					return { autoSave: null, manualSlots: [], diagnostics: [] };
+				}
+			});
+			const harness = createHarness({ saveRepository: repository.all });
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 25));
+			await expect(harness.controller.saveManualSlot('Written then lost')).rejects.toThrow(
+				'summary boom'
+			);
+		});
+
+		it('loading a manual slot does not trigger an autosave', async () => {
+			const harness = createHarness();
+			await harness.controller.initializeSaves();
+			harness.controller.loadSandboxGame(createNewGame('convenience', 26));
+			const created = await harness.controller.saveManualSlot('Roundtrip');
+			harness.onAutoSave.mockClear();
+
+			expect(await harness.controller.loadManualSave(created!.id)).toBe('loaded');
+			expect(harness.controller.state.playMode).toBe('sandbox');
+			expect(harness.onAutoSave).not.toHaveBeenCalled();
 		});
 	});
 

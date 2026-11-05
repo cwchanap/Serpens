@@ -164,7 +164,6 @@
 		WorldCityId
 	} from '$lib/game/types';
 	import type { WorldCityStatus } from '$lib/game/world';
-	import type { SaveRepository } from '$lib/persistence/saveRepository';
 	import { SaveDataError } from '$lib/persistence/saveCodec';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import type { SaveSlotMetadata, SaveStoreDiagnostic } from '$lib/persistence/saveTypes';
@@ -381,9 +380,6 @@
 		onStateChange: synchronizeControllerState,
 		onAcceptedGameChange: (previous, next) => {
 			mapActivity = nextMapActivityBatch(mapActivity, previous, next);
-		},
-		onSaveRepositoryReady: (repository) => {
-			saveRepository = repository;
 		},
 		onSaveSummary: (summary) => {
 			autoSave = summary.autoSave;
@@ -616,7 +612,6 @@
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
 	let financePurchaseReview = $state(createFinancePurchaseReviewState());
 	let financedPurchaseReturnFocus = $state<HTMLElement | null>(null);
-	let saveRepository: SaveRepository | null = $state(null);
 	let autoSave = $state<SaveSlotMetadata | null>(null);
 	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
 	let saveDiagnostics = $state<SaveStoreDiagnostic[]>([]);
@@ -1442,14 +1437,7 @@
 	}
 
 	async function refreshSaveSummary(): Promise<void> {
-		if (!saveRepository) {
-			return;
-		}
-
-		const saveSummary = await saveRepository.getSummary();
-		autoSave = saveSummary.autoSave;
-		manualSaveSlots = saveSummary.manualSlots;
-		saveDiagnostics = saveSummary.diagnostics;
+		await gameRouteController.refreshSaveSummary();
 	}
 
 	function openSavePanel(): void {
@@ -2001,6 +1989,23 @@
 		previousScenarioRunSyncEpoch = runSyncEpoch;
 	}
 
+	// Shared post-load reset for a successful auto/manual load: selections,
+	// armed placement, guidance re-arm and a paused auto-tick. Failed or
+	// missing loads never reset — the caller returns before reaching this.
+	function resetViewStateAfterLoad(): void {
+		selectedTileId = null;
+		selectedIndustryTileId = null;
+		selectedWorldCityId = null;
+		clearLogisticsRouteSelection();
+		cancelPlacement();
+		// Only a successful load re-arms the sandbox opening and cash guidance.
+		sandboxOpeningGuidanceDismissed = false;
+		cashRecoveryDismissed = false;
+		// Pause the auto-tick so the player can review the loaded state
+		// before time resumes.
+		simulationPaused = true;
+	}
+
 	async function resumeAutoSave(): Promise<void> {
 		try {
 			const result = await gameRouteController.resumeAutoSave();
@@ -2009,17 +2014,7 @@
 				return;
 			}
 
-			selectedTileId = null;
-			selectedIndustryTileId = null;
-			selectedWorldCityId = null;
-			clearLogisticsRouteSelection();
-			cancelPlacement();
-			// Only a successful load re-arms the sandbox opening and cash guidance.
-			sandboxOpeningGuidanceDismissed = false;
-			cashRecoveryDismissed = false;
-			// Pause the auto-tick so the player can review the loaded state
-			// before time resumes.
-			simulationPaused = true;
+			resetViewStateAfterLoad();
 			saveFeedback = { kind: 'status', messageKey: 'route.save.loadedAutoSave' };
 			await refreshSaveSummary();
 		} catch (error) {
@@ -2028,27 +2023,19 @@
 	}
 
 	async function saveManualSlot(name: string, slotId?: string): Promise<void> {
-		if (!saveRepository || !game) {
-			return;
-		}
-
-		// `game` is a Svelte reactive Proxy ($derived from a $state field).
-		// The save codec's plain-snapshot boundary rejects Proxies during
-		// structuredClone, so unwrap to a plain object before handing it to
-		// the repository. Autosaves go through the route controller's raw
-		// (non-proxy) state, which is why they don't need this.
-		const snapshot = $state.snapshot(game);
-
 		try {
-			const metadata = slotId
-				? await saveRepository.overwriteManualSlot(slotId, name, snapshot)
-				: await saveRepository.createManualSlot(name, snapshot);
+			// The controller saves its raw (non-proxy) game and refreshes the
+			// summary; `null` is the silent no-op while the repository or game
+			// is not ready, matching the panel's expectations.
+			const metadata = await gameRouteController.saveManualSlot(name, slotId);
+			if (!metadata) {
+				return;
+			}
 			saveFeedback = {
 				kind: 'status',
 				messageKey: 'route.save.savedManualSlot',
 				params: { name: metadata.name }
 			};
-			await refreshSaveSummary();
 			playSfx('sfx.save.saved');
 		} catch (error) {
 			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
@@ -2064,17 +2051,7 @@
 				return;
 			}
 
-			selectedTileId = null;
-			selectedIndustryTileId = null;
-			selectedWorldCityId = null;
-			clearLogisticsRouteSelection();
-			cancelPlacement();
-			// Only a successful load re-arms the sandbox opening and cash guidance.
-			sandboxOpeningGuidanceDismissed = false;
-			cashRecoveryDismissed = false;
-			// Pause the auto-tick so the player can review the loaded state
-			// before time resumes.
-			simulationPaused = true;
+			resetViewStateAfterLoad();
 			saveFeedback = {
 				kind: 'status',
 				messageKey: 'route.save.loadedManualSlot',
@@ -2087,14 +2064,12 @@
 	}
 
 	async function deleteManualSlot(slotId: string): Promise<void> {
-		if (!saveRepository) {
-			return;
-		}
-
 		try {
-			await saveRepository.deleteManualSlot(slotId);
+			const deleted = await gameRouteController.deleteManualSlot(slotId);
+			if (!deleted) {
+				return;
+			}
 			saveFeedback = { kind: 'status', messageKey: 'route.save.deletedManualSlot' };
-			await refreshSaveSummary();
 		} catch (error) {
 			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
 		}
