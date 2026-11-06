@@ -1,10 +1,7 @@
 <script lang="ts">
 	import type { I18nBundle } from '$lib/i18n';
 	import FinancePurchaseReviewDialog from '$lib/components/game/FinancePurchaseReviewDialog.svelte';
-	import {
-		dismissFinancePurchaseReview,
-		type FinancePurchaseReviewState
-	} from './financePurchaseReview';
+	import type { FinancePurchaseReviewState } from './financePurchaseReview';
 
 	interface Props {
 		review: FinancePurchaseReviewState;
@@ -15,11 +12,10 @@
 		onDismiss: () => void;
 	}
 
-	let { review = $bindable(), cash, i18n, formatApr, onConfirm, onDismiss }: Props = $props();
+	let { review, cash, i18n, formatApr, onConfirm, onDismiss }: Props = $props();
 
 	function cancelReview(): void {
 		if (review.confirmationPending) return;
-		review = dismissFinancePurchaseReview(review);
 		onDismiss();
 	}
 

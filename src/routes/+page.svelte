@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import BuildMenu from '$lib/components/game/BuildMenu.svelte';
+	import { onMount } from 'svelte';
 	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
 	import OpeningGuidance from '$lib/components/game/OpeningGuidance.svelte';
@@ -42,39 +41,19 @@
 		resolveShortcutAction,
 		type ManagementPanelId
 	} from '$lib/game/keyboardShortcuts';
-	import { getTileById } from '$lib/game/city';
-	import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import { resolveWorldCityId } from '$lib/game/cityInventory';
 	import { buildRailNetwork, deriveRailSegments, type RailSegment } from '$lib/game/rail';
-	import { buildRailPreview } from '$lib/game/railPlacement';
-	import {
-		cancelRailBuildStep,
-		deriveRailPreviewRender,
-		reduceRailBuildClick,
-		type RailBuildMode
-	} from './railBuild';
 	import {
 		createInitialVisitedMapViews,
 		markMapViewVisited,
 		type MapViewId
 	} from '$lib/game/mapViewKeepAlive';
 	import {
-		createIndustryPlacementPreview,
-		createRetailPlacementPreview,
-		getIndustrialBuildMenuOptions,
-		getIndustryBuildPlacementBlockReason,
-		getRetailBuildMenuOptions,
-		getRetailPlacementBlockReason,
-		resolveIndustryPlacementAnchorTileId,
 		resolveIndustrySelectionAnchorTileId,
-		resolveRetailPlacementAnchorTileId,
-		resolveSelectionAnchorTileId,
-		type PlacementBlockReason
+		resolveSelectionAnchorTileId
 	} from '$lib/game/placementPreview';
-	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
-	import { restrictPreviewToScenario } from './placementRoute';
 	import {
 		createI18n,
 		readLocalePreference,
@@ -83,7 +62,6 @@
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
-	import { getExpansionFinanceOffer, type FinanceFailureCode } from '$lib/game/finance';
 	import {
 		selectRouteGuidance,
 		resolveGuidanceHandoff,
@@ -97,8 +75,6 @@
 	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
 	import { nextMapActivityBatch, type MapActivityBatch } from '$lib/game/mapActivityFeedback';
-	import { getExpansionSetupCost } from '$lib/game/state';
-	import { getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
 	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
 	import {
 		deriveSupplyPlannerResult,
@@ -117,10 +93,7 @@
 	import { buildLogisticsPanelView } from '$lib/components/game/logisticsPanel';
 	import { WORLD_CITY_CATALOG, isWorldCityId } from '$lib/game/world';
 	import type {
-		ArchetypeId,
 		GameState,
-		IndustrialBuildingTypeId,
-		MaterialId,
 		ProductId,
 		StoreProductPatch,
 		TransferOrder,
@@ -143,24 +116,14 @@
 	} from './gameRouteController';
 	import { isGameRouteCommitted } from '$lib/game/commandResult';
 	import {
-		beginFinancePurchaseConfirmation,
-		createFinancePurchaseReviewState,
-		dismissFinancePurchaseReview,
-		openFinancePurchaseReview,
-		resolveExpansionPurchasePaymentPath,
-		refreshedFinancedPurchase,
-		settleFinancePurchaseConfirmation,
-		type PendingFinancedPurchase,
-		shouldRefreshFinancedPurchase
-	} from './financePurchaseReview';
-	import {
 		resolveEscapeTarget,
 		selectOverlayGates,
 		type OverlayId,
 		type OverlaySnapshot
 	} from './routeOverlays';
 	import { createStoreDetailFocus } from './storeDetailFocus.svelte';
-	import FinancePurchaseReviewHost from './FinancePurchaseReviewHost.svelte';
+	import { createConstructionUi } from './constructionUi.svelte';
+	import ConstructionControls from './ConstructionControls.svelte';
 	import ManagementPanelHost from './ManagementPanelHost.svelte';
 	import MapInspectorHost from './MapInspectorHost.svelte';
 	import MapSurfaceHost from './MapSurfaceHost.svelte';
@@ -296,7 +259,6 @@
 	let isCheatSheetOpen = $state(false);
 	let isGameMenuOpen = $state(false);
 	let isAlertsMenuOpen = $state(false);
-	let isBuildMenuOpen = $state(false);
 	let isSupplyAdvisorOpen = $state(false);
 	let supplyPlannerUiContext = $state<SupplyPlannerUiContext>({
 		productId: null,
@@ -304,14 +266,6 @@
 	});
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let focusedFinanceLoanId = $state<string | null>(null);
-	let retailPlacementArchetypeId = $state<ArchetypeId | null>(null);
-	let industryPlacementBuildingTypeId = $state<IndustrialBuildingTypeId | null>(null);
-	let railBuildMode = $state<RailBuildMode>({ step: 'idle' });
-	// Set on each destination-building click while routing, so `railPreview`
-	// below can keep showing the last attempted path (including blocked
-	// attempts) until the player clicks a different building or cancels.
-	// There is no map hover event to drive this continuously.
-	let railPreviewTargetBuildingId = $state<string | null>(null);
 	let activeLocale = $state<SupportedLocale>(
 		readLocalePreference(safeLocalStorage(), collectNavigatorLocaleCandidates())
 	);
@@ -324,12 +278,6 @@
 			definition: activeScenarioDefinition
 		})
 	);
-	let canStartRetailExpansion = $derived(
-		mutationAvailability.openStore || mutationAvailability.financeRetailStore
-	);
-	let canStartIndustryExpansion = $derived(
-		mutationAvailability.buildIndustrialBuilding || mutationAvailability.financeIndustrialBuilding
-	);
 	let mutationDisabledReason = $derived(
 		playMode === 'scenario' ? i18n.t('buildMenu.unavailable') : null
 	);
@@ -338,37 +286,6 @@
 			(!scenarioCommandPending &&
 				activeScenarioDefinition !== null &&
 				activeScenarioDefinition.allowedCommands.includes('selectWorldCity'))
-	);
-	let allowedRetailArchetypeIds = $derived.by<ArchetypeId[]>(() =>
-		retailBuildOptions
-			.map((option) => option.archetypeId)
-			.filter((archetypeId) =>
-				isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
-					kind: 'archetype',
-					archetypeId
-				})
-			)
-	);
-	let allowedIndustryBuildingTypeIds = $derived.by<IndustrialBuildingTypeId[]>(() =>
-		(Object.keys(INDUSTRIAL_BUILDING_TYPES) as IndustrialBuildingTypeId[]).filter(
-			(buildingTypeId) => {
-				if (playMode === 'sandbox') return true;
-				if (!activeScenarioDefinition) return false;
-				// buildingTypeIds includes pre-placed starting buildings that may
-				// have no permitted future placement entries. Only offer types
-				// that have at least one industrial placement slot so the player
-				// cannot arm a placement that can never commit.
-				return (
-					isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
-						kind: 'building',
-						buildingTypeId
-					}) &&
-					activeScenarioDefinition.content.industrialPlacements.some(
-						(placement) => placement.buildingTypeId === buildingTypeId
-					)
-				);
-			}
-		)
 	);
 	let allowedWorldCityIds = $derived.by(() =>
 		WORLD_CITY_CATALOG.map((city) => city.id).filter((cityId) =>
@@ -382,6 +299,45 @@
 				encodeIndustrialPlacementKey(placement.cityId, placement.tileId, placement.buildingTypeId)
 			)
 		);
+	});
+	// Construction owner: build menu, armed placements, rail build session and
+	// the financed-purchase review. Existing root adapters stay until their
+	// owning tasks extract them.
+	const construction = createConstructionUi({
+		getGame: () => game,
+		getRetailCity: () => activeCity,
+		getIndustryCity: () => industryCity,
+		getFallback: () => starterMapState,
+		getView: () => activeMapView,
+		getMode: () => playMode,
+		getDefinition: () => activeScenarioDefinition,
+		getAvailability: () => mutationAvailability,
+		getI18n: () => i18n,
+		commands: gameRouteController,
+		playSfx,
+		onSelectPlacementTile: (kind, tileId) => {
+			selectedWorldCityId = null;
+			if (kind === 'retail') {
+				selectedTileId = tileId;
+				selectedIndustryTileId = null;
+			} else {
+				selectedIndustryTileId = tileId;
+				selectedTileId = null;
+			}
+		},
+		onClearSelections: () => {
+			selectedTileId = null;
+			selectedIndustryTileId = null;
+			selectedWorldCityId = null;
+		},
+		onFoundingPause: () => {
+			simulationPaused = true;
+		},
+		onMenuOpen: () => {
+			isGameMenuOpen = false;
+			saves.close();
+			activeManagementPanelId = null;
+		}
 	});
 	let allowedProductIds = $derived.by(() => {
 		const productIds = [
@@ -412,12 +368,9 @@
 		canBuildRail: mutationAvailability.buildRail,
 		canManageLogistics: mutationAvailability.manageLogistics,
 		canSetRetailSupplySource: mutationAvailability.setRetailSupplySource,
-		allowedIndustryBuildingTypeIds,
+		allowedIndustryBuildingTypeIds: construction.allowedIndustryBuildingTypeIds,
 		allowedIndustrialPlacements
 	});
-	let placementFeedback = $state<PlacementBlockReason | null>(null);
-	let financePurchaseReview = $state(createFinancePurchaseReviewState());
-	let financedPurchaseReturnFocus = $state<HTMLElement | null>(null);
 	const saves = createSaveUi({
 		getGame: () => game,
 		getI18n: () => i18n,
@@ -555,35 +508,30 @@
 		selectInspectorRailSegments(
 			industryCity,
 			selectedIndustryTileId,
-			railBuildMode.step !== 'idle',
+			construction.isRailActive,
 			() => industryRailSegments
 		)
-	);
-	let isPlacementModeActive = $derived(
-		retailPlacementArchetypeId !== null ||
-			industryPlacementBuildingTypeId !== null ||
-			railBuildMode.step !== 'idle'
 	);
 	// Read-only projection of existing owners, not a second overlay state authority.
 	let overlaySnapshot = $derived.by<OverlaySnapshot>(() => {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- Rebuilt from owners, never mutated after publication.
 		const openOverlays = new Set<OverlayId>();
-		if (financePurchaseReview.purchase !== null) openOverlays.add('finance-review');
+		if (construction.purchaseReview.purchase !== null) openOverlays.add('finance-review');
 		if (saves.isOpen) openOverlays.add('save-panel');
 		if (scenarios.isCatalogOpen) openOverlays.add('scenario-catalog');
 		if (scenarios.isResultsOpen) openOverlays.add('scenario-results');
 		if (isCheatSheetOpen) openOverlays.add('cheat-sheet');
 		if (isSupplyAdvisorOpen) openOverlays.add('supply-advisor');
 		if (storeDetailFocus.isOpen) openOverlays.add('store-detail');
-		if (isBuildMenuOpen) openOverlays.add('build-menu');
+		if (construction.isMenuOpen) openOverlays.add('build-menu');
 		if (isGameMenuOpen) openOverlays.add('game-menu');
 		if (isAlertsMenuOpen) openOverlays.add('alerts-menu');
 		if (activeManagementPanelId !== null) openOverlays.add('management-panel');
 		return {
 			openOverlays,
-			isPlacementActive: isPlacementModeActive,
-			isRailBuildActive: railBuildMode.step !== 'idle',
-			isFinanceReviewPending: financePurchaseReview.confirmationPending,
+			isPlacementActive: construction.isPlacementModeActive,
+			isRailBuildActive: construction.isRailActive,
+			isFinanceReviewPending: construction.purchaseReview.confirmationPending,
 			selected: {
 				worldCity: selectedWorldCityId !== null,
 				retailTile: selectedTileId !== null,
@@ -597,105 +545,16 @@
 		selectOverlayGates(overlaySnapshot)
 	);
 	let shouldShowRetailInspector = $derived(
-		selectedTile !== null && (!isPlacementModeActive || placementFeedback !== null)
+		selectedTile !== null &&
+			(!construction.isPlacementModeActive || construction.placementFeedback !== null)
 	);
 	let shouldShowIndustryInspector = $derived(
-		selectedIndustryTile !== null && (!isPlacementModeActive || placementFeedback !== null)
+		selectedIndustryTile !== null &&
+			(!construction.isPlacementModeActive || construction.placementFeedback !== null)
 	);
 	let showLogisticsRouteInspector = $derived(
 		activeMapView === 'world' && selectedLogisticsRoute !== null
 	);
-	let retailBuildOptions = $derived(
-		getRetailBuildMenuOptions({
-			game,
-			city: activeCity,
-			cashCommandAvailable: mutationAvailability.openStore,
-			financeCommandAvailable: mutationAvailability.financeRetailStore,
-			seed: starterMapState.seed
-		})
-	);
-	let industrialBuildOptions = $derived(
-		getIndustrialBuildMenuOptions({
-			game,
-			cashCommandAvailable: mutationAvailability.buildIndustrialBuilding,
-			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding,
-			allowedIndustrialPlacements:
-				playMode === 'sandbox' || !activeScenarioDefinition
-					? null
-					: activeScenarioDefinition.content.industrialPlacements
-		})
-	);
-	// Shortcuts to a Warehouse placement (link alert, inspector notice) use the
-	// same availability as the Build menu option, so they never arm a
-	// placement with no legal or affordable tile.
-	let canStartWarehousePlacement = $derived(
-		canStartIndustryExpansion &&
-			allowedIndustryBuildingTypeIds.includes('warehouse') &&
-			industrialBuildOptions.some(
-				(option) => option.buildingTypeId === 'warehouse' && option.disabledReason === null
-			)
-	);
-	let retailPlacementPreview = $derived.by(() => {
-		const archetypeId = retailPlacementArchetypeId;
-		if (!archetypeId) return null;
-		const preview = createRetailPlacementPreview({
-			game,
-			city: activeCity,
-			archetypeId,
-			cashCommandAvailable: mutationAvailability.openStore,
-			financeCommandAvailable: mutationAvailability.financeRetailStore
-		});
-		if (playMode === 'sandbox' || !activeScenarioDefinition) return preview;
-		if (!isWorldCityId(activeCity.id)) return { ...preview, validTileIds: [] };
-		const cityId = activeCity.id;
-		return restrictPreviewToScenario(preview, (tileId) =>
-			isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
-				kind: 'retail-placement',
-				cityId,
-				tileId,
-				archetypeId
-			})
-		);
-	});
-	let industryPlacementPreview = $derived.by(() => {
-		const buildingTypeId = industryPlacementBuildingTypeId;
-		if (!buildingTypeId) return null;
-		const preview = createIndustryPlacementPreview({
-			game,
-			buildingTypeId,
-			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding
-		});
-		if (playMode === 'sandbox' || !activeScenarioDefinition) return preview;
-		if (!isWorldCityId(industryCity.id)) return { ...preview, validTileIds: [] };
-		const cityId = industryCity.id;
-		return restrictPreviewToScenario(preview, (tileId) =>
-			isLiveScenarioContentAllowed(playMode, activeScenarioDefinition, {
-				kind: 'industrial-placement',
-				cityId,
-				tileId,
-				buildingTypeId
-			})
-		);
-	});
-	let industryLockedReason = $derived<PlacementBlockReason | null>(
-		game ? null : { code: 'industry.lockedUntilRetail' }
-	);
-	// Full preview (path, new/reused cells, cost, block reason) for the last
-	// destination-building attempt while routing. There is no continuous map
-	// hover event, so this only updates on a destination click — including a
-	// blocked one, so the toast and the highlighted path stay in sync.
-	let railBuildPreview = $derived.by(() => {
-		const currentGame: GameState | null = game;
-		if (railBuildMode.step !== 'routing' || !currentGame || !railPreviewTargetBuildingId) {
-			return null;
-		}
-		return buildRailPreview(currentGame, {
-			originBuildingId: railBuildMode.originBuildingId,
-			waypoints: railBuildMode.waypoints,
-			destinationBuildingId: railPreviewTargetBuildingId
-		});
-	});
-	let railPreview = $derived(deriveRailPreviewRender(game, railBuildMode, railBuildPreview));
 	// The world map is a navigation/overview surface with no time controls —
 	// the ControlDesk (pause/resume + speed) is hidden there. Block the
 	// auto-tick while it owns the screen so a running simulation can't advance
@@ -717,11 +576,6 @@
 			snapshotGame: snapshotPlannerGame
 		});
 	});
-	let availableMaterialIds = $derived<MaterialId[]>(
-		isBuildMenuOpen && activeMapView === 'industry'
-			? getAvailableMaterialIds(game ?? starterMapState)
-			: []
-	);
 	const retailMapActivity = $derived({
 		seq: mapActivity.seq,
 		activities: mapActivity.activities.filter((activity) => activity.kind !== 'production')
@@ -731,72 +585,20 @@
 		activities: mapActivity.activities.filter((activity) => activity.kind === 'production')
 	});
 	let mapSnapshot = $derived(
-		createCityMapSnapshot(game ?? starterMapState, selectedTileId, retailPlacementPreview)
+		createCityMapSnapshot(
+			game ?? starterMapState,
+			selectedTileId,
+			construction.retailPlacementPreview
+		)
 	);
 	let industryMapSnapshot = $derived(
 		createIndustryMapSnapshot(
 			game ?? starterMapState,
 			selectedIndustryTileId,
-			industryPlacementPreview,
-			railPreview
+			construction.industryPlacementPreview,
+			construction.railPreviewRender
 		)
 	);
-
-	function formatPlacementFeedback(reason: PlacementBlockReason | null): string | null {
-		return formatPlacementBlockReason(reason, i18n);
-	}
-
-	function financeFailureMessage(code: FinanceFailureCode): string {
-		return i18n.t(`financePanel.failures.${code}` as never);
-	}
-
-	function clearPendingFinancedPurchase(): void {
-		financePurchaseReview = dismissFinancePurchaseReview(financePurchaseReview);
-		financedPurchaseReturnFocus = null;
-	}
-
-	function openFinancedPurchaseReview(purchase: PendingFinancedPurchase): void {
-		financedPurchaseReturnFocus =
-			document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		financePurchaseReview = openFinancePurchaseReview(financePurchaseReview, purchase);
-	}
-
-	// Text for the placement-status plaque while rail-building: a block
-	// reason (if any) always wins, then a ready-to-confirm cost summary once
-	// a valid destination attempt exists, then step-specific instructions.
-	// The block reason can come from either an explicit destination-click
-	// rejection (placementFeedback) or the derived preview recomputing
-	// against a freshly pushed waypoint that makes the route unreachable —
-	// handleRailBuildTileClick clears placementFeedback when a waypoint is
-	// added, so without surfacing preview.blockReason the plaque would
-	// silently fall back to "pick destination" and hide the real blocker.
-	function railBuildStatusText(): string {
-		const blocked = formatPlacementFeedback(placementFeedback);
-		if (blocked) {
-			return blocked;
-		}
-
-		const preview = railBuildPreview;
-		if (preview?.blockReason) {
-			return (
-				formatPlacementBlockReason(
-					{ code: 'industry.rawPlacementBlocked', context: preview.blockReason },
-					i18n
-				) ?? i18n.t('railBuild.pickDestination')
-			);
-		}
-
-		if (preview) {
-			return i18n.t('railBuild.confirm', {
-				cells: i18n.format.integer(preview.newCellKeys.length),
-				cost: i18n.format.currency(preview.cost)
-			});
-		}
-
-		return railBuildMode.step === 'origin'
-			? i18n.t('railBuild.pickOrigin')
-			: i18n.t('railBuild.pickDestination');
-	}
 
 	onMount(() => {
 		void saves.initialize().then(async () => {
@@ -878,24 +680,14 @@
 		selectedWorldCityId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
-		cancelPlacement();
+		construction.cancel();
 		focusedLogisticsRouteId = null;
 		selectedLogisticsRouteId = routeId;
 	}
 
 	function selectTile(tileId: string) {
 		clearLogisticsRouteSelection();
-		if (retailPlacementArchetypeId) {
-			// Placement previews only mark valid 2x2 anchors. If the user clicks a
-			// non-anchor cell that sits inside a valid footprint, resolve to that
-			// footprint's anchor so the click places the store instead of being
-			// rejected as an invalid anchor.
-			const anchorTileId = retailPlacementPreview
-				? resolveRetailPlacementAnchorTileId(retailPlacementPreview, activeCity, tileId)
-				: tileId;
-			placeRetailAtTile(retailPlacementArchetypeId, anchorTileId);
-			return;
-		}
+		if (construction.tryConstructionClick('retail', tileId)) return;
 
 		// Resolve a click inside a placed 2x2 store footprint to that store's
 		// anchor so the inspector shows the anchor's tile-derived stats
@@ -910,18 +702,7 @@
 
 	function selectIndustryTile(tileId: string) {
 		clearLogisticsRouteSelection();
-		if (railBuildMode.step !== 'idle') {
-			handleRailBuildTileClick(tileId);
-			return;
-		}
-
-		if (industryPlacementBuildingTypeId) {
-			const anchorTileId = industryPlacementPreview
-				? resolveIndustryPlacementAnchorTileId(industryPlacementPreview, industryCity, tileId)
-				: tileId;
-			placeIndustryAtTile(industryPlacementBuildingTypeId, anchorTileId);
-			return;
-		}
+		if (construction.tryConstructionClick('industry', tileId)) return;
 
 		// Resolve a click inside a placed 2x2 industrial building footprint to
 		// that building's anchor for the same reason as selectTile above.
@@ -938,52 +719,6 @@
 		selectedWorldCityId = null;
 	}
 
-	function handleRailBuildTileClick(tileId: string): void {
-		const result = reduceRailBuildClick(
-			{
-				game,
-				city: industryCity,
-				mode: railBuildMode,
-				targetBuildingId: railPreviewTargetBuildingId
-			},
-			tileId
-		);
-		if (!result) return;
-		if (result.commit) void gameRouteController.buildRail(result.commit);
-		railBuildMode = result.mode;
-		railPreviewTargetBuildingId = result.targetBuildingId;
-		placementFeedback = result.feedback;
-		if (result.sfx) playSfx(result.sfx);
-	}
-
-	// Canvas owns Escape/right-click; the page must not cancel the same event again.
-	function handleRailBuildCancelled(): void {
-		const result = cancelRailBuildStep(railBuildMode);
-		if (!result) return;
-		railBuildMode = result.mode;
-		railPreviewTargetBuildingId = result.targetBuildingId;
-		placementFeedback = result.feedback;
-	}
-
-	function toggleRailBuildMode(): void {
-		if (railBuildMode.step !== 'idle') {
-			railBuildMode = { step: 'idle' };
-			railPreviewTargetBuildingId = null;
-			placementFeedback = null;
-			return;
-		}
-
-		if (!game || activeMapView !== 'industry' || !mutationAvailability.buildRail) {
-			return;
-		}
-
-		isBuildMenuOpen = false;
-		retailPlacementArchetypeId = null;
-		industryPlacementBuildingTypeId = null;
-		placementFeedback = null;
-		railBuildMode = { step: 'origin' };
-	}
-
 	function upgradeRailSegmentHandler(segmentId: string): void {
 		if (game && mutationAvailability.upgradeRail) {
 			void gameRouteController.upgradeRail(industryCity.id, segmentId);
@@ -994,26 +729,6 @@
 		if (game && mutationAvailability.demolishRail) {
 			void gameRouteController.demolishRail(industryCity.id, segmentId);
 		}
-	}
-
-	function openBuildMenu(): void {
-		if (
-			activeMapView === 'world' ||
-			(activeMapView === 'retail' ? !canStartRetailExpansion : !canStartIndustryExpansion)
-		) {
-			return;
-		}
-
-		isGameMenuOpen = false;
-		saves.close();
-		activeManagementPanelId = null;
-		isBuildMenuOpen = true;
-		playSfx('sfx.ui.panel-open');
-	}
-
-	function closeBuildMenu(): void {
-		isBuildMenuOpen = false;
-		playSfx('sfx.ui.panel-close');
 	}
 
 	function showMap(view: MapViewId): void {
@@ -1031,8 +746,8 @@
 			selectedLogisticsRouteId,
 			focusedLogisticsRouteId
 		}));
-		if (view === 'world') isBuildMenuOpen = false;
-		cancelPlacement();
+		if (view === 'world') construction.hideMenu();
+		construction.cancel();
 	}
 
 	function setActiveMapView(mapView: MapViewId): void {
@@ -1066,7 +781,7 @@
 		selectedWorldCityId = null;
 		selectedTileId = null;
 		selectedIndustryTileId = null;
-		cancelPlacement();
+		construction.cancel();
 	}
 
 	function openSelectedWorldCity(cityId: string): void {
@@ -1088,7 +803,7 @@
 			allowedWorldCityIds,
 			mutationAvailability.financeWorldCity
 		);
-		if (purchase) openFinancedPurchaseReview(purchase);
+		if (purchase) construction.review(purchase);
 	}
 
 	function closeWorldInspector(): void {
@@ -1098,7 +813,7 @@
 	function openManagementPanel(panelId: ManagementPanelId): void {
 		isGameMenuOpen = false;
 		saves.close();
-		isBuildMenuOpen = false;
+		construction.hideMenu();
 		if (panelId !== 'logistics') {
 			focusedLogisticsRouteId = null;
 			logisticsRoutePreset = null;
@@ -1165,7 +880,7 @@
 		logisticsRoutePreset = null;
 		focusedRetailSupplyCityId = null;
 		storeDetailFocus.close();
-		isBuildMenuOpen = false;
+		construction.hideMenu();
 		isSupplyAdvisorOpen = false;
 		// Pause the auto-tick whenever the active play mode or scenario run
 		// changes (start/restart/import a challenge, return to sandbox, etc.)
@@ -1175,7 +890,7 @@
 		isAlertsMenuOpen = false;
 		activeManagementPanelId = null;
 		focusedFinanceLoanId = null;
-		cancelPlacement();
+		construction.cancel();
 	}
 
 	function synchronizeControllerState(state: Readonly<GameRouteControllerState>): void {
@@ -1211,55 +926,13 @@
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
 		clearLogisticsRouteSelection();
-		cancelPlacement();
+		construction.cancel();
 		// Only a successful load re-arms the sandbox opening and cash guidance.
 		sandboxOpeningGuidanceDismissed = false;
 		cashRecoveryDismissed = false;
 		// Pause the auto-tick so the player can review the loaded state
 		// before time resumes.
 		simulationPaused = true;
-	}
-
-	function armRetailPlacement(archetypeId: ArchetypeId): void {
-		if (!canStartRetailExpansion || !allowedRetailArchetypeIds.includes(archetypeId)) return;
-		retailPlacementArchetypeId = archetypeId;
-		industryPlacementBuildingTypeId = null;
-		railBuildMode = { step: 'idle' };
-		railPreviewTargetBuildingId = null;
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		selectedWorldCityId = null;
-		placementFeedback = null;
-		isBuildMenuOpen = false;
-		playSfx('sfx.build.arm');
-	}
-
-	function armIndustryPlacement(buildingTypeId: IndustrialBuildingTypeId): void {
-		if (!canStartIndustryExpansion || !allowedIndustryBuildingTypeIds.includes(buildingTypeId))
-			return;
-		industryPlacementBuildingTypeId = buildingTypeId;
-		retailPlacementArchetypeId = null;
-		railBuildMode = { step: 'idle' };
-		railPreviewTargetBuildingId = null;
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		selectedWorldCityId = null;
-		placementFeedback = null;
-		isBuildMenuOpen = false;
-		playSfx('sfx.build.arm');
-	}
-
-	function clearPlacementMode(): void {
-		retailPlacementArchetypeId = null;
-		industryPlacementBuildingTypeId = null;
-		railBuildMode = { step: 'idle' };
-		railPreviewTargetBuildingId = null;
-		placementFeedback = null;
-	}
-
-	function cancelPlacement(): void {
-		clearPlacementMode();
-		clearPendingFinancedPurchase();
 	}
 
 	function openSupplyAdvisor(productId?: ProductId): void {
@@ -1269,7 +942,7 @@
 				productId
 			};
 		}
-		isBuildMenuOpen = false;
+		construction.hideMenu();
 		isSupplyAdvisorOpen = true;
 	}
 
@@ -1300,7 +973,7 @@
 
 	function closePlannerOverlays(): void {
 		isSupplyAdvisorOpen = false;
-		isBuildMenuOpen = false;
+		construction.hideMenu();
 		isGameMenuOpen = false;
 		storeDetailFocus.close();
 		isCheatSheetOpen = false;
@@ -1315,7 +988,7 @@
 		selectedIndustryTileId = null;
 		selectedWorldCityId = null;
 		clearLogisticsRouteSelection();
-		cancelPlacement();
+		construction.cancel();
 	}
 
 	async function switchToPlannerSupplyCity(cityId: WorldCityId): Promise<boolean> {
@@ -1335,18 +1008,13 @@
 			getGame: () => game,
 			closeOverlays: closePlannerOverlays,
 			switchToSupplyCity: switchToPlannerSupplyCity,
-			armIndustryPlacement,
+			armIndustryPlacement: construction.armIndustry,
 			selectIndustryTile,
 			openLogistics: openLogisticsManagement,
 			openStores: openStoresManagement,
 			enterRailBuildMode: (mode) => {
 				isSupplyAdvisorOpen = false;
-				isBuildMenuOpen = false;
-				retailPlacementArchetypeId = null;
-				industryPlacementBuildingTypeId = null;
-				railBuildMode = mode;
-				railPreviewTargetBuildingId = null;
-				placementFeedback = null;
+				construction.enterRailRouting(mode);
 			},
 			canBuildRail: mutationAvailability.buildRail,
 			canManageLogistics: mutationAvailability.manageLogistics,
@@ -1456,208 +1124,6 @@
 		return gameRouteController.upgradeStore(storeId);
 	}
 
-	function placeRetailAtTile(archetypeId: ArchetypeId, tileId: string): void {
-		if (!canStartRetailExpansion || !allowedRetailArchetypeIds.includes(archetypeId)) return;
-		// Don't early-return on tiles outside the preview's validTileIds: let
-		// the block-reason helper run so a click on a road/river/occupied tile
-		// surfaces the specific reason instead of a silent no-op.
-		const blockReason = getRetailPlacementBlockReason({
-			game,
-			city: activeCity,
-			tileId,
-			archetypeId,
-			cashCommandAvailable: mutationAvailability.openStore,
-			financeCommandAvailable: mutationAvailability.financeRetailStore
-		});
-
-		if (blockReason) {
-			selectedTileId = tileId;
-			selectedIndustryTileId = null;
-			selectedWorldCityId = null;
-			placementFeedback = blockReason;
-			playSfx('sfx.build.invalid');
-			return;
-		}
-
-		if (!game) {
-			if (!mutationAvailability.openStore) return;
-			const tile = getTileById(activeCity, tileId);
-
-			if (!tile) {
-				placementFeedback = { code: 'retail.unknownCityTile' };
-				playSfx('sfx.build.invalid');
-				return;
-			}
-
-			// Pause the auto-tick so the player can review their newly founded
-			// store before time starts flowing.
-			simulationPaused = true;
-			void gameRouteController.foundStore({
-				archetypeId,
-				city: activeCity,
-				tileId: tile.id,
-				seed: starterMapState.seed
-			});
-		} else {
-			const tile = getTileById(activeCity, tileId);
-			if (!tile) {
-				placementFeedback = { code: 'retail.unknownCityTile' };
-				playSfx('sfx.build.invalid');
-				return;
-			}
-			const expectedCost = getExpansionSetupCost(tile, archetypeId);
-			const paymentPath = resolveExpansionPurchasePaymentPath({
-				cashCommandAvailable: mutationAvailability.openStore,
-				financeCommandAvailable: mutationAvailability.financeRetailStore,
-				cash: game.cash,
-				expectedCost
-			});
-			if (paymentPath === 'finance') {
-				const offer = getExpansionFinanceOffer(game, expectedCost);
-				if (!offer) {
-					placementFeedback = { code: 'retail.requiresCash', amount: expectedCost };
-					playSfx('sfx.build.invalid');
-					return;
-				}
-				openFinancedPurchaseReview({ kind: 'retail', tileId, archetypeId, expectedCost, offer });
-				clearPlacementMode();
-				selectedTileId = tileId;
-				selectedIndustryTileId = null;
-				selectedWorldCityId = null;
-				return;
-			}
-			if (paymentPath === 'requiresCash') {
-				placementFeedback = { code: 'retail.requiresCash', amount: expectedCost };
-				playSfx('sfx.build.invalid');
-				return;
-			}
-			void gameRouteController.openStore(tileId, archetypeId);
-		}
-
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		selectedWorldCityId = null;
-		cancelPlacement();
-	}
-
-	function placeIndustryAtTile(buildingTypeId: IndustrialBuildingTypeId, tileId: string): void {
-		if (!canStartIndustryExpansion || !allowedIndustryBuildingTypeIds.includes(buildingTypeId))
-			return;
-		// Don't early-return on tiles outside the preview's validTileIds: let
-		// the block-reason helper run so a click on a wrong-resource/occupied
-		// tile surfaces the specific reason instead of a silent no-op.
-		const blockReason = getIndustryBuildPlacementBlockReason({
-			game,
-			tileId,
-			buildingTypeId,
-			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding
-		});
-
-		if (blockReason) {
-			selectedIndustryTileId = tileId;
-			selectedTileId = null;
-			selectedWorldCityId = null;
-			placementFeedback = blockReason;
-			playSfx('sfx.build.invalid');
-			return;
-		}
-
-		if (!game) {
-			placementFeedback = { code: 'industry.lockedUntilRetail' };
-			playSfx('sfx.build.invalid');
-			return;
-		}
-
-		const expectedCost = INDUSTRIAL_BUILDING_TYPES[buildingTypeId]?.buildCost;
-		if (expectedCost === undefined) {
-			placementFeedback = { code: 'industry.unknownBuildingType' };
-			playSfx('sfx.build.invalid');
-			return;
-		}
-		const paymentPath = resolveExpansionPurchasePaymentPath({
-			cashCommandAvailable: mutationAvailability.buildIndustrialBuilding,
-			financeCommandAvailable: mutationAvailability.financeIndustrialBuilding,
-			cash: game.cash,
-			expectedCost
-		});
-		if (paymentPath === 'finance') {
-			const offer = getExpansionFinanceOffer(game, expectedCost);
-			if (!offer) {
-				placementFeedback = { code: 'industry.requiresCash', buildingTypeId, amount: expectedCost };
-				playSfx('sfx.build.invalid');
-				return;
-			}
-			openFinancedPurchaseReview({ kind: 'industry', tileId, buildingTypeId, expectedCost, offer });
-			clearPlacementMode();
-			selectedIndustryTileId = tileId;
-			selectedTileId = null;
-			selectedWorldCityId = null;
-			return;
-		}
-		if (paymentPath === 'requiresCash') {
-			placementFeedback = { code: 'industry.requiresCash', buildingTypeId, amount: expectedCost };
-			playSfx('sfx.build.invalid');
-			return;
-		}
-
-		void gameRouteController.buildIndustrialBuilding(tileId, buildingTypeId);
-		selectedIndustryTileId = null;
-		selectedTileId = null;
-		selectedWorldCityId = null;
-		cancelPlacement();
-	}
-
-	async function confirmFinancedPurchase(): Promise<void> {
-		if (!game) return;
-		const gameSnapshot = game;
-		const started = beginFinancePurchaseConfirmation(financePurchaseReview);
-		if (!started) return;
-		financePurchaseReview = started.state;
-		const { request } = started;
-
-		let result: GameRouteCommitResult;
-		if (request.command.kind === 'world') {
-			result = await gameRouteController.financeWorldCity(...request.command.args);
-		} else if (request.command.kind === 'retail') {
-			result = await gameRouteController.financeRetailStore(...request.command.args);
-		} else {
-			result = await gameRouteController.financeIndustrialBuilding(...request.command.args);
-		}
-
-		if (isGameRouteCommitted(result)) {
-			if (financePurchaseReview.generation !== request.generation) return;
-			selectedTileId = null;
-			selectedIndustryTileId = null;
-			selectedWorldCityId = null;
-			clearPlacementMode();
-			financePurchaseReview = settleFinancePurchaseConfirmation(financePurchaseReview, request, {
-				kind: 'committed'
-			});
-			return;
-		}
-
-		const feedback =
-			result.status === 'domain-rejected'
-				? financeFailureMessage(result.code)
-				: i18n.t('financePanel.ui.failed');
-		financePurchaseReview = settleFinancePurchaseConfirmation(financePurchaseReview, request, {
-			kind: 'rejected',
-			feedback,
-			refreshedPurchase: shouldRefreshFinancedPurchase(result)
-				? refreshedFinancedPurchase(request.purchase, game ?? gameSnapshot)
-				: undefined
-		});
-	}
-
-	function finishFinancedPurchaseReviewDismissal(): void {
-		clearPlacementMode();
-		const returnFocus = financedPurchaseReturnFocus;
-		financedPurchaseReturnFocus = null;
-		if (returnFocus) {
-			void tick().then(() => returnFocus.focus());
-		}
-	}
-
 	function closeInspector() {
 		selectedTileId = null;
 		storeDetailFocus.close();
@@ -1734,7 +1200,10 @@
 		}
 		showMap('industry');
 		// Prefer a legal fix; otherwise inspect the building that raised the alert.
-		if (destination.fix === 'warehouse' && startWarehousePlacement()) return;
+		if (destination.fix === 'warehouse' && construction.canStartWarehousePlacement) {
+			construction.armIndustry('warehouse');
+			return;
+		}
 		if (
 			destination.fix === 'rail' &&
 			destination.buildingId &&
@@ -1744,23 +1213,16 @@
 		selectedIndustryTileId = destination.tileId;
 	}
 
-	function startWarehousePlacement(): boolean {
-		if (!canStartWarehousePlacement) return false;
-		armIndustryPlacement('warehouse');
-		return true;
-	}
-
 	function startRailFromBuilding(buildingId: string): boolean {
 		if (!game || !mutationAvailability.buildRail) return false;
 		if (!game.industrialBuildings.some((building) => building.id === buildingId)) return false;
-		isBuildMenuOpen = false;
 		isSupplyAdvisorOpen = false;
-		retailPlacementArchetypeId = null;
-		industryPlacementBuildingTypeId = null;
 		selectedIndustryTileId = null;
-		placementFeedback = null;
-		railPreviewTargetBuildingId = null;
-		railBuildMode = { step: 'routing', originBuildingId: buildingId, waypoints: [] };
+		construction.enterRailRouting({
+			step: 'routing',
+			originBuildingId: buildingId,
+			waypoints: []
+		});
 		return true;
 	}
 
@@ -1804,7 +1266,7 @@
 							storeDetailFocus.close();
 							break;
 						case 'build-menu':
-							isBuildMenuOpen = false;
+							construction.hideMenu();
 							break;
 						case 'game-menu':
 							isGameMenuOpen = false;
@@ -1818,7 +1280,7 @@
 					}
 					break;
 				case 'cancel-placement':
-					cancelPlacement();
+					construction.cancel();
 					break;
 				case 'clear-selection':
 					if (resolution.kind === 'worldCity') selectedWorldCityId = null;
@@ -1842,7 +1304,7 @@
 			isInteractiveTarget: isInteractiveControl(event.target),
 			hasModifier,
 			hasBlockingOverlay,
-			isMenuOpen: isBuildMenuOpen || activeManagementPanelId !== null,
+			isMenuOpen: construction.isMenuOpen || activeManagementPanelId !== null,
 			activeMapView,
 			hasGame: game !== null
 		});
@@ -1854,10 +1316,10 @@
 		event.preventDefault();
 
 		if (action.type === 'toggle-build') {
-			if (isBuildMenuOpen) {
-				closeBuildMenu();
+			if (construction.isMenuOpen) {
+				construction.closeMenu();
 			} else {
-				openBuildMenu();
+				construction.openMenu();
 			}
 		} else if (action.type === 'toggle-panel') {
 			if (activeManagementPanelId === action.panel) {
@@ -1925,7 +1387,7 @@
 				{industryMapSnapshot}
 				{industryMapActivity}
 				onSelectIndustryTile={selectIndustryTile}
-				onCancelRailBuild={handleRailBuildCancelled}
+				onCancelRailBuild={construction.cancelRailStep}
 				{railKeyboardEnabled}
 			/>
 		</div>
@@ -2007,13 +1469,15 @@
 			day={game?.day ?? 1}
 			managementItems={managementPanelMenuItems}
 			buildDisabled={activeMapView === 'world' ||
-				(activeMapView === 'retail' ? !canStartRetailExpansion : !canStartIndustryExpansion)}
+				(activeMapView === 'retail'
+					? !construction.canStartRetailExpansion
+					: !construction.canStartIndustryExpansion)}
 			advanceDisabled={game === null || !mutationAvailability.advanceDay}
 			pauseDisabled={game === null}
 			railBuildDisabled={!mutationAvailability.buildRail}
 			disabledReason={game === null ? i18n.t('controlDesk.timeLockedHint') : mutationDisabledReason}
 			{i18n}
-			onBuild={openBuildMenu}
+			onBuild={construction.openMenu}
 			onOpenManagement={(id) =>
 				id === 'logistics' ? openLogisticsManagement() : openManagementPanel(id)}
 			paused={simulationPaused}
@@ -2022,61 +1486,17 @@
 			onSelectSpeed={setSimulationSpeed}
 			onOpenShortcuts={() => (isCheatSheetOpen = true)}
 			showRailBuild={activeMapView === 'industry' && game !== null}
-			railBuildActive={railBuildMode.step !== 'idle'}
-			onToggleRailBuild={toggleRailBuildMode}
+			railBuildActive={construction.isRailActive}
+			onToggleRailBuild={construction.toggleRail}
 		/>
-		{#if isPlacementModeActive}
-			<div
-				class="placement-status plaque z-[26]"
-				role="status"
-				aria-label={i18n.t('route.placement.status')}
-			>
-				<span
-					>{railBuildMode.step !== 'idle'
-						? railBuildStatusText()
-						: (formatPlacementFeedback(placementFeedback) ??
-							(industryPlacementPreview?.requiredResource
-								? i18n.t('placement.chooseResourceTile', {
-										resource: i18n.labels.industryResource(
-											industryPlacementPreview.requiredResource
-										)
-									})
-								: i18n.t('placement.chooseHighlightedTile')))}</span
-				>
-				<button type="button" class="btn-danger" onclick={cancelPlacement}>
-					{i18n.t('route.placement.cancel')}
-				</button>
-			</div>
-		{/if}
-		<FinancePurchaseReviewHost
-			bind:review={financePurchaseReview}
-			cash={game?.cash ?? 0}
+		<ConstructionControls
+			ui={construction}
 			{i18n}
-			formatApr={i18n.format.apr}
-			onConfirm={confirmFinancedPurchase}
-			onDismiss={finishFinancedPurchaseReviewDismissal}
+			cash={game?.cash ?? 0}
+			view={activeMapView}
+			guidanceVisible={showOpeningGuidance || showCashRecovery}
+			onOpenAdvisor={openSupplyAdvisor}
 		/>
-		{#if isBuildMenuOpen && activeMapView !== 'world'}
-			<BuildMenu
-				activeMapView={activeMapView === 'industry' ? 'industry' : 'retail'}
-				{i18n}
-				retailOptions={retailBuildOptions}
-				industryOptions={industrialBuildOptions}
-				{industryLockedReason}
-				{availableMaterialIds}
-				canOpenStore={mutationAvailability.openStore}
-				canFinanceRetailStore={mutationAvailability.financeRetailStore}
-				canBuildIndustrialBuilding={mutationAvailability.buildIndustrialBuilding}
-				canFinanceIndustrialBuilding={mutationAvailability.financeIndustrialBuilding}
-				{allowedRetailArchetypeIds}
-				{allowedIndustryBuildingTypeIds}
-				disabledReason={mutationDisabledReason}
-				onChooseRetail={armRetailPlacement}
-				onChooseIndustry={armIndustryPlacement}
-				onOpenAdvisor={openSupplyAdvisor}
-				onClose={closeBuildMenu}
-			/>
-		{/if}
 		{#if isSupplyAdvisorOpen}
 			<SupplyAdvisor
 				result={supplyPlannerResult}
@@ -2120,8 +1540,8 @@
 			onDemolishIndustryBuilding={(id) => {
 				void gameRouteController.demolishIndustrialBuilding(id);
 			}}
-			onBuildIndustryWarehouse={canStartWarehousePlacement
-				? () => void startWarehousePlacement()
+			onBuildIndustryWarehouse={construction.canStartWarehousePlacement
+				? () => construction.armIndustry('warehouse')
 				: undefined}
 			onBuildRailFromBuilding={mutationAvailability.buildRail
 				? (id) => void startRailFromBuilding(id)
@@ -2374,33 +1794,6 @@
 		}
 	}
 
-	.placement-status {
-		position: absolute;
-		left: 6rem;
-		bottom: 4.5rem;
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		max-width: min(32rem, calc(100vw - 2rem));
-		padding: 0.65rem 0.8rem;
-	}
-
-	/* While the guidance card owns the bottom strip, the plaque takes the
-	   non-overlapping slot directly above the measured card — the default
-	   4.5rem bottom edge sits inside the card's band, so the opaque plaque
-	   would otherwise paint over the card's reason text. */
-	.map-layout.opening-guidance-visible .placement-status {
-		bottom: calc(5.75rem + var(--og-card-h, 0px) + 0.5rem);
-	}
-
-	.placement-status span {
-		min-width: 0;
-		color: var(--ink-700);
-		font-family: var(--font-body);
-		font-size: 0.9rem;
-		font-style: italic;
-	}
-
 	/* Management launchers surfaced inside the hamburger menu so they remain
 	   reachable on narrow viewports where the control desk hides the .manage
 	   cluster. Mirrors GameMenu's .menu-label and .view-tab look. */
@@ -2440,18 +1833,5 @@
 	.menu-management button:focus-visible {
 		background: var(--paper-200);
 		border-color: var(--brass-500);
-	}
-	@media (max-width: 600px) {
-		.placement-status {
-			left: 0.5rem;
-			bottom: 8.6rem;
-		}
-
-		/* Mobile mirror of the desktop slot: the card holds 8.6rem off the
-		   bottom, so the plaque clears the measured card top instead of
-		   landing on its bottom edge. */
-		.map-layout.opening-guidance-visible .placement-status {
-			bottom: calc(8.6rem + var(--og-card-h, 0px) + 0.5rem);
-		}
 	}
 </style>
