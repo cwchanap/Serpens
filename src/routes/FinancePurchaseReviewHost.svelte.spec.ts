@@ -33,7 +33,7 @@ function harnessProps(overrides: Record<string, unknown> = {}) {
 }
 
 describe('FinancePurchaseReviewHost route Escape boundary', () => {
-	it('updates the parent-bound review without clearing selected outer state', async () => {
+	it('dismisses through the single parent path without clearing selected outer state', async () => {
 		expect.assertions(6);
 		render(FinancePurchaseReviewHostHarness, harnessProps());
 
