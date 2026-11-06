@@ -8,6 +8,7 @@ import type {
 	IndustrialBuilding,
 	IndustrialBuildingTypeId,
 	ProductId,
+	RecurringRoute,
 	WorldCityId
 } from '$lib/game/types';
 import type {
@@ -185,6 +186,36 @@ const connectRailAction: SupplyPlannerAction = {
 	buildingId: 'rail-target-1',
 	destinationBuildingId: 'water-pump-1',
 	materialId: 'bottled-water'
+};
+
+/** Live recommendation once the recommended import route already exists. */
+const editRouteAction: SupplyPlannerAction = {
+	kind: 'edit-route',
+	routeId: 'route-1',
+	field: 'capacity',
+	from: 2,
+	to: 8
+};
+
+/** A route the player created after the advisor displayed its plan. */
+const standingRoute: RecurringRoute = {
+	id: 'route-1',
+	originCityId: 'breadbasket-basin',
+	destinationCityId: 'industry-city',
+	materialId: 'water',
+	capacity: 8,
+	frequencyDays: 1,
+	leadTimeDays: 2,
+	transportCostPerUnit: 1,
+	priority: 0,
+	state: 'active',
+	nextDispatchOnDay: 1
+};
+
+/** Live recommendation once the recommended producer already stands. */
+const standingProducerUpgradeAction: SupplyPlannerAction = {
+	...upgradeAction,
+	buildingId: 'existing-pump-1'
 };
 
 interface PlannerHolder {
@@ -387,11 +418,20 @@ it('action revalidates the live recommendation before dispatching', async () => 
 	const live = $state(holder);
 	const calls: string[] = [];
 	const hosts: SupplyPlannerHandoffHost[] = [];
-	const buildPlan = createCalculation((game, availability) =>
-		game.cash < buildProducerAction.cost || !availability.canBuildIndustry
-			? plannerResult({ kind: 'none', reason: 'unaffordable' })
-			: plannerResult(buildProducerAction)
-	);
+	const buildPlan = createCalculation((game, availability) => {
+		if (game.cash < buildProducerAction.cost || !availability.canBuildIndustry) {
+			return plannerResult({ kind: 'none', reason: 'unaffordable' });
+		}
+		// Standing buildings/routes change what the planner recommends for the
+		// same product, modeling live world edits after the plan was displayed.
+		if (game.industrialBuildings.length > 0) {
+			return plannerResult(standingProducerUpgradeAction);
+		}
+		if (game.logistics.recurringRoutes.length > 0) {
+			return plannerResult(editRouteAction);
+		}
+		return plannerResult(buildProducerAction);
+	});
 	const ui = createSupplyPlannerUi({
 		getGame: () => live.game,
 		getRetailCityId: () => live.retailCityId,
@@ -430,11 +470,45 @@ it('action revalidates the live recommendation before dispatching', async () => 
 	expect(buildPlan.mock.calls.length).toBe(displayedCalls + 2);
 	expect(calls).toEqual([]);
 
+	// Buildings changed after display: the recommended producer already
+	// stands, so the live recommendation is an upgrade and the stale build
+	// click dispatches nothing (no arm, no inspect, no navigation).
+	live.availability = allAvailability();
+	live.game = {
+		...live.game!,
+		industrialBuildings: [building('water-pump', 'existing-pump-1')]
+	};
+	const afterBuildingChange = ui.result;
+	if (afterBuildingChange?.status !== 'ready') {
+		throw new Error('fixture must re-derive a ready plan');
+	}
+	expect(afterBuildingChange.plan.recommendation.action).toEqual(standingProducerUpgradeAction);
+	await ui.handleAction(buildProducerAction);
+	expect(buildPlan.mock.calls.length).toBe(displayedCalls + 4);
+	expect(calls).toEqual([]);
+
+	// Routes changed after display: the recommended import route now exists,
+	// so the live recommendation is an edit and the stale build click still
+	// dispatches nothing.
+	live.game = {
+		...live.game!,
+		industrialBuildings: [],
+		logistics: { ...live.game!.logistics, recurringRoutes: [standingRoute] }
+	};
+	const afterRouteChange = ui.result;
+	if (afterRouteChange?.status !== 'ready') {
+		throw new Error('fixture must re-derive a ready plan');
+	}
+	expect(afterRouteChange.plan.recommendation.action).toEqual(editRouteAction);
+	await ui.handleAction(buildProducerAction);
+	expect(buildPlan.mock.calls.length).toBe(displayedCalls + 6);
+	expect(calls).toEqual([]);
+
 	// A closed planner ignores actions entirely — not even a host is built.
 	ui.close();
 	const hostsBeforeClose = hosts.length;
 	await ui.handleAction(buildProducerAction);
-	expect(buildPlan.mock.calls.length).toBe(displayedCalls + 2);
+	expect(buildPlan.mock.calls.length).toBe(displayedCalls + 6);
 	expect(hosts).toHaveLength(hostsBeforeClose);
 });
 
@@ -516,6 +590,30 @@ it('deferred switch failures and stale buildings abort without arming or inspect
 	]);
 	expect(mounted.hosts[1]!.selectIndustryTile).not.toHaveBeenCalled();
 
+	// Wrong city: the building survives the awaited switch but lands outside
+	// the snapshot's supply city, so neither arm nor inspect may fire.
+	holder.game = {
+		...holder.game!,
+		industrialBuildings: [building('water-pump', 'upgrade-target-1')]
+	};
+	holder.onSwitched = () => {
+		holder.game = {
+			...holder.game!,
+			industrialBuildings: [building('water-pump', 'upgrade-target-1', 'breadbasket-basin')]
+		};
+	};
+	await ui.handleAction(upgradeAction);
+	expect(mounted.calls).toEqual([
+		'closeOverlays',
+		'switch:industry-city',
+		'closeOverlays',
+		'switch:industry-city',
+		'closeOverlays',
+		'switch:industry-city'
+	]);
+	expect(mounted.hosts[2]!.selectIndustryTile).not.toHaveBeenCalled();
+	expect(mounted.hosts[2]!.armIndustryPlacement).not.toHaveBeenCalled();
+
 	// Rail handoff requires current permission and disconnected membership.
 	holder.onSwitched = undefined;
 	holder.game = {
@@ -532,6 +630,8 @@ it('deferred switch failures and stale buildings abort without arming or inspect
 		'switch:industry-city',
 		'closeOverlays',
 		'switch:industry-city',
+		'closeOverlays',
+		'switch:industry-city',
 		'rail:rail-target-1'
 	]);
 
@@ -539,7 +639,7 @@ it('deferred switch failures and stale buildings abort without arming or inspect
 	holder.permissions.canBuildRail = false;
 	await ui.handleAction(connectRailAction);
 	expect(mounted.calls).toEqual([]);
-	expect(mounted.hosts[3]!.enterRailBuildMode).not.toHaveBeenCalled();
+	expect(mounted.hosts[4]!.enterRailBuildMode).not.toHaveBeenCalled();
 
 	mounted.calls.length = 0;
 	holder.permissions.canBuildRail = true;
