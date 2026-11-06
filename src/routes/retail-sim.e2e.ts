@@ -1240,6 +1240,7 @@ interface SavedGame {
 	progression: {
 		claims: Array<{ tierId: string; claimedOnDay: number }>;
 	};
+	industrialBuildings: GameState['industrialBuildings'];
 	policy: GameState['policy'];
 	policyOverrides: GameState['policyOverrides'];
 	managerDelegations: GameState['managerDelegations'];
@@ -5207,6 +5208,9 @@ test('supply advisor recommends and arms a starter build', async ({ page }) => {
 	// Starter recommendations are raw producers, so the plaque names the
 	// resource tile they need ("Choose a highlighted Water Source tile…").
 	await expect(page.getByText(/choose a highlighted .*tile to build/i)).toBeVisible();
+	// The handoff only arms the placement: nothing is built — and therefore
+	// nothing is persisted — until the player clicks a highlighted tile.
+	await expect.poll(async () => (await readAutoSaveGame(page)).industrialBuildings.length).toBe(0);
 });
 
 test('supply planner warehouse', async ({ page }) => {
@@ -5260,6 +5264,16 @@ test('supply planner warehouse', async ({ page }) => {
 	const placementStatus = page.getByRole('status', { name: /placement status/i });
 	await expect(placementStatus).toContainText(/choose a highlighted tile to build/i);
 	await expect(industryCanvas).toHaveAttribute('data-placement-preview-mode', 'active');
+	// Arming the warehouse did not build it: the fixture's single warehouse is
+	// still the only one until the player submits a tile click.
+	await expect
+		.poll(
+			async () =>
+				(await readAutoSaveGame(page)).industrialBuildings.filter(
+					(building) => building.typeId === 'warehouse'
+				).length
+		)
+		.toBe(1);
 	await placementStatus.getByRole('button', { name: /^cancel$/i }).click();
 	await expect(industryCanvas).toHaveAttribute('data-placement-preview-mode', 'inactive');
 
