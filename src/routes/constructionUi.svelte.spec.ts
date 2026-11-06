@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
 import { getTileById } from '$lib/game/city';
+import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { buildIndustrialBuilding } from '$lib/game/industryPlacement';
 import {
 	createIndustryPlacementPreview,
@@ -244,12 +245,31 @@ it('construction projections read live game, city, definition and permission inp
 	expect(ui.retailPlacementPreview?.validTileIds.length).toBeGreaterThan(0);
 	expect(ui.industryLockedReason).toBeNull();
 
-	// Replacing the city replaces the preview without recreating the owner.
-	const otherCity = holder.game!.cities.find((city) => city.id !== holder.game!.activeCityId);
-	if (otherCity) {
-		holder.retailCity = otherCity;
-		expect(ui.retailPlacementPreview).not.toBeNull();
-	}
+	// Replacing the live city changes the preview contents without recreating
+	// the owner. createNewGame creates only the active retail city, so lookup
+	// can never supply a different one: synthesize a deliberately different
+	// city (one valid anchor turned into a road tile) and require the preview
+	// to drop that anchor — a captured/stale city getter keeps it valid.
+	const previewBefore = ui.retailPlacementPreview!;
+	const roadedAnchor = previewBefore.validTileIds[0]!;
+	const roadedCity: City = {
+		...holder.retailCity,
+		tiles: holder.retailCity.tiles.map((tile) =>
+			tile.id === roadedAnchor ? { ...tile, feature: 'road' as const } : tile
+		)
+	};
+	holder.retailCity = roadedCity;
+	expect(ui.isPlacementModeActive).toBe(true);
+	expect(ui.retailPlacementPreview?.validTileIds).not.toContain(roadedAnchor);
+	expect(ui.retailPlacementPreview).toEqual(
+		createRetailPlacementPreview({
+			game: holder.game,
+			city: roadedCity,
+			archetypeId: 'grocery',
+			cashCommandAvailable: true,
+			financeCommandAvailable: true
+		})
+	);
 
 	// Permission replacement flips the expansion gates and menu availability.
 	holder.availability = allAvailability({ openStore: false, financeRetailStore: false });
@@ -278,6 +298,16 @@ it('construction projections read live game, city, definition and permission inp
 	holder.definition = resolveScenarioDefinition({ scenarioId: 'local-lifeline', version: 1 })!;
 	expect(ui.allowedIndustryBuildingTypeIds).toEqual(['water-bottler']);
 	expect(ui.allowedRetailArchetypeIds).toEqual(['convenience']);
+
+	// Industry-city replacement flows through the live city id: scenario
+	// placements only apply to world industry cities, so a deliberately
+	// non-world city must zero the preview while the placement stays armed.
+	ui.armIndustry('water-bottler');
+	expect(ui.industryPlacementPreview?.validTileIds.length).toBeGreaterThan(0);
+	holder.industryCity = { ...holder.industryCity, id: 'retired-industry-city' };
+	expect(ui.isPlacementModeActive).toBe(true);
+	expect(ui.industryPlacementPreview?.validTileIds).toEqual([]);
+
 	holder.definition = resolveScenarioDefinition({ scenarioId: 'first-profit', version: 1 })!;
 	expect(ui.allowedIndustryBuildingTypeIds).toEqual([]);
 });
@@ -356,10 +386,17 @@ it('non-anchor footprint clicks resolve to the footprint anchor', () => {
 		financeCommandAvailable: true
 	});
 	const industrial = industryNonAnchorFootprint(mounted.holder.industryCity, industryPreview);
+	// The command never settles: cleanup must happen without awaiting it.
+	commands.buildIndustrialBuilding.mockReturnValue(new Promise(() => {}));
 	ui.armIndustry('flour-mill');
 	expect(ui.tryConstructionClick('industry', industrial.cell)).toBe(true);
 	expect(commands.buildIndustrialBuilding).toHaveBeenCalledTimes(1);
 	expect(commands.buildIndustrialBuilding).toHaveBeenCalledWith(industrial.anchor, 'flour-mill');
+	// Immediate industrial cash-path cleanup (retail arming + commit, then
+	// industry arming + commit): selections cleared and placement disarmed
+	// synchronously, before the never-settling command resolves.
+	expect(mounted.counters.cleared).toBe(4);
+	expect(ui.isPlacementModeActive).toBe(false);
 });
 
 it('no authored future placement blocks arming in scenarios', () => {
@@ -479,6 +516,46 @@ it('finance-only opens review while no-offer insufficient cash stays requiresCas
 	ui.armRetail('grocery');
 	expect(ui.tryConstructionClick('retail', anchor)).toBe(false);
 	expect(commands.financeRetailStore).not.toHaveBeenCalled();
+});
+
+it('cash-covered finance-only stays requiresCash without review or purchase commands', () => {
+	const mounted = mountConstruction();
+	const { ui, commands } = mounted;
+	const anchor = validRetailAnchor(mounted.holder, 'grocery');
+	const tile = getTileById(mounted.holder.retailCity, anchor)!;
+	const expectedCost = getExpansionSetupCost(tile, 'grocery');
+	const industryAnchor = validIndustryAnchor(mounted.holder, 'flour-mill');
+	const buildCost = INDUSTRIAL_BUILDING_TYPES['flour-mill'].buildCost;
+
+	// Retail: cash covers the setup cost, but only financing is permitted —
+	// the session must not spend cash through a command it was not granted.
+	mounted.holder.availability = allAvailability({ openStore: false, financeRetailStore: true });
+	mounted.holder.game = { ...mounted.holder.game!, cash: expectedCost + 1_000 };
+	ui.armRetail('grocery');
+	expect(ui.tryConstructionClick('retail', anchor)).toBe(true);
+	expect(ui.placementFeedback).toEqual({ code: 'retail.requiresCash', amount: expectedCost });
+	expect(ui.purchaseReview.purchase).toBeNull();
+	expect(commands.openStore).not.toHaveBeenCalled();
+	expect(commands.financeRetailStore).not.toHaveBeenCalled();
+	expect(ui.isPlacementModeActive).toBe(true);
+
+	// Industry mirror at the flour-mill's fixed build cost.
+	mounted.holder.availability = allAvailability({
+		buildIndustrialBuilding: false,
+		financeIndustrialBuilding: true
+	});
+	mounted.holder.game = { ...mounted.holder.game!, cash: buildCost + 1_000 };
+	ui.armIndustry('flour-mill');
+	expect(ui.tryConstructionClick('industry', industryAnchor)).toBe(true);
+	expect(ui.placementFeedback).toEqual({
+		code: 'industry.requiresCash',
+		buildingTypeId: 'flour-mill',
+		amount: buildCost
+	});
+	expect(ui.purchaseReview.purchase).toBeNull();
+	expect(commands.buildIndustrialBuilding).not.toHaveBeenCalled();
+	expect(commands.financeIndustrialBuilding).not.toHaveBeenCalled();
+	expect(ui.isPlacementModeActive).toBe(true);
 });
 
 it('stale confirmation keeps the newer review, selection and armed placement', async () => {
