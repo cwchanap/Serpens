@@ -7,11 +7,11 @@
 	import CashRecoveryGuidance from '$lib/components/game/CashRecoveryGuidance.svelte';
 	import SavePanelHost from './SavePanelHost.svelte';
 	import { createSaveUi } from './saveUi.svelte';
-	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
-	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
-	import ScenarioObjectivePanel from '$lib/components/game/ScenarioObjectivePanel.svelte';
-	import ScenarioResultsDialog from '$lib/components/game/ScenarioResultsDialog.svelte';
-	import ScenarioStatusStrip from '$lib/components/game/ScenarioStatusStrip.svelte';
+	import { createScenarioUi } from './scenarioUi.svelte';
+	import ScenarioCatalogHost from './ScenarioCatalogHost.svelte';
+	import ScenarioProgressHost from './ScenarioProgressHost.svelte';
+	import ScenarioMenuActions from './ScenarioMenuActions.svelte';
+	import ScenarioResultsHost from './ScenarioResultsHost.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
 	import StoreDetailModal from '$lib/components/game/StoreDetailModal.svelte';
 	import SupplyAdvisor from '$lib/components/game/SupplyAdvisor.svelte';
@@ -76,16 +76,6 @@
 	import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 	import { restrictPreviewToScenario } from './placementRoute';
 	import {
-		buildScenarioProgressView,
-		buildScenarioResultsView,
-		buildScenarioCatalogCards,
-		resolveScenarioContributorLabel,
-		scenarioDiagnosticText,
-		scenarioShareCodeErrorText,
-		type ScenarioCatalogActionResult,
-		type ScenarioCatalogCardViewModel
-	} from '$lib/i18n/scenarioCopy';
-	import {
 		createI18n,
 		readLocalePreference,
 		saveLocalePreference,
@@ -138,25 +128,13 @@
 	} from '$lib/game/types';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
-	import {
-		currentScenarioDefinition,
-		listScenarioCatalogEntries,
-		resolveScenarioDefinition
-	} from '$lib/scenarios/catalog';
+	import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 	import {
 		isLiveScenarioContentAllowed,
 		shouldResetScenarioView,
-		toCatalogActionResult,
 		type ScenarioRouteIdentity
 	} from './scenarioRoute';
-	import { decodeScenarioShareCode } from '$lib/scenarios/shareCode';
-	import type {
-		ScenarioDefinition,
-		ScenarioOperationError,
-		ScenarioPersistenceSummary,
-		ScenarioResult,
-		ScenarioRun
-	} from '$lib/scenarios/types';
+	import type { ScenarioOperationError, ScenarioResult, ScenarioRun } from '$lib/scenarios/types';
 	import {
 		GameRouteController,
 		createMutationAvailability,
@@ -251,7 +229,6 @@
 
 	let sandboxGame = $state<GameState | null>(null);
 	let activeScenarioRun = $state<ScenarioRun | null>(null);
-	let scenarioEvidenceGame = $state<GameState | null>(null);
 	let lastScenarioResult = $state<ScenarioResult | null>(null);
 	let lastScenarioBestUpdated = $state(false);
 	let scenarioOperationError = $state<ScenarioOperationError | null>(null);
@@ -287,12 +264,8 @@
 			mapActivity = nextMapActivityBatch(mapActivity, previous, next);
 		},
 		onSaveSummary: (summary) => saves.acceptSummary(summary),
-		onScenarioSummary: (summary) => {
-			scenarioSummary = summary;
-		},
-		onScenarioTerminalRun: (run) => {
-			scenarioEvidenceGame = run.game;
-		},
+		onScenarioSummary: (summary) => scenarios.acceptSummary(summary),
+		onScenarioTerminalRun: (run) => scenarios.acceptTerminalRun(run),
 		onAutoSave: (metadata) => saves.acceptAutoSave(metadata),
 		onAutoSaveError: (error) => saves.acceptAutoSaveError(error),
 		onReadOnlySelection: (kind, tileId) => {
@@ -343,57 +316,7 @@
 		readLocalePreference(safeLocalStorage(), collectNavigatorLocaleCandidates())
 	);
 	let i18n = $derived(createI18n(activeLocale));
-	let activeScenarioDefinition = $derived<ScenarioDefinition | null>(
-		activeScenarioRun ? (resolveScenarioDefinition(activeScenarioRun.definition) ?? null) : null
-	);
-	let activeScenarioTitle = $derived(
-		activeScenarioDefinition
-			? i18n.t(activeScenarioDefinition.titleKey)
-			: (activeScenarioRun?.definition.scenarioId ?? '')
-	);
-	let activeScenarioVersionLabel = $derived(
-		activeScenarioRun
-			? i18n.t('scenarioStatus.versionEligibility', {
-					version: activeScenarioRun.definition.version,
-					eligibility: i18n.t(
-						activeScenarioRun.eligibility === 'ranked'
-							? 'scenarioStatus.ranked'
-							: 'scenarioStatus.unranked'
-					)
-				})
-			: ''
-	);
-	let dismissedScenarioResult = $state<ScenarioResult | null>(null);
-	let isScenarioObjectivePanelOpen = $state(false);
-	let scenarioProgressView = $derived(
-		activeScenarioDefinition && activeScenarioRun
-			? buildScenarioProgressView(
-					activeScenarioDefinition,
-					activeScenarioRun,
-					i18n,
-					resolveScenarioContributor
-				)
-			: null
-	);
-	let lastScenarioDefinition = $derived(
-		lastScenarioResult ? (resolveScenarioDefinition(lastScenarioResult.definition) ?? null) : null
-	);
-	let scenarioResultsView = $derived(
-		lastScenarioDefinition && lastScenarioResult
-			? buildScenarioResultsView(
-					lastScenarioDefinition,
-					lastScenarioResult,
-					lastScenarioBestUpdated,
-					i18n,
-					resolveScenarioContributor
-				)
-			: null
-	);
-	let isScenarioResultsDialogOpen = $derived(
-		scenarioResultsView !== null &&
-			lastScenarioResult !== null &&
-			lastScenarioResult !== dismissedScenarioResult
-	);
+	let activeScenarioDefinition = $derived.by(() => scenarios.definition);
 	let mutationAvailability = $derived(
 		createMutationAvailability({
 			playMode,
@@ -506,35 +429,28 @@
 		},
 		onLoaded: resetViewStateAfterLoad
 	});
-	let isScenarioCatalogOpen = $state(false);
-	let scenarioSummary = $state<ScenarioPersistenceSummary>({
-		activeRunsByScenarioId: {},
-		bestResultsByDefinitionKey: {},
-		diagnostics: []
+	const scenarios = createScenarioUi({
+		commands: gameRouteController,
+		getActiveRun: () => activeScenarioRun,
+		getResult: () => lastScenarioResult,
+		getBestUpdated: () => lastScenarioBestUpdated,
+		getError: () => scenarioOperationError,
+		getRetry: () => retryScenarioOperation,
+		getPending: () => scenarioCommandPending,
+		getReady: () => scenariosReady,
+		getMode: () => playMode,
+		getGame: () => game,
+		getI18n: () => i18n,
+		resolveDefinition: resolveScenarioDefinition,
+		onOpenCatalog: () => {
+			isGameMenuOpen = false;
+			saves.close();
+			activeManagementPanelId = null;
+		},
+		onResultsClosed: () => {
+			activeManagementPanelId = null;
+		}
 	});
-	let inspectedScenarioRefs = $state<
-		Partial<Record<ScenarioRun['definition']['scenarioId'], ScenarioRun['definition']>>
-	>({});
-	let effectiveScenarioSummary = $derived<ScenarioPersistenceSummary>({
-		...scenarioSummary,
-		activeRunsByScenarioId: activeScenarioRun
-			? {
-					...scenarioSummary.activeRunsByScenarioId,
-					[activeScenarioRun.definition.scenarioId]: activeScenarioRun
-				}
-			: scenarioSummary.activeRunsByScenarioId
-	});
-	let scenarioCatalogCards = $derived(
-		buildScenarioCatalogCards(
-			listScenarioCatalogEntries(),
-			effectiveScenarioSummary,
-			i18n,
-			inspectedScenarioRefs
-		)
-	);
-	let scenarioOperationErrorText = $derived(
-		scenarioOperationError ? scenarioDiagnosticText(scenarioOperationError, i18n) : null
-	);
 	let audioController: GameAudioController | null = $state(null);
 	let audioPreferences = $state<AudioPreferences>({ ...DEFAULT_AUDIO_PREFERENCES });
 	let managementPanelMenuItems = $derived.by<ManagementPanelMenuItem[]>(() =>
@@ -654,8 +570,8 @@
 		const openOverlays = new Set<OverlayId>();
 		if (financePurchaseReview.purchase !== null) openOverlays.add('finance-review');
 		if (saves.isOpen) openOverlays.add('save-panel');
-		if (isScenarioCatalogOpen) openOverlays.add('scenario-catalog');
-		if (isScenarioResultsDialogOpen) openOverlays.add('scenario-results');
+		if (scenarios.isCatalogOpen) openOverlays.add('scenario-catalog');
+		if (scenarios.isResultsOpen) openOverlays.add('scenario-results');
 		if (isCheatSheetOpen) openOverlays.add('cheat-sheet');
 		if (isSupplyAdvisorOpen) openOverlays.add('supply-advisor');
 		if (storeDetailFocus.isOpen) openOverlays.add('store-detail');
@@ -1080,192 +996,6 @@
 		}
 	}
 
-	function openScenarioCatalog(): void {
-		isGameMenuOpen = false;
-		saves.close();
-		activeManagementPanelId = null;
-		isScenarioCatalogOpen = true;
-	}
-
-	function resolveScenarioContributor(id: string): string {
-		return resolveScenarioContributorLabel(
-			activeScenarioRun?.game ?? scenarioEvidenceGame ?? game,
-			id,
-			i18n
-		);
-	}
-
-	function handleScenarioCardResult(result: GameRouteCommitResult): void {
-		if (result.status === 'committed') {
-			isScenarioCatalogOpen = false;
-		} else if (result.status === 'unavailable' && !scenarioOperationError) {
-			scenarioOperationError = { code: 'persistence-read-failed', diagnostics: [] };
-		}
-	}
-
-	async function startScenarioCard(
-		card: ScenarioCatalogCardViewModel,
-		confirmed: boolean,
-		expectedRunId?: string | null,
-		expectedRevision?: number | null
-	): Promise<ScenarioCatalogActionResult> {
-		const definition = currentScenarioDefinition(card.id);
-		if (!definition) {
-			return {
-				status: 'error',
-				message: i18n.t('scenarioDiagnostics.staleDefinition')
-			};
-		}
-		const result = await gameRouteController.startScenarioRun(
-			definition,
-			definition.officialSeed,
-			confirmed,
-			expectedRunId,
-			expectedRevision
-		);
-		const action = toCatalogActionResult(
-			result,
-			'scenarioCatalog.startReplacementConfirmation',
-			scenarioOperationError,
-			i18n
-		);
-		if (action.status === 'started') isScenarioCatalogOpen = false;
-		return action;
-	}
-
-	async function startCurrentVersionCard(
-		card: ScenarioCatalogCardViewModel,
-		confirmed: boolean,
-		expectedRunId?: string | null,
-		expectedRevision?: number | null
-	): Promise<ScenarioCatalogActionResult> {
-		const definition = currentScenarioDefinition(card.id);
-		if (!definition) {
-			return {
-				status: 'error',
-				message: i18n.t('scenarioDiagnostics.staleDefinition')
-			};
-		}
-		const result = await gameRouteController.startScenarioRun(
-			definition,
-			definition.officialSeed,
-			confirmed,
-			expectedRunId,
-			expectedRevision
-		);
-		const action = toCatalogActionResult(
-			result,
-			'scenarioCatalog.olderVersionConfirmation',
-			scenarioOperationError,
-			i18n
-		);
-		if (action.status === 'started') isScenarioCatalogOpen = false;
-		return action;
-	}
-
-	async function resumeScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
-		const result = await gameRouteController.resumeScenarioRun(card.id);
-		handleScenarioCardResult(result);
-	}
-
-	async function restartScenarioCard(card: ScenarioCatalogCardViewModel): Promise<void> {
-		if (!card.activeDefinitionRef) return;
-		const result = await gameRouteController.restartScenarioRun(card.activeDefinitionRef);
-		handleScenarioCardResult(result);
-	}
-
-	async function restartActiveScenario(): Promise<void> {
-		if (!activeScenarioRun) return;
-		const result = await gameRouteController.restartScenarioRun(activeScenarioRun.definition);
-		if (result.status === 'committed') isScenarioCatalogOpen = false;
-	}
-
-	async function restartResultScenario(): Promise<void> {
-		if (!lastScenarioResult || !lastScenarioDefinition) return;
-		const result = await gameRouteController.startScenarioRun(
-			lastScenarioDefinition,
-			lastScenarioResult.seed
-		);
-		if (result.status === 'committed') dismissedScenarioResult = lastScenarioResult;
-	}
-
-	function closeScenarioResults(): void {
-		dismissedScenarioResult = lastScenarioResult;
-		// After terminal publication `activeScenarioRun` is null and `playMode`
-		// is still `scenario`, so `game` is null and the menu no longer offers
-		// Return to sandbox — `foundStore` is also rejected by the scenario-mode
-		// gate. Flip back to sandbox so the player can continue sandbox play.
-		gameRouteController.returnToSandbox();
-		// An open control-tower panel would fall back to the starter state under
-		// the sandbox game; clear it to avoid rendering a stale panel.
-		activeManagementPanelId = null;
-	}
-
-	function openCatalogFromResults(): void {
-		closeScenarioResults();
-		openScenarioCatalog();
-	}
-
-	function returnToSandboxFromResults(): void {
-		closeScenarioResults();
-		gameRouteController.returnToSandbox();
-	}
-
-	async function importScenarioCode(
-		code: string,
-		confirmed: boolean,
-		expectedRunId?: string | null,
-		expectedRevision?: number | null
-	): Promise<ScenarioCatalogActionResult> {
-		const decoded = decodeScenarioShareCode(code, resolveScenarioDefinition);
-		if (!decoded.ok)
-			return { status: 'error', message: scenarioShareCodeErrorText(decoded.code, i18n) };
-		inspectedScenarioRefs = {
-			...inspectedScenarioRefs,
-			[decoded.value.definition.scenarioId]: decoded.value.definition
-		};
-		const definition = resolveScenarioDefinition(decoded.value.definition);
-		if (!definition) {
-			return {
-				status: 'error',
-				message: scenarioShareCodeErrorText('unsupported-version', i18n)
-			};
-		}
-		const result = await gameRouteController.importScenarioRun(
-			definition,
-			decoded.value.seed,
-			confirmed,
-			expectedRunId,
-			expectedRevision
-		);
-		const action = toCatalogActionResult(
-			result,
-			'scenarioCatalog.importReplacementConfirmation',
-			scenarioOperationError,
-			i18n
-		);
-		if (action.status === 'started') isScenarioCatalogOpen = false;
-		return action;
-	}
-
-	async function copyScenarioCode(code: string): Promise<boolean> {
-		try {
-			await globalThis.navigator.clipboard.writeText(code);
-			return true;
-		} catch {
-			return false;
-		}
-	}
-
-	async function abandonActiveScenario(): Promise<void> {
-		// The controller refreshes the scenario summary after abandon (including
-		// the conflict case where a newer replacement run survives in storage),
-		// so the catalog stays in sync via onScenarioSummary. Do not manually
-		// delete the entry here — that would hide a replacement run that the
-		// controller intentionally preserved.
-		await gameRouteController.abandonScenarioRun();
-	}
-
 	function openBuildMenu(): void {
 		if (
 			activeMapView === 'world' ||
@@ -1459,7 +1189,7 @@
 		scenarioCommandPending = state.scenarioCommandPending;
 		scenariosReady = state.scenariosReady;
 		if (state.playMode === 'sandbox') {
-			scenarioEvidenceGame = null;
+			scenarios.clearEvidence();
 		}
 		const identity: ScenarioRouteIdentity = {
 			playMode: state.playMode,
@@ -1576,7 +1306,7 @@
 		isCheatSheetOpen = false;
 		isAlertsMenuOpen = false;
 		saves.close();
-		isScenarioCatalogOpen = false;
+		scenarios.closeCatalog();
 		activeManagementPanelId = null;
 		focusedLogisticsRouteId = null;
 		logisticsRoutePreset = null;
@@ -2239,43 +1969,14 @@
 						{/each}
 					</div>
 				</div>
-				{#if playMode === 'scenario' && activeScenarioRun}
-					<ScenarioMenuSection
-						{i18n}
-						title={activeScenarioTitle}
-						versionLabel={activeScenarioVersionLabel}
-						pending={scenarioCommandPending}
-						onDetails={openScenarioCatalog}
-						onRestart={restartActiveScenario}
-						onCatalog={openScenarioCatalog}
-						onSandbox={() => gameRouteController.returnToSandbox()}
-						onAbandon={abandonActiveScenario}
-					/>
-				{:else}
-					<button type="button" onclick={openScenarioCatalog}>
-						{i18n.t('scenarioCatalog.catalog')}
-					</button>
-					<button type="button" onclick={saves.open}>{i18n.t('gameMenu.saves')}</button>
-				{/if}
+				<ScenarioMenuActions ui={scenarios} {playMode} {i18n} onOpenSaves={saves.open} />
 				<AudioSettings {i18n} preferences={audioPreferences} onChange={updateAudioPreferences} />
 			{/snippet}
 		</TopBar>
 
-		{#if playMode === 'scenario' && activeScenarioRun && scenarioProgressView}
+		{#if scenarios.showProgress}
 			<div class="scenario-progress">
-				<ScenarioStatusStrip
-					view={scenarioProgressView}
-					{i18n}
-					expanded={isScenarioObjectivePanelOpen}
-					pending={scenarioCommandPending}
-					error={scenarioOperationErrorText}
-					onToggle={() => (isScenarioObjectivePanelOpen = !isScenarioObjectivePanelOpen)}
-					onRetry={() => retryScenarioOperation?.()}
-					onDismissError={() => gameRouteController.dismissScenarioOperationError()}
-				/>
-				{#if isScenarioObjectivePanelOpen}
-					<ScenarioObjectivePanel view={scenarioProgressView} {i18n} />
-				{/if}
+				<ScenarioProgressHost ui={scenarios} {i18n} />
 			</div>
 		{/if}
 
@@ -2557,38 +2258,8 @@
 
 	<SavePanelHost ui={saves} {game} {i18n} />
 
-	{#if isScenarioCatalogOpen}
-		<ScenarioCatalog
-			cards={scenarioCatalogCards}
-			{i18n}
-			operationError={scenarioOperationErrorText}
-			pending={scenarioCommandPending}
-			persistenceReady={scenariosReady}
-			onStart={startScenarioCard}
-			onResume={resumeScenarioCard}
-			onRestart={restartScenarioCard}
-			onStartCurrent={startCurrentVersionCard}
-			onImport={importScenarioCode}
-			onCopy={copyScenarioCode}
-			onRetry={() => retryScenarioOperation?.()}
-			onClose={() => (isScenarioCatalogOpen = false)}
-		/>
-	{/if}
-
-	{#if isScenarioResultsDialogOpen && scenarioResultsView}
-		<ScenarioResultsDialog
-			view={scenarioResultsView}
-			{i18n}
-			pending={scenarioCommandPending}
-			error={scenarioOperationErrorText}
-			onRestart={restartResultScenario}
-			onCatalog={openCatalogFromResults}
-			onSandbox={returnToSandboxFromResults}
-			onRetry={() => retryScenarioOperation?.()}
-			onDismissError={() => gameRouteController.dismissScenarioOperationError()}
-			onClose={closeScenarioResults}
-		/>
-	{/if}
+	<ScenarioCatalogHost ui={scenarios} {i18n} />
+	<ScenarioResultsHost ui={scenarios} {i18n} />
 
 	{#if isCheatSheetOpen}
 		<ShortcutCheatSheet {i18n} onClose={() => (isCheatSheetOpen = false)} />

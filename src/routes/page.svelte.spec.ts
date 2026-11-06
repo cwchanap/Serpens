@@ -51,6 +51,7 @@ import {
 	createMutationAvailability,
 	type GameRouteControllerOptions
 } from './gameRouteController';
+import { shouldResetScenarioView, type ScenarioRouteIdentity } from './scenarioRoute';
 import { createStoreDetailFocus } from './storeDetailFocus.svelte';
 import { reduceRailBuildClick, type RailBuildMode } from './railBuild';
 interface Deferred<T> {
@@ -906,6 +907,18 @@ describe('GameRouteController sandbox handlers', () => {
 });
 
 describe('GameRouteController scenario integration', () => {
+	it('distinguishes local publication from same-run adoption without resetting objective lifetime', () => {
+		const previous: ScenarioRouteIdentity = {
+			playMode: 'scenario',
+			runId: 'same-run',
+			status: 'active',
+			scenarioRunSyncEpoch: 4
+		};
+		expect(shouldResetScenarioView(undefined, previous)).toBe(false);
+		expect(shouldResetScenarioView(previous, { ...previous })).toBe(false);
+		expect(shouldResetScenarioView(previous, { ...previous, scenarioRunSyncEpoch: 5 })).toBe(true);
+		expect(shouldResetScenarioView(previous, { ...previous, playMode: 'sandbox' })).toBe(true);
+	});
 	it('persists starts before publication and can replace an older run with the selected current definition', async () => {
 		expect.assertions(8);
 		const current = scenarioDefinition({ version: 1 });
