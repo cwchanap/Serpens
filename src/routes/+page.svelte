@@ -5,7 +5,8 @@
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
 	import OpeningGuidance from '$lib/components/game/OpeningGuidance.svelte';
 	import CashRecoveryGuidance from '$lib/components/game/CashRecoveryGuidance.svelte';
-	import SavePanel from '$lib/components/game/SavePanel.svelte';
+	import SavePanelHost from './SavePanelHost.svelte';
+	import { createSaveUi } from './saveUi.svelte';
 	import ScenarioCatalog from '$lib/components/game/ScenarioCatalog.svelte';
 	import ScenarioMenuSection from '$lib/components/game/ScenarioMenuSection.svelte';
 	import ScenarioObjectivePanel from '$lib/components/game/ScenarioObjectivePanel.svelte';
@@ -88,8 +89,7 @@
 		createI18n,
 		readLocalePreference,
 		saveLocalePreference,
-		type StorageLike,
-		type TranslationKey
+		type StorageLike
 	} from '$lib/i18n/index';
 	import type { SupportedLocale } from '$lib/i18n/locales';
 	import { summarizeReports } from '$lib/game/reports';
@@ -136,9 +136,7 @@
 		TransferOrder,
 		WorldCityId
 	} from '$lib/game/types';
-	import { SaveDataError } from '$lib/persistence/saveCodec';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
-	import type { SaveSlotMetadata, SaveStoreDiagnostic } from '$lib/persistence/saveTypes';
 	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
 	import {
 		currentScenarioDefinition,
@@ -196,15 +194,7 @@
 	}
 
 	type SimulationSpeed = 1 | 2 | 5;
-	type SaveFeedbackKind = 'status' | 'error';
-
 	const SIMULATION_DAY_MS = 5_000;
-
-	interface SaveFeedback {
-		kind: SaveFeedbackKind;
-		messageKey: TranslationKey;
-		params?: Record<string, string | number>;
-	}
 
 	/**
 	 * Returns `globalThis.localStorage` when accessible, or `null` when the
@@ -296,28 +286,15 @@
 		onAcceptedGameChange: (previous, next) => {
 			mapActivity = nextMapActivityBatch(mapActivity, previous, next);
 		},
-		onSaveSummary: (summary) => {
-			autoSave = summary.autoSave;
-			manualSaveSlots = summary.manualSlots;
-			saveDiagnostics = summary.diagnostics;
-		},
+		onSaveSummary: (summary) => saves.acceptSummary(summary),
 		onScenarioSummary: (summary) => {
 			scenarioSummary = summary;
 		},
 		onScenarioTerminalRun: (run) => {
 			scenarioEvidenceGame = run.game;
 		},
-		onAutoSave: (metadata) => {
-			autoSave = metadata;
-			saveFeedback = {
-				kind: 'status',
-				messageKey: 'route.save.autoSavedDay',
-				params: { day: metadata.day }
-			};
-		},
-		onAutoSaveError: (error) => {
-			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		},
+		onAutoSave: (metadata) => saves.acceptAutoSave(metadata),
+		onAutoSaveError: (error) => saves.acceptAutoSaveError(error),
 		onReadOnlySelection: (kind, tileId) => {
 			if (kind === 'retail') {
 				selectedTileId = tileId;
@@ -518,10 +495,17 @@
 	let placementFeedback = $state<PlacementBlockReason | null>(null);
 	let financePurchaseReview = $state(createFinancePurchaseReviewState());
 	let financedPurchaseReturnFocus = $state<HTMLElement | null>(null);
-	let autoSave = $state<SaveSlotMetadata | null>(null);
-	let manualSaveSlots = $state<SaveSlotMetadata[]>([]);
-	let saveDiagnostics = $state<SaveStoreDiagnostic[]>([]);
-	let isSavePanelOpen = $state(false);
+	const saves = createSaveUi({
+		getGame: () => game,
+		getI18n: () => i18n,
+		commands: gameRouteController,
+		playSfx,
+		onOpen: () => {
+			isGameMenuOpen = false;
+			activeManagementPanelId = null;
+		},
+		onLoaded: resetViewStateAfterLoad
+	});
 	let isScenarioCatalogOpen = $state(false);
 	let scenarioSummary = $state<ScenarioPersistenceSummary>({
 		activeRunsByScenarioId: {},
@@ -551,21 +535,6 @@
 	let scenarioOperationErrorText = $derived(
 		scenarioOperationError ? scenarioDiagnosticText(scenarioOperationError, i18n) : null
 	);
-	let saveFeedback = $state<SaveFeedback | null>(null);
-	let saveStatus = $derived.by(() => {
-		const feedback = saveFeedback;
-		if (!feedback || feedback.kind !== 'status') {
-			return '';
-		}
-		return renderSaveFeedback(feedback);
-	});
-	let saveError = $derived.by(() => {
-		const feedback = saveFeedback;
-		if (!feedback || feedback.kind !== 'error') {
-			return null;
-		}
-		return renderSaveFeedback(feedback);
-	});
 	let audioController: GameAudioController | null = $state(null);
 	let audioPreferences = $state<AudioPreferences>({ ...DEFAULT_AUDIO_PREFERENCES });
 	let managementPanelMenuItems = $derived.by<ManagementPanelMenuItem[]>(() =>
@@ -684,7 +653,7 @@
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- Rebuilt from owners, never mutated after publication.
 		const openOverlays = new Set<OverlayId>();
 		if (financePurchaseReview.purchase !== null) openOverlays.add('finance-review');
-		if (isSavePanelOpen) openOverlays.add('save-panel');
+		if (saves.isOpen) openOverlays.add('save-panel');
 		if (isScenarioCatalogOpen) openOverlays.add('scenario-catalog');
 		if (isScenarioResultsDialogOpen) openOverlays.add('scenario-results');
 		if (isCheatSheetOpen) openOverlays.add('cheat-sheet');
@@ -914,9 +883,12 @@
 	}
 
 	onMount(() => {
-		void initializeSaves().then(async () => {
-			if (new URLSearchParams(window.location.search).get('ui-comparison') === '1' && autoSave) {
-				await resumeAutoSave();
+		void saves.initialize().then(async () => {
+			if (
+				new URLSearchParams(window.location.search).get('ui-comparison') === '1' &&
+				saves.autoSave
+			) {
+				await saves.resumeAutoSave();
 				selectedTileId = game?.stores[0]?.tileId ?? null;
 			}
 		});
@@ -1108,35 +1080,9 @@
 		}
 	}
 
-	async function initializeSaves(): Promise<void> {
-		try {
-			await gameRouteController.initializeSaves();
-		} catch (error) {
-			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		}
-	}
-
-	async function refreshSaveSummary(): Promise<void> {
-		await gameRouteController.refreshSaveSummary();
-	}
-
-	function openSavePanel(): void {
-		isGameMenuOpen = false;
-		activeManagementPanelId = null;
-		isSavePanelOpen = true;
-		saveFeedback = null;
-		void refreshSaveSummary().catch((error) => {
-			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		});
-	}
-
-	function closeSavePanel(): void {
-		isSavePanelOpen = false;
-	}
-
 	function openScenarioCatalog(): void {
 		isGameMenuOpen = false;
-		isSavePanelOpen = false;
+		saves.close();
 		activeManagementPanelId = null;
 		isScenarioCatalogOpen = true;
 	}
@@ -1320,33 +1266,6 @@
 		await gameRouteController.abandonScenarioRun();
 	}
 
-	function describeSaveErrorKey(error: unknown): TranslationKey {
-		console.error('Save operation failed:', error);
-
-		if (error instanceof SaveDataError) {
-			switch (error.code) {
-				case 'storage-unavailable':
-					return 'route.save.errorStorageUnavailable';
-				case 'slot-not-found':
-					return 'route.save.errorSlotNotFound';
-				default:
-					return 'route.save.errorCorrupt';
-			}
-		}
-
-		return 'route.save.errorGeneric';
-	}
-
-	function renderSaveFeedback(feedback: SaveFeedback): string {
-		const params = feedback.params ? { ...feedback.params } : undefined;
-
-		if (params && typeof params.day === 'number') {
-			params.day = i18n.format.integer(params.day);
-		}
-
-		return i18n.t(feedback.messageKey, params);
-	}
-
 	function openBuildMenu(): void {
 		if (
 			activeMapView === 'world' ||
@@ -1356,7 +1275,7 @@
 		}
 
 		isGameMenuOpen = false;
-		isSavePanelOpen = false;
+		saves.close();
 		activeManagementPanelId = null;
 		isBuildMenuOpen = true;
 		playSfx('sfx.ui.panel-open');
@@ -1448,7 +1367,7 @@
 
 	function openManagementPanel(panelId: ManagementPanelId): void {
 		isGameMenuOpen = false;
-		isSavePanelOpen = false;
+		saves.close();
 		isBuildMenuOpen = false;
 		if (panelId !== 'logistics') {
 			focusedLogisticsRouteId = null;
@@ -1571,76 +1490,6 @@
 		simulationPaused = true;
 	}
 
-	async function resumeAutoSave(): Promise<void> {
-		try {
-			const result = await gameRouteController.resumeAutoSave();
-			if (result !== 'loaded') {
-				saveFeedback = { kind: 'status', messageKey: 'route.save.noAutoSaveFound' };
-				return;
-			}
-
-			resetViewStateAfterLoad();
-			saveFeedback = { kind: 'status', messageKey: 'route.save.loadedAutoSave' };
-			await refreshSaveSummary();
-		} catch (error) {
-			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		}
-	}
-
-	async function saveManualSlot(name: string, slotId?: string): Promise<void> {
-		try {
-			// The controller saves its raw (non-proxy) game; `null` is the
-			// silent no-op while the repository or game is not ready.
-			const metadata = await gameRouteController.saveManualSlot(name, slotId);
-			if (!metadata) {
-				return;
-			}
-			saveFeedback = {
-				kind: 'status',
-				messageKey: 'route.save.savedManualSlot',
-				params: { name: metadata.name }
-			};
-			await refreshSaveSummary();
-			playSfx('sfx.save.saved');
-		} catch (error) {
-			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		}
-	}
-
-	async function loadManualSlot(slotId: string): Promise<void> {
-		try {
-			const slotName = manualSaveSlots.find((slot) => slot.id === slotId)?.name ?? slotId;
-			const result = await gameRouteController.loadManualSave(slotId);
-			if (result !== 'loaded') {
-				saveFeedback = { kind: 'status', messageKey: 'route.save.manualSlotNotFound' };
-				return;
-			}
-
-			resetViewStateAfterLoad();
-			saveFeedback = {
-				kind: 'status',
-				messageKey: 'route.save.loadedManualSlot',
-				params: { name: slotName }
-			};
-			await refreshSaveSummary();
-		} catch (error) {
-			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		}
-	}
-
-	async function deleteManualSlot(slotId: string): Promise<void> {
-		try {
-			const deleted = await gameRouteController.deleteManualSlot(slotId);
-			if (!deleted) {
-				return;
-			}
-			saveFeedback = { kind: 'status', messageKey: 'route.save.deletedManualSlot' };
-			await refreshSaveSummary();
-		} catch (error) {
-			saveFeedback = { kind: 'error', messageKey: describeSaveErrorKey(error) };
-		}
-	}
-
 	function armRetailPlacement(archetypeId: ArchetypeId): void {
 		if (!canStartRetailExpansion || !allowedRetailArchetypeIds.includes(archetypeId)) return;
 		retailPlacementArchetypeId = archetypeId;
@@ -1726,7 +1575,7 @@
 		storeDetailFocus.close();
 		isCheatSheetOpen = false;
 		isAlertsMenuOpen = false;
-		isSavePanelOpen = false;
+		saves.close();
 		isScenarioCatalogOpen = false;
 		activeManagementPanelId = null;
 		focusedLogisticsRouteId = null;
@@ -2213,7 +2062,7 @@
 				case 'close-overlay':
 					switch (resolution.overlay) {
 						case 'save-panel':
-							isSavePanelOpen = false;
+							saves.close();
 							break;
 						case 'cheat-sheet':
 							isCheatSheetOpen = false;
@@ -2406,7 +2255,7 @@
 					<button type="button" onclick={openScenarioCatalog}>
 						{i18n.t('scenarioCatalog.catalog')}
 					</button>
-					<button type="button" onclick={openSavePanel}>{i18n.t('gameMenu.saves')}</button>
+					<button type="button" onclick={saves.open}>{i18n.t('gameMenu.saves')}</button>
 				{/if}
 				<AudioSettings {i18n} preferences={audioPreferences} onChange={updateAudioPreferences} />
 			{/snippet}
@@ -2706,22 +2555,7 @@
 		/>
 	{/if}
 
-	{#if isSavePanelOpen}
-		<SavePanel
-			activeGame={game}
-			{autoSave}
-			slots={manualSaveSlots}
-			diagnostics={saveDiagnostics}
-			status={saveStatus}
-			error={saveError}
-			{i18n}
-			onResumeAutoSave={resumeAutoSave}
-			onSaveSlot={saveManualSlot}
-			onLoadSlot={loadManualSlot}
-			onDeleteSlot={deleteManualSlot}
-			onClose={closeSavePanel}
-		/>
-	{/if}
+	<SavePanelHost ui={saves} {game} {i18n} />
 
 	{#if isScenarioCatalogOpen}
 		<ScenarioCatalog

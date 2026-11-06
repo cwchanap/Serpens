@@ -60,6 +60,10 @@ describe('manual save feedback ordering', () => {
 					await panel.getByRole('textbox', { name: /slot name/i }).fill('Fail first');
 					await panel.getByRole('button', { name: /save slot/i }).click();
 					await expect.element(panel.getByRole('alert')).toBeVisible();
+					expect(logError).toHaveBeenLastCalledWith(
+						'Save operation failed:',
+						expect.objectContaining({ message: 'write boom' })
+					);
 					playSfx.mockClear();
 					vi.spyOn(repository, 'getSummary').mockReturnValue(summaryGate);
 					if (operation === 'create') {
