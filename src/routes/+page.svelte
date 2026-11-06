@@ -13,7 +13,6 @@
 	import ScenarioResultsHost from './ScenarioResultsHost.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
 	import StoreDetailModal from '$lib/components/game/StoreDetailModal.svelte';
-	import SupplyAdvisor from '$lib/components/game/SupplyAdvisor.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
 	import { createGameAudioController, type GameAudioController } from '$lib/audio/audioController';
 	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
@@ -75,20 +74,8 @@
 	} from '$lib/game/logisticsReadModels';
 	import { getFinanceMetrics } from '$lib/game/financeMetrics';
 	import { nextMapActivityBatch, type MapActivityBatch } from '$lib/game/mapActivityFeedback';
-	import type { SupplyPlannerHorizonDays } from '$lib/game/supplyPlanner';
-	import {
-		deriveSupplyPlannerResult,
-		getSupplyPlannerProductIds,
-		handoffSupplyPlannerAction,
-		resolveSupplyPlannerProductId,
-		type SupplyPlannerHandoffHost,
-		type SupplyPlannerUiContext
-	} from './supplyPlannerRoute';
-	import {
-		encodeIndustrialPlacementKey,
-		type SupplyPlannerAction,
-		type SupplyPlannerActionAvailability
-	} from '$lib/game/supplyPlannerActions';
+	import type { SupplyPlannerHandoffHost } from './supplyPlannerRoute';
+	import { encodeIndustrialPlacementKey } from '$lib/game/supplyPlannerActions';
 	import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
 	import { buildLogisticsPanelView } from '$lib/components/game/logisticsPanel';
 	import { WORLD_CITY_CATALOG, isWorldCityId } from '$lib/game/world';
@@ -124,6 +111,8 @@
 	import { createStoreDetailFocus } from './storeDetailFocus.svelte';
 	import { createConstructionUi } from './constructionUi.svelte';
 	import ConstructionControls from './ConstructionControls.svelte';
+	import { createSupplyPlannerUi } from './supplyPlannerUi.svelte';
+	import SupplyAdvisorHost from './SupplyAdvisorHost.svelte';
 	import ManagementPanelHost from './ManagementPanelHost.svelte';
 	import MapInspectorHost from './MapInspectorHost.svelte';
 	import MapSurfaceHost from './MapSurfaceHost.svelte';
@@ -259,11 +248,6 @@
 	let isCheatSheetOpen = $state(false);
 	let isGameMenuOpen = $state(false);
 	let isAlertsMenuOpen = $state(false);
-	let isSupplyAdvisorOpen = $state(false);
-	let supplyPlannerUiContext = $state<SupplyPlannerUiContext>({
-		productId: null,
-		horizonDays: 30
-	});
 	let activeManagementPanelId = $state<ManagementPanelId | null>(null);
 	let focusedFinanceLoanId = $state<string | null>(null);
 	let activeLocale = $state<SupportedLocale>(
@@ -352,24 +336,25 @@
 			})
 		);
 	});
-	let plannerProductIds = $derived.by(() =>
-		getSupplyPlannerProductIds(game, activeCity.id as WorldCityId, allowedProductIds)
-	);
-	let effectivePlannerProductId = $derived(
-		resolveSupplyPlannerProductId(supplyPlannerUiContext, plannerProductIds)
-	);
-	let plannerActionAvailability = $derived<SupplyPlannerActionAvailability>({
-		// Planner candidate affordability is cash-only (game.cash >= buildCost),
-		// so the planner must not advertise build actions when only the finance
-		// command is available. The build-menu UI still uses
-		// canStartIndustryExpansion to support both cash and finance paths.
-		canBuildIndustry: mutationAvailability.buildIndustrialBuilding,
-		canUpgradeIndustry: mutationAvailability.upgradeIndustrialBuilding,
-		canBuildRail: mutationAvailability.buildRail,
-		canManageLogistics: mutationAvailability.manageLogistics,
-		canSetRetailSupplySource: mutationAvailability.setRetailSupplySource,
-		allowedIndustryBuildingTypeIds: construction.allowedIndustryBuildingTypeIds,
-		allowedIndustrialPlacements
+	// Supply advisor owner: durable category/horizon context plus the lazy
+	// plan calculation and live handoff revalidation. The handoff bridge
+	// (overlay close, supply-city switch, map/management navigation) stays in
+	// root callbacks until Tasks 5/6 extract them into named methods.
+	const planner = createSupplyPlannerUi({
+		getGame: () => game,
+		getRetailCityId: () => activeCity.id as WorldCityId,
+		getAllowedProductIds: () => allowedProductIds,
+		getAllowedIndustryBuildingTypeIds: () => construction.allowedIndustryBuildingTypeIds,
+		getAllowedIndustrialPlacements: () => allowedIndustrialPlacements,
+		getAvailability: () => mutationAvailability,
+		createHost: plannerHandoffHost,
+		onOpen: () => construction.hideMenu(),
+		onPlanProduct: () => {
+			activeManagementPanelId = null;
+			focusedLogisticsRouteId = null;
+			logisticsRoutePreset = null;
+			focusedRetailSupplyCityId = null;
+		}
 	});
 	const saves = createSaveUi({
 		getGame: () => game,
@@ -521,7 +506,7 @@
 		if (scenarios.isCatalogOpen) openOverlays.add('scenario-catalog');
 		if (scenarios.isResultsOpen) openOverlays.add('scenario-results');
 		if (isCheatSheetOpen) openOverlays.add('cheat-sheet');
-		if (isSupplyAdvisorOpen) openOverlays.add('supply-advisor');
+		if (planner.isOpen) openOverlays.add('supply-advisor');
 		if (storeDetailFocus.isOpen) openOverlays.add('store-detail');
 		if (construction.isMenuOpen) openOverlays.add('build-menu');
 		if (isGameMenuOpen) openOverlays.add('game-menu');
@@ -562,20 +547,6 @@
 	// swallows every keyboard shortcut (panel mnemonics, 1/2/3 view navigation),
 	// which must stay available on the world view.
 	let simulationBlocked = $derived(hasBlockingOverlay || activeMapView === 'world');
-	// Keep the planner calculation behind the advisor's open gate. This avoids
-	// doing a full supply projection for a modal that is not mounted while the
-	// route-local category/horizon context remains available for reopen.
-	let supplyPlannerResult = $derived.by(() => {
-		if (!isSupplyAdvisorOpen || !game || !effectivePlannerProductId) return null;
-		return deriveSupplyPlannerResult({
-			isOpen: true,
-			game,
-			retailCityId: activeCity.id as WorldCityId,
-			productId: effectivePlannerProductId,
-			availability: plannerActionAvailability,
-			snapshotGame: snapshotPlannerGame
-		});
-	});
 	const retailMapActivity = $derived({
 		seq: mapActivity.seq,
 		activities: mapActivity.activities.filter((activity) => activity.kind !== 'production')
@@ -881,7 +852,7 @@
 		focusedRetailSupplyCityId = null;
 		storeDetailFocus.close();
 		construction.hideMenu();
-		isSupplyAdvisorOpen = false;
+		planner.close();
 		// Pause the auto-tick whenever the active play mode or scenario run
 		// changes (start/restart/import a challenge, return to sandbox, etc.)
 		// so the player can review the new state before time resumes.
@@ -935,44 +906,8 @@
 		simulationPaused = true;
 	}
 
-	function openSupplyAdvisor(productId?: ProductId): void {
-		if (productId && plannerProductIds.includes(productId)) {
-			supplyPlannerUiContext = {
-				...supplyPlannerUiContext,
-				productId
-			};
-		}
-		construction.hideMenu();
-		isSupplyAdvisorOpen = true;
-	}
-
-	function closeSupplyAdvisor(): void {
-		isSupplyAdvisorOpen = false;
-	}
-
-	function selectSupplyPlannerProduct(productId: ProductId): void {
-		if (!plannerProductIds.includes(productId)) return;
-		supplyPlannerUiContext = {
-			...supplyPlannerUiContext,
-			productId
-		};
-	}
-
-	function selectSupplyPlannerHorizon(horizonDays: SupplyPlannerHorizonDays): void {
-		supplyPlannerUiContext = { ...supplyPlannerUiContext, horizonDays };
-	}
-
-	function planSupplyProduct(productId: ProductId): void {
-		if (!plannerProductIds.includes(productId)) return;
-		activeManagementPanelId = null;
-		focusedLogisticsRouteId = null;
-		logisticsRoutePreset = null;
-		focusedRetailSupplyCityId = null;
-		openSupplyAdvisor(productId);
-	}
-
 	function closePlannerOverlays(): void {
-		isSupplyAdvisorOpen = false;
+		planner.close();
 		construction.hideMenu();
 		isGameMenuOpen = false;
 		storeDetailFocus.close();
@@ -1013,34 +948,13 @@
 			openLogistics: openLogisticsManagement,
 			openStores: openStoresManagement,
 			enterRailBuildMode: (mode) => {
-				isSupplyAdvisorOpen = false;
+				planner.close();
 				construction.enterRailRouting(mode);
 			},
 			canBuildRail: mutationAvailability.buildRail,
 			canManageLogistics: mutationAvailability.manageLogistics,
 			canSetRetailSupplySource: mutationAvailability.setRetailSupplySource
 		};
-	}
-
-	function snapshotPlannerGame(state: GameState): GameState {
-		return $state.snapshot(state);
-	}
-
-	function currentSupplyPlannerResult(): ReturnType<typeof deriveSupplyPlannerResult> {
-		return deriveSupplyPlannerResult({
-			isOpen: true,
-			game,
-			retailCityId: activeCity.id as WorldCityId,
-			productId: effectivePlannerProductId,
-			availability: plannerActionAvailability,
-			snapshotGame: snapshotPlannerGame
-		});
-	}
-
-	function handleSupplyPlannerAction(action: SupplyPlannerAction): void {
-		const currentResult = currentSupplyPlannerResult();
-		if (!currentResult) return;
-		void handoffSupplyPlannerAction(action, currentResult, plannerHandoffHost());
 	}
 
 	async function runSimulationTick(): Promise<void> {
@@ -1140,7 +1054,7 @@
 	/** Stock-table handoff: open the supply planner for one product. */
 	function planStoreSupplyProduct(productId: ProductId): void {
 		storeDetailFocus.close();
-		planSupplyProduct(productId);
+		planner.planProduct(productId);
 	}
 
 	function closeIndustryInspector() {
@@ -1216,7 +1130,7 @@
 	function startRailFromBuilding(buildingId: string): boolean {
 		if (!game || !mutationAvailability.buildRail) return false;
 		if (!game.industrialBuildings.some((building) => building.id === buildingId)) return false;
-		isSupplyAdvisorOpen = false;
+		planner.close();
 		selectedIndustryTileId = null;
 		construction.enterRailRouting({
 			step: 'routing',
@@ -1260,7 +1174,7 @@
 							isCheatSheetOpen = false;
 							break;
 						case 'supply-advisor':
-							isSupplyAdvisorOpen = false;
+							planner.close();
 							break;
 						case 'store-detail':
 							storeDetailFocus.close();
@@ -1495,21 +1409,9 @@
 			cash={game?.cash ?? 0}
 			view={activeMapView}
 			guidanceVisible={showOpeningGuidance || showCashRecovery}
-			onOpenAdvisor={openSupplyAdvisor}
+			onOpenAdvisor={planner.open}
 		/>
-		{#if isSupplyAdvisorOpen}
-			<SupplyAdvisor
-				result={supplyPlannerResult}
-				productIds={plannerProductIds}
-				selectedProductId={effectivePlannerProductId}
-				horizonDays={supplyPlannerUiContext.horizonDays}
-				{i18n}
-				onSelectProduct={selectSupplyPlannerProduct}
-				onSelectHorizon={selectSupplyPlannerHorizon}
-				onAction={handleSupplyPlannerAction}
-				onClose={closeSupplyAdvisor}
-			/>
-		{/if}
+		<SupplyAdvisorHost ui={planner} {i18n} />
 		<MapInspectorHost
 			game={game ?? starterMapState}
 			{i18n}
@@ -1565,7 +1467,7 @@
 			hiringCandidates={game?.hiringCandidates ?? []}
 			latestStoreReport={latestSelectedStoreReport}
 			focusedProductId={storeDetailFocus.focusedProductId}
-			{plannerProductIds}
+			plannerProductIds={planner.productIds}
 			onManageSupplySource={manageStoreSupplySource}
 			onPlanSupply={planStoreSupplyProduct}
 			onUpdateStoreProduct={changeStoreProduct}
@@ -1662,8 +1564,8 @@
 			onRepay={(loanId, amount) => gameRouteController.repayFinanceLoan(loanId, amount)}
 			onPayoff={(loanId) => gameRouteController.payOffFinanceLoan(loanId)}
 			onRefinance={(loanId, termDays) => gameRouteController.refinanceFinanceLoan(loanId, termDays)}
-			onPlanProduct={planSupplyProduct}
-			{plannerProductIds}
+			onPlanProduct={planner.planProduct}
+			plannerProductIds={planner.productIds}
 			onDispatchManualTransfer={(input) => gameRouteController.dispatchManualTransfer(input)}
 			onCreateRecurringRoute={(input) => gameRouteController.createRecurringRoute(input)}
 			onUpdateRecurringRoute={(routeId, input) =>
