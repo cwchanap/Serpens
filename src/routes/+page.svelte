@@ -35,7 +35,7 @@
 		selectInspectorRailSegments
 	} from './mapInspectorRoute';
 	import { createRoutePreviewGame } from './routePreviewGame';
-	import { resolveShortcutAction } from '$lib/game/keyboardShortcuts';
+	import { resolveShortcutAction, type ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
 	import { createCityMapSnapshot } from '$lib/game/mapRender';
 	import { resolveWorldCityId } from '$lib/game/cityInventory';
@@ -755,6 +755,13 @@
 		}
 	}
 
+	/** Shell entry opens (keyboard/hamburger/ControlDesk) keep the legacy
+	 * fresh-open logistics semantics; only explicit handoffs prefill focus. */
+	function openManagementEntry(id: ManagementPanelId): void {
+		if (id === 'logistics') management.openLogistics();
+		else management.open(id);
+	}
+
 	function unlockAudio(): void {
 		void audioController?.unlock();
 	}
@@ -1155,7 +1162,7 @@
 			if (management.activePanelId === action.panel) {
 				management.close();
 			} else {
-				management.open(action.panel);
+				openManagementEntry(action.panel);
 			}
 		} else if (action.type === 'toggle-pause') {
 			toggleSimulationPause();
@@ -1248,7 +1255,7 @@
 						aria-label={i18n.t('route.menu.managementPanels')}
 					>
 						{#each management.menu as item (item.id)}
-							<button type="button" onclick={() => management.open(item.id)}>
+							<button type="button" onclick={() => openManagementEntry(item.id)}>
 								{item.label}
 							</button>
 						{/each}
@@ -1301,7 +1308,7 @@
 			disabledReason={game === null ? i18n.t('controlDesk.timeLockedHint') : mutationDisabledReason}
 			{i18n}
 			onBuild={construction.openMenu}
-			onOpenManagement={(id) => management.open(id)}
+			onOpenManagement={openManagementEntry}
 			paused={simulationPaused}
 			{simulationSpeed}
 			onTogglePause={toggleSimulationPause}

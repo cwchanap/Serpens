@@ -23,6 +23,7 @@ import {
 } from './managementUi.svelte';
 import { createMutationAvailability, type MutationAvailability } from './gameRouteController';
 import ManagementPanelHost from './ManagementPanelHost.svelte';
+import ManagementPanelHostHarness from './ManagementPanelHostHarness.svelte';
 
 vi.mock('$lib/game/financeMetrics', async (importOriginal) => {
 	const original = await importOriginal<typeof import('$lib/game/financeMetrics')>();
@@ -193,6 +194,28 @@ async function clickRouteRemoveButton(routeId: string): Promise<void> {
 	});
 }
 
+/** Renders the host through the page-mirroring conditional-mount harness. */
+function renderHarness(
+	props: Omit<HostProps, 'onRouteRemoved'> & { initialSelectedRouteId?: string | null }
+) {
+	return render(ManagementPanelHostHarness, props);
+}
+
+function rootOutput(testId: string): string {
+	return page.getByTestId(testId).element()?.textContent ?? '';
+}
+
+function deferredRemoval(): {
+	remove: ManagementUiCommands['removeRecurringRoute'];
+	settle: (result: GameRouteCommitResult) => void;
+} {
+	let settle!: (result: GameRouteCommitResult) => void;
+	const promise = new Promise<GameRouteCommitResult>((resolve) => {
+		settle = resolve;
+	});
+	return { remove: vi.fn(() => promise), settle };
+}
+
 describe('ManagementPanelHost', () => {
 	it('changes the report chart window from the tower header', async () => {
 		let game = compositionGame();
@@ -212,30 +235,34 @@ describe('ManagementPanelHost', () => {
 	});
 
 	it('keeps the report window within the host lifetime', async () => {
-		expect.assertions(4);
 		let game = compositionGame();
 		for (let day = 0; day < 20; day++) game = simulateDay(game);
 		const props = hostProps({ openAt: 'reports', game });
 
-		const view = render(ManagementPanelHost, props);
-		await page.getByRole('button', { name: '7d', exact: true }).click();
-		await expect
-			.element(page.getByRole('button', { name: '7d', exact: true }))
-			.toHaveAttribute('aria-pressed', 'true');
+		renderHarness(props);
+		const sevenDay = page.getByRole('button', { name: '7d', exact: true });
+		await sevenDay.click();
+		await expect.element(sevenDay).toHaveAttribute('aria-pressed', 'true');
 
-		// Swapping panels keeps the host — and its reportDays — mounted.
+		// A rendered Dashboard swap keeps the mounted host — and its reportDays.
 		props.ui.open('dashboard');
+		await expect.element(page.getByRole('dialog', { name: 'Dashboard' })).toBeVisible();
 		props.ui.open('reports');
-		await expect
-			.element(page.getByRole('button', { name: '7d', exact: true }))
-			.toHaveAttribute('aria-pressed', 'true');
+		await expect.element(page.getByRole('dialog', { name: 'Reports' })).toBeVisible();
+		await expect.element(sevenDay).toHaveAttribute('aria-pressed', 'true');
 
-		// Closing unmounts the host; a fresh mount returns to the default 14.
-		await view.unmount();
-		render(ManagementPanelHost, props);
-		await expect
-			.element(page.getByRole('button', { name: '7d', exact: true }))
-			.toHaveAttribute('aria-pressed', 'false');
+		// The user close unmounts the host through the conditional mount;
+		// reopening mounts a fresh host with the default 14-day window.
+		const reportsLabel = props.ui.menu.find((item) => item.id === 'reports')!.label;
+		await page
+			.getByRole('button', {
+				name: props.i18n.t('route.controlTower.closePanel', { panel: reportsLabel })
+			})
+			.click();
+		await vi.waitFor(() => expect(rootOutput('host-mounted')).toBe('none'));
+		props.ui.open('reports');
+		await expect.element(page.getByRole('dialog', { name: 'Reports' })).toBeVisible();
+		await expect.element(sevenDay).toHaveAttribute('aria-pressed', 'false');
 		await expect
 			.element(page.getByRole('button', { name: '14d', exact: true }))
 			.toHaveAttribute('aria-pressed', 'true');
@@ -611,68 +638,112 @@ describe('ManagementPanelHost', () => {
 		expect(props.commands.createRecurringRoute).not.toHaveBeenCalled();
 	});
 
-	it('clears matching focus and notifies the root only after a committed removal', async () => {
+	it('waits for a committed deferred removal before clearing the matching selection and focus', async () => {
 		const game = routesGame();
 		const props = hostProps({ openAt: 'logistics', game });
-		props.commands.removeRecurringRoute = vi.fn(
-			async () => ({ status: 'committed' }) as GameRouteCommitResult
-		);
+		const { remove, settle } = deferredRemoval();
+		props.commands.removeRecurringRoute = remove;
 		props.ui.openLogistics('route-1');
-		render(ManagementPanelHost, props);
+		renderHarness({ ...props, initialSelectedRouteId: 'route-1' });
 
 		await clickRouteRemoveButton('route-1');
 		expect(props.commands.removeRecurringRoute).toHaveBeenCalledWith('route-1');
-		await expect
-			.element(page.getByRole('status'))
-			.toHaveTextContent(props.i18n.t('logisticsPanel.ui.routeRemoved'));
+		// While the command is pending, no cleanup has happened yet.
+		expect(props.ui.focusedLogisticsRouteId).toBe('route-1');
+		await vi.waitFor(() => expect(rootOutput('root-selected-route')).toBe('route-1'));
+		expect(rootOutput('root-removal-notifications')).toBe('0');
+
+		// The original committed result reaches the panel on settlement.
+		settle({ status: 'committed' });
+		await vi.waitFor(() =>
+			expect(page.getByRole('status').element()?.textContent).toContain(
+				props.i18n.t('logisticsPanel.ui.routeRemoved')
+			)
+		);
 		expect(props.ui.focusedLogisticsRouteId).toBeNull();
-		expect(props.onRouteRemoved).toHaveBeenCalledWith('route-1');
+		await vi.waitFor(() => expect(rootOutput('root-selected-route')).toBe('none'));
+		expect(rootOutput('root-removal-notifications')).toBe('1');
 	});
 
-	it('keeps an unrelated focused route when a different route is removed', async () => {
+	it('keeps an unrelated selection and a focus moved while the removal is pending', async () => {
 		const game = routesGame();
 		const props = hostProps({ openAt: 'logistics', game });
-		props.commands.removeRecurringRoute = vi.fn(
-			async () => ({ status: 'committed' }) as GameRouteCommitResult
-		);
+		const { remove, settle } = deferredRemoval();
+		props.commands.removeRecurringRoute = remove;
 		props.ui.openLogistics('route-1');
-		render(ManagementPanelHost, props);
+		// The map keeps a different route selected than the one being removed.
+		renderHarness({ ...props, initialSelectedRouteId: 'route-2' });
 
-		await clickRouteRemoveButton('route-2');
-		expect(props.commands.removeRecurringRoute).toHaveBeenCalledWith('route-2');
-		expect(props.ui.focusedLogisticsRouteId).toBe('route-1');
-		expect(props.onRouteRemoved).toHaveBeenCalledWith('route-2');
+		await clickRouteRemoveButton('route-1');
+		// Before settlement the player focuses another route.
+		props.ui.openLogistics('route-2');
+		expect(props.ui.focusedLogisticsRouteId).toBe('route-2');
+
+		settle({ status: 'committed' });
+		await vi.waitFor(() =>
+			expect(page.getByRole('status').element()?.textContent).toContain(
+				props.i18n.t('logisticsPanel.ui.routeRemoved')
+			)
+		);
+		// Matching-only cleanup: the moved focus and the unrelated map
+		// selection survive, while the root is still notified of the removal.
+		expect(props.ui.focusedLogisticsRouteId).toBe('route-2');
+		await vi.waitFor(() => expect(rootOutput('root-selected-route')).toBe('route-2'));
+		expect(rootOutput('root-removal-notifications')).toBe('1');
 	});
 
-	it('skips notifications and keeps focus when removal is preflighted away or rejected', async () => {
+	it('clears nothing when a deferred removal settles unavailable or rejected', async () => {
 		const game = routesGame();
-		const preflighted = hostProps({ openAt: 'logistics', game: null, fallback: game });
-		preflighted.ui.openLogistics('route-1');
-		const preflightedView = render(ManagementPanelHost, preflighted);
 
-		// Pre-game: the panel renders the fallback routes, but the host must not
-		// command a removal without a live game.
+		const unavailable = hostProps({ openAt: 'logistics', game });
+		const unavailableRemoval = deferredRemoval();
+		unavailable.commands.removeRecurringRoute = unavailableRemoval.remove;
+		unavailable.ui.openLogistics('route-1');
+		const unavailableView = renderHarness({ ...unavailable, initialSelectedRouteId: 'route-1' });
+
 		await clickRouteRemoveButton('route-1');
-		expect(preflighted.commands.removeRecurringRoute).not.toHaveBeenCalled();
-		expect(preflighted.ui.focusedLogisticsRouteId).toBe('route-1');
-		expect(preflighted.onRouteRemoved).not.toHaveBeenCalled();
-		await preflightedView.unmount();
+		unavailableRemoval.settle({ status: 'unavailable' });
+		await vi.waitFor(() =>
+			expect(page.getByRole('status').element()?.textContent).toContain(
+				unavailable.i18n.t('logisticsPanel.ui.unavailable')
+			)
+		);
+		expect(unavailable.ui.focusedLogisticsRouteId).toBe('route-1');
+		await vi.waitFor(() => expect(rootOutput('root-selected-route')).toBe('route-1'));
+		expect(rootOutput('root-removal-notifications')).toBe('0');
+		await unavailableView.unmount();
 
 		const rejected = hostProps({ openAt: 'logistics', game });
+		const rejectedRemoval = deferredRemoval();
+		rejected.commands.removeRecurringRoute = rejectedRemoval.remove;
 		rejected.ui.openLogistics('route-1');
-		rejected.commands.removeRecurringRoute = vi.fn(
-			async () =>
-				({ status: 'logistics-rejected', reason: 'invalid-quantity' }) as GameRouteCommitResult
-		);
-		render(ManagementPanelHost, rejected);
+		renderHarness({ ...rejected, initialSelectedRouteId: 'route-1' });
 
 		await clickRouteRemoveButton('route-1');
-		expect(rejected.commands.removeRecurringRoute).toHaveBeenCalledWith('route-1');
-		await expect
-			.element(page.getByRole('status'))
-			.toHaveTextContent(rejected.i18n.t('logisticsPanel.failures.invalidQuantity'));
+		rejectedRemoval.settle({ status: 'logistics-rejected', reason: 'invalid-quantity' });
+		await vi.waitFor(() =>
+			expect(page.getByRole('status').element()?.textContent).toContain(
+				rejected.i18n.t('logisticsPanel.failures.invalidQuantity')
+			)
+		);
 		expect(rejected.ui.focusedLogisticsRouteId).toBe('route-1');
-		expect(rejected.onRouteRemoved).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(rootOutput('root-selected-route')).toBe('route-1'));
+		expect(rootOutput('root-removal-notifications')).toBe('0');
+	});
+
+	it('preflights a removal away when no live game exists', async () => {
+		const game = routesGame();
+		const props = hostProps({ openAt: 'logistics', game: null, fallback: game });
+		props.ui.openLogistics('route-1');
+		renderHarness({ ...props, initialSelectedRouteId: 'route-1' });
+
+		// The panel renders the fallback routes, but the host must not command
+		// a removal without a live game.
+		await clickRouteRemoveButton('route-1');
+		expect(props.commands.removeRecurringRoute).not.toHaveBeenCalled();
+		expect(props.ui.focusedLogisticsRouteId).toBe('route-1');
+		expect(rootOutput('root-selected-route')).toBe('route-1');
+		expect(rootOutput('root-removal-notifications')).toBe('0');
 	});
 
 	it('renders the reports panel branch', async () => {
