@@ -46,3 +46,5 @@ export function createStoreDetailFocus(hasSelectedStore: () => boolean) {
 		}
 	};
 }
+
+export type StoreDetailFocus = ReturnType<typeof createStoreDetailFocus>;
