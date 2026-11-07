@@ -1,94 +1,80 @@
 import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
-import type { RetailCitySupplyView } from '$lib/components/game/retailSupplySources';
 import {
-	buildLogisticsPanelView,
-	type LogisticsPanelView
-} from '$lib/components/game/logisticsPanel';
-import { createTwoIndustryCityGame } from '$lib/game/interCityLogistics.testUtils';
+	createTwoIndustryCityGame,
+	withRecurringRoutes
+} from '$lib/game/interCityLogistics.testUtils';
 import { decisionContextCashPressure } from '$lib/game/decisionContext';
-import { getFinanceMetrics, type FinanceMetrics } from '$lib/game/financeMetrics';
 import { getStaffXpForLevel } from '$lib/game/staffLeveling';
-import { buildDailyResultView, summarizeReports, type ReportSummary } from '$lib/game/reports';
+import { buildDailyResultView } from '$lib/game/reports';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createNewGame } from '$lib/game/state';
-import type {
-	CompanyPolicy,
-	DecisionItem,
-	GameState,
-	LoanTermDays,
-	ManagerDelegation,
-	PolicyOverrideScope
-} from '$lib/game/types';
+import type { DecisionItem, GameState, ProductId, RecurringRoute } from '$lib/game/types';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
-import type {
-	ManualTransferInput,
-	RecurringRouteInput,
-	RecurringRouteUpdateInput
-} from '$lib/game/interCityLogistics';
-import type {
-	ScenarioRecurringRouteInput,
-	ScenarioRecurringRouteUpdateInput
-} from '$lib/scenarios/types';
-import type { I18nBundle } from '$lib/i18n';
-import { createI18n } from '$lib/i18n';
+import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
+import { createI18n, type I18nBundle } from '$lib/i18n';
 import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
+import { createRoutePreviewGame } from './routePreviewGame';
+import {
+	createManagementUi,
+	type ManagementUi,
+	type ManagementUiCommands
+} from './managementUi.svelte';
 import { createMutationAvailability, type MutationAvailability } from './gameRouteController';
 import ManagementPanelHost from './ManagementPanelHost.svelte';
 
-interface ManagementPanelHostProps {
-	panelId: ManagementPanelId;
-	panelLabel: string;
-	panelGame: GameState;
-	currentCash: number | null;
-	summary: ReportSummary;
-	financeMetrics: FinanceMetrics | null;
-	retailSupplyViews: RetailCitySupplyView[];
-	mutations: MutationAvailability;
-	retailSupplyDisabled: boolean;
-	focusedFinanceLoanId: string | null;
-	focusedRetailSupplyCityId: string | null;
-	logisticsView: LogisticsPanelView;
-	focusedLogisticsRouteId: string | null;
-	logisticsRoutePreset: RecurringRouteInput | null;
-	sandboxProgressionGame?: GameState | null;
-	i18n: I18nBundle;
-	disabledReason: string | null;
+vi.mock('$lib/game/financeMetrics', async (importOriginal) => {
+	const original = await importOriginal<typeof import('$lib/game/financeMetrics')>();
+	return { ...original, getFinanceMetrics: vi.fn(original.getFinanceMetrics) };
+});
+vi.mock('$lib/components/game/logisticsPanel', async (importOriginal) => {
+	const original = await importOriginal<typeof import('$lib/components/game/logisticsPanel')>();
+	return { ...original, buildLogisticsPanelView: vi.fn(original.buildLogisticsPanelView) };
+});
 
-	onClose: () => void;
-	onChangePolicy: (patch: Partial<CompanyPolicy>) => void;
-	onSetPolicyOverride: (scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>) => void;
-	onClearPolicyOverrideField: (scope: PolicyOverrideScope, field: keyof CompanyPolicy) => void;
-	onResetPolicyOverrideScope: (scope: PolicyOverrideScope) => void;
-	onSetManagerDelegation: (delegation: ManagerDelegation) => void;
-	onRemoveManagerDelegation: (managerId: string) => void;
-	onHireStaff: (candidateId: string) => void;
-	onAssignStaff: (staffId: string, storeId: string) => void;
-	onUnassignStaff: (staffId: string) => void;
-	onPromoteStaff: (staffId: string) => void;
-	onSetRetailSupplySource: (retailCityId: string, supplyCityId: string | null) => void;
-	onChooseDecision: (decisionId: string, optionId: string) => void;
-	onBorrow: (amount: number, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
-	onRepay: (loanId: string, amount: number) => Promise<GameRouteCommitResult>;
-	onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
-	onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
-	onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
-	onCreateRecurringRoute: (
-		input: RecurringRouteInput | ScenarioRecurringRouteInput
-	) => Promise<GameRouteCommitResult>;
-	onUpdateRecurringRoute: (
-		routeId: string,
-		input: RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput
-	) => Promise<GameRouteCommitResult>;
-	onPauseRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
-	onResumeRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
-	onReprioritizeRecurringRoute: (
-		routeId: string,
-		priority: number
-	) => Promise<GameRouteCommitResult>;
-	onRemoveRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
+interface HostProps {
+	ui: ManagementUi;
+	game: GameState | null;
+	fallback: GameState;
+	mode: 'sandbox' | 'scenario';
+	i18n: I18nBundle;
+	availability: MutationAvailability;
+	disabledReason: string | null;
+	commands: ManagementUiCommands;
+	plannerProductIds: readonly ProductId[];
+	onPlanProduct: (productId: ProductId) => void;
+	onRouteRemoved: (routeId: string) => void;
+}
+
+function managementCommands(): ManagementUiCommands {
+	const unavailable = async () => ({ status: 'unavailable' }) as GameRouteCommitResult;
+	return {
+		updatePolicy: vi.fn(unavailable),
+		setPolicyOverride: vi.fn(unavailable),
+		clearPolicyOverrideField: vi.fn(unavailable),
+		resetPolicyOverrideScope: vi.fn(unavailable),
+		setManagerDelegation: vi.fn(unavailable),
+		removeManagerDelegation: vi.fn(unavailable),
+		resolveDecision: vi.fn(unavailable),
+		hireStaff: vi.fn(unavailable),
+		assignStaff: vi.fn(unavailable),
+		unassignStaff: vi.fn(unavailable),
+		releaseStaff: vi.fn(unavailable),
+		promoteStaff: vi.fn(unavailable),
+		setRetailSupplySource: vi.fn(unavailable),
+		borrowWorkingCapital: vi.fn(unavailable),
+		repayFinanceLoan: vi.fn(unavailable),
+		payOffFinanceLoan: vi.fn(unavailable),
+		refinanceFinanceLoan: vi.fn(unavailable),
+		dispatchManualTransfer: vi.fn(unavailable),
+		createRecurringRoute: vi.fn(unavailable),
+		updateRecurringRoute: vi.fn(unavailable),
+		pauseRecurringRoute: vi.fn(unavailable),
+		resumeRecurringRoute: vi.fn(unavailable),
+		reprioritizeRecurringRoute: vi.fn(unavailable),
+		removeRecurringRoute: vi.fn(unavailable)
+	};
 }
 
 function compositionGame(): GameState {
@@ -139,6 +125,34 @@ function compositionGame(): GameState {
 	};
 }
 
+function routeFixture(overrides: Partial<RecurringRoute> & { id: string }): RecurringRoute {
+	return {
+		originCityId: 'industry-city',
+		destinationCityId: 'breadbasket-basin',
+		materialId: 'water',
+		capacity: 30,
+		frequencyDays: 3,
+		leadTimeDays: 2,
+		transportCostPerUnit: 2,
+		priority: 1,
+		state: 'active',
+		nextDispatchOnDay: 0,
+		...overrides
+	};
+}
+
+function routesGame(): GameState {
+	return withRecurringRoutes(createTwoIndustryCityGame(), [
+		routeFixture({ id: 'route-1' }),
+		routeFixture({
+			id: 'route-2',
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'grain'
+		})
+	]);
+}
+
 function mutationAvailability(overrides: Partial<MutationAvailability> = {}): MutationAvailability {
 	return {
 		...createMutationAvailability({ playMode: 'sandbox', pending: false, definition: null }),
@@ -146,68 +160,44 @@ function mutationAvailability(overrides: Partial<MutationAvailability> = {}): Mu
 	};
 }
 
-function hostProps(overrides: Partial<ManagementPanelHostProps> = {}): ManagementPanelHostProps {
-	const panelGame = compositionGame();
+function hostProps(
+	overrides: Partial<HostProps> & { openAt?: ManagementPanelId | null } = {}
+): HostProps {
+	const game = compositionGame();
 	const i18n = createI18n('en');
-
+	const ui = createManagementUi({ getI18n: () => i18n, onOpen: vi.fn() });
+	const { openAt = 'dashboard', ...rest } = overrides;
+	if (openAt) ui.open(openAt);
 	return {
-		panelId: 'dashboard',
-		panelLabel: 'Dashboard',
-		panelGame,
-		currentCash: panelGame.cash,
-		summary: summarizeReports(panelGame.reports),
-		financeMetrics: null,
-		retailSupplyViews: buildRetailCitySupplyViews(panelGame, i18n),
-		mutations: mutationAvailability(),
-		retailSupplyDisabled: false,
-		focusedFinanceLoanId: null,
-		focusedRetailSupplyCityId: null,
+		ui,
+		game,
+		fallback: createRoutePreviewGame(),
+		mode: 'sandbox',
 		i18n,
+		availability: mutationAvailability(),
 		disabledReason: 'Unavailable in this challenge.',
-		logisticsView: buildLogisticsPanelView(panelGame, i18n),
-		focusedLogisticsRouteId: null,
-		logisticsRoutePreset: null,
-		onClose: vi.fn(),
-		onChangePolicy: vi.fn(),
-		onSetPolicyOverride: vi.fn(),
-		onClearPolicyOverrideField: vi.fn(),
-		onResetPolicyOverrideScope: vi.fn(),
-		onSetManagerDelegation: vi.fn(),
-		onRemoveManagerDelegation: vi.fn(),
-		onHireStaff: vi.fn(),
-		onAssignStaff: vi.fn(),
-		onUnassignStaff: vi.fn(),
-		onPromoteStaff: vi.fn(),
-		onSetRetailSupplySource: vi.fn(),
-		onChooseDecision: vi.fn(),
-		onBorrow: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onRepay: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onPayoff: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onRefinance: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onDispatchManualTransfer: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onCreateRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onUpdateRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onPauseRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onResumeRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onReprioritizeRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		onRemoveRecurringRoute: vi.fn(async () => ({ status: 'unavailable' }) as const),
-		...overrides
+		commands: managementCommands(),
+		plannerProductIds: [],
+		onPlanProduct: vi.fn(),
+		onRouteRemoved: vi.fn(),
+		...rest
 	};
+}
+
+async function clickRouteRemoveButton(routeId: string): Promise<void> {
+	await vi.waitFor(() => {
+		const row = document.getElementById(`logistics-route-${routeId}`);
+		const button = row?.querySelector<HTMLElement>('button[aria-label="Remove route"]');
+		expect(button).toBeTruthy();
+		button!.click();
+	});
 }
 
 describe('ManagementPanelHost', () => {
 	it('changes the report chart window from the tower header', async () => {
-		let panelGame = compositionGame();
-		for (let day = 0; day < 20; day++) panelGame = simulateDay(panelGame);
-		render(
-			ManagementPanelHost,
-			hostProps({
-				panelId: 'reports',
-				panelLabel: 'Reports',
-				panelGame,
-				summary: summarizeReports(panelGame.reports)
-			})
-		);
+		let game = compositionGame();
+		for (let day = 0; day < 20; day++) game = simulateDay(game);
+		render(ManagementPanelHost, hostProps({ openAt: 'reports', game }));
 		await expect.element(page.getByText('Days 18–31', { exact: true })).toBeVisible();
 		const trend = page.getByTestId('revenue-trend');
 		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(14);
@@ -221,48 +211,59 @@ describe('ManagementPanelHost', () => {
 		expect(trend.element().getAttribute('points')!.split(' ')).toHaveLength(20);
 	});
 
+	it('keeps the report window within the host lifetime', async () => {
+		expect.assertions(4);
+		let game = compositionGame();
+		for (let day = 0; day < 20; day++) game = simulateDay(game);
+		const props = hostProps({ openAt: 'reports', game });
+
+		const view = render(ManagementPanelHost, props);
+		await page.getByRole('button', { name: '7d', exact: true }).click();
+		await expect
+			.element(page.getByRole('button', { name: '7d', exact: true }))
+			.toHaveAttribute('aria-pressed', 'true');
+
+		// Swapping panels keeps the host — and its reportDays — mounted.
+		props.ui.open('dashboard');
+		props.ui.open('reports');
+		await expect
+			.element(page.getByRole('button', { name: '7d', exact: true }))
+			.toHaveAttribute('aria-pressed', 'true');
+
+		// Closing unmounts the host; a fresh mount returns to the default 14.
+		await view.unmount();
+		render(ManagementPanelHost, props);
+		await expect
+			.element(page.getByRole('button', { name: '7d', exact: true }))
+			.toHaveAttribute('aria-pressed', 'false');
+		await expect
+			.element(page.getByRole('button', { name: '14d', exact: true }))
+			.toHaveAttribute('aria-pressed', 'true');
+	});
+
 	it('switches tower panels without closing and leaves the active tab alone', async () => {
-		const onClose = vi.fn();
-		const onSelectPanel = vi.fn();
-		render(ManagementPanelHost, {
-			...hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard', onClose }),
-			onSelectPanel,
-			managementItems: [
-				{ id: 'dashboard', label: 'Dashboard', shortcut: 'O' },
-				{ id: 'reports', label: 'Reports', shortcut: 'R' }
-			]
-		});
+		expect.assertions(3);
+		const props = hostProps({ openAt: 'dashboard' });
+		render(ManagementPanelHost, props);
+
 		const tabs = page.getByRole('navigation');
 		await tabs.getByRole('button', { name: 'Dashboard', exact: true }).click();
-		expect(onSelectPanel).not.toHaveBeenCalled();
+		expect(props.ui.activePanelId).toBe('dashboard');
 		await tabs.getByRole('button', { name: 'Reports', exact: true }).click();
-		expect(onSelectPanel).toHaveBeenCalledWith('reports');
-		expect(onClose).not.toHaveBeenCalled();
+		expect(props.ui.activePanelId).toBe('reports');
+		await expect.element(page.getByRole('dialog', { name: 'Reports' })).toBeVisible();
 	});
 
 	it('keeps focus inside the dialog when a card action swaps the keyed panel', async () => {
 		expect.assertions(3);
-		const onSelectPanel = vi.fn();
-		const managementItems: { id: ManagementPanelId; label: string; shortcut: string }[] = [
-			{ id: 'dashboard', label: 'Dashboard', shortcut: 'O' },
-			{ id: 'reports', label: 'Reports', shortcut: 'R' }
-		];
-		const props = {
-			...hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard' }),
-			onSelectPanel,
-			managementItems
-		};
-		const instance = render(ManagementPanelHost, props);
+		const props = hostProps({ openAt: 'dashboard' });
+		render(ManagementPanelHost, props);
 
-		const action = page
+		await page
 			.getByTestId('daily-result')
-			.getByRole('button', { name: 'Reports', exact: true });
-		await action.click();
-		expect(onSelectPanel).toHaveBeenCalledWith('reports');
-
-		// The parent applies the switch; the keyed swap destroys the focused
-		// button and focus would fall back to <body> without re-homing.
-		await instance.rerender({ ...props, panelId: 'reports', panelLabel: 'Reports' });
+			.getByRole('button', { name: 'Reports', exact: true })
+			.click();
+		expect(props.ui.activePanelId).toBe('reports');
 
 		const dialog = page.getByRole('dialog', { name: 'Reports' });
 		await vi.waitFor(() => {
@@ -271,55 +272,57 @@ describe('ManagementPanelHost', () => {
 		expect(dialog.element().contains(document.activeElement)).toBe(true);
 	});
 
-	it('omits the dashboard Reports/Finance actions when no panel selector is supplied', async () => {
+	it('routes the daily result Reports and Finance actions through the owner', async () => {
 		expect.assertions(2);
-		render(ManagementPanelHost, { ...hostProps(), onSelectPanel: undefined });
-
+		const props = hostProps({ openAt: 'dashboard' });
+		render(ManagementPanelHost, props);
 		const card = page.getByTestId('daily-result');
-		expect(card.getByRole('button', { name: 'Reports', exact: true }).elements()).toHaveLength(0);
-		expect(card.getByRole('button', { name: 'Finance', exact: true }).elements()).toHaveLength(0);
+
+		await card.getByRole('button', { name: 'Reports', exact: true }).click();
+		expect(props.ui.activePanelId).toBe('reports');
+		props.ui.open('dashboard');
+		await card.getByRole('button', { name: 'Finance', exact: true }).click();
+		expect(props.ui.activePanelId).toBe('finance');
 	});
 
 	it('renders no fabricated cash in the dashboard card before a company exists', async () => {
 		expect.assertions(1);
-		render(ManagementPanelHost, hostProps({ currentCash: null }));
+		render(ManagementPanelHost, hostProps({ openAt: 'dashboard', game: null }));
 
 		expect(page.getByTestId('daily-result-current-cash').elements()).toHaveLength(0);
 	});
+
 	it('renders the dashboard dialog shell with its label, day, and cash', async () => {
 		expect.assertions(4);
-		const props = hostProps();
+		const props = hostProps({ openAt: 'dashboard' });
 		render(ManagementPanelHost, props);
 
-		await expect.element(page.getByRole('dialog', { name: props.panelLabel })).toBeVisible();
-		await expect
-			.element(page.getByRole('heading', { level: 2, name: props.panelLabel }))
-			.toBeVisible();
+		await expect.element(page.getByRole('dialog', { name: 'Dashboard' })).toBeVisible();
+		await expect.element(page.getByRole('heading', { level: 2, name: 'Dashboard' })).toBeVisible();
 		const status = page.getByRole('group', {
-			name: props.i18n.t('route.controlTower.panelStatus', { panel: props.panelLabel })
+			name: props.i18n.t('route.controlTower.panelStatus', { panel: 'Dashboard' })
 		});
 		await expect
 			.element(
 				status.getByText(
 					props.i18n.t('topBar.day', {
-						day: props.i18n.format.integer(props.panelGame.day)
+						day: props.i18n.format.integer(props.game!.day)
 					})
 				)
 			)
 			.toBeVisible();
 		await expect
-			.element(status.getByText(props.i18n.format.currency(props.panelGame.cash)))
+			.element(status.getByText(props.i18n.format.currency(props.game!.cash)))
 			.toBeVisible();
 	});
 
 	it('renders the daily result card above the scorecard from the host-derived view', async () => {
 		expect.assertions(5);
-		let panelGame = compositionGame();
-		panelGame = simulateDay(panelGame);
-		const props = hostProps({ panelGame, summary: summarizeReports(panelGame.reports) });
+		const game = simulateDay(compositionGame());
+		const props = hostProps({ openAt: 'dashboard', game });
 		render(ManagementPanelHost, props);
 
-		const view = buildDailyResultView(panelGame.reports)!;
+		const view = buildDailyResultView(game.reports)!;
 		const card = page.getByTestId('daily-result');
 		await expect.element(card).toBeVisible();
 		await expect.element(page.getByTestId('daily-result-day')).toHaveTextContent(
@@ -340,31 +343,13 @@ describe('ManagementPanelHost', () => {
 		).toBeTruthy();
 	});
 
-	it('routes the daily result Reports and Finance actions through panel selection', async () => {
-		expect.assertions(2);
-		const onSelectPanel = vi.fn();
-		const props = hostProps();
-		render(ManagementPanelHost, { ...props, onSelectPanel });
-
-		await page.getByRole('button', { name: props.i18n.t('game.managementPanels.reports') }).click();
-		expect(onSelectPanel).toHaveBeenNthCalledWith(1, 'reports');
-		await page.getByRole('button', { name: props.i18n.t('game.managementPanels.finance') }).click();
-		expect(onSelectPanel).toHaveBeenNthCalledWith(2, 'finance');
-	});
-
 	it('shows the labeled current cash from game state, not the report cashAfter', async () => {
 		expect.assertions(3);
-		let panelGame = compositionGame();
-		panelGame = simulateDay(panelGame);
-		panelGame = { ...panelGame, cash: 999_987 };
-		const props = hostProps({
-			panelGame,
-			currentCash: panelGame.cash,
-			summary: summarizeReports(panelGame.reports)
-		});
+		const game = { ...simulateDay(compositionGame()), cash: 999_987 };
+		const props = hostProps({ openAt: 'dashboard', game });
 		render(ManagementPanelHost, props);
 
-		const cashAfter = buildDailyResultView(panelGame.reports)!.latest.cashAfter;
+		const cashAfter = buildDailyResultView(game.reports)!.latest.cashAfter;
 		expect(props.i18n.format.currency(cashAfter)).not.toBe(props.i18n.format.currency(999_987));
 		await expect
 			.element(page.getByTestId('daily-result-current-cash'))
@@ -374,33 +359,48 @@ describe('ManagementPanelHost', () => {
 		);
 	});
 
-	it('forwards a backdrop close to the route callback', async () => {
-		expect.assertions(1);
-		const onClose = vi.fn();
-		const props = hostProps({ onClose });
+	it('treats a backdrop dismissal as the user close, keeping the finance focus', async () => {
+		expect.assertions(5);
+		const preset: RecurringRouteInput = {
+			originCityId: 'industry-city',
+			destinationCityId: 'breadbasket-basin',
+			materialId: 'water',
+			capacity: 12,
+			frequencyDays: 1,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			priority: 0
+		};
+		const props = hostProps({ openAt: 'logistics' });
+		props.ui.focusFinance('loan-1');
+		props.ui.openLogistics('route-1', preset);
 		render(ManagementPanelHost, props);
 
 		const backdropDismissButton = await page
 			.getByRole('button', {
-				name: props.i18n.t('route.controlTower.dismiss', { panel: props.panelLabel })
+				name: props.i18n.t('route.controlTower.dismiss', { panel: 'Logistics' })
 			})
 			.element();
 		backdropDismissButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-		expect(onClose).toHaveBeenCalledOnce();
+		expect(props.ui.activePanelId).toBeNull();
+		// Anchor: the user close clears the logistics handoff...
+		expect(props.ui.focusedLogisticsRouteId).toBeNull();
+		expect(props.ui.logisticsRoutePreset).toBeNull();
+		expect(props.ui.focusedRetailSupplyCityId).toBeNull();
+		// ...but does not change focusedFinanceLoanId.
+		expect(props.ui.focusedFinanceLoanId).toBe('loan-1');
 	});
-
 	it('renders retail supply sources and the store overview in the stores panel', async () => {
 		expect.assertions(3);
 		const props = hostProps({
-			panelId: 'stores',
-			panelLabel: 'Stores',
-			retailSupplyDisabled: true
+			openAt: 'stores',
+			availability: mutationAvailability({ setRetailSupplySource: false })
 		});
 		render(ManagementPanelHost, props);
 
 		await expect
-			.element(page.getByRole('heading', { name: props.retailSupplyViews[0]!.panelTitle }))
+			.element(page.getByRole('heading', { name: props.i18n.t('retailSupplySources.title') }))
 			.toBeVisible();
 		await expect
 			.element(
@@ -410,30 +410,34 @@ describe('ManagementPanelHost', () => {
 			)
 			.toBeVisible();
 		await expect
-			.element(page.getByRole('combobox', { name: props.retailSupplyViews[0]!.selectLabel }))
+			.element(page.getByRole('combobox', { name: 'Local supply source for Harbor City' }))
+			.toBeDisabled();
+	});
+
+	it('disables the starter supply selector before a company exists', async () => {
+		expect.assertions(1);
+		render(ManagementPanelHost, hostProps({ openAt: 'stores', game: null }));
+
+		await expect
+			.element(page.getByRole('combobox', { name: 'Local supply source for Harbor City' }))
 			.toBeDisabled();
 	});
 
 	it('forwards a planner source focus without changing the source', async () => {
-		const onSetRetailSupplySource = vi.fn();
-		const props = hostProps({
-			panelId: 'stores',
-			panelLabel: 'Stores',
-			focusedRetailSupplyCityId: 'harbor-city',
-			onSetRetailSupplySource
-		});
+		const props = hostProps({ openAt: 'stores' });
+		props.ui.openStores('harbor-city');
 		render(ManagementPanelHost, props);
 
-		const select = page.getByRole('combobox', { name: props.retailSupplyViews[0]!.selectLabel });
+		const select = page.getByRole('combobox', { name: 'Local supply source for Harbor City' });
 		await vi.waitFor(() => {
 			expect(select.element()).toBe(document.activeElement);
 		});
-		expect(onSetRetailSupplySource).not.toHaveBeenCalled();
+		expect(props.commands.setRetailSupplySource).not.toHaveBeenCalled();
 	});
 
 	it('renders the decision queue and active modifiers in the decisions panel', async () => {
 		expect.assertions(2);
-		const props = hostProps({ panelId: 'decisions', panelLabel: 'Decisions' });
+		const props = hostProps({ openAt: 'decisions' });
 		render(ManagementPanelHost, props);
 
 		await expect
@@ -446,18 +450,13 @@ describe('ManagementPanelHost', () => {
 
 	it('preserves the focused finance loan and renders finance when metrics exist', async () => {
 		expect.assertions(2);
-		const panelGame = compositionGame();
-		const focusedFinanceLoanId = panelGame.finance.loans[0]!.id;
-		const props = hostProps({
-			panelId: 'finance',
-			panelLabel: 'Finance',
-			panelGame,
-			financeMetrics: getFinanceMetrics(panelGame),
-			focusedFinanceLoanId
-		});
+		const game = compositionGame();
+		const focusedFinanceLoanId = game.finance.loans[0]!.id;
+		const props = hostProps({ openAt: 'finance', game });
+		props.ui.focusFinance(focusedFinanceLoanId);
 		render(ManagementPanelHost, props);
 
-		const dialog = await page.getByRole('dialog', { name: props.panelLabel }).element();
+		const dialog = await page.getByRole('dialog', { name: 'Finance' }).element();
 		expect(dialog.getAttribute('data-focused-finance-loan')).toBe(focusedFinanceLoanId);
 		await expect
 			.element(
@@ -471,9 +470,8 @@ describe('ManagementPanelHost', () => {
 	it('maps policy mutation availability to the policy control', async () => {
 		expect.assertions(1);
 		const props = hostProps({
-			panelId: 'policies',
-			panelLabel: 'Policies',
-			mutations: mutationAvailability({ updatePolicy: false })
+			openAt: 'policies',
+			availability: mutationAvailability({ updatePolicy: false })
 		});
 		render(ManagementPanelHost, props);
 
@@ -483,9 +481,8 @@ describe('ManagementPanelHost', () => {
 	it('keeps company policy editable while scoped policy controls are unavailable', async () => {
 		expect.assertions(3);
 		const props = hostProps({
-			panelId: 'policies',
-			panelLabel: 'Policies',
-			mutations: mutationAvailability({ scopedPolicy: false })
+			openAt: 'policies',
+			availability: mutationAvailability({ scopedPolicy: false })
 		});
 		render(ManagementPanelHost, props);
 
@@ -497,12 +494,8 @@ describe('ManagementPanelHost', () => {
 
 	it('renders manager delegations inside the existing Staff branch and forwards changes', async () => {
 		expect.assertions(3);
-		const onSetManagerDelegation = vi.fn();
-		const props = hostProps({
-			panelId: 'staff',
-			panelLabel: 'Staff',
-			onSetManagerDelegation
-		});
+		const game = compositionGame();
+		const props = hostProps({ openAt: 'staff', game });
 		render(ManagementPanelHost, props);
 		await page
 			.getByText(props.i18n.t('managerDelegationPanel.title'), { exact: true })
@@ -512,9 +505,9 @@ describe('ManagementPanelHost', () => {
 		await expect
 			.element(page.getByRole('heading', { name: props.i18n.t('managerDelegationPanel.title') }))
 			.toBeVisible();
-		const manager = props.panelGame.staff.find((member) => member.role === 'manager')!;
+		const manager = game.staff.find((member) => member.role === 'manager')!;
 		await page.getByLabelText(`Enable delegation for ${manager.name}`).click();
-		expect(onSetManagerDelegation).toHaveBeenCalledWith(
+		expect(props.commands.setManagerDelegation).toHaveBeenCalledWith(
 			expect.objectContaining({ managerId: manager.id, enabled: true })
 		);
 		await expect
@@ -528,10 +521,11 @@ describe('ManagementPanelHost', () => {
 
 	it('maps staff mutation availability to representative staff controls', async () => {
 		expect.assertions(4);
+		const game = compositionGame();
 		const props = hostProps({
-			panelId: 'staff',
-			panelLabel: 'Staff',
-			mutations: mutationAvailability({
+			openAt: 'staff',
+			game,
+			availability: mutationAvailability({
 				hireStaff: false,
 				assignStaff: false,
 				unassignStaff: false,
@@ -541,7 +535,7 @@ describe('ManagementPanelHost', () => {
 		render(ManagementPanelHost, props);
 		document.querySelector<HTMLElement>('.people-list summary')!.click();
 
-		const candidate = props.panelGame.hiringCandidates[0]!;
+		const candidate = game.hiringCandidates[0]!;
 		await expect
 			.element(
 				page.getByRole('button', {
@@ -565,9 +559,8 @@ describe('ManagementPanelHost', () => {
 	it('maps decision mutation availability to decision actions', async () => {
 		expect.assertions(1);
 		const props = hostProps({
-			panelId: 'decisions',
-			panelLabel: 'Decisions',
-			mutations: mutationAvailability({ resolveDecision: false })
+			openAt: 'decisions',
+			availability: mutationAvailability({ resolveDecision: false })
 		});
 		render(ManagementPanelHost, props);
 
@@ -576,7 +569,7 @@ describe('ManagementPanelHost', () => {
 
 	it('renders the logistics operations branch with explicit callbacks', async () => {
 		expect.assertions(4);
-		const props = hostProps({ panelId: 'logistics', panelLabel: 'Logistics' });
+		const props = hostProps({ openAt: 'logistics' });
 		render(ManagementPanelHost, props);
 
 		await expect
@@ -600,38 +593,91 @@ describe('ManagementPanelHost', () => {
 	});
 
 	it('forwards a planner route preset to the existing form without creating a route', async () => {
-		const panelGame = createTwoIndustryCityGame();
-		const i18n = createI18n('en');
-		const onCreateRecurringRoute = vi.fn(async () => ({ status: 'unavailable' }) as const);
-		const props = hostProps({
-			panelId: 'logistics',
-			panelLabel: 'Logistics',
-			panelGame,
-			summary: summarizeReports(panelGame.reports),
-			retailSupplyViews: buildRetailCitySupplyViews(panelGame, i18n),
-			logisticsView: buildLogisticsPanelView(panelGame, i18n),
-			i18n,
-			logisticsRoutePreset: {
-				originCityId: 'breadbasket-basin',
-				destinationCityId: 'industry-city',
-				materialId: 'grain',
-				capacity: 12,
-				frequencyDays: 1,
-				leadTimeDays: 2,
-				transportCostPerUnit: 2,
-				priority: 0
-			},
-			onCreateRecurringRoute
+		const game = createTwoIndustryCityGame();
+		const props = hostProps({ openAt: 'logistics', game });
+		props.ui.openLogistics(null, {
+			originCityId: 'breadbasket-basin',
+			destinationCityId: 'industry-city',
+			materialId: 'grain',
+			capacity: 12,
+			frequencyDays: 1,
+			leadTimeDays: 2,
+			transportCostPerUnit: 2,
+			priority: 0
 		});
 		render(ManagementPanelHost, props);
 
 		await expect.element(page.getByLabelText('Capacity per dispatch')).toHaveValue(12);
-		expect(onCreateRecurringRoute).not.toHaveBeenCalled();
+		expect(props.commands.createRecurringRoute).not.toHaveBeenCalled();
+	});
+
+	it('clears matching focus and notifies the root only after a committed removal', async () => {
+		const game = routesGame();
+		const props = hostProps({ openAt: 'logistics', game });
+		props.commands.removeRecurringRoute = vi.fn(
+			async () => ({ status: 'committed' }) as GameRouteCommitResult
+		);
+		props.ui.openLogistics('route-1');
+		render(ManagementPanelHost, props);
+
+		await clickRouteRemoveButton('route-1');
+		expect(props.commands.removeRecurringRoute).toHaveBeenCalledWith('route-1');
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(props.i18n.t('logisticsPanel.ui.routeRemoved'));
+		expect(props.ui.focusedLogisticsRouteId).toBeNull();
+		expect(props.onRouteRemoved).toHaveBeenCalledWith('route-1');
+	});
+
+	it('keeps an unrelated focused route when a different route is removed', async () => {
+		const game = routesGame();
+		const props = hostProps({ openAt: 'logistics', game });
+		props.commands.removeRecurringRoute = vi.fn(
+			async () => ({ status: 'committed' }) as GameRouteCommitResult
+		);
+		props.ui.openLogistics('route-1');
+		render(ManagementPanelHost, props);
+
+		await clickRouteRemoveButton('route-2');
+		expect(props.commands.removeRecurringRoute).toHaveBeenCalledWith('route-2');
+		expect(props.ui.focusedLogisticsRouteId).toBe('route-1');
+		expect(props.onRouteRemoved).toHaveBeenCalledWith('route-2');
+	});
+
+	it('skips notifications and keeps focus when removal is preflighted away or rejected', async () => {
+		const game = routesGame();
+		const preflighted = hostProps({ openAt: 'logistics', game: null, fallback: game });
+		preflighted.ui.openLogistics('route-1');
+		const preflightedView = render(ManagementPanelHost, preflighted);
+
+		// Pre-game: the panel renders the fallback routes, but the host must not
+		// command a removal without a live game.
+		await clickRouteRemoveButton('route-1');
+		expect(preflighted.commands.removeRecurringRoute).not.toHaveBeenCalled();
+		expect(preflighted.ui.focusedLogisticsRouteId).toBe('route-1');
+		expect(preflighted.onRouteRemoved).not.toHaveBeenCalled();
+		await preflightedView.unmount();
+
+		const rejected = hostProps({ openAt: 'logistics', game });
+		rejected.ui.openLogistics('route-1');
+		rejected.commands.removeRecurringRoute = vi.fn(
+			async () =>
+				({ status: 'logistics-rejected', reason: 'invalid-quantity' }) as GameRouteCommitResult
+		);
+		render(ManagementPanelHost, rejected);
+
+		await clickRouteRemoveButton('route-1');
+		expect(rejected.commands.removeRecurringRoute).toHaveBeenCalledWith('route-1');
+		await expect
+			.element(page.getByRole('status'))
+			.toHaveTextContent(rejected.i18n.t('logisticsPanel.failures.invalidQuantity'));
+		expect(rejected.ui.focusedLogisticsRouteId).toBe('route-1');
+		expect(rejected.onRouteRemoved).not.toHaveBeenCalled();
 	});
 
 	it('renders the reports panel branch', async () => {
 		expect.assertions(1);
-		const props = hostProps({ panelId: 'reports', panelLabel: 'Reports' });
+		const props = hostProps({ openAt: 'reports' });
 		render(ManagementPanelHost, props);
 
 		await expect
@@ -641,7 +687,7 @@ describe('ManagementPanelHost', () => {
 
 	it('renders the product chains panel branch', async () => {
 		expect.assertions(1);
-		const props = hostProps({ panelId: 'productChains', panelLabel: 'Product Chains' });
+		const props = hostProps({ openAt: 'productChains' });
 		render(ManagementPanelHost, props);
 
 		await expect
@@ -649,37 +695,43 @@ describe('ManagementPanelHost', () => {
 			.toBeVisible();
 	});
 
-	it('throws when the finance panel is opened without finance metrics', () => {
-		expect.assertions(1);
-		const props = hostProps({ panelId: 'finance', panelLabel: 'Finance', financeMetrics: null });
-		expect(() => render(ManagementPanelHost, props)).toThrow(
-			'financeMetrics required for finance panel'
-		);
+	it('avoids the finance and logistics projections while their panels are inactive', async () => {
+		expect.assertions(7);
+		const { getFinanceMetrics } = await import('$lib/game/financeMetrics');
+		const { buildLogisticsPanelView } = await import('$lib/components/game/logisticsPanel');
+		vi.mocked(getFinanceMetrics).mockClear();
+		vi.mocked(buildLogisticsPanelView).mockClear();
+
+		const props = hostProps({ openAt: 'dashboard' });
+		render(ManagementPanelHost, props);
+		await expect.element(page.getByRole('dialog', { name: 'Dashboard' })).toBeVisible();
+		expect(getFinanceMetrics).not.toHaveBeenCalled();
+		expect(buildLogisticsPanelView).not.toHaveBeenCalled();
+
+		props.ui.open('finance');
+		await expect.element(page.getByRole('dialog', { name: 'Finance' })).toBeVisible();
+		expect(getFinanceMetrics).toHaveBeenCalled();
+
+		props.ui.open('logistics');
+		await expect.element(page.getByRole('dialog', { name: 'Logistics' })).toBeVisible();
+		expect(buildLogisticsPanelView).toHaveBeenCalled();
 	});
 
-	it('throws when the logistics panel is opened without a logistics view', () => {
-		expect.assertions(1);
-		const props = hostProps({
-			panelId: 'logistics',
-			panelLabel: 'Logistics',
-			logisticsView: null as unknown as LogisticsPanelView
-		});
-		expect(() => render(ManagementPanelHost, props)).toThrow(
-			'logisticsView required for logistics panel'
-		);
-	});
-
-	it('renders the sandbox progression ladder on the dashboard only when a sandbox game is supplied', async () => {
-		expect.assertions(2);
-		const { unmount } = render(ManagementPanelHost, {
-			...hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard' }),
-			sandboxProgressionGame: compositionGame()
-		});
+	it('renders the sandbox progression ladder only for a live sandbox game', async () => {
+		expect.assertions(3);
+		const sandboxView = render(ManagementPanelHost, hostProps({ openAt: 'dashboard' }));
 		await expect.element(page.getByRole('heading', { name: 'Company progression' })).toBeVisible();
-		await unmount();
+		await sandboxView.unmount();
 
-		// Scenario mode (and pre-found sandbox) pass null — no ladder at all.
-		render(ManagementPanelHost, hostProps({ panelId: 'dashboard', panelLabel: 'Dashboard' }));
+		// Scenario mode passes a live game too — the ladder must stay hidden.
+		const scenarioView = render(
+			ManagementPanelHost,
+			hostProps({ openAt: 'dashboard', mode: 'scenario' })
+		);
+		await expect.element(page.getByText('Company progression')).not.toBeInTheDocument();
+		await scenarioView.unmount();
+
+		render(ManagementPanelHost, hostProps({ openAt: 'dashboard', game: null }));
 		await expect.element(page.getByText('Company progression')).not.toBeInTheDocument();
 	});
 });

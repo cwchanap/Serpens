@@ -5,12 +5,7 @@
 	import DailyResultSummary from '$lib/components/game/DailyResultSummary.svelte';
 	import DecisionQueue from '$lib/components/game/DecisionQueue.svelte';
 	import FinancePanel from '$lib/components/game/FinancePanel.svelte';
-	import type {
-		ScenarioRecurringRouteInput,
-		ScenarioRecurringRouteUpdateInput
-	} from '$lib/scenarios/types';
 	import LogisticsPanel from '$lib/components/game/LogisticsPanel.svelte';
-	import type { LogisticsPanelView } from '$lib/components/game/logisticsPanel';
 	import PolicyPanel from '$lib/components/game/PolicyPanel.svelte';
 	import ProductChainsPanel from '$lib/components/game/ProductChainsPanel.svelte';
 	import ReportsPanel from '$lib/components/game/ReportsPanel.svelte';
@@ -20,16 +15,14 @@
 	import StaffPanel from '$lib/components/game/StaffPanel.svelte';
 	import ManagerDelegationPanel from '$lib/components/game/ManagerDelegationPanel.svelte';
 	import StoreOverview from '$lib/components/game/StoreOverview.svelte';
-	import type { RetailCitySupplyView } from '$lib/components/game/retailSupplySources';
-	import type { GameRouteCommitResult } from '$lib/game/commandResult';
-	import type {
-		ManualTransferInput,
-		RecurringRouteInput,
-		RecurringRouteUpdateInput
-	} from '$lib/game/interCityLogistics';
+	import { buildRetailCitySupplyViews } from '$lib/components/game/retailSupplySources';
+	import { buildLogisticsPanelView } from '$lib/components/game/logisticsPanel';
+	import { getFinanceMetrics } from '$lib/game/financeMetrics';
+	import { isGameRouteCommitted, type GameRouteCommitResult } from '$lib/game/commandResult';
+	import { summarizeReports, buildDailyResultView } from '$lib/game/reports';
+	import type { ManualTransferInput } from '$lib/game/interCityLogistics';
 	import type { FinanceMetrics } from '$lib/game/financeMetrics';
-	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
-	import { buildDailyResultView, type ReportSummary } from '$lib/game/reports';
+	import type { LogisticsPanelView } from '$lib/components/game/logisticsPanel';
 	import type {
 		CompanyPolicy,
 		GameState,
@@ -40,119 +33,59 @@
 	} from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
 	import type { MutationAvailability } from './gameRouteController';
+	import type { ManagementUi, ManagementUiCommands } from './managementUi.svelte';
 
 	interface Props {
-		panelId: ManagementPanelId;
-		panelLabel: string;
-		managementItems?: { id: ManagementPanelId; label: string; shortcut: string }[];
-		onSelectPanel?: (id: ManagementPanelId) => void;
-		panelGame: GameState;
-		/** Live company cash for the dashboard card; null when no company exists yet. */
-		currentCash: number | null;
-		summary: ReportSummary;
-		financeMetrics: FinanceMetrics | null;
-		retailSupplyViews: RetailCitySupplyView[];
-		mutations: MutationAvailability;
-		retailSupplyDisabled: boolean;
-		focusedFinanceLoanId: string | null;
-		focusedRetailSupplyCityId?: string | null;
-		logisticsView: LogisticsPanelView | null;
-		focusedLogisticsRouteId?: string | null;
-		logisticsRoutePreset?: RecurringRouteInput | null;
-		/** Live sandbox game driving the progression ladder; null hides it (scenario mode or pre-found sandbox). */
-		sandboxProgressionGame?: GameState | null;
+		/** Navigation owner: active panel, menu and the panel-scoped focus atoms. */
+		ui: ManagementUi;
+		/** Live game; null before the company is founded. */
+		game: GameState | null;
+		/** Starter preview rendered as the panel surface before a company exists. */
+		fallback: GameState;
+		mode: 'sandbox' | 'scenario';
 		i18n: I18nBundle;
+		availability: MutationAvailability;
 		disabledReason: string | null;
-
-		onClose: () => void;
-		onChangePolicy: (patch: Partial<CompanyPolicy>) => void;
-		onSetPolicyOverride: (scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>) => void;
-		onClearPolicyOverrideField: (scope: PolicyOverrideScope, field: keyof CompanyPolicy) => void;
-		onResetPolicyOverrideScope: (scope: PolicyOverrideScope) => void;
-		onSetManagerDelegation: (delegation: ManagerDelegation) => void;
-		onRemoveManagerDelegation: (managerId: string) => void;
-		onHireStaff: (candidateId: string) => void;
-		onAssignStaff: (staffId: string, storeId: string) => void;
-		onUnassignStaff: (staffId: string) => void;
-		onReleaseStaff?: (staffId: string) => void;
-		onPromoteStaff: (staffId: string) => void;
-		onSetRetailSupplySource: (retailCityId: string, supplyCityId: string | null) => void;
-		onChooseDecision: (decisionId: string, optionId: string) => void;
-		onBorrow: (amount: number, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
-		onRepay: (loanId: string, amount: number) => Promise<GameRouteCommitResult>;
-		onPayoff: (loanId: string) => Promise<GameRouteCommitResult>;
-		onRefinance: (loanId: string, termDays: LoanTermDays) => Promise<GameRouteCommitResult>;
-		onPlanProduct?: (productId: ProductId) => void;
+		commands: ManagementUiCommands;
 		plannerProductIds?: readonly ProductId[];
-		onDispatchManualTransfer: (input: ManualTransferInput) => Promise<GameRouteCommitResult>;
-		onCreateRecurringRoute: (
-			input: RecurringRouteInput | ScenarioRecurringRouteInput
-		) => Promise<GameRouteCommitResult>;
-		onUpdateRecurringRoute: (
-			routeId: string,
-			input: RecurringRouteUpdateInput | ScenarioRecurringRouteUpdateInput
-		) => Promise<GameRouteCommitResult>;
-		onPauseRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
-		onResumeRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
-		onReprioritizeRecurringRoute: (
-			routeId: string,
-			priority: number
-		) => Promise<GameRouteCommitResult>;
-		onRemoveRecurringRoute: (routeId: string) => Promise<GameRouteCommitResult>;
+		onPlanProduct?: (productId: ProductId) => void;
+		/** Notified with the removed route id, but only after a committed removal. */
+		onRouteRemoved: (routeId: string) => void;
 	}
 
 	let {
-		panelId,
-		panelLabel,
-		managementItems = [],
-		onSelectPanel,
-		panelGame,
-		currentCash,
-		summary,
-		financeMetrics,
-		retailSupplyViews,
-		mutations,
-		retailSupplyDisabled,
-		focusedFinanceLoanId,
-		focusedRetailSupplyCityId = null,
-		logisticsView,
-		focusedLogisticsRouteId = null,
-		logisticsRoutePreset = null,
-		sandboxProgressionGame = null,
+		ui,
+		game,
+		fallback,
+		mode,
 		i18n,
+		availability,
 		disabledReason,
-		onClose,
-		onChangePolicy,
-		onSetPolicyOverride,
-		onClearPolicyOverrideField,
-		onResetPolicyOverrideScope,
-		onSetManagerDelegation,
-		onRemoveManagerDelegation,
-		onHireStaff,
-		onAssignStaff,
-		onUnassignStaff,
-		onReleaseStaff,
-		onPromoteStaff,
-		onSetRetailSupplySource,
-		onChooseDecision,
-		onBorrow,
-		onRepay,
-		onPayoff,
-		onRefinance,
-		onPlanProduct = () => {},
+		commands,
 		plannerProductIds = [],
-		onDispatchManualTransfer,
-		onCreateRecurringRoute,
-		onUpdateRecurringRoute,
-		onPauseRecurringRoute,
-		onResumeRecurringRoute,
-		onReprioritizeRecurringRoute,
-		onRemoveRecurringRoute
+		onPlanProduct = () => {},
+		onRouteRemoved
 	}: Props = $props();
+
+	const panelId = $derived(ui.activePanelId);
+	const panelLabel = $derived(ui.activePanel?.label ?? '');
+	// Panels open even before a store is founded; the starter preview stands in
+	// for the game and the command handlers below no-op until a game exists.
+	const panelGame = $derived(game ?? fallback);
+	const summary = $derived(summarizeReports(panelGame.reports));
+	const dailyResultView = $derived(buildDailyResultView(panelGame.reports));
+	const currentCash = $derived(game !== null ? game.cash : null);
+	const sandboxProgressionGame = $derived(mode === 'sandbox' ? game : null);
+	const retailSupplyDisabled = $derived(game === null || !availability.setRetailSupplySource);
+	// Expensive panel projections are gated on their own panel being active.
+	const financeMetrics = $derived(panelId === 'finance' ? getFinanceMetrics(panelGame) : null);
+	const logisticsView = $derived(
+		panelId === 'logistics' ? buildLogisticsPanelView(panelGame, i18n) : null
+	);
+	const retailSupplyViews = $derived(buildRetailCitySupplyViews(panelGame, i18n));
 
 	let reportDays = $state(14);
 	const reportWindow = $derived(panelGame.reports.slice(-reportDays));
-	const dailyResultView = $derived(buildDailyResultView(panelGame.reports));
 
 	let dialogEl: HTMLElement | undefined = $state();
 	$effect(() => {
@@ -189,6 +122,120 @@
 		}
 		return logisticsView;
 	}
+
+	function changePolicy(patch: Partial<CompanyPolicy>): void {
+		void commands.updatePolicy(patch);
+	}
+
+	function setPolicyOverride(scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>): void {
+		void commands.setPolicyOverride(scope, patch);
+	}
+
+	function clearPolicyOverrideField(scope: PolicyOverrideScope, field: keyof CompanyPolicy): void {
+		void commands.clearPolicyOverrideField(scope, field);
+	}
+
+	function resetPolicyOverrideScope(scope: PolicyOverrideScope): void {
+		void commands.resetPolicyOverrideScope(scope);
+	}
+
+	function setManagerDelegation(delegation: ManagerDelegation): void {
+		void commands.setManagerDelegation(delegation);
+	}
+
+	function removeManagerDelegation(managerId: string): void {
+		void commands.removeManagerDelegation(managerId);
+	}
+
+	function hireStaff(candidateId: string): void {
+		void commands.hireStaff(candidateId);
+	}
+
+	function assignStaff(staffId: string, storeId: string): void {
+		void commands.assignStaff(staffId, storeId);
+	}
+
+	function unassignStaff(staffId: string): void {
+		void commands.unassignStaff(staffId);
+	}
+
+	function releaseStaff(staffId: string): void {
+		void commands.releaseStaff(staffId);
+	}
+
+	function promoteStaff(staffId: string): void {
+		void commands.promoteStaff(staffId);
+	}
+
+	function setRetailSupplySource(retailCityId: string, supplyCityId: string | null): void {
+		void commands.setRetailSupplySource(retailCityId, supplyCityId);
+	}
+
+	function chooseDecision(decisionId: string, optionId: string): void {
+		void commands.resolveDecision(decisionId, optionId);
+	}
+
+	function borrow(amount: number, termDays: LoanTermDays): Promise<GameRouteCommitResult> {
+		return commands.borrowWorkingCapital(amount, termDays);
+	}
+
+	function repay(loanId: string, amount: number): Promise<GameRouteCommitResult> {
+		return commands.repayFinanceLoan(loanId, amount);
+	}
+
+	function payoff(loanId: string): Promise<GameRouteCommitResult> {
+		return commands.payOffFinanceLoan(loanId);
+	}
+
+	function refinance(loanId: string, termDays: LoanTermDays): Promise<GameRouteCommitResult> {
+		return commands.refinanceFinanceLoan(loanId, termDays);
+	}
+
+	function dispatchManualTransfer(input: ManualTransferInput): Promise<GameRouteCommitResult> {
+		return commands.dispatchManualTransfer(input);
+	}
+
+	function createRecurringRoute(
+		input: Parameters<ManagementUiCommands['createRecurringRoute']>[0]
+	): Promise<GameRouteCommitResult> {
+		return commands.createRecurringRoute(input);
+	}
+
+	function updateRecurringRoute(
+		routeId: string,
+		input: Parameters<ManagementUiCommands['updateRecurringRoute']>[1]
+	): Promise<GameRouteCommitResult> {
+		return commands.updateRecurringRoute(routeId, input);
+	}
+
+	function pauseRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		return commands.pauseRecurringRoute(routeId);
+	}
+
+	function resumeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		return commands.resumeRecurringRoute(routeId);
+	}
+
+	function reprioritizeRecurringRoute(
+		routeId: string,
+		priority: number
+	): Promise<GameRouteCommitResult> {
+		return commands.reprioritizeRecurringRoute(routeId, priority);
+	}
+
+	async function removeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.manageLogistics) {
+			return { status: 'unavailable' };
+		}
+		const result = await commands.removeRecurringRoute(routeId);
+		// Only a committed removal dismisses the owner's focus and the route's
+		// map selection — rejected/unavailable results change neither.
+		if (isGameRouteCommitted(result)) {
+			ui.acceptRouteRemoved(routeId);
+			onRouteRemoved(routeId);
+		}
+		return result;
+	}
 </script>
 
 <div class="tower-backdrop">
@@ -196,7 +243,7 @@
 		type="button"
 		class="tower-backdrop-button"
 		aria-label={i18n.t('route.controlTower.dismiss', { panel: panelLabel })}
-		onclick={onClose}
+		onclick={() => ui.close()}
 	></button>
 	<div
 		class="control-tower-overlay paper"
@@ -205,7 +252,7 @@
 		aria-modal="true"
 		aria-label={panelLabel}
 		data-focused-finance-loan={panelId === 'finance'
-			? (focusedFinanceLoanId ?? undefined)
+			? (ui.focusedFinanceLoanId ?? undefined)
 			: undefined}
 		bind:this={dialogEl}
 		{@attach focusTrap}
@@ -270,7 +317,7 @@
 						type="button"
 						class="close-tower btn-danger"
 						aria-label={i18n.t('route.controlTower.closePanel', { panel: panelLabel })}
-						onclick={onClose}
+						onclick={() => ui.close()}
 					>
 						×
 					</button>
@@ -279,7 +326,7 @@
 		{/if}
 
 		<nav class="tower-tabs" aria-label={i18n.t('route.menu.managementPanels')}>
-			{#each managementItems as item (item.id)}
+			{#each ui.menu as item (item.id)}
 				<button
 					type="button"
 					aria-label={item.label}
@@ -287,7 +334,7 @@
 					data-panel-id={item.id}
 					aria-current={panelId === item.id ? 'page' : undefined}
 					onclick={() => {
-						if (panelId !== item.id) onSelectPanel?.(item.id);
+						if (panelId !== item.id) ui.open(item.id);
 					}}
 				>
 					<HudIcon name={item.id} /><span>{item.label}</span>
@@ -305,8 +352,8 @@
 							{i18n}
 							view={dailyResultView}
 							{currentCash}
-							onOpenReports={onSelectPanel ? () => onSelectPanel('reports') : undefined}
-							onOpenFinance={onSelectPanel ? () => onSelectPanel('finance') : undefined}
+							onOpenReports={() => ui.open('reports')}
+							onOpenFinance={() => ui.open('finance')}
 						/>
 						<Scorecard {i18n} scorecard={panelGame.scorecard} />
 					</div>
@@ -314,12 +361,12 @@
 					<PolicyPanel
 						{i18n}
 						game={panelGame}
-						onChange={onChangePolicy}
-						{onSetPolicyOverride}
-						{onClearPolicyOverrideField}
-						{onResetPolicyOverrideScope}
-						canUpdate={mutations.updatePolicy}
-						canUpdateScoped={mutations.scopedPolicy}
+						onChange={changePolicy}
+						onSetPolicyOverride={setPolicyOverride}
+						onClearPolicyOverrideField={clearPolicyOverrideField}
+						onResetPolicyOverrideScope={resetPolicyOverrideScope}
+						canUpdate={availability.updatePolicy}
+						canUpdateScoped={availability.scopedPolicy}
 						{disabledReason}
 					/>
 				{:else if panelId === 'staff'}
@@ -331,28 +378,28 @@
 							staff={panelGame.staff}
 							hiringCandidates={panelGame.hiringCandidates}
 							cash={panelGame.cash}
-							onHire={onHireStaff}
-							onAssign={onAssignStaff}
-							onUnassign={onUnassignStaff}
-							onRelease={onReleaseStaff}
-							onPromote={onPromoteStaff}
-							canHire={mutations.hireStaff}
-							canAssign={mutations.assignStaff}
-							canUnassign={mutations.unassignStaff}
-							canRelease={mutations.releaseStaff}
-							canPromote={mutations.promoteStaff}
+							onHire={hireStaff}
+							onAssign={assignStaff}
+							onUnassign={unassignStaff}
+							onRelease={releaseStaff}
+							onPromote={promoteStaff}
+							canHire={availability.hireStaff}
+							canAssign={availability.assignStaff}
+							canUnassign={availability.unassignStaff}
+							canRelease={availability.releaseStaff}
+							canPromote={availability.promoteStaff}
 							{disabledReason}
 						/>
 						<PolicyPanel
 							compact
 							{i18n}
 							game={panelGame}
-							onChange={onChangePolicy}
-							{onSetPolicyOverride}
-							{onClearPolicyOverrideField}
-							{onResetPolicyOverrideScope}
-							canUpdate={mutations.updatePolicy}
-							canUpdateScoped={mutations.scopedPolicy}
+							onChange={changePolicy}
+							onSetPolicyOverride={setPolicyOverride}
+							onClearPolicyOverrideField={clearPolicyOverrideField}
+							onResetPolicyOverrideScope={resetPolicyOverrideScope}
+							canUpdate={availability.updatePolicy}
+							canUpdateScoped={availability.scopedPolicy}
 							{disabledReason}
 						/>
 						<details>
@@ -360,9 +407,9 @@
 							<ManagerDelegationPanel
 								{i18n}
 								game={panelGame}
-								onChange={onSetManagerDelegation}
-								onRemove={onRemoveManagerDelegation}
-								canUpdate={mutations.delegation}
+								onChange={setManagerDelegation}
+								onRemove={removeManagerDelegation}
+								canUpdate={availability.delegation}
 								{disabledReason}
 							/>
 						</details>
@@ -372,8 +419,8 @@
 						<RetailSupplySources
 							retailCities={retailSupplyViews}
 							disabled={retailSupplyDisabled}
-							focusedRetailCityId={focusedRetailSupplyCityId}
-							onChange={onSetRetailSupplySource}
+							focusedRetailCityId={ui.focusedRetailSupplyCityId}
+							onChange={setRetailSupplySource}
 						/>
 						<StoreOverview
 							{i18n}
@@ -388,8 +435,8 @@
 							{i18n}
 							game={panelGame}
 							decisions={panelGame.decisions}
-							onResolve={onChooseDecision}
-							canResolve={mutations.resolveDecision}
+							onResolve={chooseDecision}
+							canResolve={availability.resolveDecision}
 							{disabledReason}
 						/>
 						<ActiveModifiers
@@ -414,41 +461,42 @@
 						game={panelGame}
 						{onPlanProduct}
 						{plannerProductIds}
-						{onClose}
+						onClose={() => ui.close()}
 					/>
 				{:else if panelId === 'logistics'}
 					<LogisticsPanel
 						game={panelGame}
 						view={requireLogisticsView()}
 						availability={{
-							sandboxActions: mutations.manageLogistics,
-							createRoute: mutations.createRecurringRoute,
-							updateRoute: mutations.updateRecurringRoute,
-							pauseResumeRoute: mutations.pauseRecurringRoute || mutations.resumeRecurringRoute
+							sandboxActions: availability.manageLogistics,
+							createRoute: availability.createRecurringRoute,
+							updateRoute: availability.updateRecurringRoute,
+							pauseResumeRoute:
+								availability.pauseRecurringRoute || availability.resumeRecurringRoute
 						}}
-						focusedRouteId={focusedLogisticsRouteId}
-						routePreset={logisticsRoutePreset}
+						focusedRouteId={ui.focusedLogisticsRouteId}
+						routePreset={ui.logisticsRoutePreset}
 						{disabledReason}
 						{i18n}
-						{onDispatchManualTransfer}
-						{onCreateRecurringRoute}
-						{onUpdateRecurringRoute}
-						{onPauseRecurringRoute}
-						{onResumeRecurringRoute}
-						{onReprioritizeRecurringRoute}
-						{onRemoveRecurringRoute}
+						onDispatchManualTransfer={dispatchManualTransfer}
+						onCreateRecurringRoute={createRecurringRoute}
+						onUpdateRecurringRoute={updateRecurringRoute}
+						onPauseRecurringRoute={pauseRecurringRoute}
+						onResumeRecurringRoute={resumeRecurringRoute}
+						onReprioritizeRecurringRoute={reprioritizeRecurringRoute}
+						onRemoveRecurringRoute={removeRecurringRoute}
 					/>
 				{:else if panelId === 'finance'}
 					<FinancePanel
 						game={panelGame}
 						metrics={requireFinanceMetrics()}
 						{i18n}
-						focusedLoanId={focusedFinanceLoanId}
-						mutationPending={mutations.pending}
-						{onBorrow}
-						{onRepay}
-						{onPayoff}
-						{onRefinance}
+						focusedLoanId={ui.focusedFinanceLoanId}
+						mutationPending={availability.pending}
+						onBorrow={borrow}
+						onRepay={repay}
+						onPayoff={payoff}
+						onRefinance={refinance}
 					/>
 				{/if}
 			{/key}
