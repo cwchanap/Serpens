@@ -424,6 +424,10 @@ it('setView keeps only the view-matching selections', () => {
 it('a deferred opened-city selection allows unchanged without eager map switching', async () => {
 	const mounted = mountSession();
 	const { session, commands } = mounted;
+	// Start on a view other than Campus Junction's retail destination so an
+	// eager or missing switch is observable.
+	session.setView('world');
+	mounted.counters.constructionCancels = 0;
 	let resolveSelection!: (result: { status: string }) => void;
 	const gate = new Promise<{ status: string }>((resolve) => {
 		resolveSelection = resolve;
@@ -433,7 +437,7 @@ it('a deferred opened-city selection allows unchanged without eager map switchin
 	const selection = session.selectWorldCity('campus-junction');
 	expect(session.selectedWorldCityId).toBe('campus-junction');
 	// No eager switch while the command is deferred.
-	expect(session.activeMapView).toBe('retail');
+	expect(session.activeMapView).toBe('world');
 	expect(session.selectedTileId).toBeNull();
 
 	resolveSelection({ status: 'unchanged' });
@@ -445,10 +449,11 @@ it('a deferred opened-city selection allows unchanged without eager map switchin
 	expect(mounted.counters.constructionCancels).toBe(1);
 
 	// A rejected result keeps the current view and selections.
+	session.setView('world');
 	session.acceptReadOnlySelection('retail', 'kept-tile');
 	commands.selectWorldCity.mockResolvedValueOnce({ status: 'rejected' });
 	await session.selectWorldCity('campus-junction');
-	expect(session.activeMapView).toBe('retail');
+	expect(session.activeMapView).toBe('world');
 	expect(session.selectedWorldCityId).toBe('campus-junction');
 	expect(session.selectedTileId).toBe('kept-tile');
 });
@@ -538,30 +543,37 @@ it('the read-only receiver updates only the named atom without recursion', () =>
 it('world-city financing forwards the current purchase without a domain command', () => {
 	const mounted = mountSession();
 	const { session, commands, holder, reviewedPurchases } = mounted;
+	// Breadbasket Basin revealed but unopened with cash short of the 15,000
+	// opening cost: the finance-eligible state must carry a credit offer.
+	const financeGame = {
+		...sandboxGame(),
+		cash: 10_000,
+		world: {
+			...sandboxGame().world,
+			revealedCityIds: [...sandboxGame().world.revealedCityIds, 'breadbasket-basin' as WorldCityId]
+		}
+	};
+	holder.game = financeGame;
 	const status = session.worldCityStatuses.find(
 		(candidate) => candidate.city.id === 'breadbasket-basin'
 	)!;
-	expect(status.state).toBe('locked');
+	expect(status.state).toBe('revealed');
+	expect(status.financeOffer).not.toBeNull();
 
 	session.reviewWorldCityFinancing('breadbasket-basin');
-	if (status.financeOffer) {
-		expect(reviewedPurchases).toEqual([
-			{
-				kind: 'world',
-				cityId: 'breadbasket-basin',
-				expectedCost: status.city.openingCost,
-				offer: status.financeOffer
-			}
-		]);
-	} else {
-		// Credit exhausted: no purchase is raised for review.
-		expect(reviewedPurchases).toEqual([]);
-	}
+	expect(reviewedPurchases).toEqual([
+		{
+			kind: 'world',
+			cityId: 'breadbasket-basin',
+			expectedCost: status.city.openingCost,
+			offer: status.financeOffer
+		}
+	]);
 	expect(commands.openWorldCity).not.toHaveBeenCalled();
 	expect(commands.selectWorldCity).not.toHaveBeenCalled();
 
 	// Cash-covered companies never raise the finance review.
-	holder.game = { ...sandboxGame(), cash: 10_000_000 };
+	holder.game = { ...financeGame, cash: 10_000_000 };
 	reviewedPurchases.length = 0;
 	session.reviewWorldCityFinancing('breadbasket-basin');
 	expect(reviewedPurchases).toEqual([]);
