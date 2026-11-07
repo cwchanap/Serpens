@@ -12,7 +12,6 @@
 	import ScenarioMenuActions from './ScenarioMenuActions.svelte';
 	import ScenarioResultsHost from './ScenarioResultsHost.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
-	import StoreDetailModal from '$lib/components/game/StoreDetailModal.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
 	import { createGameAudioController, type GameAudioController } from '$lib/audio/audioController';
 	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
@@ -20,64 +19,13 @@
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
 	import { localizeGameAlert } from '$lib/i18n/gameCopy';
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
-	import {
-		selectMapViewSelections,
-		selectMapHeading,
-		selectWorldCityStatuses,
-		resolveMapAlertDestination,
-		resolveWorldCitySelection,
-		resolveWorldCityOpening,
-		resolveWorldCityFinancing
-	} from './mapNavigationRoute';
-	import {
-		selectRetailInspector,
-		selectIndustryInspector,
-		selectInspectorRailSegments
-	} from './mapInspectorRoute';
+	import { resolveMapAlertDestination } from './mapNavigationRoute';
 	import { createRoutePreviewGame } from './routePreviewGame';
 	import { resolveShortcutAction, type ManagementPanelId } from '$lib/game/keyboardShortcuts';
-	import { createIndustryMapSnapshot } from '$lib/game/industryMapRender';
-	import { createCityMapSnapshot } from '$lib/game/mapRender';
-	import { resolveWorldCityId } from '$lib/game/cityInventory';
-	import { buildRailNetwork, deriveRailSegments, type RailSegment } from '$lib/game/rail';
-	import {
-		createInitialVisitedMapViews,
-		markMapViewVisited,
-		type MapViewId
-	} from '$lib/game/mapViewKeepAlive';
-	import {
-		resolveIndustrySelectionAnchorTileId,
-		resolveSelectionAnchorTileId
-	} from '$lib/game/placementPreview';
-	import {
-		createI18n,
-		readLocalePreference,
-		saveLocalePreference,
-		type StorageLike
-	} from '$lib/i18n/index';
-	import type { SupportedLocale } from '$lib/i18n/locales';
-	import { summarizeReports } from '$lib/game/reports';
-	import {
-		selectRouteGuidance,
-		resolveGuidanceHandoff,
-		type RouteGuidanceAction
-	} from './routeGuidance';
-	import {
-		selectRecentDeliveredTransfers,
-		selectRouteOperations,
-		type RouteOperationalSummary
-	} from '$lib/game/logisticsReadModels';
-	import { nextMapActivityBatch, type MapActivityBatch } from '$lib/game/mapActivityFeedback';
-	import type { SupplyPlannerHandoffHost } from './supplyPlannerRoute';
+	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 	import { encodeIndustrialPlacementKey } from '$lib/game/supplyPlannerActions';
-	import { WORLD_CITY_CATALOG, isWorldCityId } from '$lib/game/world';
-	import type {
-		GameState,
-		ProductId,
-		StoreProductPatch,
-		TransferOrder,
-		WorldCityId
-	} from '$lib/game/types';
+	import { WORLD_CITY_CATALOG } from '$lib/game/world';
+	import type { GameState, WorldCityId } from '$lib/game/types';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
 	import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
 	import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
@@ -90,7 +38,6 @@
 	import {
 		GameRouteController,
 		createMutationAvailability,
-		type GameRouteCommitResult,
 		type GameRouteControllerState
 	} from './gameRouteController';
 	import {
@@ -99,7 +46,6 @@
 		type OverlayId,
 		type OverlaySnapshot
 	} from './routeOverlays';
-	import { createStoreDetailFocus } from './storeDetailFocus.svelte';
 	import { createConstructionUi } from './constructionUi.svelte';
 	import { createManagementUi } from './managementUi.svelte';
 	import ConstructionControls from './ConstructionControls.svelte';
@@ -108,6 +54,22 @@
 	import ManagementPanelHost from './ManagementPanelHost.svelte';
 	import MapInspectorHost from './MapInspectorHost.svelte';
 	import MapSurfaceHost from './MapSurfaceHost.svelte';
+	import { createMapSession } from './mapSession.svelte';
+	import { createRetailInspection } from './retailInspection.svelte';
+	import type { SupplyPlannerHandoffHost } from './supplyPlannerRoute';
+	import { nextMapActivityBatch, type MapActivityBatch } from '$lib/game/mapActivityFeedback';
+	import {
+		selectRouteGuidance,
+		resolveGuidanceHandoff,
+		type RouteGuidanceAction
+	} from './routeGuidance';
+	import {
+		createI18n,
+		readLocalePreference,
+		saveLocalePreference,
+		type StorageLike
+	} from '$lib/i18n/index';
+	import type { SupportedLocale } from '$lib/i18n/locales';
 
 	type SimulationSpeed = 1 | 2 | 5;
 	const SIMULATION_DAY_MS = 5_000;
@@ -145,8 +107,6 @@
 	}
 
 	const starterMapState = createRoutePreviewGame();
-	const starterCity = starterMapState.cities[0]!;
-	const starterIndustryCity = starterMapState.industryCities[0]!;
 	const bgmCueByMapView: Record<MapViewId, BgmCueId> = {
 		retail: 'bgm.retail-map',
 		industry: 'bgm.industry-map',
@@ -172,8 +132,8 @@
 	// Bumped when an auto-tick is skipped because a scenario command is in
 	// flight (mutationAvailability.advanceDay is false at fire time). The
 	// auto-tick $effect reads this as a re-arm signal so the clock schedules a
-	// fresh tick instead of stalling until the next user action. See the
-	// effect below for why advanceDay itself is not a lifecycle dependency.
+	// fresh tick instead of stalling until the next user action. See
+	// the effect below for why advanceDay itself is not a lifecycle dependency.
 	let simulationTickRearm = $state(0);
 	let scenarioCommandPending = $state(false);
 	let scenariosReady = $state(false);
@@ -194,13 +154,8 @@
 		onScenarioTerminalRun: (run) => scenarios.acceptTerminalRun(run),
 		onAutoSave: (metadata) => saves.acceptAutoSave(metadata),
 		onAutoSaveError: (error) => saves.acceptAutoSaveError(error),
-		onReadOnlySelection: (kind, tileId) => {
-			if (kind === 'retail') {
-				selectedTileId = tileId;
-			} else {
-				selectedIndustryTileId = tileId;
-			}
-		}
+		// Read-only receiver: updates only the named selection atom.
+		onReadOnlySelection: (kind, tileId) => session.acceptReadOnlySelection(kind, tileId)
 	});
 	let game = $derived(playMode === 'scenario' ? (activeScenarioRun?.game ?? null) : sandboxGame);
 	// Boolean projection of `game` existence. The auto-tick `$effect` reads this
@@ -210,12 +165,6 @@
 	// subscribing the timer to it would postpone the current day each time; a
 	// primitive boolean only propagates when existence flips.
 	let hasGame = $derived(game !== null);
-	let activeMapView = $state<MapViewId>('retail');
-	let visitedMapViews = $state(createInitialVisitedMapViews('retail'));
-	let selectedWorldCityId = $state<string | null>(null);
-	let selectedTileId = $state<string | null>(null);
-	let selectedIndustryTileId = $state<string | null>(null);
-	let selectedLogisticsRouteId = $state<string | null>(null);
 	let isCheatSheetOpen = $state(false);
 	let isGameMenuOpen = $state(false);
 	let isAlertsMenuOpen = $state(false);
@@ -264,36 +213,40 @@
 			construction.hideMenu();
 		}
 	});
+	// Map session owner: the active/visited views, the four selection ids,
+	// the active cities with their headings and the world map read models.
+	// Root keeps alert/guidance orchestration and calls the named operations.
+	const session = createMapSession({
+		getGame: () => game,
+		getFallback: () => starterMapState,
+		getI18n: () => i18n,
+		getAvailability: () => mutationAvailability,
+		getAllowedWorldCityIds: () => allowedWorldCityIds,
+		getWorldSelectionAvailable: () => worldCitySelectionAvailable,
+		getFocusedLogisticsRouteId: () => management.focusedLogisticsRouteId,
+		tryConstructionClick: (kind, tileId) => construction.tryConstructionClick(kind, tileId),
+		onCancelConstruction: () => construction.cancel(),
+		onClearLogisticsFocus: () => management.clearLogisticsFocus(),
+		onReviewPurchase: (purchase) => construction.review(purchase),
+		commands: gameRouteController
+	});
 	// Construction owner: build menu, armed placements, rail build session and
-	// the financed-purchase review. Existing root adapters stay until their
-	// owning tasks extract them.
+	// the financed-purchase review. Placement selections route through the map
+	// session's placement operations.
 	const construction = createConstructionUi({
 		getGame: () => game,
-		getRetailCity: () => activeCity,
-		getIndustryCity: () => industryCity,
+		getRetailCity: () => session.activeRetailCity,
+		getIndustryCity: () => session.activeIndustryCity,
 		getFallback: () => starterMapState,
-		getView: () => activeMapView,
+		getView: () => session.activeMapView,
 		getMode: () => playMode,
 		getDefinition: () => activeScenarioDefinition,
 		getAvailability: () => mutationAvailability,
 		getI18n: () => i18n,
 		commands: gameRouteController,
 		playSfx,
-		onSelectPlacementTile: (kind, tileId) => {
-			selectedWorldCityId = null;
-			if (kind === 'retail') {
-				selectedTileId = tileId;
-				selectedIndustryTileId = null;
-			} else {
-				selectedIndustryTileId = tileId;
-				selectedTileId = null;
-			}
-		},
-		onClearSelections: () => {
-			selectedTileId = null;
-			selectedIndustryTileId = null;
-			selectedWorldCityId = null;
-		},
+		onSelectPlacementTile: session.selectPlacementTile,
+		onClearSelections: session.clearPlacementSelections,
 		onFoundingPause: () => {
 			simulationPaused = true;
 		},
@@ -317,12 +270,11 @@
 		);
 	});
 	// Supply advisor owner: durable category/horizon context plus the lazy
-	// plan calculation and live handoff revalidation. The handoff bridge
-	// (overlay close, supply-city switch, map/management navigation) stays in
-	// root callbacks until Tasks 5/6 extract them into named methods.
+	// plan calculation and live handoff revalidation. The root bridge below
+	// composes the handoff protocol from the named owner operations.
 	const planner = createSupplyPlannerUi({
 		getGame: () => game,
-		getRetailCityId: () => activeCity.id as WorldCityId,
+		getRetailCityId: () => session.activeRetailCity.id as WorldCityId,
 		getAllowedProductIds: () => allowedProductIds,
 		getAllowedIndustryBuildingTypeIds: () => construction.allowedIndustryBuildingTypeIds,
 		getAllowedIndustrialPlacements: () => allowedIndustrialPlacements,
@@ -332,6 +284,18 @@
 		onPlanProduct: () => {
 			management.close();
 		}
+	});
+	// Retail inspection owner: selected tile/store/report, the focused
+	// store-detail overlay and the guarded store-product mutations.
+	const retail = createRetailInspection({
+		getGame: () => game,
+		getCity: () => session.activeRetailCity,
+		getSelectedTileId: () => session.selectedTileId,
+		getAvailability: () => mutationAvailability,
+		commands: gameRouteController,
+		onClearRetailSelection: () => session.clearSelection('retailTile'),
+		onManageSupply: (cityId) => management.openStores(cityId),
+		onPlanProduct: (productId) => planner.planProduct(productId)
 	});
 	const saves = createSaveUi({
 		getGame: () => game,
@@ -368,21 +332,6 @@
 	});
 	let audioController: GameAudioController | null = $state(null);
 	let audioPreferences = $state<AudioPreferences>({ ...DEFAULT_AUDIO_PREFERENCES });
-	let summary = $derived.by(() => {
-		const currentGame: GameState | null = game;
-		return currentGame ? summarizeReports(currentGame.reports) : summarizeReports([]);
-	});
-	let activeCity = $derived.by(() => {
-		const currentGame: GameState | null = game;
-		return currentGame?.cities.find((city) => city.id === currentGame.activeCityId) ?? starterCity;
-	});
-	let industryCity = $derived.by(() => {
-		const currentGame: GameState | null = game;
-		return (
-			currentGame?.industryCities.find((city) => city.id === currentGame.activeIndustryCityId) ??
-			starterIndustryCity
-		);
-	});
 	let alerts = $derived.by((): LocalizedGameAlert[] => {
 		const currentGame: GameState | null = game;
 		return currentGame
@@ -406,57 +355,6 @@
 		return false;
 	});
 	let showCashRecovery = $derived(cashRecoveryPlan !== null && !cashRecoveryDismissed);
-	let { mapEyebrow, mapTitle } = $derived(
-		selectMapHeading(activeMapView, activeCity.id, industryCity.id, i18n)
-	);
-	let worldCityStatuses = $derived(selectWorldCityStatuses(game));
-	let logisticsRouteSummaries = $derived.by<RouteOperationalSummary[]>(() =>
-		game ? selectRouteOperations(game) : []
-	);
-	let latestDeliveredTransfer = $derived.by<TransferOrder | null>(() => {
-		if (!game || !selectedWorldCityId || !isWorldCityId(selectedWorldCityId)) return null;
-		return selectRecentDeliveredTransfers(game, selectedWorldCityId)[0] ?? null;
-	});
-	let selectedLogisticsRoute = $derived.by<RouteOperationalSummary | null>(() =>
-		selectedLogisticsRouteId
-			? (logisticsRouteSummaries.find((summary) => summary.route.id === selectedLogisticsRouteId) ??
-				null)
-			: null
-	);
-	let { selectedTile, selectedStore } = $derived(
-		selectRetailInspector(game, activeCity, selectedTileId)
-	);
-	let { selectedIndustryTile, selectedIndustryBuilding } = $derived(
-		selectIndustryInspector(game, industryCity, selectedIndustryTileId)
-	);
-	// Focused store-detail overlay state (HPA-293 deep-link), extracted into
-	// storeDetailFocus.svelte.ts so page.svelte.spec.ts can pin the open/close
-	// focus contract.
-	const storeDetailFocus = createStoreDetailFocus(() => selectedStore !== null);
-	let latestSelectedStoreReport = $derived.by(() => {
-		const store = selectedStore;
-		return store
-			? (summary.latest?.storeReports.find((report) => report.storeId === store.id) ?? null)
-			: null;
-	});
-	// Rail network + segments for the current industry city. Depends only
-	// on game state (rails + buildings), not on which tile is selected — so
-	// clicking a different rail cell reuses the cached segments instead of
-	// rebuilding the network and recomputing connected components.
-	let industryRailSegments = $derived.by<RailSegment[]>(() => {
-		const currentGame: GameState | null = game;
-		if (!currentGame) return [];
-		const network = buildRailNetwork(industryCity);
-		return deriveRailSegments(network, currentGame.industrialBuildings);
-	});
-	let selectedRailSegments = $derived(
-		selectInspectorRailSegments(
-			industryCity,
-			selectedIndustryTileId,
-			construction.isRailActive,
-			() => industryRailSegments
-		)
-	);
 	// Read-only projection of existing owners, not a second overlay state authority.
 	let overlaySnapshot = $derived.by<OverlaySnapshot>(() => {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- Rebuilt from owners, never mutated after publication.
@@ -467,7 +365,7 @@
 		if (scenarios.isResultsOpen) openOverlays.add('scenario-results');
 		if (isCheatSheetOpen) openOverlays.add('cheat-sheet');
 		if (planner.isOpen) openOverlays.add('supply-advisor');
-		if (storeDetailFocus.isOpen) openOverlays.add('store-detail');
+		if (retail.focus.isOpen) openOverlays.add('store-detail');
 		if (construction.isMenuOpen) openOverlays.add('build-menu');
 		if (isGameMenuOpen) openOverlays.add('game-menu');
 		if (isAlertsMenuOpen) openOverlays.add('alerts-menu');
@@ -478,10 +376,10 @@
 			isRailBuildActive: construction.isRailActive,
 			isFinanceReviewPending: construction.purchaseReview.confirmationPending,
 			selected: {
-				worldCity: selectedWorldCityId !== null,
-				retailTile: selectedTileId !== null,
-				industryTile: selectedIndustryTileId !== null,
-				logisticsRoute: selectedLogisticsRouteId !== null
+				worldCity: session.selectedWorldCityId !== null,
+				retailTile: session.selectedTileId !== null,
+				industryTile: session.selectedIndustryTileId !== null,
+				logisticsRoute: session.selectedLogisticsRouteId !== null
 			},
 			allowMenuFallback: false // Set from the current keyboard event, never stored.
 		};
@@ -489,47 +387,13 @@
 	let { isMapPaused, railKeyboardEnabled, hasBlockingOverlay } = $derived(
 		selectOverlayGates(overlaySnapshot)
 	);
-	let shouldShowRetailInspector = $derived(
-		selectedTile !== null &&
-			(!construction.isPlacementModeActive || construction.placementFeedback !== null)
-	);
-	let shouldShowIndustryInspector = $derived(
-		selectedIndustryTile !== null &&
-			(!construction.isPlacementModeActive || construction.placementFeedback !== null)
-	);
-	let showLogisticsRouteInspector = $derived(
-		activeMapView === 'world' && selectedLogisticsRoute !== null
-	);
 	// The world map is a navigation/overview surface with no time controls —
 	// the ControlDesk (pause/resume + speed) is hidden there. Block the
 	// auto-tick while it owns the screen so a running simulation can't advance
 	// uncontrollably. Not folded into hasBlockingOverlay because that flag also
 	// swallows every keyboard shortcut (panel mnemonics, 1/2/3 view navigation),
 	// which must stay available on the world view.
-	let simulationBlocked = $derived(hasBlockingOverlay || activeMapView === 'world');
-	const retailMapActivity = $derived({
-		seq: mapActivity.seq,
-		activities: mapActivity.activities.filter((activity) => activity.kind !== 'production')
-	});
-	const industryMapActivity = $derived({
-		seq: mapActivity.seq,
-		activities: mapActivity.activities.filter((activity) => activity.kind === 'production')
-	});
-	let mapSnapshot = $derived(
-		createCityMapSnapshot(
-			game ?? starterMapState,
-			selectedTileId,
-			construction.retailPlacementPreview
-		)
-	);
-	let industryMapSnapshot = $derived(
-		createIndustryMapSnapshot(
-			game ?? starterMapState,
-			selectedIndustryTileId,
-			construction.industryPlacementPreview,
-			construction.railPreviewRender
-		)
-	);
+	let simulationBlocked = $derived(hasBlockingOverlay || session.activeMapView === 'world');
 
 	onMount(() => {
 		void saves.initialize().then(async () => {
@@ -538,7 +402,8 @@
 				saves.autoSave
 			) {
 				await saves.resumeAutoSave();
-				selectedTileId = game?.stores[0]?.tileId ?? null;
+				const tileId = game?.stores[0]?.tileId ?? null;
+				if (tileId !== null) session.acceptReadOnlySelection('retail', tileId);
 			}
 		});
 		void gameRouteController.initializeScenarios();
@@ -551,7 +416,7 @@
 
 		audioController = controller;
 		audioPreferences = controller.getPreferences();
-		controller.setActiveBgm(bgmCueByMapView[activeMapView]);
+		controller.setActiveBgm(bgmCueByMapView[session.activeMapView]);
 
 		return () => {
 			void controller.destroy();
@@ -564,7 +429,7 @@
 	});
 
 	$effect(() => {
-		audioController?.setActiveBgm(bgmCueByMapView[activeMapView]);
+		audioController?.setActiveBgm(bgmCueByMapView[session.activeMapView]);
 	});
 
 	$effect(() => {
@@ -600,148 +465,11 @@
 		activeLocale = saveLocalePreference(locale, safeLocalStorage());
 	}
 
-	function clearLogisticsRouteSelection(): void {
-		selectedLogisticsRouteId = null;
-		management.clearLogisticsFocus();
-	}
-
-	function selectLogisticsRoute(routeId: string): void {
-		if (!logisticsRouteSummaries.some((summary) => summary.route.id === routeId)) return;
-		setActiveMapView('world');
-		selectedWorldCityId = null;
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		construction.cancel();
-		management.clearLogisticsFocus();
-		selectedLogisticsRouteId = routeId;
-	}
-
-	function selectTile(tileId: string) {
-		clearLogisticsRouteSelection();
-		if (construction.tryConstructionClick('retail', tileId)) return;
-
-		// Resolve a click inside a placed 2x2 store footprint to that store's
-		// anchor so the inspector shows the anchor's tile-derived stats
-		// (neighborhood/demand/rent) instead of the clicked cell's.
-		gameRouteController.selectReadOnlyTile(
-			'retail',
-			game ? resolveSelectionAnchorTileId(activeCity, game.stores, tileId) : tileId
-		);
-		selectedIndustryTileId = null;
-		selectedWorldCityId = null;
-	}
-
-	function selectIndustryTile(tileId: string) {
-		clearLogisticsRouteSelection();
-		if (construction.tryConstructionClick('industry', tileId)) return;
-
-		// Resolve a click inside a placed 2x2 industrial building footprint to
-		// that building's anchor for the same reason as selectTile above.
-		// A rail-cell tile has no footprint to resolve, so it is left as-is —
-		// `selectedRailSegments` then derives the segment(s) for it, and the
-		// template shows RailSegmentInspector instead of IndustryTileInspector.
-		gameRouteController.selectReadOnlyTile(
-			'industry',
-			game
-				? resolveIndustrySelectionAnchorTileId(industryCity, game.industrialBuildings, tileId)
-				: tileId
-		);
-		selectedTileId = null;
-		selectedWorldCityId = null;
-	}
-
-	function upgradeRailSegmentHandler(segmentId: string): void {
-		if (game && mutationAvailability.upgradeRail) {
-			void gameRouteController.upgradeRail(industryCity.id, segmentId);
-		}
-	}
-
-	function demolishRailSegmentHandler(segmentId: string): void {
-		if (game && mutationAvailability.demolishRail) {
-			void gameRouteController.demolishRail(industryCity.id, segmentId);
-		}
-	}
-
+	/** Shell view switch: the world view hides the build menu (root policy);
+	 * the navigation itself belongs to the map session owner. */
 	function showMap(view: MapViewId): void {
-		setActiveMapView(view);
-		const next = selectMapViewSelections(view, {
-			selectedTileId,
-			selectedIndustryTileId,
-			selectedWorldCityId,
-			selectedLogisticsRouteId,
-			focusedLogisticsRouteId: management.focusedLogisticsRouteId
-		});
-		selectedTileId = next.selectedTileId;
-		selectedIndustryTileId = next.selectedIndustryTileId;
-		selectedWorldCityId = next.selectedWorldCityId;
-		selectedLogisticsRouteId = next.selectedLogisticsRouteId;
-		// Leaving the world view clears the focused route; the owner atom is
-		// only ever cleared through its named operation.
-		if (management.focusedLogisticsRouteId !== next.focusedLogisticsRouteId) {
-			management.clearLogisticsFocus();
-		}
 		if (view === 'world') construction.hideMenu();
-		construction.cancel();
-	}
-
-	function setActiveMapView(mapView: MapViewId): void {
-		activeMapView = mapView;
-		visitedMapViews = markMapViewVisited(visitedMapViews, mapView);
-	}
-
-	async function selectWorldCityNode(cityId: string): Promise<void> {
-		clearLogisticsRouteSelection();
-		const selection = resolveWorldCitySelection(
-			game,
-			cityId,
-			allowedWorldCityIds,
-			worldCitySelectionAvailable
-		);
-		if (!selection) return;
-		selectedWorldCityId = selection.cityId;
-		if (!selection.mapView) return;
-
-		const result = await gameRouteController.selectWorldCity(selection.cityId);
-		// `unchanged` means the city is already the active one — the controller
-		// skipped the write, but navigation to its map should still proceed.
-		if (
-			result.status !== 'committed' &&
-			result.status !== 'sandbox-committed' &&
-			result.status !== 'unchanged'
-		) {
-			return;
-		}
-		setActiveMapView(selection.mapView);
-		selectedWorldCityId = null;
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		construction.cancel();
-	}
-
-	function openSelectedWorldCity(cityId: string): void {
-		const legalCityId = resolveWorldCityOpening(
-			game,
-			cityId,
-			allowedWorldCityIds,
-			mutationAvailability.openWorldCity
-		);
-		if (!legalCityId) return;
-		void gameRouteController.openWorldCity(legalCityId);
-		selectedWorldCityId = legalCityId;
-	}
-
-	function reviewSelectedWorldCityFinancing(cityId: string): void {
-		const purchase = resolveWorldCityFinancing(
-			game,
-			cityId,
-			allowedWorldCityIds,
-			mutationAvailability.financeWorldCity
-		);
-		if (purchase) construction.review(purchase);
-	}
-
-	function closeWorldInspector(): void {
-		selectedWorldCityId = null;
+		session.setView(view);
 	}
 
 	function handleGuidanceAction(action: RouteGuidanceAction): void {
@@ -777,11 +505,11 @@
 	let previousScenarioIdentity: ScenarioRouteIdentity | undefined = undefined;
 
 	function resetTransientViewState(): void {
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		selectedWorldCityId = null;
-		clearLogisticsRouteSelection();
-		storeDetailFocus.close();
+		session.clearSelection('retailTile');
+		session.clearSelection('industryTile');
+		session.clearSelection('worldCity');
+		session.clearSelection('logisticsRoute');
+		retail.close();
 		construction.hideMenu();
 		planner.close();
 		// Pause the auto-tick whenever the active play mode or scenario run
@@ -824,10 +552,10 @@
 	// armed placement, guidance re-arm and a paused auto-tick. Failed or
 	// missing loads never reset — the caller returns before reaching this.
 	function resetViewStateAfterLoad(): void {
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		selectedWorldCityId = null;
-		clearLogisticsRouteSelection();
+		session.clearSelection('retailTile');
+		session.clearSelection('industryTile');
+		session.clearSelection('worldCity');
+		session.clearSelection('logisticsRoute');
 		construction.cancel();
 		// Only a successful load re-arms the sandbox opening and cash guidance.
 		sandboxOpeningGuidanceDismissed = false;
@@ -841,38 +569,26 @@
 		planner.close();
 		construction.hideMenu();
 		isGameMenuOpen = false;
-		storeDetailFocus.close();
+		retail.close();
 		isCheatSheetOpen = false;
 		isAlertsMenuOpen = false;
 		saves.close();
 		scenarios.closeCatalog();
 		management.close();
-		selectedTileId = null;
-		selectedIndustryTileId = null;
-		selectedWorldCityId = null;
-		clearLogisticsRouteSelection();
+		session.clearSelection('retailTile');
+		session.clearSelection('industryTile');
+		session.clearSelection('worldCity');
+		session.clearSelection('logisticsRoute');
 		construction.cancel();
-	}
-
-	async function switchToPlannerSupplyCity(cityId: WorldCityId): Promise<boolean> {
-		if (!game) return false;
-		await selectWorldCityNode(cityId);
-		const currentGame = game;
-		if (!currentGame || currentGame.activeIndustryCityId !== cityId) return false;
-		setActiveMapView('industry');
-		selectedTileId = null;
-		selectedWorldCityId = null;
-		clearLogisticsRouteSelection();
-		return true;
 	}
 
 	function plannerHandoffHost(): SupplyPlannerHandoffHost {
 		return {
 			getGame: () => game,
 			closeOverlays: closePlannerOverlays,
-			switchToSupplyCity: switchToPlannerSupplyCity,
+			switchToSupplyCity: (cityId) => session.switchToSupplyCity(cityId),
 			armIndustryPlacement: construction.armIndustry,
-			selectIndustryTile,
+			selectIndustryTile: session.selectIndustryTile,
 			openLogistics: management.openLogistics,
 			openStores: management.openStores,
 			enterRailBuildMode: (mode) => {
@@ -918,71 +634,6 @@
 		simulationSpeed = speed;
 	}
 
-	/** Route-removal receipt from the management host: clears the map's current
-	 * selected route when it matches. The owner clears its own focus. */
-	function handleRouteRemoved(routeId: string): void {
-		if (selectedLogisticsRouteId === routeId) selectedLogisticsRouteId = null;
-	}
-
-	async function changeStoreProduct(
-		storeId: string,
-		productId: ProductId,
-		patch: StoreProductPatch
-	): Promise<GameRouteCommitResult | null> {
-		// null = pre-command: no game, unknown product, or the mutation command
-		// is unavailable in this run. Otherwise the controller result is passed
-		// through unchanged so callers can acknowledge truthfully.
-		if (!game) {
-			return null;
-		}
-		const product = game.stores
-			.find((store) => store.id === storeId)
-			?.products.find((candidate) => candidate.productId === productId);
-		if (!product) {
-			return null;
-		}
-
-		if (patch.sellingPrice !== undefined) {
-			if (!mutationAvailability.updateStoreSellingPrice) return null;
-			return gameRouteController.updateStoreSellingPrice(storeId, productId, patch.sellingPrice);
-		}
-		if (!mutationAvailability.updateStoreInventoryTargets) return null;
-		return gameRouteController.updateStoreInventoryTargets(
-			storeId,
-			productId,
-			patch.reorderThreshold ?? product.reorderThreshold,
-			patch.targetStock ?? product.targetStock
-		);
-	}
-
-	async function upgradeStoreHandler(storeId: string): Promise<GameRouteCommitResult | null> {
-		if (!game || !mutationAvailability.upgradeStore) return null;
-		return gameRouteController.upgradeStore(storeId);
-	}
-
-	function closeInspector() {
-		selectedTileId = null;
-		storeDetailFocus.close();
-	}
-
-	/** Stock-table handoff: manage this store's retail supply source. */
-	function manageStoreSupplySource(retailCityId: string): void {
-		const cityId = resolveWorldCityId(retailCityId);
-		if (!cityId) return;
-		storeDetailFocus.close();
-		management.openStores(cityId);
-	}
-
-	/** Stock-table handoff: open the supply planner for one product. */
-	function planStoreSupplyProduct(productId: ProductId): void {
-		storeDetailFocus.close();
-		planner.planProduct(productId);
-	}
-
-	function closeIndustryInspector() {
-		selectedIndustryTileId = null;
-	}
-
 	function isTypingElement(target: EventTarget | null): boolean {
 		if (!(target instanceof HTMLElement)) {
 			return false;
@@ -1011,12 +662,12 @@
 		const destination = resolveMapAlertDestination(
 			alert,
 			game,
-			allowedWorldCityIds,
+			session.allowedWorldCityIds,
 			worldCitySelectionAvailable
 		);
 		if (!destination) return;
 		if (destination.kind === 'world-route') {
-			selectLogisticsRoute(destination.routeId);
+			session.selectLogisticsRoute(destination.routeId);
 			return;
 		}
 		if (destination.kind === 'panel') {
@@ -1031,8 +682,8 @@
 		}
 		if (destination.kind === 'retail') {
 			showMap('retail');
-			selectedTileId = destination.tileId;
-			storeDetailFocus.openDirect(destination.productId);
+			session.acceptReadOnlySelection('retail', destination.tileId);
+			retail.openDirect(destination.productId);
 			return;
 		}
 		showMap('industry');
@@ -1047,14 +698,14 @@
 			startRailFromBuilding(destination.buildingId)
 		)
 			return;
-		selectedIndustryTileId = destination.tileId;
+		session.acceptReadOnlySelection('industry', destination.tileId);
 	}
 
 	function startRailFromBuilding(buildingId: string): boolean {
 		if (!game || !mutationAvailability.buildRail) return false;
 		if (!game.industrialBuildings.some((building) => building.id === buildingId)) return false;
 		planner.close();
-		selectedIndustryTileId = null;
+		session.clearSelection('industryTile');
 		construction.enterRailRouting({
 			step: 'routing',
 			originBuildingId: buildingId,
@@ -1100,7 +751,7 @@
 							planner.close();
 							break;
 						case 'store-detail':
-							storeDetailFocus.close();
+							retail.close();
 							break;
 						case 'build-menu':
 							construction.hideMenu();
@@ -1120,10 +771,10 @@
 					construction.cancel();
 					break;
 				case 'clear-selection':
-					if (resolution.kind === 'worldCity') selectedWorldCityId = null;
-					else if (resolution.kind === 'retailTile') selectedTileId = null;
-					else if (resolution.kind === 'industryTile') selectedIndustryTileId = null;
-					clearLogisticsRouteSelection();
+					session.clearSelection(resolution.kind);
+					if (resolution.kind !== 'logisticsRoute') {
+						session.clearSelection('logisticsRoute');
+					}
 					break;
 				case 'open-game-menu':
 					isGameMenuOpen = true;
@@ -1142,7 +793,7 @@
 			hasModifier,
 			hasBlockingOverlay,
 			isMenuOpen: construction.isMenuOpen || management.activePanelId !== null,
-			activeMapView,
+			activeMapView: session.activeMapView,
 			hasGame: game !== null
 		});
 
@@ -1173,7 +824,7 @@
 </script>
 
 <svelte:head>
-	<title>{i18n.t('app.title')} · {mapEyebrow}</title>
+	<title>{i18n.t('app.title')} · {session.mapEyebrow}</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -1184,7 +835,7 @@
 	data-scenario-command-pending={scenarioCommandPending}
 	data-simulation-paused={simulationPaused}
 	data-simulation-blocked={simulationBlocked}
-	data-active-map-view={activeMapView}
+	data-active-map-view={session.activeMapView}
 	data-scenario-result={lastScenarioResult?.outcome ?? ''}
 	data-scenario-best-updated={lastScenarioBestUpdated}
 	data-scenario-error={scenarioOperationError?.code ?? ''}
@@ -1199,48 +850,35 @@
 	>
 		<div class="map-surface-area">
 			<MapSurfaceHost
-				{activeMapView}
-				{visitedMapViews}
-				{isMapPaused}
+				{session}
+				{game}
+				fallback={starterMapState}
 				{i18n}
-				{worldCityStatuses}
-				{selectedWorldCityId}
-				onSelectWorldCity={selectWorldCityNode}
-				onOpenWorldCity={openSelectedWorldCity}
-				onFinanceWorldCity={reviewSelectedWorldCityFinancing}
-				onCloseWorldInspector={closeWorldInspector}
-				canOpenWorldCity={mutationAvailability.openWorldCity}
-				canFinanceWorldCity={mutationAvailability.financeWorldCity}
-				{allowedWorldCityIds}
-				{mutationDisabledReason}
-				{logisticsRouteSummaries}
-				{selectedLogisticsRouteId}
-				onSelectLogisticsRoute={selectLogisticsRoute}
-				{latestDeliveredTransfer}
-				{mapSnapshot}
-				{retailMapActivity}
-				onSelectRetailTile={selectTile}
-				{industryMapSnapshot}
-				{industryMapActivity}
-				onSelectIndustryTile={selectIndustryTile}
-				onCancelRailBuild={construction.cancelRailStep}
+				retailPlacementPreview={construction.retailPlacementPreview}
+				industryPlacementPreview={construction.industryPlacementPreview}
+				railPreviewRender={construction.railPreviewRender}
+				activity={mapActivity}
+				{isMapPaused}
 				{railKeyboardEnabled}
+				availability={mutationAvailability}
+				disabledReason={mutationDisabledReason}
+				onCancelRailBuild={construction.cancelRailStep}
 			/>
 		</div>
 		<TopBar
-			eyebrow={mapEyebrow}
-			title={mapTitle}
+			eyebrow={session.mapEyebrow}
+			title={session.mapTitle}
 			day={game?.day ?? null}
 			cash={game?.cash ?? null}
 			cashHistory={game?.reports.slice(-14).map((report) => report.cashAfter) ?? []}
 			industryInventory={game?.cityInventories.find(
-				(inventory) => inventory.cityId === industryCity.id
+				(inventory) => inventory.cityId === session.activeIndustryCity.id
 			)?.materials ?? {}}
 			{alerts}
 			{i18n}
 			{activeLocale}
 			onSelectAlert={handleSelectAlert}
-			{activeMapView}
+			activeMapView={session.activeMapView}
 			onSelectView={showMap}
 			onSelectLocale={changeLocale}
 			bind:menuOpen={isGameMenuOpen}
@@ -1295,11 +933,11 @@
 		{/if}
 
 		<ControlDesk
-			worldView={activeMapView === 'world'}
+			worldView={session.activeMapView === 'world'}
 			day={game?.day ?? 1}
 			managementItems={management.menu}
-			buildDisabled={activeMapView === 'world' ||
-				(activeMapView === 'retail'
+			buildDisabled={session.activeMapView === 'world' ||
+				(session.activeMapView === 'retail'
 					? !construction.canStartRetailExpansion
 					: !construction.canStartIndustryExpansion)}
 			advanceDisabled={game === null || !mutationAvailability.advanceDay}
@@ -1314,7 +952,7 @@
 			onTogglePause={toggleSimulationPause}
 			onSelectSpeed={setSimulationSpeed}
 			onOpenShortcuts={() => (isCheatSheetOpen = true)}
-			showRailBuild={activeMapView === 'industry' && game !== null}
+			showRailBuild={session.activeMapView === 'industry' && game !== null}
 			railBuildActive={construction.isRailActive}
 			onToggleRailBuild={construction.toggleRail}
 		/>
@@ -1322,94 +960,37 @@
 			ui={construction}
 			{i18n}
 			cash={game?.cash ?? 0}
-			view={activeMapView}
+			view={session.activeMapView}
 			guidanceVisible={showOpeningGuidance || showCashRecovery}
 			onOpenAdvisor={planner.open}
 		/>
 		<SupplyAdvisorHost ui={planner} {i18n} />
 		<MapInspectorHost
-			game={game ?? starterMapState}
+			{session}
+			{retail}
+			{game}
+			fallback={starterMapState}
 			{i18n}
+			availability={mutationAvailability}
 			disabledReason={mutationDisabledReason}
-			showRetailInspector={shouldShowRetailInspector}
-			selectedRetailTile={selectedTile}
-			{selectedStore}
-			latestStoreReport={latestSelectedStoreReport}
-			canUpgradeStore={mutationAvailability.upgradeStore}
-			onUpgradeStore={upgradeStoreHandler}
-			onOpenStoreDetails={storeDetailFocus.open}
-			onRetailClickFeedback={() => playSfx('sfx.ui.click')}
-			onCloseRetailInspector={closeInspector}
-			showIndustryInspector={shouldShowIndustryInspector}
-			{selectedIndustryTile}
-			{selectedIndustryBuilding}
-			{selectedRailSegments}
-			allIndustryRailSegments={industryRailSegments}
-			industryCityId={industryCity.id}
-			canUpgradeIndustryBuilding={mutationAvailability.upgradeIndustrialBuilding}
-			canUpgradeRail={mutationAvailability.upgradeRail}
-			canDemolishRail={mutationAvailability.demolishRail}
-			onUpgradeIndustryBuilding={(id) => {
-				void gameRouteController.upgradeIndustrialBuilding(id);
-			}}
+			mode={playMode}
+			isPlacementActive={construction.isPlacementModeActive}
+			placementFeedback={construction.placementFeedback}
+			isRailActive={construction.isRailActive}
+			commands={gameRouteController}
+			plannerProductIds={planner.productIds}
+			{allowedProductIds}
 			onAddIndustryRoute={(preset) => management.openLogistics(null, preset)}
-			canDemolishIndustryBuilding={playMode === 'sandbox' && game !== null}
-			onDemolishIndustryBuilding={(id) => {
-				void gameRouteController.demolishIndustrialBuilding(id);
-			}}
-			onBuildIndustryWarehouse={construction.canStartWarehousePlacement
+			onManageLogisticsRoute={management.openLogistics}
+			onBuildWarehouse={construction.canStartWarehousePlacement
 				? () => construction.armIndustry('warehouse')
 				: undefined}
 			onBuildRailFromBuilding={mutationAvailability.buildRail
 				? (id) => void startRailFromBuilding(id)
 				: undefined}
-			onUpgradeRailSegment={upgradeRailSegmentHandler}
-			onDemolishRailSegment={demolishRailSegmentHandler}
-			onCloseIndustryInspector={closeIndustryInspector}
-			{showLogisticsRouteInspector}
-			{selectedLogisticsRoute}
-			onManageLogisticsRoute={management.openLogistics}
-			onCloseLogisticsRouteInspector={clearLogisticsRouteSelection}
+			onPlayClickSfx={() => playSfx('sfx.ui.click')}
 		/>
 	</section>
-
-	{#if storeDetailFocus.isOpen && selectedStore}
-		<StoreDetailModal
-			game={game ?? starterMapState}
-			{i18n}
-			store={selectedStore}
-			staff={game?.staff ?? []}
-			hiringCandidates={game?.hiringCandidates ?? []}
-			latestStoreReport={latestSelectedStoreReport}
-			focusedProductId={storeDetailFocus.focusedProductId}
-			plannerProductIds={planner.productIds}
-			onManageSupplySource={manageStoreSupplySource}
-			onPlanSupply={planStoreSupplyProduct}
-			onUpdateStoreProduct={changeStoreProduct}
-			onUpdateStoreProductBrand={(storeId, productId, brandId) => {
-				void gameRouteController.updateStoreProductBrand(storeId, productId, brandId);
-			}}
-			onHireStaff={(id) => {
-				void gameRouteController.hireStaff(id);
-			}}
-			onAssignStaff={(staffId, storeId) => {
-				void gameRouteController.assignStaff(staffId, storeId);
-			}}
-			onUnassignStaff={(id) => {
-				void gameRouteController.unassignStaff(id);
-			}}
-			canUpdateSellingPrice={mutationAvailability.updateStoreSellingPrice}
-			canUpdateInventoryTargets={mutationAvailability.updateStoreInventoryTargets}
-			canUpdateBrand={mutationAvailability.updateStoreProductBrand}
-			{allowedProductIds}
-			canHireStaff={mutationAvailability.hireStaff}
-			canAssignStaff={mutationAvailability.assignStaff}
-			canUnassignStaff={mutationAvailability.unassignStaff}
-			disabledReason={mutationDisabledReason}
-			onClickFeedback={() => playSfx('sfx.ui.click')}
-			onClose={storeDetailFocus.close}
-		/>
-	{/if}
 
 	{#if management.activePanelId}
 		<ManagementPanelHost
@@ -1423,7 +1004,7 @@
 			commands={gameRouteController}
 			plannerProductIds={planner.productIds}
 			onPlanProduct={planner.planProduct}
-			onRouteRemoved={handleRouteRemoved}
+			onRouteRemoved={session.acceptRouteRemoved}
 		/>
 	{/if}
 

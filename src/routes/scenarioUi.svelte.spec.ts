@@ -116,24 +116,27 @@ it('local command preserves UI but external adoption resets synchronously', asyn
 		strip.onToggle();
 		controller.selectReadOnlyTile('retail', run.game.stores[0].tileId);
 		flushSync();
-		await surface.onSelectWorldCity('industry-city');
+		await surface.session.selectWorldCity('industry-city');
 		desk.onBuild();
 		flushSync();
 		const build = vi.mocked(BuildMenu).mock.calls.at(-1)![1];
 		build.onChooseIndustry('water-bottler');
 		controller.selectReadOnlyTile('retail', run.game.stores[0].tileId);
 		flushSync();
-		expect(inspector.showRetailInspector).toBe(false);
+		// The retail inspector's inputs stay live while placement hides it
+		// (the visibility rule itself is owned and covered by MapInspectorHost).
+		expect(inspector.session.selectedTileId).not.toBeNull();
+		expect(inspector.isPlacementActive).toBe(true);
 		const original = options.onStateChange;
-		expect(surface.industryMapSnapshot.placementPreview).not.toBeNull();
+		expect(surface.industryPlacementPreview).not.toBeNull();
 		expect(strip.expanded).toBe(true);
 		const seen: Array<{ placement: boolean; selection: string | null }> = [];
 		options.onStateChange = (state) => {
 			original?.(state);
 			// These props read root derived state directly, before a DOM flush or callback return.
 			seen.push({
-				placement: surface.industryMapSnapshot.placementPreview !== null,
-				selection: surface.mapSnapshot.selectedTileId
+				placement: surface.industryPlacementPreview !== null,
+				selection: surface.session.selectedTileId
 			});
 		};
 		await controller.updatePolicy({ pricing: 'premium' });

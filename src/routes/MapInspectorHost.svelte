@@ -1,102 +1,128 @@
+<script module lang="ts">
+	import type { GameRouteController } from './gameRouteController';
+
+	/** Inspector command port: local industry/rail edits and staff writes. */
+	export type MapInspectorCommands = Pick<
+		GameRouteController,
+		| 'upgradeIndustrialBuilding'
+		| 'demolishIndustrialBuilding'
+		| 'upgradeRail'
+		| 'demolishRail'
+		| 'hireStaff'
+		| 'assignStaff'
+		| 'unassignStaff'
+	>;
+</script>
+
 <script lang="ts">
-	import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
 	import IndustryTileInspector from '$lib/components/game/IndustryTileInspector.svelte';
 	import LogisticsRouteInspector from '$lib/components/game/LogisticsRouteInspector.svelte';
 	import RailSegmentInspector from '$lib/components/game/RailSegmentInspector.svelte';
+	import StoreDetailModal from '$lib/components/game/StoreDetailModal.svelte';
 	import TileInspector from '$lib/components/game/TileInspector.svelte';
-	import type { RailSegment } from '$lib/game/rail';
-	import type { GameRouteCommitResult } from '$lib/game/commandResult';
-	import type { RouteOperationalSummary } from '$lib/game/logisticsReadModels';
-	import type {
-		CityTile,
-		DailyStoreReport,
-		GameState,
-		IndustrialBuilding,
-		IndustryTile,
-		ProductId,
-		Store
-	} from '$lib/game/types';
+	import type { RecurringRouteInput } from '$lib/game/interCityLogistics';
+	import { buildRailNetwork, deriveRailSegments, type RailSegment } from '$lib/game/rail';
+	import { selectIndustryInspector, selectInspectorRailSegments } from './mapInspectorRoute';
+	import type { PlacementBlockReason } from '$lib/game/placementPreview';
+	import type { GameState, ProductId } from '$lib/game/types';
 	import type { I18nBundle } from '$lib/i18n';
+	import type { MutationAvailability } from './gameRouteController';
+	import type { MapSession } from './mapSession.svelte';
+	import type { RetailInspection } from './retailInspection.svelte';
 
 	interface Props {
-		game: GameState;
+		/** Map session: selected ids, active cities and logistics views. */
+		session: MapSession;
+		retail: RetailInspection;
+		game: GameState | null;
+		fallback: GameState;
 		i18n: I18nBundle;
+		availability: MutationAvailability;
 		disabledReason: string | null;
-
-		showRetailInspector: boolean;
-		selectedRetailTile: CityTile | null;
-		selectedStore: Store | null;
-		latestStoreReport: DailyStoreReport | null;
-		canUpgradeStore: boolean;
-		onUpgradeStore: (storeId: string) => Promise<GameRouteCommitResult | null>;
-		onOpenStoreDetails: (productId: ProductId | null) => void;
-		onRetailClickFeedback: () => void;
-		onCloseRetailInspector: () => void;
-
-		showIndustryInspector: boolean;
-		selectedIndustryTile: IndustryTile | null;
-		selectedIndustryBuilding: IndustrialBuilding | null;
-		selectedRailSegments: RailSegment[] | null;
-		allIndustryRailSegments: RailSegment[];
-		industryCityId: string;
-		canUpgradeIndustryBuilding: boolean;
-		canUpgradeRail: boolean;
-		canDemolishRail: boolean;
-		onUpgradeIndustryBuilding: (buildingId: string) => void;
+		mode: 'sandbox' | 'scenario';
+		isPlacementActive: boolean;
+		placementFeedback: PlacementBlockReason | null;
+		isRailActive: boolean;
+		commands: MapInspectorCommands;
+		plannerProductIds: readonly ProductId[];
+		allowedProductIds: readonly ProductId[];
 		onAddIndustryRoute?: (preset: RecurringRouteInput) => void;
-		onDemolishIndustryBuilding?: (buildingId: string) => void;
-		onBuildIndustryWarehouse?: () => void;
+		onManageLogisticsRoute: (routeId: string) => void;
+		onBuildWarehouse?: () => void;
 		onBuildRailFromBuilding?: (buildingId: string) => void;
-		canDemolishIndustryBuilding?: boolean;
-		onUpgradeRailSegment: (segmentId: string) => void;
-		onDemolishRailSegment: (segmentId: string) => void;
-		onCloseIndustryInspector: () => void;
-
-		showLogisticsRouteInspector?: boolean;
-		selectedLogisticsRoute?: RouteOperationalSummary | null;
-		onManageLogisticsRoute?: (routeId: string) => void;
-		onCloseLogisticsRouteInspector?: () => void;
+		onPlayClickSfx: () => void;
 	}
 
 	let {
+		session,
+		retail,
 		game,
+		fallback,
 		i18n,
+		availability,
 		disabledReason,
-		showRetailInspector,
-		selectedRetailTile,
-		selectedStore,
-		latestStoreReport,
-		canUpgradeStore,
-		onUpgradeStore,
-		onOpenStoreDetails,
-		onRetailClickFeedback,
-		onCloseRetailInspector,
-		showIndustryInspector,
-		selectedIndustryTile,
-		selectedIndustryBuilding,
-		selectedRailSegments,
-		allIndustryRailSegments,
-		industryCityId,
-		canUpgradeIndustryBuilding,
-		canUpgradeRail,
-		canDemolishRail,
-		onUpgradeIndustryBuilding,
+		mode,
+		isPlacementActive,
+		placementFeedback,
+		isRailActive,
+		commands,
+		plannerProductIds,
+		allowedProductIds,
 		onAddIndustryRoute,
-		onDemolishIndustryBuilding,
-		onBuildIndustryWarehouse,
+		onManageLogisticsRoute,
+		onBuildWarehouse,
 		onBuildRailFromBuilding,
-		canDemolishIndustryBuilding = false,
-		onUpgradeRailSegment,
-		onDemolishRailSegment,
-		onCloseIndustryInspector,
-		showLogisticsRouteInspector = false,
-		selectedLogisticsRoute = null,
-		onManageLogisticsRoute = () => {},
-		onCloseLogisticsRouteInspector = () => {}
+		onPlayClickSfx
 	}: Props = $props();
+
+	const panelGame = $derived(game ?? fallback);
+	const industry = $derived(
+		selectIndustryInspector(game, session.activeIndustryCity, session.selectedIndustryTileId)
+	);
+	// Cached rail model: the network depends only on the industry city's rails
+	// and buildings, never on the selected tile, so tile changes reuse it. It
+	// is read lazily — hidden, build-active and invalid selections never build
+	// the network.
+	const industryRailSegments = $derived.by<RailSegment[]>(() => {
+		const currentGame: GameState | null = game;
+		if (!currentGame) return [];
+		const network = buildRailNetwork(session.activeIndustryCity);
+		return deriveRailSegments(network, currentGame.industrialBuildings);
+	});
+	const selectedRailSegments = $derived(
+		selectInspectorRailSegments(
+			session.activeIndustryCity,
+			session.selectedIndustryTileId,
+			isRailActive,
+			() => industryRailSegments
+		)
+	);
+	const showRetailInspector = $derived(
+		retail.selectedTile !== null && (!isPlacementActive || placementFeedback !== null)
+	);
+	const showIndustryInspector = $derived(
+		industry.selectedIndustryTile !== null && (!isPlacementActive || placementFeedback !== null)
+	);
+	const showLogisticsRouteInspector = $derived(
+		session.activeMapView === 'world' && session.selectedLogisticsRoute !== null
+	);
+	// Industrial demolition stays sandbox-only; rail edits stay capability-gated.
+	const canDemolishIndustryBuilding = $derived(mode === 'sandbox' && game !== null);
+
+	function upgradeRailSegment(segmentId: string): void {
+		if (game && availability.upgradeRail) {
+			void commands.upgradeRail(session.activeIndustryCity.id, segmentId);
+		}
+	}
+
+	function demolishRailSegment(segmentId: string): void {
+		if (game && availability.demolishRail) {
+			void commands.demolishRail(session.activeIndustryCity.id, segmentId);
+		}
+	}
 </script>
 
-{#if selectedRetailTile && showRetailInspector}
+{#if retail.selectedTile && showRetailInspector}
 	<div
 		class="inspector-overlay"
 		role="dialog"
@@ -104,21 +130,21 @@
 		aria-label={i18n.t('route.inspectors.retailDetails')}
 	>
 		<TileInspector
-			{game}
-			tile={selectedRetailTile}
-			store={selectedStore}
-			{latestStoreReport}
+			game={panelGame}
+			tile={retail.selectedTile}
+			store={retail.selectedStore}
+			latestStoreReport={retail.latestReport}
 			{i18n}
-			{onUpgradeStore}
-			{canUpgradeStore}
+			onUpgradeStore={retail.upgradeStore}
+			canUpgradeStore={retail.canUpgradeStore}
 			{disabledReason}
-			onOpenDetails={onOpenStoreDetails}
-			onClickFeedback={onRetailClickFeedback}
-			onClose={onCloseRetailInspector}
+			onOpenDetails={(productId) => retail.open(productId ?? null)}
+			onClickFeedback={onPlayClickSfx}
+			onClose={retail.closeInspector}
 		/>
 	</div>
 {/if}
-{#if showLogisticsRouteInspector && selectedLogisticsRoute}
+{#if showLogisticsRouteInspector && session.selectedLogisticsRoute}
 	<div
 		class="inspector-overlay"
 		role="dialog"
@@ -126,10 +152,10 @@
 		aria-label={i18n.t('logisticsRouteInspector.ariaLabel')}
 	>
 		<LogisticsRouteInspector
-			route={selectedLogisticsRoute}
+			route={session.selectedLogisticsRoute}
 			{i18n}
 			onManageRoute={onManageLogisticsRoute}
-			onClose={onCloseLogisticsRouteInspector}
+			onClose={() => session.clearSelection('logisticsRoute')}
 		/>
 	</div>
 {/if}
@@ -141,20 +167,20 @@
 		aria-label={i18n.t('railSegmentInspector.title')}
 	>
 		<RailSegmentInspector
-			{game}
-			cityId={industryCityId}
+			game={panelGame}
+			cityId={session.activeIndustryCity.id}
 			segments={selectedRailSegments}
-			allSegments={allIndustryRailSegments}
+			allSegments={industryRailSegments}
 			{i18n}
-			onClose={onCloseIndustryInspector}
-			onUpgradeSegment={onUpgradeRailSegment}
-			onDemolishSegment={onDemolishRailSegment}
-			{canUpgradeRail}
-			{canDemolishRail}
+			onClose={() => session.clearSelection('industryTile')}
+			onUpgradeSegment={upgradeRailSegment}
+			onDemolishSegment={demolishRailSegment}
+			canUpgradeRail={availability.upgradeRail}
+			canDemolishRail={availability.demolishRail}
 			{disabledReason}
 		/>
 	</div>
-{:else if selectedIndustryTile && showIndustryInspector}
+{:else if industry.selectedIndustryTile && showIndustryInspector}
 	<div
 		class="inspector-overlay"
 		role="dialog"
@@ -162,21 +188,61 @@
 		aria-label={i18n.t('route.inspectors.industryDetails')}
 	>
 		<IndustryTileInspector
-			{game}
-			tile={selectedIndustryTile}
-			building={selectedIndustryBuilding}
+			game={panelGame}
+			tile={industry.selectedIndustryTile}
+			building={industry.selectedIndustryBuilding}
 			{i18n}
-			onUpgradeBuilding={onUpgradeIndustryBuilding}
+			onUpgradeBuilding={(buildingId) => {
+				void commands.upgradeIndustrialBuilding(buildingId);
+			}}
 			onAddRoute={onAddIndustryRoute}
-			onDemolishBuilding={onDemolishIndustryBuilding}
-			onBuildWarehouse={onBuildIndustryWarehouse}
+			onDemolishBuilding={(buildingId) => {
+				void commands.demolishIndustrialBuilding(buildingId);
+			}}
+			{onBuildWarehouse}
 			onBuildRailFrom={onBuildRailFromBuilding}
 			canDemolishBuilding={canDemolishIndustryBuilding}
-			canUpgradeBuilding={canUpgradeIndustryBuilding}
+			canUpgradeBuilding={availability.upgradeIndustrialBuilding}
 			{disabledReason}
-			onClose={onCloseIndustryInspector}
+			onClose={() => session.clearSelection('industryTile')}
 		/>
 	</div>
+{/if}
+
+{#if retail.focus.isOpen && retail.selectedStore}
+	<StoreDetailModal
+		game={panelGame}
+		{i18n}
+		store={retail.selectedStore}
+		staff={game?.staff ?? []}
+		hiringCandidates={game?.hiringCandidates ?? []}
+		latestStoreReport={retail.latestReport}
+		focusedProductId={retail.focus.focusedProductId}
+		{plannerProductIds}
+		onManageSupplySource={retail.manageSupplySource}
+		onPlanSupply={retail.planSupplyProduct}
+		onUpdateStoreProduct={retail.changeStoreProduct}
+		onUpdateStoreProductBrand={retail.changeStoreProductBrand}
+		onHireStaff={(candidateId) => {
+			void commands.hireStaff(candidateId);
+		}}
+		onAssignStaff={(staffId, storeId) => {
+			void commands.assignStaff(staffId, storeId);
+		}}
+		onUnassignStaff={(staffId) => {
+			void commands.unassignStaff(staffId);
+		}}
+		canUpdateSellingPrice={retail.canUpdateSellingPrice}
+		canUpdateInventoryTargets={retail.canUpdateInventoryTargets}
+		canUpdateBrand={retail.canUpdateBrand}
+		{allowedProductIds}
+		canHireStaff={availability.hireStaff}
+		canAssignStaff={availability.assignStaff}
+		canUnassignStaff={availability.unassignStaff}
+		{disabledReason}
+		onClickFeedback={onPlayClickSfx}
+		onClose={retail.close}
+	/>
 {/if}
 
 <style>
