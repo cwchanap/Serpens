@@ -1,4 +1,4 @@
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { describe, expect, it } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import {
@@ -11,7 +11,7 @@ import RetailSimulationPage from './+page.svelte';
 
 describe('retail supply controls before founding', () => {
 	it('keeps the Stores-panel source selector disabled while only starterMapState is displayed', async () => {
-		expect.assertions(2);
+		expect.assertions(5);
 		const isolatedStorageKeys = [
 			AUDIO_PREFERENCES_STORAGE_KEY,
 			BROWSER_SAVE_STORAGE_KEY,
@@ -36,6 +36,20 @@ describe('retail supply controls before founding', () => {
 			await expect.element(stores).toBeVisible();
 			await stores.click();
 
+			await expect
+				.element(page.getByLabelText('Local supply source for Harbor City'))
+				.toBeDisabled();
+
+			// The user close dismisses the panel; the generic hamburger open brings
+			// it back on the same starter state.
+			await userEvent.keyboard('{Escape}');
+			await expect.element(page.getByRole('dialog', { name: /stores/i })).not.toBeInTheDocument();
+			await page.getByRole('button', { name: /^menu$/i }).click();
+			await page
+				.getByRole('dialog', { name: 'Menu' })
+				.getByRole('button', { name: /stores/i })
+				.click();
+			await expect.element(page.getByRole('dialog', { name: /stores/i })).toBeVisible();
 			await expect
 				.element(page.getByLabelText('Local supply source for Harbor City'))
 				.toBeDisabled();

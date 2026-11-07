@@ -183,12 +183,12 @@ it('opening saves hides management without its stronger close cleanup', async ()
 			vi.mocked(MapInspectorHost).mock.calls.at(-1)![1].onManageLogisticsRoute!('retained-route');
 		});
 		const panel = vi.mocked(ManagementPanelHost).mock.calls.at(-1)![1];
-		expect(panel.focusedLogisticsRouteId).toBe('retained-route');
+		expect(panel.ui.focusedLogisticsRouteId).toBe('retained-route');
 		flushSync(() => ui.open());
 		await expect.element(page.getByRole('dialog', { name: /saves/i })).toBeVisible();
 		await expect.element(page.getByRole('dialog', { name: /management/i })).not.toBeInTheDocument();
-		// These are live route props even while the management host is hidden.
-		expect(panel.focusedLogisticsRouteId).toBe('retained-route');
+		// The owner keeps the logistics focus even while the host is hidden.
+		expect(panel.ui.focusedLogisticsRouteId).toBe('retained-route');
 		expect(onLoaded).not.toHaveBeenCalled();
 	} finally {
 		await view.unmount();
