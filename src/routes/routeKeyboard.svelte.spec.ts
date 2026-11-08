@@ -11,6 +11,12 @@ import { selectOverlayGates, type OverlayId, type OverlaySnapshot } from './rout
 // canvas's rail waypoint pop (IndustryMap scene, gated by railKeyboardEnabled).
 // Every test dispatches actual KeyboardEvents; no resolver return values are
 // inspected directly.
+//
+// The root close/selection/panel dispatch switches below are harness mirrors
+// of the page's switches; the page's own production wiring for the silent
+// build-menu Escape close and the paired logistics selection clear is covered
+// by routeKeyboardPage.svelte.spec.ts (real route mount), and the keyboard
+// fresh openManagementEntry("logistics") entry by managementPanelEntry.svelte.spec.ts.
 
 interface OwnerFlags {
 	finance: boolean;
