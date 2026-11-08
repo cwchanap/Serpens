@@ -13,14 +13,15 @@
 	import ScenarioResultsHost from './ScenarioResultsHost.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
 	import TopBar from '$lib/components/game/TopBar.svelte';
-	import { createGameAudioController, type GameAudioController } from '$lib/audio/audioController';
-	import { DEFAULT_AUDIO_PREFERENCES, type AudioPreferences } from '$lib/audio/audioPreferences';
-	import type { BgmCueId, SfxCueId } from '$lib/audio/audioCatalog';
+	import type { SfxCueId } from '$lib/audio/audioCatalog';
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
 	import { localizeGameAlert } from '$lib/i18n/gameCopy';
 	import type { LocalizedGameAlert } from '$lib/i18n/localizedTypes';
 	import { resolveMapAlertDestination } from './mapNavigationRoute';
 	import { createRoutePreviewGame } from './routePreviewGame';
+	import { createRouteAudio } from './routeAudio.svelte';
+	import { createRouteLocale } from './routeLocale.svelte';
+	import { createSimulationClock } from './simulationClock.svelte';
 	import { resolveShortcutAction, type ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 	import { encodeIndustrialPlacementKey } from '$lib/game/supplyPlannerActions';
@@ -63,55 +64,8 @@
 		resolveGuidanceHandoff,
 		type RouteGuidanceAction
 	} from './routeGuidance';
-	import {
-		createI18n,
-		readLocalePreference,
-		saveLocalePreference,
-		type StorageLike
-	} from '$lib/i18n/index';
-	import type { SupportedLocale } from '$lib/i18n/locales';
-
-	type SimulationSpeed = 1 | 2 | 5;
-	const SIMULATION_DAY_MS = 5_000;
-
-	/**
-	 * Returns `globalThis.localStorage` when accessible, or `null` when the
-	 * browser blocks storage access (e.g. privacy-restricted origins, sandboxed
-	 * iframes). Accessing the property itself can throw, so the try/catch must
-	 * wrap the property access — not just the `getItem`/`setItem` calls that
-	 * `readLocalePreference` / `saveLocalePreference` already guard internally.
-	 */
-	function safeLocalStorage(): StorageLike | null {
-		try {
-			return globalThis.localStorage;
-		} catch {
-			return null;
-		}
-	}
-
-	/**
-	 * Returns `navigator.languages` with `navigator.language` appended as a
-	 * fallback candidate. Some webviews expose only `navigator.language` or an
-	 * empty `navigator.languages` array; without this fallback a `ja-JP` or
-	 * `zh-TW` user would start in English despite the browser preference.
-	 */
-	function collectNavigatorLocaleCandidates(): readonly string[] {
-		const languages = globalThis.navigator.languages ?? [];
-		const language = globalThis.navigator.language;
-
-		if (language && !languages.includes(language)) {
-			return [...languages, language];
-		}
-
-		return languages;
-	}
 
 	const starterMapState = createRoutePreviewGame();
-	const bgmCueByMapView: Record<MapViewId, BgmCueId> = {
-		retail: 'bgm.retail-map',
-		industry: 'bgm.industry-map',
-		world: 'bgm.world-map'
-	};
 
 	let sandboxGame = $state<GameState | null>(null);
 	let activeScenarioRun = $state<ScenarioRun | null>(null);
@@ -126,15 +80,6 @@
 	// and the placement plaque slots over it regardless of copy length (see
 	// the *.opening-guidance-visible rules).
 	let openingGuidanceCardHeight = $state(0);
-	let simulationPaused = $state(false);
-	let simulationSpeed = $state<SimulationSpeed>(1);
-	let simulationTickPending = $state(false);
-	// Bumped when an auto-tick is skipped because a scenario command is in
-	// flight (mutationAvailability.advanceDay is false at fire time). The
-	// auto-tick $effect reads this as a re-arm signal so the clock schedules a
-	// fresh tick instead of stalling until the next user action. See
-	// the effect below for why advanceDay itself is not a lifecycle dependency.
-	let simulationTickRearm = $state(0);
 	let scenarioCommandPending = $state(false);
 	let scenariosReady = $state(false);
 	// The latest accepted-change batch for map feedback. Only the route's accepted-change
@@ -168,10 +113,9 @@
 	let isCheatSheetOpen = $state(false);
 	let isGameMenuOpen = $state(false);
 	let isAlertsMenuOpen = $state(false);
-	let activeLocale = $state<SupportedLocale>(
-		readLocalePreference(safeLocalStorage(), collectNavigatorLocaleCandidates())
-	);
-	let i18n = $derived(createI18n(activeLocale));
+	// Locale owner: active locale, live i18n bundle and document language.
+	const locale = createRouteLocale();
+	let i18n = $derived(locale.i18n);
 	let activeScenarioDefinition = $derived.by(() => scenarios.definition);
 	let mutationAvailability = $derived(
 		createMutationAvailability({
@@ -248,7 +192,7 @@
 		onSelectPlacementTile: session.selectPlacementTile,
 		onClearSelections: session.clearPlacementSelections,
 		onFoundingPause: () => {
-			simulationPaused = true;
+			clock.pause();
 		},
 		onMenuOpen: () => {
 			isGameMenuOpen = false;
@@ -330,8 +274,8 @@
 			management.hide();
 		}
 	});
-	let audioController: GameAudioController | null = $state(null);
-	let audioPreferences = $state<AudioPreferences>({ ...DEFAULT_AUDIO_PREFERENCES });
+	// Audio owner: controller lifecycle, preference mirror and view-pinned BGM.
+	const audio = createRouteAudio({ getView: () => session.activeMapView });
 	let alerts = $derived.by((): LocalizedGameAlert[] => {
 		const currentGame: GameState | null = game;
 		return currentGame
@@ -394,6 +338,14 @@
 	// swallows every keyboard shortcut (panel mnemonics, 1/2/3 view navigation),
 	// which must stay available on the world view.
 	let simulationBlocked = $derived(hasBlockingOverlay || session.activeMapView === 'world');
+	// Simulation clock owner: pause/speed/tick atoms and the auto-tick timer.
+	// Inputs stay primitive (existence/blocked); permission is fire-time only.
+	const clock = createSimulationClock({
+		getHasGame: () => hasGame,
+		getBlocked: () => simulationBlocked,
+		getCanAdvance: () => mutationAvailability.advanceDay,
+		advanceDay: () => gameRouteController.advanceDay()
+	});
 
 	onMount(() => {
 		void saves.initialize().then(async () => {
@@ -408,62 +360,9 @@
 		});
 		void gameRouteController.initializeScenarios();
 
-		const controller = createGameAudioController({
-			onPreferencesChanged: (nextPreferences) => {
-				audioPreferences = nextPreferences;
-			}
-		});
-
-		audioController = controller;
-		audioPreferences = controller.getPreferences();
-		controller.setActiveBgm(bgmCueByMapView[session.activeMapView]);
-
-		return () => {
-			void controller.destroy();
-			audioController = null;
-		};
+		// Audio mounts last and its synchronous cleanup is the route teardown.
+		return audio.mount();
 	});
-
-	$effect(() => {
-		document.documentElement.lang = activeLocale;
-	});
-
-	$effect(() => {
-		audioController?.setActiveBgm(bgmCueByMapView[session.activeMapView]);
-	});
-
-	$effect(() => {
-		const gameExists = hasGame;
-		const paused = simulationPaused;
-		const speed = simulationSpeed;
-		const tickPending = simulationTickPending;
-		const blockedByOverlay = simulationBlocked;
-		// Re-arm signal: bumped by runSimulationTick() when a tick is skipped
-		// because a scenario command is in flight. Reading it here keeps the
-		// effect's timer lifecycle independent of transient command-busy state.
-		void simulationTickRearm;
-
-		// Deliberately NOT reading mutationAvailability.advanceDay here. In
-		// scenario mode that flag flips with every persisted scenario command
-		// (commitMutation sets scenarioCommandPending true for the duration of
-		// each command via onPendingChange), so subscribing the timer lifecycle
-		// to it would clear the armed timeout mid-interval and restart the
-		// SIMULATION_DAY_MS / speed delay each time a policy/build/hire/etc.
-		// action landed. Frequent gameplay could then postpone a day
-		// indefinitely. runSimulationTick() re-checks advanceDay at fire time
-		// and skips (bumping simulationTickRearm to re-arm) if a command is
-		// still pending, so the deadline is preserved across the busy window.
-		if (!gameExists || paused || tickPending || blockedByOverlay) {
-			return;
-		}
-
-		const timer = globalThis.setTimeout(() => void runSimulationTick(), SIMULATION_DAY_MS / speed);
-		return () => globalThis.clearTimeout(timer);
-	});
-
-	function changeLocale(locale: SupportedLocale): void {
-		activeLocale = saveLocalePreference(locale, safeLocalStorage());
-	}
 
 	/** Shell view switch: the world view hides the build menu (root policy);
 	 * the navigation itself belongs to the map session owner. */
@@ -490,16 +389,8 @@
 		else management.open(id);
 	}
 
-	function unlockAudio(): void {
-		void audioController?.unlock();
-	}
-
 	function playSfx(cueId: SfxCueId): void {
-		void audioController?.playSfx(cueId);
-	}
-
-	function updateAudioPreferences(patch: Partial<AudioPreferences>): void {
-		audioController?.updatePreferences(patch);
+		audio.playSfx(cueId);
 	}
 
 	let previousScenarioIdentity: ScenarioRouteIdentity | undefined = undefined;
@@ -515,7 +406,7 @@
 		// Pause the auto-tick whenever the active play mode or scenario run
 		// changes (start/restart/import a challenge, return to sandbox, etc.)
 		// so the player can review the new state before time resumes.
-		simulationPaused = true;
+		clock.pause();
 		isGameMenuOpen = false;
 		isAlertsMenuOpen = false;
 		management.close();
@@ -562,7 +453,7 @@
 		cashRecoveryDismissed = false;
 		// Pause the auto-tick so the player can review the loaded state
 		// before time resumes.
-		simulationPaused = true;
+		clock.pause();
 	}
 
 	function closePlannerOverlays(): void {
@@ -599,39 +490,6 @@
 			canManageLogistics: mutationAvailability.manageLogistics,
 			canSetRetailSupplySource: mutationAvailability.setRetailSupplySource
 		};
-	}
-
-	async function runSimulationTick(): Promise<void> {
-		if (!game || simulationPaused || simulationTickPending) {
-			return;
-		}
-		if (!mutationAvailability.advanceDay) {
-			// A scenario command is in flight (scenarioCommandPending is true,
-			// so commitMutation hasn't finished its persist/publish cycle). The
-			// day deadline has already passed; bump the re-arm signal so the
-			// auto-tick effect schedules a fresh tick instead of stalling the
-			// clock until the next user action. runSimulationTick() re-checks
-			// advanceDay when the new timer fires and proceeds once the command
-			// bus clears.
-			simulationTickRearm += 1;
-			return;
-		}
-
-		simulationTickPending = true;
-		try {
-			await gameRouteController.advanceDay();
-		} finally {
-			simulationTickPending = false;
-		}
-	}
-
-	function toggleSimulationPause(): void {
-		if (!game) return;
-		simulationPaused = !simulationPaused;
-	}
-
-	function setSimulationSpeed(speed: SimulationSpeed): void {
-		simulationSpeed = speed;
 	}
 
 	function isTypingElement(target: EventTarget | null): boolean {
@@ -715,7 +573,7 @@
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
-		unlockAudio();
+		audio.unlock();
 
 		// Leave Cmd/Ctrl/Alt combinations to the browser/OS (e.g. Cmd+D, Cmd+S) —
 		// only bare keypresses (Shift allowed) drive game shortcuts.
@@ -816,7 +674,7 @@
 				openManagementEntry(action.panel);
 			}
 		} else if (action.type === 'toggle-pause') {
-			toggleSimulationPause();
+			clock.togglePause();
 		} else if (action.type === 'view') {
 			showMap(action.view);
 		}
@@ -833,14 +691,14 @@
 	class="app"
 	data-play-mode={playMode}
 	data-scenario-command-pending={scenarioCommandPending}
-	data-simulation-paused={simulationPaused}
+	data-simulation-paused={clock.paused}
 	data-simulation-blocked={simulationBlocked}
 	data-active-map-view={session.activeMapView}
 	data-scenario-result={lastScenarioResult?.outcome ?? ''}
 	data-scenario-best-updated={lastScenarioBestUpdated}
 	data-scenario-error={scenarioOperationError?.code ?? ''}
 	data-scenario-retry-available={retryScenarioOperation !== null}
-	onpointerdown={unlockAudio}
+	onpointerdown={audio.unlock}
 >
 	<section
 		class="map-layout"
@@ -876,11 +734,11 @@
 			)?.materials ?? {}}
 			{alerts}
 			{i18n}
-			{activeLocale}
+			activeLocale={locale.locale}
 			onSelectAlert={handleSelectAlert}
 			activeMapView={session.activeMapView}
 			onSelectView={showMap}
-			onSelectLocale={changeLocale}
+			onSelectLocale={locale.change}
 			bind:menuOpen={isGameMenuOpen}
 			bind:alertsOpen={isAlertsMenuOpen}
 		>
@@ -900,7 +758,7 @@
 					</div>
 				</div>
 				<ScenarioMenuActions ui={scenarios} {playMode} {i18n} onOpenSaves={saves.open} />
-				<AudioSettings {i18n} preferences={audioPreferences} onChange={updateAudioPreferences} />
+				<AudioSettings {i18n} preferences={audio.preferences} onChange={audio.updatePreferences} />
 			{/snippet}
 		</TopBar>
 
@@ -947,10 +805,10 @@
 			{i18n}
 			onBuild={construction.openMenu}
 			onOpenManagement={openManagementEntry}
-			paused={simulationPaused}
-			{simulationSpeed}
-			onTogglePause={toggleSimulationPause}
-			onSelectSpeed={setSimulationSpeed}
+			paused={clock.paused}
+			simulationSpeed={clock.speed}
+			onTogglePause={clock.togglePause}
+			onSelectSpeed={clock.setSpeed}
 			onOpenShortcuts={() => (isCheatSheetOpen = true)}
 			showRailBuild={session.activeMapView === 'industry' && game !== null}
 			railBuildActive={construction.isRailActive}

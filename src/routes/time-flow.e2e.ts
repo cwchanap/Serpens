@@ -90,13 +90,14 @@ test('automatic day clock keeps advancing across a non-day mutation', async ({ p
 	await expect(day).toHaveText('1');
 	await page.keyboard.press('Escape');
 
-	// Resume the auto-tick (loading a save starts paused so the player can
-	// review the state before time flows).
+	// Freeze virtual time BEFORE resuming the auto-tick, so the day timer is
+	// armed under the fake setTimeout (a real timer armed before installation
+	// would survive the later fake clearTimeout and fire in real time).
+	await page.clock.pauseAt(Date.now());
 	await page.getByRole('button', { name: 'Resume', exact: true }).click();
 
-	// Freeze virtual time, then switch to 5x (1000ms/day). Changing speed re-arms
+	// Switch to 5x (1000ms/day). Changing speed re-arms
 	// the timer for a fresh, deterministic 1000ms delay at the frozen instant T0.
-	await page.clock.pauseAt(Date.now());
 	await page.getByRole('button', { name: '5×', exact: true }).click();
 	await page.clock.runFor(0);
 
@@ -114,16 +115,14 @@ test('automatic day clock keeps advancing across a non-day mutation', async ({ p
 	await policies.getByRole('button', { name: /close policies/i }).click();
 	await page.clock.runFor(0);
 
-	// Advance the remainder of the interval (total 1050ms > 1000ms). The day
-	// must still advance despite the mid-interval mutation; if the clock
-	// re-subscribed to `game`, the mutation would have restarted the 1000ms delay
-	// and Day 1 would stall.
-	await page.clock.runFor(200);
-	await expect
-		.poll(async () => (await day.allTextContents()).includes('2'), {
-			timeout: 2_500
-		})
-		.toBe(true);
+	// Deadline assertion: at 999ms since arming the day must not have
+	// advanced (no shortened or double-fired timer), and exactly at the
+	// original 1,000ms deadline it advances — the mid-interval mutation must
+	// not have restarted the day delay.
+	await page.clock.runFor(149); // 850 + 149 = 999ms since arming
+	await expect(day).toHaveText('1');
+	await page.clock.runFor(1); // exactly 1,000ms since arming
+	await expect(day).toHaveText('2');
 
 	await page.clock.resume();
 });
@@ -156,13 +155,14 @@ test('automatic day clock keeps advancing across a non-day mutation in scenario 
 	const day = page.locator('.control-desk .day');
 	await expect(day).toHaveText('1');
 
-	// Resume the auto-tick (starting a challenge begins paused so the player
-	// can review the scenario before time flows).
+	// Freeze virtual time BEFORE resuming the auto-tick, so the day timer is
+	// armed under the fake setTimeout (a real timer armed before installation
+	// would survive the later fake clearTimeout and fire in real time).
+	await page.clock.pauseAt(Date.now());
 	await page.getByRole('button', { name: 'Resume', exact: true }).click();
 
-	// Freeze virtual time, then switch to 5x (1000ms/day). Changing speed re-arms
+	// Switch to 5x (1000ms/day). Changing speed re-arms
 	// the timer for a fresh, deterministic 1000ms delay at the frozen instant T0.
-	await page.clock.pauseAt(Date.now());
 	await page.getByRole('button', { name: '5×', exact: true }).click();
 	await page.clock.runFor(0);
 
@@ -196,16 +196,14 @@ test('automatic day clock keeps advancing across a non-day mutation in scenario 
 	await expect(page.locator('main.app')).toHaveAttribute('data-simulation-paused', 'false');
 	await page.clock.runFor(0);
 
-	// Advance the remainder of the interval (total 1050ms > 1000ms). The day
-	// must still advance despite the mid-interval scenario command; if the
-	// clock re-subscribed to mutationAvailability.advanceDay, the command would
-	// have restarted the 1000ms delay and Day 1 would stall.
-	await page.clock.runFor(200);
-	await expect
-		.poll(async () => (await day.allTextContents()).includes('2'), {
-			timeout: 2_500
-		})
-		.toBe(true);
+	// Deadline assertion: at 999ms since arming the day must not have
+	// advanced, and exactly at the original 1,000ms deadline it advances —
+	// the scenario command's pending window must not have restarted the day
+	// delay (neither via the game snapshot nor via the permission flag).
+	await page.clock.runFor(149); // 850 + 149 = 999ms since arming
+	await expect(day).toHaveText('1');
+	await page.clock.runFor(1); // exactly 1,000ms since arming
+	await expect(day).toHaveText('2');
 
 	await page.clock.resume();
 });
