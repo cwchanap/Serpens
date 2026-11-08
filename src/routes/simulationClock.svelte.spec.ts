@@ -167,29 +167,50 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 	localStorage.clear();
 });
-it('keeps the armed day deadline across non-day publications', { timeout: 60_000 }, async () => {
-	const { controller } = await mountRoute();
-	await startPausedScenario(controller);
-	// T0: the timer is armed at speed 1 (5,000ms per day).
-	vi.advanceTimersByTime(2_000);
+const NON_DAY_SPEED_CASES = [
+	// Brief anchors: at speed 1 advance 2,000ms, publish, then 2,999ms + 1ms.
+	// Speeds 2 and 5 repeat the same deadline shape scaled to their interval.
+	{ speed: 1, interval: 5_000, lead: 2_000 },
+	{ speed: 2, interval: 2_500, lead: 1_000 },
+	{ speed: 5, interval: 1_000, lead: 400 }
+] as const;
 
-	// Non-day publications before the deadline: a replaced game object…
-	const run = controller.state.activeScenarioRun!;
-	publish({ activeScenarioRun: { ...run, game: { ...run.game } } });
-	// …a real policy command (its scenario pending window opens and closes)…
-	const policy = await controller.updatePolicy({ pricing: 'premium' });
-	expect(policy.status).not.toBe('busy');
-	expect(policy.status).not.toBe('failed');
-	// …and an explicit pending window that opens and closes before the deadline.
-	publish({ scenarioCommandPending: true });
-	publish({ scenarioCommandPending: false });
+it.each(NON_DAY_SPEED_CASES)(
+	'keeps the armed day deadline across non-day publications at $speed× speed',
+	{ timeout: 60_000 },
+	async ({ speed, interval, lead }) => {
+		const { controller } = await mountRoute();
+		await startPausedScenario(controller);
+		if (speed !== 1) {
+			await page.getByRole('button', { name: `${speed}×`, exact: true }).click();
+			await settle(); // re-armed with the full interval of the new speed
+		}
 
-	vi.advanceTimersByTime(2_999); // 4,999ms since arming
-	expect(harness.advanceDay).not.toHaveBeenCalled();
-	vi.advanceTimersByTime(1); // exactly 5,000ms since arming
-	expect(harness.advanceDay).toHaveBeenCalledTimes(1);
-	await settle();
-});
+		// Partway into the current interval, before any deadline.
+		vi.advanceTimersByTime(lead);
+
+		// Non-day publications before the deadline: a replaced game object…
+		const run = controller.state.activeScenarioRun!;
+		publish({ activeScenarioRun: { ...run, game: { ...run.game } } });
+		// …a real, committed policy command (First Profit starts at pricing
+		// 'premium', so 'standard' is a genuine change: the scenario pending
+		// window opens and closes around the persisted publish of a fresh game)…
+		expect(run.game.policy.pricing).toBe('premium');
+		const policy = await controller.updatePolicy({ pricing: 'standard' });
+		expect(policy.status).toBe('committed');
+		expect(controller.state.activeScenarioRun!.game.policy.pricing).toBe('standard');
+		// …and an explicit pending window that opens and closes before the deadline.
+		publish({ scenarioCommandPending: true });
+		publish({ scenarioCommandPending: false });
+		await settle();
+
+		vi.advanceTimersByTime(interval - lead - 1); // 1ms before the original deadline
+		expect(harness.advanceDay).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1); // exactly the original deadline
+		expect(harness.advanceDay).toHaveBeenCalledTimes(1);
+		await settle();
+	}
+);
 
 it(
 	'rearms after a permission-blocked fire without overlapping ticks',
