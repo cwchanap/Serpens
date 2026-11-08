@@ -1,18 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import AudioSettings from '$lib/components/game/AudioSettings.svelte';
 	import ControlDesk from '$lib/components/game/ControlDesk.svelte';
 	import OpeningGuidance from '$lib/components/game/OpeningGuidance.svelte';
 	import CashRecoveryGuidance from '$lib/components/game/CashRecoveryGuidance.svelte';
 	import SavePanelHost from './SavePanelHost.svelte';
 	import { createSaveUi } from './saveUi.svelte';
 	import { createScenarioUi } from './scenarioUi.svelte';
+	import RouteHeader from './RouteHeader.svelte';
 	import ScenarioCatalogHost from './ScenarioCatalogHost.svelte';
 	import ScenarioProgressHost from './ScenarioProgressHost.svelte';
 	import ScenarioMenuActions from './ScenarioMenuActions.svelte';
 	import ScenarioResultsHost from './ScenarioResultsHost.svelte';
 	import ShortcutCheatSheet from '$lib/components/game/ShortcutCheatSheet.svelte';
-	import TopBar from '$lib/components/game/TopBar.svelte';
 	import type { SfxCueId } from '$lib/audio/audioCatalog';
 	import { collectGameAlerts, type GameAlert } from '$lib/game/alerts';
 	import { localizeGameAlert } from '$lib/i18n/gameCopy';
@@ -651,44 +650,29 @@
 				onCancelRailBuild={construction.cancelRailStep}
 			/>
 		</div>
-		<TopBar
+		<RouteHeader
+			{game}
+			industryCityId={session.activeIndustryCity.id}
 			eyebrow={session.mapEyebrow}
 			title={session.mapTitle}
-			day={game?.day ?? null}
-			cash={game?.cash ?? null}
-			cashHistory={game?.reports.slice(-14).map((report) => report.cashAfter) ?? []}
-			industryInventory={game?.cityInventories.find(
-				(inventory) => inventory.cityId === session.activeIndustryCity.id
-			)?.materials ?? {}}
-			{alerts}
 			{i18n}
 			activeLocale={locale.locale}
-			onSelectAlert={handleSelectAlert}
+			{alerts}
 			activeMapView={session.activeMapView}
+			managementMenu={management.menu}
+			onOpenManagementPanel={openManagementEntry}
+			onSelectAlert={handleSelectAlert}
 			onSelectView={showMap}
 			onSelectLocale={locale.change}
-			bind:menuOpen={isGameMenuOpen}
-			bind:alertsOpen={isAlertsMenuOpen}
+			audioPreferences={audio.preferences}
+			onUpdateAudioPreferences={audio.updatePreferences}
+			bind:gameMenuOpen={isGameMenuOpen}
+			bind:alertsMenuOpen={isAlertsMenuOpen}
 		>
-			{#snippet menuContent()}
-				<div class="menu-section">
-					<p class="menu-label">{i18n.t('route.menu.management')}</p>
-					<div
-						class="menu-management"
-						role="group"
-						aria-label={i18n.t('route.menu.managementPanels')}
-					>
-						{#each management.menu as item (item.id)}
-							<button type="button" onclick={() => openManagementEntry(item.id)}>
-								{item.label}
-							</button>
-						{/each}
-					</div>
-				</div>
+			{#snippet menuActions()}
 				<ScenarioMenuActions ui={scenarios} {playMode} {i18n} onOpenSaves={saves.open} />
-				<AudioSettings {i18n} preferences={audio.preferences} onChange={audio.updatePreferences} />
 			{/snippet}
-		</TopBar>
+		</RouteHeader>
 
 		{#if scenarios.showProgress}
 			<div class="scenario-progress">
@@ -910,46 +894,5 @@
 		.map-layout.opening-guidance-visible .scenario-progress {
 			max-height: calc(100dvh - 5rem - 8.6rem - var(--og-card-h, 0px) - 0.5rem);
 		}
-	}
-
-	/* Management launchers surfaced inside the hamburger menu so they remain
-	   reachable on narrow viewports where the control desk hides the .manage
-	   cluster. Mirrors GameMenu's .menu-label and .view-tab look. */
-	.menu-section {
-		display: grid;
-		gap: 0.4rem;
-	}
-
-	.menu-label {
-		margin: 0;
-		font-family: var(--font-ui);
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--brass-700);
-	}
-
-	.menu-management {
-		display: grid;
-		gap: 0.3rem;
-	}
-
-	.menu-management button {
-		width: 100%;
-		text-align: left;
-		border: 1px solid var(--paper-edge);
-		border-radius: 2px;
-		background: var(--paper-50);
-		color: var(--ink-700);
-		font-family: var(--font-ui);
-		font-size: 0.85rem;
-		padding: 0.45rem 0.6rem;
-	}
-
-	.menu-management button:hover,
-	.menu-management button:focus-visible {
-		background: var(--paper-200);
-		border-color: var(--brass-500);
 	}
 </style>
