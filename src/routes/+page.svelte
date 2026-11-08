@@ -22,7 +22,7 @@
 	import { createRouteAudio } from './routeAudio.svelte';
 	import { createRouteLocale } from './routeLocale.svelte';
 	import { createSimulationClock } from './simulationClock.svelte';
-	import { resolveShortcutAction, type ManagementPanelId } from '$lib/game/keyboardShortcuts';
+	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 	import { encodeIndustrialPlacementKey } from '$lib/game/supplyPlannerActions';
 	import { WORLD_CITY_CATALOG } from '$lib/game/world';
@@ -41,12 +41,8 @@
 		createMutationAvailability,
 		type GameRouteControllerState
 	} from './gameRouteController';
-	import {
-		resolveEscapeTarget,
-		selectOverlayGates,
-		type OverlayId,
-		type OverlaySnapshot
-	} from './routeOverlays';
+	import { selectOverlayGates, type OverlayId, type OverlaySnapshot } from './routeOverlays';
+	import { createRouteKeyboard, type RouteSelectionKind } from './routeKeyboard';
 	import { createConstructionUi } from './constructionUi.svelte';
 	import { createManagementUi } from './managementUi.svelte';
 	import ConstructionControls from './ConstructionControls.svelte';
@@ -492,30 +488,6 @@
 		};
 	}
 
-	function isTypingElement(target: EventTarget | null): boolean {
-		if (!(target instanceof HTMLElement)) {
-			return false;
-		}
-		const tag = target.tagName;
-		return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
-	}
-
-	// Interactive controls (buttons, links, disclosure summaries, and ARIA
-	// interactive roles) own certain keypresses — Space activates a button, so
-	// the global shortcut handler must not hijack it and call preventDefault().
-	// Mnemonic letters are suppressed here too: per the review note, shortcut
-	// handling should not fire from focused interactive controls. Dedicated
-	// global keys (`?`, Escape) are handled separately and stay unaffected.
-	const INTERACTIVE_CONTROL_SELECTOR =
-		'button, a[href], summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="option"], [role="checkbox"], [role="radio"], [role="switch"]';
-
-	function isInteractiveControl(target: EventTarget | null): boolean {
-		if (!(target instanceof HTMLElement)) {
-			return false;
-		}
-		return target.closest(INTERACTIVE_CONTROL_SELECTOR) !== null;
-	}
-
 	async function handleSelectAlert(alert: GameAlert): Promise<void> {
 		const destination = resolveMapAlertDestination(
 			alert,
@@ -572,120 +544,76 @@
 		return true;
 	}
 
-	function handleKeydown(event: KeyboardEvent) {
-		audio.unlock();
-
-		// Leave Cmd/Ctrl/Alt combinations to the browser/OS (e.g. Cmd+D, Cmd+S) —
-		// only bare keypresses (Shift allowed) drive game shortcuts.
-		const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
-
-		if (event.key === '?' && !hasModifier) {
-			// `?` is a true toggle: it opens the cheat sheet when no overlay is
-			// active, and closes it when the cheat sheet itself is the open
-			// overlay. It stays suppressed when a *different* modal is open so
-			// it can't stack on top of it.
-			if (!isTypingElement(event.target) && (!hasBlockingOverlay || isCheatSheetOpen)) {
-				event.preventDefault();
-				isCheatSheetOpen = !isCheatSheetOpen;
-			}
-			return;
-		}
-
-		if (event.key === 'Escape') {
-			const resolution = resolveEscapeTarget({
-				...overlaySnapshot,
-				allowMenuFallback: !hasModifier && !isTypingElement(event.target)
-			});
-			switch (resolution.type) {
-				case 'close-overlay':
-					switch (resolution.overlay) {
-						case 'save-panel':
-							saves.close();
-							break;
-						case 'cheat-sheet':
-							isCheatSheetOpen = false;
-							break;
-						case 'supply-advisor':
-							planner.close();
-							break;
-						case 'store-detail':
-							retail.close();
-							break;
-						case 'build-menu':
-							construction.hideMenu();
-							break;
-						case 'game-menu':
-							isGameMenuOpen = false;
-							break;
-						case 'alerts-menu':
-							isAlertsMenuOpen = false;
-							break;
-						case 'management-panel':
-							management.close();
-							break;
-					}
-					break;
-				case 'cancel-placement':
-					construction.cancel();
-					break;
-				case 'clear-selection':
-					session.clearSelection(resolution.kind);
-					if (resolution.kind !== 'logisticsRoute') {
-						session.clearSelection('logisticsRoute');
-					}
-					break;
-				case 'open-game-menu':
-					isGameMenuOpen = true;
-					break;
-				case 'external-owned':
-				case 'none':
-					break;
-			}
-			return;
-		}
-
-		const action = resolveShortcutAction({
-			key: event.key,
-			isTypingTarget: isTypingElement(event.target),
-			isInteractiveTarget: isInteractiveControl(event.target),
-			hasModifier,
-			hasBlockingOverlay,
-			isMenuOpen: construction.isMenuOpen || management.activePanelId !== null,
-			activeMapView: session.activeMapView,
-			hasGame: game !== null
-		});
-
-		if (!action) {
-			return;
-		}
-
-		event.preventDefault();
-
-		if (action.type === 'toggle-build') {
-			if (construction.isMenuOpen) {
-				construction.closeMenu();
-			} else {
-				construction.openMenu();
-			}
-		} else if (action.type === 'toggle-panel') {
-			if (management.activePanelId === action.panel) {
+	/** Escape-driven overlay close keeps silent semantics: the build menu
+	 * hides without the close SFX its user-facing toggle plays.
+	 */
+	function closeOverlay(id: OverlayId): void {
+		switch (id) {
+			case 'save-panel':
+				saves.close();
+				break;
+			case 'cheat-sheet':
+				isCheatSheetOpen = false;
+				break;
+			case 'supply-advisor':
+				planner.close();
+				break;
+			case 'store-detail':
+				retail.close();
+				break;
+			case 'build-menu':
+				construction.hideMenu();
+				break;
+			case 'game-menu':
+				isGameMenuOpen = false;
+				break;
+			case 'alerts-menu':
+				isAlertsMenuOpen = false;
+				break;
+			case 'management-panel':
 				management.close();
-			} else {
-				openManagementEntry(action.panel);
-			}
-		} else if (action.type === 'toggle-pause') {
-			clock.togglePause();
-		} else if (action.type === 'view') {
-			showMap(action.view);
+				break;
 		}
 	}
+
+	/** Escape-driven selection clear: any cleared selection also drops the
+	 * logistics selection, which in turn clears the management route focus.
+	 */
+	function clearSelection(kind: RouteSelectionKind): void {
+		session.clearSelection(kind);
+		if (kind !== 'logisticsRoute') {
+			session.clearSelection('logisticsRoute');
+		}
+	}
+
+	// Keyboard owner: the page's single window keydown points at this
+	// event-time adapter — no state copy, only live getters and the named
+	// root operations above.
+	const keyboard = createRouteKeyboard({
+		getOverlaySnapshot: () => overlaySnapshot,
+		getIsMenuOpen: () => construction.isMenuOpen || management.activePanelId !== null,
+		getActiveMapView: () => session.activeMapView,
+		getHasGame: () => game !== null,
+		unlockAudio: audio.unlock,
+		toggleCheatSheet: () => (isCheatSheetOpen = !isCheatSheetOpen),
+		closeOverlay,
+		cancelConstruction: construction.cancel,
+		clearSelection,
+		openGameMenu: () => (isGameMenuOpen = true),
+		toggleBuild: () =>
+			construction.isMenuOpen ? construction.closeMenu() : construction.openMenu(),
+		togglePanel: (panel) =>
+			management.activePanelId === panel ? management.close() : openManagementEntry(panel),
+		togglePause: clock.togglePause,
+		showView: showMap
+	});
 </script>
 
 <svelte:head>
 	<title>{i18n.t('app.title')} · {session.mapEyebrow}</title>
 </svelte:head>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={keyboard.handleKeydown} />
 
 <main
 	class="app"
