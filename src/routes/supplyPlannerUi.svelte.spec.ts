@@ -535,8 +535,11 @@ it('handoff keeps the original close order and makes no domain command before su
 	await ui.handleAction(changeSourceAction);
 	expect(mounted.calls).toEqual(['closeOverlays', 'stores:harbor-city']);
 
-	// Live permission loss keeps everything closed and submits nothing.
+	// Live permission loss keeps everything closed and submits nothing:
+	// the recommendation still matches the submitted action, so only the
+	// permission gate can explain the empty call log.
 	mounted.calls.length = 0;
+	holder.recommendation = createRouteAction;
 	holder.permissions.canManageLogistics = false;
 	await ui.handleAction(createRouteAction);
 	expect(mounted.calls).toEqual([]);

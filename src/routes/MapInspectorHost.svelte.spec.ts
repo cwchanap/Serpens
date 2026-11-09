@@ -380,6 +380,45 @@ describe('MapInspectorHost', () => {
 		await mounted.rerender();
 		await expect.element(page.getByRole('dialog', { name: /rail segment/i })).toBeVisible();
 		expect(vi.mocked(buildRailNetwork).mock.calls.length).toBeGreaterThan(baseline);
+		// Pre-state for the buildings-only step below: the 3-cell line is one
+		// segment, so there is no junction picker.
+		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('3');
+		await expect.element(page.getByTestId('rail-segment-option-0')).not.toBeInTheDocument();
+
+		// A buildings-only change also invalidates the cache. The proof is in
+		// the derived data, not the call count: the inspector rebuilds the
+		// network for its own utilization view, so only the host's segment
+		// derivation isolates its cache. The rail-adjacent building attaches at
+		// two cells while the industry city object keeps its identity, so a
+		// cache keyed on the city alone would keep serving the stale one-piece
+		// segment here.
+		const railGame = mounted.holder.game!;
+		mounted.holder.game = {
+			...railGame,
+			industrialBuildings: [
+				...railGame.industrialBuildings,
+				{
+					id: 'rail-adjacent-pump',
+					level: 1,
+					typeId: 'water-pump',
+					cityId: railGame.industryCities[0]!.id,
+					tileId: 'rail-adjacent-pump-tile',
+					mapX: 1,
+					mapY: 2,
+					status: 'idle',
+					lastProduction: [],
+					producedTotal: 0,
+					importedInputTotal: 0,
+					blockedDays: 0,
+					inventory: {}
+				}
+			]
+		} as GameState;
+		await mounted.rerender();
+		await expect.element(page.getByRole('dialog', { name: /rail segment/i })).toBeVisible();
+		await expect.element(page.getByTestId('rail-segment-option-0')).toBeVisible();
+		await expect.element(page.getByTestId('rail-segment-option-1')).toBeVisible();
+		await expect.element(page.getByTestId('rail-segment-cells')).toHaveTextContent('2');
 	});
 
 	it('never reads the lazy rail network while hidden, build-active or invalid', async () => {
