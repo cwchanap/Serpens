@@ -213,15 +213,20 @@ describe('RouteHeader', () => {
 		await expect
 			.element(page.getByTestId('cash-readout'))
 			.toHaveTextContent(live.i18n.format.currency(live.game!.cash));
-		expect(document.querySelector('.cash-trend')).not.toBeNull();
+		const trendPoints = () =>
+			document.querySelector('.cash-trend polyline')?.getAttribute('points') ?? null;
+		expect(trendPoints()).not.toBeNull();
+		const initialTrend = trendPoints();
 
-		// Live game swap (cash/history/day) updates in place, without remount.
+		// Live game swap (day/cash/history) updates in place, without remount —
+		// the trend polyline must re-render the replaced reports' points.
 		live.game = game2;
 		mounted.sync();
 		await expect.element(page.getByLabelText(`Day ${game2.day}`)).toBeVisible();
 		await expect
 			.element(page.getByTestId('cash-readout'))
 			.toHaveTextContent(live.i18n.format.currency(game2.cash));
+		await vi.waitFor(() => expect(trendPoints()).not.toBe(initialTrend));
 
 		// Industry view swaps the day ticker for the selected city's inventory.
 		live.activeMapView = 'industry';
@@ -234,6 +239,19 @@ describe('RouteHeader', () => {
 		mounted.sync();
 		await expect.element(page.getByLabelText('Bottled Water: 40')).toBeVisible();
 		await expect.element(page.getByLabelText('Grain: 120')).not.toBeInTheDocument();
+
+		// A live inventory-value update for the selected city changes the
+		// readout in place, without remounting the header.
+		live.game = {
+			...game2,
+			cityInventories: [
+				{ cityId: 'industry-city', materials: { grain: 120, flour: 80 } },
+				{ cityId: 'breadbasket-basin', materials: { 'bottled-water': 97, sugar: 3 } }
+			]
+		};
+		mounted.sync();
+		await expect.element(page.getByLabelText('Bottled Water: 97')).toBeVisible();
+		await expect.element(page.getByLabelText('Bottled Water: 40')).not.toBeInTheDocument();
 
 		// Alerts drive the bell count.
 		live.alerts = twoAlerts;
