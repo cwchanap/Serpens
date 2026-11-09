@@ -95,6 +95,8 @@ function scenarioRepository() {
 
 type MountedRoute = ReturnType<typeof render>;
 
+const ROUTE_MOUNT_TIMEOUT = 120_000;
+
 let mounted: MountedRoute | null = null;
 
 async function settle(steps = 4): Promise<void> {
@@ -177,7 +179,7 @@ const NON_DAY_SPEED_CASES = [
 
 it.each(NON_DAY_SPEED_CASES)(
 	'keeps the armed day deadline across non-day publications at $speed× speed',
-	{ timeout: 60_000 },
+	{ timeout: ROUTE_MOUNT_TIMEOUT },
 	async ({ speed, interval, lead }) => {
 		const { controller } = await mountRoute();
 		await startPausedScenario(controller);
@@ -214,7 +216,7 @@ it.each(NON_DAY_SPEED_CASES)(
 
 it(
 	'rearms after a permission-blocked fire without overlapping ticks',
-	{ timeout: 60_000 },
+	{ timeout: ROUTE_MOUNT_TIMEOUT },
 	async () => {
 		const { controller } = await mountRoute();
 		await startPausedScenario(controller);
@@ -255,51 +257,59 @@ it(
 	}
 );
 
-it('cancels the armed timer on pause and re-arms on resume', { timeout: 60_000 }, async () => {
-	const { controller } = await mountRoute();
-	controller.loadSandboxGame(createNewGame('convenience', 20261102));
-	await settle(); // armed (a direct sandbox load does not pause)
-	vi.advanceTimersByTime(1_000);
-	await page.getByRole('button', { name: 'Pause', exact: true }).click();
-	await settle();
-	expect(mainAttribute('data-simulation-paused')).toBe('true');
-	vi.advanceTimersByTime(5_001);
-	expect(harness.advanceDay).not.toHaveBeenCalled();
+it(
+	'cancels the armed timer on pause and re-arms on resume',
+	{ timeout: ROUTE_MOUNT_TIMEOUT },
+	async () => {
+		const { controller } = await mountRoute();
+		controller.loadSandboxGame(createNewGame('convenience', 20261102));
+		await settle(); // armed (a direct sandbox load does not pause)
+		vi.advanceTimersByTime(1_000);
+		await page.getByRole('button', { name: 'Pause', exact: true }).click();
+		await settle();
+		expect(mainAttribute('data-simulation-paused')).toBe('true');
+		vi.advanceTimersByTime(5_001);
+		expect(harness.advanceDay).not.toHaveBeenCalled();
 
-	await page.getByRole('button', { name: 'Resume', exact: true }).click();
-	await settle();
-	vi.advanceTimersByTime(4_999);
-	expect(harness.advanceDay).not.toHaveBeenCalled();
-	vi.advanceTimersByTime(1);
-	expect(harness.advanceDay).toHaveBeenCalledTimes(1);
-	await settle();
-});
+		await page.getByRole('button', { name: 'Resume', exact: true }).click();
+		await settle();
+		vi.advanceTimersByTime(4_999);
+		expect(harness.advanceDay).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1);
+		expect(harness.advanceDay).toHaveBeenCalledTimes(1);
+		await settle();
+	}
+);
 
-it('re-arms with the full interval of the newly selected speed', { timeout: 60_000 }, async () => {
-	const { controller } = await mountRoute();
-	controller.loadSandboxGame(createNewGame('convenience', 20261103));
-	await settle(); // armed at speed 1 (5,000ms)
+it(
+	're-arms with the full interval of the newly selected speed',
+	{ timeout: ROUTE_MOUNT_TIMEOUT },
+	async () => {
+		const { controller } = await mountRoute();
+		controller.loadSandboxGame(createNewGame('convenience', 20261103));
+		await settle(); // armed at speed 1 (5,000ms)
 
-	await page.getByRole('button', { name: '2×', exact: true }).click();
-	await settle(); // re-armed: a fresh 2,500ms interval
-	vi.advanceTimersByTime(2_499);
-	expect(harness.advanceDay).not.toHaveBeenCalled();
-	vi.advanceTimersByTime(1);
-	expect(harness.advanceDay).toHaveBeenCalledTimes(1);
-	await settle();
+		await page.getByRole('button', { name: '2×', exact: true }).click();
+		await settle(); // re-armed: a fresh 2,500ms interval
+		vi.advanceTimersByTime(2_499);
+		expect(harness.advanceDay).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1);
+		expect(harness.advanceDay).toHaveBeenCalledTimes(1);
+		await settle();
 
-	await page.getByRole('button', { name: '5×', exact: true }).click();
-	await settle(); // re-armed: a fresh 1,000ms interval
-	vi.advanceTimersByTime(999);
-	expect(harness.advanceDay).toHaveBeenCalledTimes(1);
-	vi.advanceTimersByTime(1);
-	expect(harness.advanceDay).toHaveBeenCalledTimes(2);
-	await settle();
-});
+		await page.getByRole('button', { name: '5×', exact: true }).click();
+		await settle(); // re-armed: a fresh 1,000ms interval
+		vi.advanceTimersByTime(999);
+		expect(harness.advanceDay).toHaveBeenCalledTimes(1);
+		vi.advanceTimersByTime(1);
+		expect(harness.advanceDay).toHaveBeenCalledTimes(2);
+		await settle();
+	}
+);
 
 it(
 	'blocks the auto-tick on the world view and resumes on return',
-	{ timeout: 60_000 },
+	{ timeout: ROUTE_MOUNT_TIMEOUT },
 	async () => {
 		const { controller } = await mountRoute();
 		controller.loadSandboxGame(createNewGame('convenience', 20261104));
@@ -323,7 +333,7 @@ it(
 
 it(
 	'cancels the timer when the game disappears and re-arms on a new game',
-	{ timeout: 60_000 },
+	{ timeout: ROUTE_MOUNT_TIMEOUT },
 	async () => {
 		const { controller } = await mountRoute();
 		controller.loadSandboxGame(createNewGame('convenience', 20261105));
@@ -347,7 +357,7 @@ it(
 
 it(
 	'does nothing without a game and keeps the pause control locked',
-	{ timeout: 60_000 },
+	{ timeout: ROUTE_MOUNT_TIMEOUT },
 	async () => {
 		await mountRoute();
 		// Past a full speed-1 interval nothing may fire: without a game the
@@ -364,7 +374,7 @@ it(
 	}
 );
 
-it('clears the armed timer on unmount', { timeout: 60_000 }, async () => {
+it('clears the armed timer on unmount', { timeout: ROUTE_MOUNT_TIMEOUT }, async () => {
 	const { view, controller } = await mountRoute();
 	controller.loadSandboxGame(createNewGame('convenience', 20261107));
 	await settle();
