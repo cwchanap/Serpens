@@ -15,7 +15,7 @@ jobs:
   build-and-lint:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Build & Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -46,7 +46,7 @@ jobs:
   unit-tests:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
@@ -115,7 +115,7 @@ jobs:
   e2e-tests:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -165,7 +165,7 @@ jobs:
   rust-tests:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Rust Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
