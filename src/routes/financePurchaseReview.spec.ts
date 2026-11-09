@@ -285,4 +285,26 @@ describe('finance purchase review coordinator', () => {
 		expect(hasFinancedPurchaseOffer(offer)).toBe(true);
 		expect(hasFinancedPurchaseOffer(null)).toBe(false);
 	});
+
+	it('drops the offer when the refreshed entity no longer resolves', () => {
+		const game = createNewGame('convenience', 123);
+		expect(
+			refreshedFinancedPurchase(
+				{ kind: 'world', cityId: 'not-a-city' as never, expectedCost: 1, offer },
+				game
+			)
+		).toEqual({ kind: 'world', cityId: 'not-a-city', expectedCost: 1, offer: null });
+		expect(
+			refreshedFinancedPurchase(
+				{
+					kind: 'industry',
+					tileId: 'industry-3',
+					buildingTypeId: 'not-a-building' as never,
+					expectedCost: 1,
+					offer
+				},
+				game
+			)
+		).toMatchObject({ offer: null });
+	});
 });

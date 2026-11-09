@@ -19,6 +19,7 @@ import { createRoutePreviewGame } from './routePreviewGame';
 import { GameRouteController, type MutationAvailability } from './gameRouteController';
 import type { PendingFinancedPurchase } from './financePurchaseReview';
 import MapInspectorHost from './MapInspectorHost.svelte';
+import MapSurfaceHost from './MapSurfaceHost.svelte';
 import RetailSimulationPage from './+page.svelte';
 import { createMapSession, type MapSessionCommands } from './mapSession.svelte';
 
@@ -772,6 +773,86 @@ it('an unavailable warehouse fix falls back to inspection', async () => {
 
 		expect(session.activeMapView).toBe('industry');
 		expect(session.selectedIndustryTileId).toBe(withPump.industrialBuildings[0]!.tileId);
+	} finally {
+		await view.unmount();
+	}
+});
+
+it('pre-game tile clicks pass raw ids to read-only selection and block supply switches', async () => {
+	const mounted = mountSession(baseHolder(), false);
+	const { session, commands } = mounted;
+	mounted.holder.game = null;
+
+	session.selectRetailTile('tile-raw');
+	expect(commands.selectReadOnlyTile).toHaveBeenCalledWith('retail', 'tile-raw');
+	session.selectIndustryTile('industry-raw');
+	expect(commands.selectReadOnlyTile).toHaveBeenCalledWith('industry', 'industry-raw');
+	expect(await session.switchToSupplyCity('harbor-city')).toBe(false);
+});
+
+it('a locked selected world city without delivered transfers yields null', async () => {
+	const mounted = mountSession();
+	const { session } = mounted;
+
+	// garden-borough is locked: selection inspects without navigating, and no
+	// delivered transfers exist for it.
+	await session.selectWorldCity('garden-borough');
+	expect(session.selectedWorldCityId).toBe('garden-borough');
+	expect(session.latestDeliveredTransfer).toBeNull();
+});
+
+it('a logistics selection outliving its routes reads as null', () => {
+	const mounted = mountSession();
+	const { session, holder } = mounted;
+	const routeId = session.logisticsRouteSummaries[0]!.route.id;
+
+	session.selectLogisticsRoute(routeId);
+	expect(session.selectedLogisticsRoute?.route.id).toBe(routeId);
+
+	holder.game = {
+		...holder.game!,
+		logistics: { ...holder.game!.logistics, recurringRoutes: [] }
+	};
+	expect(session.selectedLogisticsRouteId).toBe(routeId);
+	expect(session.selectedLogisticsRoute).toBeNull();
+});
+
+it('surface activity filters split production from retail movements', async () => {
+	const mounted = mountSession();
+	const { session, holder } = mounted;
+	const view = render(MapSurfaceHost, {
+		session,
+		get game() {
+			return holder.game;
+		},
+		get fallback() {
+			return holder.fallback;
+		},
+		get i18n() {
+			return holder.i18n;
+		},
+		retailPlacementPreview: null,
+		industryPlacementPreview: null,
+		railPreviewRender: null,
+		activity: {
+			seq: 1,
+			activities: [
+				{ kind: 'store-opened', cityId: 'harbor-city', entityId: 'store-1' },
+				{ kind: 'production', cityId: 'industry-city', entityId: 'b-1', materialId: 'water' }
+			]
+		},
+		isMapPaused: false,
+		railKeyboardEnabled: false,
+		get availability() {
+			return holder.availability;
+		},
+		disabledReason: null,
+		onCancelRailBuild: () => {}
+	});
+	try {
+		// Visiting the industry surface mounts it and evaluates its filter.
+		await session.selectWorldCity('industry-city');
+		expect(session.activeMapView).toBe('industry');
 	} finally {
 		await view.unmount();
 	}

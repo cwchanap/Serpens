@@ -7,6 +7,7 @@ import { createScenarioUi, type ScenarioUiCommands } from './scenarioUi.svelte';
 import ScenarioCatalogHost from './ScenarioCatalogHost.svelte';
 import ScenarioProgressHost from './ScenarioProgressHost.svelte';
 import ScenarioResultsHost from './ScenarioResultsHost.svelte';
+import ScenarioMenuActions from './ScenarioMenuActions.svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { DEFAULT_AUDIO_PREFERENCES } from '$lib/audio/audioPreferences';
@@ -623,5 +624,221 @@ it('two mounted pages have isolated scenario owners and safe observer initializa
 	} finally {
 		await first.unmount();
 		await second.unmount();
+	}
+});
+
+it('unresolved definitions fall back to run ids and clear projections', () => {
+	const h = presentation(() => undefined);
+	const { ui } = h;
+	expect(ui.definition).toBeNull();
+	expect(ui.title).toBe('first-profit');
+	expect(ui.versionLabel).not.toBe('');
+	expect(ui.progress).toBeNull();
+	expect(ui.hasActiveRun).toBe(true);
+	expect(ui.showProgress).toBe(false);
+	h.update({ result: terminal(h.inputs.run!), run: null });
+	expect(ui.results).toBeNull();
+	expect(ui.title).toBe('');
+	expect(ui.versionLabel).toBe('');
+	expect(ui.hasActiveRun).toBe(false);
+});
+
+it('guards stale catalog actions and missing definitions', async () => {
+	const h = presentation();
+	const { ui, commands } = h;
+	ui.openCatalog();
+	const staleCard = {
+		...ui.cards[0],
+		id: 'not-a-scenario'
+	} as unknown as (typeof ui.cards)[number];
+	expect(await ui.startScenarioCard(staleCard, false)).toMatchObject({ status: 'error' });
+	expect(commands.startScenarioRun).not.toHaveBeenCalled();
+	await ui.restartScenarioCard({ ...ui.cards[0], activeDefinitionRef: null });
+	expect(commands.restartScenarioRun).not.toHaveBeenCalled();
+	h.update({ run: null });
+	await ui.restartActiveScenario();
+	expect(commands.restartScenarioRun).not.toHaveBeenCalled();
+	expect(await ui.importScenarioCode('garbage', false)).toMatchObject({ status: 'error' });
+	vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValueOnce(undefined);
+	expect(await ui.copyScenarioCode('code')).toBe(true);
+	ui.returnToSandbox();
+	expect(commands.returnToSandbox).toHaveBeenCalledOnce();
+});
+
+it('restarts active and finished runs and exits results through the catalog', async () => {
+	const h = presentation();
+	const { ui, commands } = h;
+	const run = h.inputs.run!;
+	ui.openCatalog();
+	await ui.restartActiveScenario();
+	expect(commands.restartScenarioRun).toHaveBeenCalledWith(run.definition);
+	expect(ui.isCatalogOpen).toBe(false);
+	await ui.restartResultScenario();
+	expect(commands.startScenarioRun).not.toHaveBeenCalled();
+	h.update({ run: null, result: terminal(run) });
+	expect(ui.isResultsOpen).toBe(true);
+	await ui.restartResultScenario();
+	expect(commands.startScenarioRun).toHaveBeenCalledWith(
+		expect.objectContaining({ id: 'first-profit' }),
+		run.seed
+	);
+	expect(ui.isResultsOpen).toBe(false);
+	h.update({ result: { ...terminal(run), score: 7 } });
+	expect(ui.isResultsOpen).toBe(true);
+	ui.openCatalogFromResults();
+	expect(commands.returnToSandbox).toHaveBeenCalled();
+	expect(ui.isCatalogOpen).toBe(true);
+});
+
+it('catalog buttons reach every session action', async () => {
+	const h = presentation();
+	const { ui, commands } = h;
+	const view = render(ScenarioCatalogHost, {
+		ui,
+		get i18n() {
+			return h.inputs.i18n;
+		}
+	});
+	try {
+		const i18n = h.inputs.i18n;
+		ui.openCatalog();
+		const card = ui.cards.find((candidate) => candidate.primaryAction === 'resume')!;
+
+		await page.getByRole('button', { name: `${card.primaryLabel} ${card.title}` }).click();
+		expect(commands.resumeScenarioRun).toHaveBeenCalledOnce();
+		ui.openCatalog();
+		await page
+			.getByRole('button', { name: `${i18n.t('scenarioCatalog.restart')} ${card.title}` })
+			.click();
+		expect(commands.restartScenarioRun).toHaveBeenCalledOnce();
+		ui.openCatalog();
+		vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+		await page
+			.getByRole('button', { name: i18n.t('scenarioCatalog.copyCode', { title: card.title }) })
+			.click();
+		await page.getByLabelText(i18n.t('scenarioCatalog.shareCode')).fill('garbage');
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.importCode') }).click();
+		const retry = vi.fn(async () => {});
+		h.update({ error: { code: 'missing-run', diagnostics: [] }, retry });
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.retry') }).click();
+		expect(retry).toHaveBeenCalledOnce();
+		h.update({ error: null });
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.close') }).click();
+		expect(ui.isCatalogOpen).toBe(false);
+
+		// An active run on a non-current version renders the start-current action.
+		h.update({
+			run: {
+				...h.inputs.run!,
+				definition: { ...h.inputs.run!.definition, version: 99 }
+			}
+		});
+		ui.openCatalog();
+		const outdated = ui.cards.find((candidate) => candidate.showStartCurrent)!;
+		await page
+			.getByRole('button', {
+				name: `${i18n.t('scenarioCatalog.startCurrent')} ${outdated.title}`
+			})
+			.click();
+		expect(commands.startScenarioRun).toHaveBeenCalledOnce();
+
+		// No active run renders the plain Start action.
+		h.update({ run: null });
+		ui.openCatalog();
+		const fresh = ui.cards.find((candidate) => candidate.primaryAction === 'start')!;
+		await page.getByRole('button', { name: `${fresh.primaryLabel} ${fresh.title}` }).click();
+		expect(commands.startScenarioRun).toHaveBeenCalledTimes(2);
+	} finally {
+		await view.unmount();
+	}
+});
+
+it('results dialog buttons reach the session', async () => {
+	const h = presentation();
+	const { ui, commands } = h;
+	const view = render(ScenarioResultsHost, {
+		ui,
+		get i18n() {
+			return h.inputs.i18n;
+		}
+	});
+	try {
+		const i18n = h.inputs.i18n;
+		const run = h.inputs.run!;
+		const showResult = () => h.update({ result: terminal(run), run: null });
+		showResult();
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.restartChallenge') }).click();
+		expect(commands.startScenarioRun).toHaveBeenCalledOnce();
+		showResult();
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.catalog') }).click();
+		expect(ui.isCatalogOpen).toBe(true);
+		ui.closeCatalog();
+		showResult();
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.returnSandbox') }).click();
+		expect(commands.returnToSandbox).toHaveBeenCalled();
+		showResult();
+		const retry = vi.fn(async () => {});
+		h.update({ error: { code: 'missing-run', diagnostics: [] }, retry });
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.retry') }).click();
+		expect(retry).toHaveBeenCalledOnce();
+		h.update({ error: { code: 'missing-run', diagnostics: [] } });
+		await page.getByRole('button', { name: i18n.t('scenarioStatus.dismiss') }).click();
+		expect(commands.dismissScenarioOperationError).toHaveBeenCalledOnce();
+		h.update({ error: null });
+		await page.getByRole('button', { name: i18n.t('scenarioResults.close') }).click();
+		expect(ui.isResultsOpen).toBe(false);
+	} finally {
+		await view.unmount();
+	}
+});
+
+it('menu action buttons reach the session', async () => {
+	const h = presentation();
+	const { ui, commands } = h;
+	const view = render(ScenarioMenuActions, {
+		ui,
+		playMode: 'scenario',
+		get i18n() {
+			return h.inputs.i18n;
+		},
+		onOpenSaves: () => {}
+	});
+	try {
+		const i18n = h.inputs.i18n;
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.challengeDetails') }).click();
+		expect(ui.isCatalogOpen).toBe(true);
+		ui.closeCatalog();
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.catalog') }).click();
+		expect(ui.isCatalogOpen).toBe(true);
+		ui.closeCatalog();
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.returnSandbox') }).click();
+		expect(commands.returnToSandbox).toHaveBeenCalledOnce();
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.abandon') }).click();
+		await page.getByRole('button', { name: i18n.t('scenarioCatalog.confirmAbandon') }).click();
+		expect(commands.abandonScenarioRun).toHaveBeenCalledOnce();
+	} finally {
+		await view.unmount();
+	}
+});
+
+it('progress strip retry and dismiss reach the session', async () => {
+	const h = presentation();
+	const { ui, commands } = h;
+	const view = render(ScenarioProgressHost, {
+		ui,
+		get i18n() {
+			return h.inputs.i18n;
+		}
+	});
+	try {
+		const retry = vi.fn(async () => {});
+		h.update({ error: { code: 'missing-run', diagnostics: [] }, retry });
+		const strip = vi.mocked(ScenarioStatusStrip).mock.calls.at(-1)![1];
+		await strip.onRetry();
+		expect(retry).toHaveBeenCalledOnce();
+		await strip.onDismissError();
+		expect(commands.dismissScenarioOperationError).toHaveBeenCalledOnce();
+	} finally {
+		await view.unmount();
 	}
 });

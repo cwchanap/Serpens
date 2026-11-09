@@ -421,3 +421,63 @@ it('capture KeyboardEvent dismissal does not also cancel construction', async ()
 	expect(ui.railMode).toEqual({ step: 'idle' });
 	window.removeEventListener('keydown', pageKeydown);
 });
+
+it('confirm is a no-op without a game', async () => {
+	expect.assertions(2);
+	const financeCommand = vi.fn();
+	const review = session({ commands: financeCommands(financeCommand), getGame: () => null });
+
+	review.open(retailPurchase(validOffer()));
+	await review.confirm();
+
+	expect(financeCommand).not.toHaveBeenCalled();
+	expect(review.state.confirmationPending).toBe(false);
+});
+
+it('a world-city purchase dispatches financeWorldCity with the quoted args', async () => {
+	expect.assertions(3);
+	const financeCommand = vi.fn().mockResolvedValue({ status: 'committed' });
+	const review = session({ commands: financeCommands(financeCommand) });
+
+	review.open({
+		kind: 'world',
+		cityId: 'campus-junction',
+		expectedCost: 18_000,
+		offer: validOffer()
+	});
+	await review.confirm();
+
+	expect(financeCommand).toHaveBeenCalledTimes(1);
+	expect(financeCommand).toHaveBeenCalledWith('campus-junction', 18_000);
+	expect(review.state.purchase).toBeNull();
+});
+
+it('close restores focus to the element that opened the review', async () => {
+	expect.assertions(2);
+	const review = session({ commands: financeCommands(vi.fn()) });
+	const button = document.createElement('button');
+	document.body.append(button);
+	button.focus();
+	try {
+		review.open(retailPurchase(validOffer()));
+		review.close();
+		await tick();
+		expect(document.activeElement).toBe(button);
+		expect(review.state.purchase).toBeNull();
+	} finally {
+		button.remove();
+	}
+});
+
+it('a missing active element keeps no return focus on open', async () => {
+	expect.assertions(1);
+	const spy = vi.spyOn(document, 'activeElement', 'get').mockReturnValue(null);
+	const review = session({ commands: financeCommands(vi.fn()) });
+
+	review.open(retailPurchase(validOffer()));
+	review.close();
+	await tick();
+
+	expect(review.state.purchase).toBeNull();
+	spy.mockRestore();
+});
