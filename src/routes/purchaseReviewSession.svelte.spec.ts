@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n, type I18nBundle } from '$lib/i18n';
 import type { GameRouteCommitResult } from '$lib/game/commandResult';
+import { getExpansionFinanceOffer } from '$lib/game/finance';
 import { createNewGame, getExpansionSetupCost } from '$lib/game/state';
 import { getTileById } from '$lib/game/city';
 import type { GameState } from '$lib/game/types';
@@ -176,7 +177,7 @@ it('stale generation cannot clear a newer review after opening it', async () => 
 });
 
 it('refresh rejected quote uses the live game and keeps refresh eligibility', async () => {
-	expect.assertions(7);
+	expect.assertions(8);
 	const baseGame = createNewGame('convenience', 42);
 	const city = baseGame.cities.find((candidate) => candidate.id === baseGame.activeCityId)!;
 	const tile = getTileById(city, city.tiles.find((candidate) => !candidate.locked)!.id)!;
@@ -230,21 +231,33 @@ it('refresh rejected quote uses the live game and keeps refresh eligibility', as
 		context: {}
 	});
 	await fallbackPending;
-	expect(review.state.purchase).not.toBeNull();
-	expect(review.state.purchase?.offer).not.toBeNull();
+	// The refreshed quote must be exactly the one derived from the game
+	// captured when confirm started — not merely any non-null offer.
+	expect(review.state.purchase).toEqual({
+		kind: 'retail',
+		tileId: tile.id,
+		archetypeId: 'convenience',
+		expectedCost,
+		offer: getExpansionFinanceOffer(snapshotGame, expectedCost)
+	});
 	expect(review.state.feedback).toBe('Insufficient credit');
 
 	// Ineligible failures keep the original purchase untouched. The confirm
 	// path needs a live game (the page guard) — restore it after the
 	// fallback sub-case nulled it.
 	holder.game = snapshotGame;
-	review.open(retailPurchase(validOffer()));
+	const ineligiblePurchase = retailPurchase(validOffer());
+	review.open(ineligiblePurchase);
 	const failedDeferred = deferredCommand();
 	financeCommand.mockReturnValueOnce(failedDeferred.result);
 	const failedPending = review.confirm();
 	failedDeferred.resolve({ status: 'failed' });
 	await failedPending;
 	expect(review.state.feedback).toBe('Finance action could not be completed.');
+	// The original purchase survives ineligible failures untouched: same
+	// reference and same offer value, with no refreshed replacement applied.
+	expect(review.state.purchase).toBe(ineligiblePurchase);
+	expect(review.state.purchase?.offer).toEqual(validOffer());
 });
 
 it('locale at settlement localizes rejection feedback live', async () => {

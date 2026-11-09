@@ -313,7 +313,7 @@ it('replaces game, locale, availability and allowed cities live without losing v
 	expect(session.visitedMapViews).toEqual({ world: true, retail: true, industry: false });
 });
 
-it('delivers the latest transfer and selected route views live', () => {
+it('delivers the latest transfer and selected route views live', async () => {
 	const mounted = mountSession();
 	const { session, holder } = mounted;
 	expect(session.selectedLogisticsRoute).toBeNull();
@@ -334,7 +334,9 @@ it('delivers the latest transfer and selected route views live', () => {
 		}
 	};
 	session.clearSelection('logisticsRoute');
-	session.selectWorldCity('garden-borough');
+	// Awaited so an unexpected rejection in the locked-city path is observed
+	// instead of silently vanishing as an unhandled promise.
+	await session.selectWorldCity('garden-borough');
 	expect(session.latestDeliveredTransfer?.id).toBe('transfer-7');
 });
 

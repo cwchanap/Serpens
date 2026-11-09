@@ -295,9 +295,6 @@ export function createMapSession(options: MapSessionOptions) {
 		get allowedWorldCityIds(): readonly WorldCityId[] {
 			return allowedWorldCityIds;
 		},
-		get isWorldSelectionAvailable(): boolean {
-			return options.getWorldSelectionAvailable();
-		},
 		get logisticsRouteSummaries(): RouteOperationalSummary[] {
 			return logisticsRouteSummaries;
 		},
