@@ -1,14 +1,18 @@
+import { page } from 'vitest/browser';
 import { afterEach, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
 import { getTileById } from '$lib/game/city';
 import { INDUSTRIAL_BUILDING_TYPES } from '$lib/game/industry';
 import { buildIndustrialBuilding } from '$lib/game/industryPlacement';
+import { isRailWaypointTarget } from '$lib/game/railPlacement';
 import {
 	createIndustryPlacementPreview,
 	createRetailPlacementPreview
 } from '$lib/game/placementPreview';
 import { createNewGame, getExpansionSetupCost } from '$lib/game/state';
+import { getAvailableMaterialIds } from '$lib/game/supplyAdvisor';
+import { formatPlacementBlockReason } from '$lib/i18n/gameCopy';
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import type { ScenarioDefinition } from '$lib/scenarios/types';
 import type {
@@ -645,4 +649,168 @@ it('arming replaces rail and other placements and clears selections', () => {
 	mounted.holder.availability = allAvailability({ buildRail: false });
 	ui.toggleRail();
 	expect(ui.railMode).toEqual({ step: 'idle' });
+});
+
+it('scenario mode without a resolved definition offers no industry types', () => {
+	const mounted = mountConstruction();
+	mounted.holder.mode = 'scenario';
+	expect(mounted.ui.allowedIndustryBuildingTypeIds).toEqual([]);
+});
+
+it('industry menu materials fall back to the preview game pre-founding', () => {
+	const holder = baseHolder();
+	holder.view = 'industry';
+	holder.game = null;
+	const mounted = mountConstruction(holder);
+	mounted.ui.openMenu();
+	expect(mounted.ui.isMenuOpen).toBe(true);
+	expect(mounted.ui.availableMaterialIds).toEqual(getAvailableMaterialIds(starter));
+});
+
+it('resource-anchored industry placements prompt for the required resource tile', () => {
+	const mounted = mountConstruction();
+	mounted.ui.armIndustry('water-pump');
+	const required = INDUSTRIAL_BUILDING_TYPES['water-pump'].requiredResource!;
+	const i18n = createI18n('en');
+	expect(mounted.ui.placementStatusText).toBe(
+		i18n.t('placement.chooseResourceTile', {
+			resource: i18n.labels.industryResource(required)
+		})
+	);
+});
+
+it('rail status prioritizes feedback, then a blocked preview, and cancel clears both', () => {
+	const holder = baseHolder();
+	holder.view = 'industry';
+	holder.game = buildIndustrialBuilding(holder.game!, {
+		tileId: validIndustryAnchor(holder, 'flour-mill'),
+		buildingTypeId: 'flour-mill'
+	});
+	const mounted = mountConstruction(holder);
+	const { ui } = mounted;
+	const i18n = createI18n('en');
+	const city = holder.industryCity;
+	const buildingTileId = holder.game!.industrialBuildings[0]!.tileId;
+	const nonWaypointTileId = city.tiles.find(
+		(tile) => !isRailWaypointTarget(holder.game!, city.id, tile.x, tile.y)
+	)!.id;
+	const waypointTileId = city.tiles.find((tile) =>
+		isRailWaypointTarget(holder.game!, city.id, tile.x, tile.y)
+	)!.id;
+
+	ui.toggleRail();
+	expect(ui.isRailActive).toBe(true);
+	ui.tryConstructionClick('industry', buildingTileId);
+	expect(ui.railMode).toMatchObject({ step: 'routing' });
+
+	// A click that is neither a building nor a waypoint surfaces blocked feedback.
+	ui.tryConstructionClick('industry', nonWaypointTileId);
+	expect(ui.placementFeedback).toMatchObject({ code: 'industry.rawPlacementBlocked' });
+	expect(ui.placementStatusText).toBe(formatPlacementBlockReason(ui.placementFeedback, i18n));
+
+	// Destination on the origin building keeps a blocked preview alive; both
+	// the feedback and the preview arm format the same reason, so the status
+	// text must survive the waypoint click clearing the explicit feedback.
+	ui.tryConstructionClick('industry', buildingTileId);
+	const blockedPreviewText = ui.placementStatusText;
+	ui.tryConstructionClick('industry', waypointTileId);
+	expect(ui.placementFeedback).toBeNull();
+	expect(ui.placementStatusText).toBe(blockedPreviewText);
+
+	ui.cancelRailStep();
+	ui.toggleRail();
+	expect(ui.isRailActive).toBe(false);
+	expect(ui.placementFeedback).toBeNull();
+	expect(ui.railMode).toEqual({ step: 'idle' });
+	expect(ui.railPreviewRender).toBeNull();
+});
+
+it('closeReview is a no-op while the financed command is in flight', () => {
+	const mounted = mountConstruction();
+	const { ui, commands } = mounted;
+	commands.financeRetailStore.mockReturnValue(new Promise(() => {}));
+
+	const purchase: PendingFinancedPurchase = {
+		kind: 'retail',
+		tileId: validRetailAnchor(mounted.holder, 'grocery'),
+		archetypeId: 'grocery',
+		expectedCost: 1_000,
+		offer: {
+			principal: 1_200,
+			termDays: 84,
+			annualInterestRateBps: 725,
+			estimatedPeakPayment: 40
+		}
+	};
+	ui.review(purchase);
+	void ui.confirmReview();
+	expect(ui.purchaseReview.confirmationPending).toBe(true);
+
+	ui.closeReview();
+	expect(ui.purchaseReview.purchase).toBe(purchase);
+});
+
+it('a committed financed purchase clears selections and disarms placement', async () => {
+	const mounted = mountConstruction();
+	const { ui, commands, counters } = mounted;
+	commands.financeRetailStore.mockResolvedValue({ status: 'committed' });
+
+	const anchor = validRetailAnchor(mounted.holder, 'grocery');
+	ui.armRetail('grocery');
+	ui.review({
+		kind: 'retail',
+		tileId: anchor,
+		archetypeId: 'grocery',
+		expectedCost: 1_000,
+		offer: {
+			principal: 1_200,
+			termDays: 84,
+			annualInterestRateBps: 725,
+			estimatedPeakPayment: 40
+		}
+	});
+	await ui.confirmReview();
+
+	expect(commands.financeRetailStore).toHaveBeenCalledWith(anchor, 'grocery', 1_000);
+	expect(counters.cleared).toBeGreaterThan(0);
+	expect(ui.isPlacementModeActive).toBe(false);
+	expect(ui.purchaseReview.purchase).toBeNull();
+});
+
+it('build menu options and review confirm reach the session', async () => {
+	const mounted = mountConstruction();
+	const { ui, commands, holder } = mounted;
+	const i18n = createI18n('en');
+	ui.openMenu();
+	expect(ui.isMenuOpen).toBe(true);
+
+	// A retail choice arms placement through the menu's forwarded prop.
+	await page.getByRole('button', { name: /grocery/i }).click();
+	expect(ui.isPlacementModeActive).toBe(true);
+	ui.cancel();
+
+	ui.openMenu();
+	await page
+		.getByRole('dialog', { name: i18n.t('buildMenu.dialog') })
+		.getByRole('button', { name: i18n.t('buildMenu.close') })
+		.click();
+	expect(ui.isMenuOpen).toBe(false);
+
+	// The review dialog's confirm button routes through the session.
+	commands.financeRetailStore.mockResolvedValue({ status: 'committed' });
+	ui.review({
+		kind: 'retail',
+		tileId: holder.retailCity.tiles[0]!.id,
+		archetypeId: 'grocery',
+		expectedCost: 2_000,
+		offer: {
+			principal: 1_200,
+			termDays: 84,
+			annualInterestRateBps: 725,
+			estimatedPeakPayment: 40
+		}
+	});
+	await page.getByRole('button', { name: i18n.t('financePanel.financedPurchase.confirm') }).click();
+	expect(commands.financeRetailStore).toHaveBeenCalledOnce();
+	expect(ui.purchaseReview.purchase).toBeNull();
 });

@@ -703,3 +703,35 @@ it('derives a real plan through the retained calculation', () => {
 		expect(result.plan.recommendation.action.kind).toBe('build-producer');
 	}
 });
+
+it('ignores disallowed product selections and dispatches nothing when the plan is empty', async () => {
+	const mounted = mountPlanner();
+	const { ui, holder } = mounted;
+
+	ui.open();
+	expect(ui.context.productId).toBeNull();
+	ui.selectProduct('produce');
+	expect(ui.context.productId).toBeNull();
+
+	// An open advisor whose live derivation yields no result must not dispatch.
+	holder.game = null;
+	await ui.handleAction(buildProducerAction);
+	expect(mounted.calls).toEqual([]);
+});
+
+it('advisor DOM interactions reach the session callbacks', async () => {
+	const mounted = mountPlanner();
+	const { ui } = mounted;
+	ui.open();
+
+	await page.getByRole('combobox', { name: 'Category' }).selectOptions(['snacks']);
+	expect(ui.effectiveProductId).toBe('snacks');
+	await page.getByRole('button', { name: '7 days', exact: true }).click();
+	expect(ui.context.horizonDays).toBe(7);
+
+	document.querySelector<HTMLButtonElement>('.build-next')!.click();
+	await vi.waitFor(() => expect(mounted.calls.length).toBeGreaterThan(0));
+
+	await page.getByRole('button', { name: 'Close supply advisor', exact: true }).click();
+	expect(ui.isOpen).toBe(false);
+});

@@ -11,7 +11,7 @@ import { DEFAULT_AUDIO_PREFERENCES } from '$lib/audio/audioPreferences';
 import { GameRouteController } from './gameRouteController';
 import MapInspectorHost from './MapInspectorHost.svelte';
 import ManagementPanelHost from './ManagementPanelHost.svelte';
-import { createSaveUi } from './saveUi.svelte';
+import { createSaveUi, type SaveUiCommands } from './saveUi.svelte';
 import SavePanelHost from './SavePanelHost.svelte';
 import RetailSimulationPage from './+page.svelte';
 
@@ -226,4 +226,87 @@ it('save observers map errors without losing live localization', async () => {
 	await ui.saveManualSlot('No game');
 	await ui.deleteManualSlot('not ready');
 	expect(ui.manualSlots).toEqual([]);
+});
+
+it('initialize surfaces errors and unknown manual slots fall back to the slot id name', async () => {
+	const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+	const i18n = createI18n('en');
+	const commands: SaveUiCommands = {
+		initializeSaves: vi.fn(async () => {
+			throw new Error('boom');
+		}),
+		refreshSaveSummary: vi.fn(async () => {}),
+		resumeAutoSave: vi.fn(async () => 'missing' as const),
+		saveManualSlot: vi.fn(async () => null),
+		loadManualSave: vi.fn(async () => 'loaded' as const),
+		deleteManualSlot: vi.fn(async () => true)
+	};
+	const onLoaded = vi.fn();
+	const ui = createSaveUi({
+		getGame: () => null,
+		getI18n: () => i18n,
+		commands,
+		playSfx: () => {},
+		onOpen: () => {},
+		onLoaded
+	});
+
+	await ui.initialize();
+	expect(ui.error).toBeTruthy();
+	expect(log).toHaveBeenCalled();
+
+	await ui.loadManualSlot('ghost-slot');
+	expect(onLoaded).toHaveBeenCalledTimes(1);
+	expect(ui.status).toBe(i18n.t('route.save.loadedManualSlot', { name: 'ghost-slot' }));
+});
+
+it('save panel buttons reach the session', async () => {
+	const i18n = createI18n('en');
+	const commands: SaveUiCommands = {
+		initializeSaves: vi.fn(async () => {}),
+		refreshSaveSummary: vi.fn(async () => {}),
+		resumeAutoSave: vi.fn(async () => 'missing' as const),
+		saveManualSlot: vi.fn(async () => null),
+		loadManualSave: vi.fn(async () => 'loaded' as const),
+		deleteManualSlot: vi.fn(async () => true)
+	};
+	const onLoaded = vi.fn();
+	const ui = createSaveUi({
+		getGame: () => null,
+		getI18n: () => i18n,
+		commands,
+		playSfx: () => {},
+		onOpen: () => {},
+		onLoaded
+	});
+	const view = render(SavePanelHost, { ui, game: null, i18n });
+	try {
+		await ui.initialize();
+		ui.open();
+		ui.acceptSummary({
+			autoSave: null,
+			manualSlots: [
+				{
+					id: 'slot-1',
+					name: 'Live',
+					kind: 'manual',
+					updatedAt: '2026-08-01T00:00:00Z',
+					day: 3,
+					cash: 1_000,
+					storeCount: 1,
+					activeCityId: 'harbor-city'
+				}
+			],
+			diagnostics: []
+		});
+
+		await page.getByRole('button', { name: i18n.t('savePanel.load') }).click();
+		expect(commands.loadManualSave).toHaveBeenCalledWith('slot-1');
+		expect(onLoaded).toHaveBeenCalledOnce();
+
+		await page.getByRole('button', { name: i18n.t('savePanel.close') }).click();
+		expect(ui.isOpen).toBe(false);
+	} finally {
+		await view.unmount();
+	}
 });

@@ -318,3 +318,21 @@ it('keeps the price, target, brand and upgrade permission flags separate', () =>
 	expect(ui.canUpdateBrand).toBe(true);
 	expect(ui.canUpgradeStore).toBe(false);
 });
+
+it('guards inventory-target edits on permission and forwards brand changes', async () => {
+	const mounted = mountRetail();
+	const { ui, commands, holder } = mounted;
+	const store = holder.game!.stores[0]!;
+	const product = store.products[0]!;
+
+	holder.availability = allAvailability({ updateStoreInventoryTargets: false });
+	expect(await ui.changeStoreProduct(store.id, product.productId, { targetStock: 10 })).toBeNull();
+	expect(commands.updateStoreInventoryTargets).not.toHaveBeenCalled();
+
+	ui.changeStoreProductBrand(store.id, product.productId, product.brandId);
+	expect(commands.updateStoreProductBrand).toHaveBeenCalledWith(
+		store.id,
+		product.productId,
+		product.brandId
+	);
+});

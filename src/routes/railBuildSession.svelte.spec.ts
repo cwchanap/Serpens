@@ -306,3 +306,21 @@ it('invalid waypoint clicks are rejected with specific feedback and one invalid 
 	expect(playSfx).toHaveBeenCalledTimes(1);
 	expect(playSfx).toHaveBeenCalledWith('sfx.build.invalid');
 });
+
+it('ignores clicks and cancels while idle', () => {
+	const fixture = railFixture();
+	const session = createRailBuildSession({
+		getGame: () => fixture.game,
+		getCity: () => fixture.city,
+		commands: { buildRail: vi.fn() },
+		playSfx: () => {},
+		setFeedback: () => {}
+	});
+
+	// Idle is the quiet no-op: the reducer returns null and cancel has nothing
+	// to pop, so neither surfaces feedback.
+	expect(session.isIdle).toBe(true);
+	session.handleClick(fixture.originTileId);
+	session.cancelStep();
+	expect(session.mode).toEqual({ step: 'idle' });
+});

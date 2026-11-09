@@ -9,6 +9,7 @@ import { createBrowserScenarioRepository } from '$lib/persistence/browserScenari
 import { createScenarioRepository } from '$lib/persistence/scenarioRepositoryFactory';
 import { resolveScenarioDefinition } from '$lib/scenarios/catalog';
 import RetailSimulationPage from './+page.svelte';
+import { createSimulationClock } from './simulationClock.svelte';
 import type {
 	GameRouteCommitResult,
 	GameRouteController,
@@ -382,4 +383,39 @@ it('clears the armed timer on unmount', { timeout: ROUTE_MOUNT_TIMEOUT }, async 
 	mounted = null;
 	vi.advanceTimersByTime(6_001);
 	expect(harness.advanceDay).not.toHaveBeenCalled();
+});
+
+it('guards tick fires and pause toggles without mounting the route', async () => {
+	const advanceDay = vi.fn(async () => ({ status: 'sandbox-committed' as const, changed: true }));
+	let hasGame = true;
+	let clock!: ReturnType<typeof createSimulationClock>;
+	const destroy = $effect.root(() => {
+		clock = createSimulationClock({
+			getHasGame: () => hasGame,
+			getBlocked: () => false,
+			getCanAdvance: () => true,
+			advanceDay
+		});
+	});
+	try {
+		expect(clock.tickPending).toBe(false);
+		clock.pause();
+		await clock.runTick();
+		expect(advanceDay).not.toHaveBeenCalled();
+
+		clock.togglePause();
+		const pending = clock.runTick();
+		expect(clock.tickPending).toBe(true);
+		await pending;
+		expect(clock.tickPending).toBe(false);
+		expect(advanceDay).toHaveBeenCalledTimes(1);
+
+		hasGame = false;
+		clock.togglePause();
+		expect(clock.paused).toBe(false);
+		await clock.runTick();
+		expect(advanceDay).toHaveBeenCalledTimes(1);
+	} finally {
+		destroy();
+	}
 });
