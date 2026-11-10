@@ -124,80 +124,103 @@
 	}
 
 	function changePolicy(patch: Partial<CompanyPolicy>): void {
+		if (game === null || !availability.updatePolicy) return;
 		void commands.updatePolicy(patch);
 	}
 
 	function setPolicyOverride(scope: PolicyOverrideScope, patch: Partial<CompanyPolicy>): void {
+		if (game === null || !availability.scopedPolicy) return;
 		void commands.setPolicyOverride(scope, patch);
 	}
 
 	function clearPolicyOverrideField(scope: PolicyOverrideScope, field: keyof CompanyPolicy): void {
+		if (game === null || !availability.scopedPolicy) return;
 		void commands.clearPolicyOverrideField(scope, field);
 	}
 
 	function resetPolicyOverrideScope(scope: PolicyOverrideScope): void {
+		if (game === null || !availability.scopedPolicy) return;
 		void commands.resetPolicyOverrideScope(scope);
 	}
 
 	function setManagerDelegation(delegation: ManagerDelegation): void {
+		if (game === null || !availability.delegation) return;
 		void commands.setManagerDelegation(delegation);
 	}
 
 	function removeManagerDelegation(managerId: string): void {
+		if (game === null || !availability.delegation) return;
 		void commands.removeManagerDelegation(managerId);
 	}
 
 	function hireStaff(candidateId: string): void {
+		if (game === null || !availability.hireStaff) return;
 		void commands.hireStaff(candidateId);
 	}
 
 	function assignStaff(staffId: string, storeId: string): void {
+		if (game === null || !availability.assignStaff) return;
 		void commands.assignStaff(staffId, storeId);
 	}
 
 	function unassignStaff(staffId: string): void {
+		if (game === null || !availability.unassignStaff) return;
 		void commands.unassignStaff(staffId);
 	}
 
 	function releaseStaff(staffId: string): void {
+		if (game === null || !availability.releaseStaff) return;
 		void commands.releaseStaff(staffId);
 	}
 
 	function promoteStaff(staffId: string): void {
+		if (game === null || !availability.promoteStaff) return;
 		void commands.promoteStaff(staffId);
 	}
 
 	function setRetailSupplySource(retailCityId: string, supplyCityId: string | null): void {
+		if (game === null || !availability.setRetailSupplySource) return;
 		void commands.setRetailSupplySource(retailCityId, supplyCityId);
 	}
 
 	function chooseDecision(decisionId: string, optionId: string): void {
+		if (game === null || !availability.resolveDecision) return;
 		void commands.resolveDecision(decisionId, optionId);
 	}
 
 	function borrow(amount: number, termDays: LoanTermDays): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.borrow) return Promise.resolve({ status: 'unavailable' });
 		return commands.borrowWorkingCapital(amount, termDays);
 	}
 
 	function repay(loanId: string, amount: number): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.repayLoan) return Promise.resolve({ status: 'unavailable' });
 		return commands.repayFinanceLoan(loanId, amount);
 	}
 
 	function payoff(loanId: string): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.payOffLoan)
+			return Promise.resolve({ status: 'unavailable' });
 		return commands.payOffFinanceLoan(loanId);
 	}
 
 	function refinance(loanId: string, termDays: LoanTermDays): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.refinanceLoan)
+			return Promise.resolve({ status: 'unavailable' });
 		return commands.refinanceFinanceLoan(loanId, termDays);
 	}
 
 	function dispatchManualTransfer(input: ManualTransferInput): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.manageLogistics)
+			return Promise.resolve({ status: 'unavailable' });
 		return commands.dispatchManualTransfer(input);
 	}
 
 	function createRecurringRoute(
 		input: Parameters<ManagementUiCommands['createRecurringRoute']>[0]
 	): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.createRecurringRoute)
+			return Promise.resolve({ status: 'unavailable' });
 		return commands.createRecurringRoute(input);
 	}
 
@@ -205,14 +228,20 @@
 		routeId: string,
 		input: Parameters<ManagementUiCommands['updateRecurringRoute']>[1]
 	): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.updateRecurringRoute)
+			return Promise.resolve({ status: 'unavailable' });
 		return commands.updateRecurringRoute(routeId, input);
 	}
 
 	function pauseRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.pauseRecurringRoute)
+			return Promise.resolve({ status: 'unavailable' });
 		return commands.pauseRecurringRoute(routeId);
 	}
 
 	function resumeRecurringRoute(routeId: string): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.resumeRecurringRoute)
+			return Promise.resolve({ status: 'unavailable' });
 		return commands.resumeRecurringRoute(routeId);
 	}
 
@@ -220,6 +249,8 @@
 		routeId: string,
 		priority: number
 	): Promise<GameRouteCommitResult> {
+		if (game === null || !availability.manageLogistics)
+			return Promise.resolve({ status: 'unavailable' });
 		return commands.reprioritizeRecurringRoute(routeId, priority);
 	}
 

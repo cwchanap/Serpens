@@ -89,19 +89,21 @@
 		const network = buildRailNetwork(session.activeIndustryCity);
 		return deriveRailSegments(network, currentGame.industrialBuildings);
 	});
-	const selectedRailSegments = $derived(
-		selectInspectorRailSegments(
-			session.activeIndustryCity,
-			session.selectedIndustryTileId,
-			isRailActive,
-			() => industryRailSegments
-		)
-	);
 	const showRetailInspector = $derived(
 		retail.selectedTile !== null && (!isPlacementActive || placementFeedback !== null)
 	);
 	const showIndustryInspector = $derived(
 		industry.selectedIndustryTile !== null && (!isPlacementActive || placementFeedback !== null)
+	);
+	const selectedRailSegments = $derived(
+		showIndustryInspector
+			? selectInspectorRailSegments(
+					session.activeIndustryCity,
+					session.selectedIndustryTileId,
+					isRailActive,
+					() => industryRailSegments
+				)
+			: null
 	);
 	const showLogisticsRouteInspector = $derived(
 		session.activeMapView === 'world' && session.selectedLogisticsRoute !== null
@@ -193,10 +195,12 @@
 			building={industry.selectedIndustryBuilding}
 			{i18n}
 			onUpgradeBuilding={(buildingId) => {
+				if (!game || !availability.upgradeIndustrialBuilding) return;
 				void commands.upgradeIndustrialBuilding(buildingId);
 			}}
 			onAddRoute={onAddIndustryRoute}
 			onDemolishBuilding={(buildingId) => {
+				if (!game || !canDemolishIndustryBuilding) return;
 				void commands.demolishIndustrialBuilding(buildingId);
 			}}
 			{onBuildWarehouse}
@@ -224,12 +228,15 @@
 		onUpdateStoreProduct={retail.changeStoreProduct}
 		onUpdateStoreProductBrand={retail.changeStoreProductBrand}
 		onHireStaff={(candidateId) => {
+			if (!game || !availability.hireStaff) return;
 			void commands.hireStaff(candidateId);
 		}}
 		onAssignStaff={(staffId, storeId) => {
+			if (!game || !availability.assignStaff) return;
 			void commands.assignStaff(staffId, storeId);
 		}}
 		onUnassignStaff={(staffId) => {
+			if (!game || !availability.unassignStaff) return;
 			void commands.unassignStaff(staffId);
 		}}
 		canUpdateSellingPrice={retail.canUpdateSellingPrice}

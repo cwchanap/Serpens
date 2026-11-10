@@ -24,6 +24,7 @@
 	import type { ManagementPanelId } from '$lib/game/keyboardShortcuts';
 	import type { MapViewId } from '$lib/game/mapViewKeepAlive';
 	import { encodeIndustrialPlacementKey } from '$lib/game/supplyPlannerActions';
+	import { isFinanceReviewEscapeOwned } from './financePurchaseReview';
 	import { WORLD_CITY_CATALOG } from '$lib/game/world';
 	import type { GameState, WorldCityId } from '$lib/game/types';
 	import { createSaveRepository } from '$lib/persistence/saveRepositoryFactory';
@@ -62,9 +63,9 @@
 
 	const starterMapState = createRoutePreviewGame();
 
-	let sandboxGame = $state<GameState | null>(null);
-	let activeScenarioRun = $state<ScenarioRun | null>(null);
-	let lastScenarioResult = $state<ScenarioResult | null>(null);
+	let sandboxGame = $state.raw<GameState | null>(null);
+	let activeScenarioRun = $state.raw<ScenarioRun | null>(null);
+	let lastScenarioResult = $state.raw<ScenarioResult | null>(null);
 	let lastScenarioBestUpdated = $state(false);
 	let scenarioOperationError = $state<ScenarioOperationError | null>(null);
 	let retryScenarioOperation = $state<(() => Promise<void>) | null>(null);
@@ -181,6 +182,7 @@
 		getMode: () => playMode,
 		getDefinition: () => activeScenarioDefinition,
 		getAvailability: () => mutationAvailability,
+		getDisabledReason: () => mutationDisabledReason,
 		getI18n: () => i18n,
 		commands: gameRouteController,
 		playSfx,
@@ -298,7 +300,7 @@
 	let overlaySnapshot = $derived.by<OverlaySnapshot>(() => {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- Rebuilt from owners, never mutated after publication.
 		const openOverlays = new Set<OverlayId>();
-		if (construction.purchaseReview.purchase !== null) openOverlays.add('finance-review');
+		if (isFinanceReviewEscapeOwned(construction.purchaseReview)) openOverlays.add('finance-review');
 		if (saves.isOpen) openOverlays.add('save-panel');
 		if (scenarios.isCatalogOpen) openOverlays.add('scenario-catalog');
 		if (scenarios.isResultsOpen) openOverlays.add('scenario-results');
@@ -419,6 +421,7 @@
 		playMode = state.playMode;
 		scenarioCommandPending = state.scenarioCommandPending;
 		scenariosReady = state.scenariosReady;
+		scenarios.clearFallbackError();
 		if (state.playMode === 'sandbox') {
 			scenarios.clearEvidence();
 		}
@@ -481,9 +484,15 @@
 				planner.close();
 				construction.enterRailRouting(mode);
 			},
-			canBuildRail: mutationAvailability.buildRail,
-			canManageLogistics: mutationAvailability.manageLogistics,
-			canSetRetailSupplySource: mutationAvailability.setRetailSupplySource
+			get canBuildRail() {
+				return mutationAvailability.buildRail;
+			},
+			get canManageLogistics() {
+				return mutationAvailability.manageLogistics;
+			},
+			get canSetRetailSupplySource() {
+				return mutationAvailability.setRetailSupplySource;
+			}
 		};
 	}
 
@@ -590,6 +599,7 @@
 	// root operations above.
 	const keyboard = createRouteKeyboard({
 		getOverlaySnapshot: () => overlaySnapshot,
+		getHasBlockingOverlay: () => hasBlockingOverlay,
 		getIsMenuOpen: () => construction.isMenuOpen || management.activePanelId !== null,
 		getActiveMapView: () => session.activeMapView,
 		getHasGame: () => game !== null,
@@ -623,7 +633,7 @@
 	data-active-map-view={session.activeMapView}
 	data-scenario-result={lastScenarioResult?.outcome ?? ''}
 	data-scenario-best-updated={lastScenarioBestUpdated}
-	data-scenario-error={scenarioOperationError?.code ?? ''}
+	data-scenario-error={scenarios.operationError?.code ?? ''}
 	data-scenario-retry-available={retryScenarioOperation !== null}
 	onpointerdown={audio.unlock}
 >

@@ -147,6 +147,7 @@ export async function handoffSupplyPlannerAction(
 	if (!host.canBuildRail || !snapshot.disconnectedBuildingIds.includes(building.id)) return;
 	host.closeOverlays();
 	if (!(await host.switchToSupplyCity(snapshot.supplyCityId))) return;
+	if (!host.canBuildRail) return;
 	const currentBuilding = findPlannerBuilding(
 		host.getGame(),
 		action.buildingId,

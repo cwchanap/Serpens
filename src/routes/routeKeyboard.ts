@@ -13,6 +13,8 @@ export type RouteSelectionKind = 'worldCity' | 'retailTile' | 'industryTile' | '
 interface RouteKeyboardOptions {
 	/** Root-derived read-only overlay snapshot; read at event time, never copied. */
 	getOverlaySnapshot(): OverlaySnapshot;
+	/** Derived root flag indicating if a blocking modal overlay is open. */
+	getHasBlockingOverlay?(): boolean;
 	/** A soft menu (build menu or a management panel) is open. */
 	getIsMenuOpen(): boolean;
 	getActiveMapView(): MapViewId;
@@ -77,10 +79,11 @@ export function createRouteKeyboard(options: RouteKeyboardOptions) {
 			// it can't stack on top of it.
 			const snapshot = options.getOverlaySnapshot();
 			const isCheatSheetOpen = snapshot.openOverlays.has('cheat-sheet');
-			if (
-				!isTypingElement(event.target) &&
-				(!selectOverlayGates(snapshot).hasBlockingOverlay || isCheatSheetOpen)
-			) {
+			const hasBlocking =
+				options.getHasBlockingOverlay !== undefined
+					? options.getHasBlockingOverlay()
+					: selectOverlayGates(snapshot).hasBlockingOverlay;
+			if (!isTypingElement(event.target) && (!hasBlocking || isCheatSheetOpen)) {
 				event.preventDefault();
 				options.toggleCheatSheet();
 			}
@@ -112,12 +115,17 @@ export function createRouteKeyboard(options: RouteKeyboardOptions) {
 			return;
 		}
 
+		const hasBlocking =
+			options.getHasBlockingOverlay !== undefined
+				? options.getHasBlockingOverlay()
+				: selectOverlayGates(options.getOverlaySnapshot()).hasBlockingOverlay;
+
 		const action = resolveShortcutAction({
 			key: event.key,
 			isTypingTarget: isTypingElement(event.target),
 			isInteractiveTarget: isInteractiveControl(event.target),
 			hasModifier,
-			hasBlockingOverlay: selectOverlayGates(options.getOverlaySnapshot()).hasBlockingOverlay,
+			hasBlockingOverlay: hasBlocking,
 			isMenuOpen: options.getIsMenuOpen(),
 			activeMapView: options.getActiveMapView(),
 			hasGame: options.getHasGame()

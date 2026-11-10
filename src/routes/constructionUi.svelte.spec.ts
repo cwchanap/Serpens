@@ -95,6 +95,7 @@ interface Holder {
 	mode: 'sandbox' | 'scenario';
 	definition: ScenarioDefinition | null;
 	availability: MutationAvailability;
+	disabledReason?: string | null;
 }
 
 function baseHolder(): Holder {
@@ -137,6 +138,7 @@ function mountConstruction(holder: Holder = baseHolder()): Mounted {
 		getMode: () => live.mode,
 		getDefinition: () => live.definition,
 		getAvailability: () => live.availability,
+		getDisabledReason: () => live.disabledReason ?? null,
 		getI18n: () => createI18n('en'),
 		commands,
 		playSfx: (cueId) => sfx.push(cueId),
@@ -302,6 +304,10 @@ it('construction projections read live game, city, definition and permission inp
 	holder.definition = resolveScenarioDefinition({ scenarioId: 'local-lifeline', version: 1 })!;
 	expect(ui.allowedIndustryBuildingTypeIds).toEqual(['water-bottler']);
 	expect(ui.allowedRetailArchetypeIds).toEqual(['convenience']);
+	expect(ui.menuDisabledReason).toBeNull();
+	holder.disabledReason = 'Custom scenario lock';
+	expect(ui.menuDisabledReason).toBe('Custom scenario lock');
+	holder.disabledReason = null;
 
 	// Industry-city replacement flows through the live city id: scenario
 	// placements only apply to world industry cities, so a deliberately

@@ -26,7 +26,7 @@
 		onCloseInspector: () => void;
 		canOpenWorldCity?: boolean;
 		canFinanceWorldCity?: boolean;
-		allowedCityIds?: string[];
+		allowedCityIds?: readonly string[];
 		selectionDisabled?: boolean;
 		selectionDisabledReason?: string | null;
 		disabledReason?: string | null;

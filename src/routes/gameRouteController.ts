@@ -1743,6 +1743,8 @@ export class GameRouteController {
 		if (!this.currentState.activeScenarioRun || !repository || !scenarioCommand) {
 			return { status: 'unavailable' };
 		}
+		if (this.currentState.scenarioCommandPending) return { status: 'busy' };
+
 		// Match the UI's live capability gate before any transition or persistence.
 		// Commands without a scenarioCommand remain sandbox-only; founding and
 		// supply-source preflight still use the sandbox path above.
@@ -1751,16 +1753,13 @@ export class GameRouteController {
 			null;
 		const availability = createMutationAvailability({
 			playMode: this.currentState.playMode,
-			pending: this.currentState.scenarioCommandPending,
+			pending: false,
 			definition
 		});
 		const available =
 			scenarioCommand.kind === 'selectWorldCity'
-				? !availability.pending &&
-					definition !== null &&
-					definition.allowedCommands.includes('selectWorldCity')
+				? definition !== null && definition.allowedCommands.includes('selectWorldCity')
 				: availability[scenarioCommand.kind];
-		// UI commands report unavailable while pending; lifecycle operations keep busy.
 		if (!available) return { status: 'unavailable' };
 
 		let rejectedCode: ScenarioOperationError['code'] | null = null;

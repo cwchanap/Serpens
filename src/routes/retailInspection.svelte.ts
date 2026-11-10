@@ -120,6 +120,7 @@ export function createRetailInspection(options: RetailInspectionOptions) {
 	}
 
 	function changeStoreProductBrand(storeId: string, productId: ProductId, brandId: BrandId): void {
+		if (!options.getGame() || !options.getAvailability().updateStoreProductBrand) return;
 		void options.commands.updateStoreProductBrand(storeId, productId, brandId);
 	}
 

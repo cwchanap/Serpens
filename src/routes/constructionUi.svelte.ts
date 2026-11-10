@@ -47,6 +47,8 @@ interface ConstructionUiOptions {
 	getDefinition(): ScenarioDefinition | null;
 	getAvailability(): MutationAvailability;
 	getI18n(): I18nBundle;
+	/** Optional precomputed disabled reason for the build menu; falls back to mode === 'scenario'. */
+	getDisabledReason?(): string | null;
 	commands: ConstructionUiCommands;
 	playSfx(cueId: SfxCueId): void;
 	/** Selects a placement-feedback tile and clears the other placement selections. */
@@ -186,7 +188,11 @@ export function createConstructionUi(options: ConstructionUiOptions) {
 			: []
 	);
 	const menuDisabledReason = $derived(
-		options.getMode() === 'scenario' ? options.getI18n().t('buildMenu.unavailable') : null
+		options.getDisabledReason
+			? options.getDisabledReason()
+			: options.getMode() === 'scenario'
+				? options.getI18n().t('buildMenu.unavailable')
+				: null
 	);
 	const isPlacementModeActive = $derived(placement.isArmed || rail.isActive);
 	// Text for the placement-status plaque while rail-building: a block

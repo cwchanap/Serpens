@@ -71,6 +71,7 @@ interface KeyboardHarness {
 	closeOverlayCalls: OverlayId[];
 	clearSelectionCalls: RouteSelectionKind[];
 	storeDetailFocus: ReturnType<typeof createStoreDetailFocus>;
+	snapshotSpy: ReturnType<typeof vi.fn<() => OverlaySnapshot>>;
 	canvas: HTMLDivElement;
 	input: HTMLInputElement;
 	button: HTMLButtonElement;
@@ -227,8 +228,11 @@ function mountKeyboardHarness(
 	}
 	window.addEventListener('keydown', financeCapture, true);
 
+	const snapshotSpy = vi.fn<() => OverlaySnapshot>(snapshot);
+
 	const keyboard = createRouteKeyboard({
-		getOverlaySnapshot: snapshot,
+		getOverlaySnapshot: snapshotSpy,
+		getHasBlockingOverlay: () => selectOverlayGates(snapshot()).hasBlockingOverlay,
 		getIsMenuOpen: () => owners.buildMenu || owners.management,
 		getActiveMapView: () => activeMapView,
 		getHasGame: () => hasGame,
@@ -296,6 +300,7 @@ function mountKeyboardHarness(
 		closeOverlayCalls,
 		clearSelectionCalls,
 		storeDetailFocus,
+		snapshotSpy,
 		canvas,
 		input,
 		button,
@@ -621,5 +626,13 @@ describe('route keyboard adapter', () => {
 		// Capture stopped the event before the page adapter ever ran.
 		expect(h.spies.unlockAudio).not.toHaveBeenCalled();
 		expect(h.closeOverlayCalls).toEqual([]);
+	});
+
+	it('uses getHasBlockingOverlay to avoid reading overlay snapshot on normal shortcuts', () => {
+		const h = mountKeyboardHarness();
+		h.snapshotSpy.mockClear();
+		h.press('b');
+		expect(h.spies.openBuildMenu).toHaveBeenCalledTimes(1);
+		expect(h.snapshotSpy).not.toHaveBeenCalled();
 	});
 });
