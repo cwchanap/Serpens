@@ -449,8 +449,16 @@ describe('MapInspectorHost', () => {
 			.not.toBeInTheDocument();
 		expect(vi.mocked(buildRailNetwork)).not.toHaveBeenCalled();
 
+		// Placement mode arms without feedback: inspector is hidden, network must not be read.
+		vi.mocked(buildRailNetwork).mockClear();
+		await mounted.rerender({ isPlacementActive: true, placementFeedback: null });
+		await expect
+			.element(page.getByRole('dialog', { name: /rail segment/i }))
+			.not.toBeInTheDocument();
+		expect(vi.mocked(buildRailNetwork)).not.toHaveBeenCalled();
+
 		// Leaving build mode reads the network for the first time.
-		await mounted.rerender({ isRailActive: false });
+		await mounted.rerender({ isRailActive: false, isPlacementActive: false });
 		await expect.element(page.getByRole('dialog', { name: /rail segment/i })).toBeVisible();
 		expect(vi.mocked(buildRailNetwork)).toHaveBeenCalled();
 	});

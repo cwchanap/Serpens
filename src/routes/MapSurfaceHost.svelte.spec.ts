@@ -232,6 +232,10 @@ describe('MapSurfaceHost', () => {
 		await expect
 			.element(page.getByTestId('world-logistics-route-route-1'))
 			.toHaveAttribute('data-selected', 'true');
+
+		// Selecting an unrecognized city id still clears the logistics route selection
+		mounted.session.clearSelection('logisticsRoute');
+		expect(mounted.session.selectedLogisticsRouteId).toBeNull();
 	});
 
 	it('forwards the latest delivered transfer to the selected world inspector', async () => {

@@ -319,7 +319,7 @@ it('dismissed result keeps reference identity', async () => {
 		expect(ui.results?.scoreLabel).toContain('456');
 		await expect.element(page.getByRole('dialog')).toBeVisible();
 		ui.returnToSandboxFromResults();
-		expect(h.commands.returnToSandbox).toHaveBeenCalledTimes(3);
+		expect(h.commands.returnToSandbox).toHaveBeenCalledTimes(2);
 	} finally {
 		await view.unmount();
 	}
@@ -516,7 +516,11 @@ it('catalog errors retry live commands and leave summary-owned replacement entri
 		h.update({ error: null });
 		vi.mocked(commands.resumeScenarioRun).mockResolvedValueOnce({ status: 'unavailable' });
 		await ui.resumeScenarioCard(ui.cards[0]);
+		expect(ui.operationError?.code).toBe('persistence-read-failed');
 		expect(ui.error).toBe(h.inputs.i18n.t('scenarioDiagnostics.persistenceReadFailed'));
+		ui.clearFallbackError();
+		expect(ui.operationError).toBeNull();
+		expect(ui.error).toBeNull();
 		const retry = vi.fn(async () => {
 			h.update({ error: null });
 		});

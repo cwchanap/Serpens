@@ -302,9 +302,15 @@ function hostSpyFactory(live: PlannerHolder, calls: string[], hosts: SupplyPlann
 			enterRailBuildMode: vi.fn((mode: { originBuildingId: string }) =>
 				calls.push(`rail:${mode.originBuildingId}`)
 			),
-			canBuildRail: live.permissions.canBuildRail,
-			canManageLogistics: live.permissions.canManageLogistics,
-			canSetRetailSupplySource: live.permissions.canSetRetailSupplySource
+			get canBuildRail() {
+				return live.permissions.canBuildRail;
+			},
+			get canManageLogistics() {
+				return live.permissions.canManageLogistics;
+			},
+			get canSetRetailSupplySource() {
+				return live.permissions.canSetRetailSupplySource;
+			}
 		};
 		hosts.push(host);
 		return host;

@@ -2752,7 +2752,7 @@ describe('GameRouteController', () => {
 			expect(autoSaveSpy).not.toHaveBeenCalled();
 		});
 
-		it('returns unavailable for pending UI commands but busy for lifecycle operations', async () => {
+		it('returns busy for commands and lifecycle operations while a scenario command is pending', async () => {
 			const harness = createHarness();
 			await harness.controller.initializeScenarios();
 			const run = await startScenario(harness.controller);
@@ -2769,12 +2769,12 @@ describe('GameRouteController', () => {
 			harness.onStateChange.mockClear();
 			harness.sfx.mockClear();
 			try {
-				expect(await harness.controller.advanceDay()).toEqual({ status: 'unavailable' });
+				expect(await harness.controller.advanceDay()).toEqual({ status: 'busy' });
 				expect(await harness.controller.selectWorldCity('industry-city')).toEqual({
-					status: 'unavailable'
+					status: 'busy'
 				});
 				expect(await harness.controller.pauseRecurringRoute('route-1')).toEqual({
-					status: 'unavailable'
+					status: 'busy'
 				});
 				expect(await harness.controller.startScenarioRun(firstProfitDefinition(), 42)).toEqual({
 					status: 'busy'
@@ -3133,7 +3133,7 @@ describe('GameRouteController', () => {
 			await Promise.resolve();
 			await Promise.resolve();
 			expect(await harness.controller.borrowWorkingCapital(1_000, 56)).toEqual({
-				status: 'unavailable'
+				status: 'busy'
 			});
 			releaseSave?.();
 			expect(await first).toEqual({ status: 'committed' });
@@ -3513,7 +3513,7 @@ describe('GameRouteController', () => {
 			expect(disallowedSave).not.toHaveBeenCalled();
 		});
 
-		it('returns unavailable while an allowed retail supply selection is awaiting its scenario write', async () => {
+		it('returns busy while an allowed retail supply selection is awaiting its scenario write', async () => {
 			const base = firstProfitDefinition();
 			const definition = { ...base, allowedCommands: ['setRetailSupplySource'] as const };
 			const harness = createHarness({ resolveDefinition: () => definition });
@@ -3535,7 +3535,7 @@ describe('GameRouteController', () => {
 			await Promise.resolve();
 			expect(harness.controller.state.scenarioCommandPending).toBe(true);
 			expect(await harness.controller.setRetailSupplySource('harbor-city', null)).toEqual({
-				status: 'unavailable'
+				status: 'busy'
 			});
 			releaseSave?.();
 			expect(await first).toEqual({ status: 'committed' });

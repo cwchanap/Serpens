@@ -225,7 +225,6 @@ export function createScenarioUi(options: ScenarioUiOptions) {
 	}
 	function returnToSandboxFromResults(): void {
 		closeResults();
-		options.commands.returnToSandbox();
 	}
 	async function importScenarioCode(
 		code: string,
@@ -296,6 +295,9 @@ export function createScenarioUi(options: ScenarioUiOptions) {
 		get error() {
 			return error;
 		},
+		get operationError() {
+			return operationError;
+		},
 		get pending() {
 			return options.getPending();
 		},
@@ -320,6 +322,9 @@ export function createScenarioUi(options: ScenarioUiOptions) {
 		openCatalog,
 		closeCatalog,
 		closeResults,
+		clearFallbackError(): void {
+			fallbackError = null;
+		},
 		toggleObjectives(): void {
 			objectivesExpanded = !objectivesExpanded;
 		},

@@ -74,6 +74,7 @@
 
 	/** WorldMap hands over raw city ids; the session commands validate them. */
 	function selectWorldCityNode(cityId: string): void {
+		session.clearSelection('logisticsRoute');
 		if (isWorldCityId(cityId)) void session.selectWorldCity(cityId);
 	}
 
@@ -102,7 +103,7 @@
 				onCloseInspector={() => session.clearSelection('worldCity')}
 				canOpenWorldCity={availability.openWorldCity}
 				canFinanceWorldCity={availability.financeWorldCity}
-				allowedCityIds={[...session.allowedWorldCityIds]}
+				allowedCityIds={session.allowedWorldCityIds}
 				{disabledReason}
 				logisticsRouteSummaries={session.logisticsRouteSummaries}
 				selectedLogisticsRouteId={session.selectedLogisticsRouteId}
