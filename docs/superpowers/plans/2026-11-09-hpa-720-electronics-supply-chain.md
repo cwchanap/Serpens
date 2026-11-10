@@ -5,60 +5,59 @@
 **Art dependency:** https://linear.app/cwchanap/issue/HPA-719/art-generate-sprites-for-the-electronics-supply-chain
 **Branch / PR:** `docs/hpa-720-electronics-supply-chain` — one HPA-720 draft PR for planning, assets, implementation, test and measured addendum
 **Inspected base:** `main@3b0b56d62a638aca71bb056979e39acc3f68f3b1`
-**State:** design and plan only; HPA-719 still blocks asset integration; no runtime changes or test success claimed.
+**State:** reviewed design/plan only; HPA-719 gates art integration and final PR readiness, **not** catalog/test/calibration work. No runtime changes or test success claimed.
 
 ## Delivery decision and review gates
 
-HPA-719 remains a **separate art task** for generating/approving seven images, but its files are committed to **this** HPA-720 branch. Avoid a separate asset-only PR: `gameArt.spec.ts` checks disk paths against registry content and an unregistered-asset branch can fail. The docs checkpoint is allowed now; the art should be the **first non-document implementation commit** before adding registrations. Keep the HPA-720 PR draft until art approval, code, evidence and verification all pass.
+HPA-719 remains a **separately tracked art task** for generating/approving seven images, but its files are committed to **this one** HPA-720 PR branch as an art-only commit when ready. There is no separate art PR and **no longer an art-first coding gate**: proceed immediately with catalogs, world unlocks, tests and measurement. Intermediate `bun run check` / `gameArt.spec.ts` may fail until the exhaustive art registries are updated, and those failures must be disclosed, not hidden. The art commit can follow the early domain commits; it still blocks marking this draft PR ready. The original HPA-719 art-first-commit instruction is superseded by this reviewed sequence.
 
-No new subsystem, new ticket, new migration, or broad tuning. The code's existing catalog-driven paths should do the work.
+No new subsystem, new ticket, new migration, or broad tuning. The code's existing catalog-driven paths should do the work. The two obsolete `industry.ts` lists are removed rather than extended; the two live `world.ts` reveal lists become derived.
 
-## Step 0 — Art and baseline prerequisites
+## Step 0 — Baseline, source-contract and art coordination (nonblocking)
 
-- [ ] HPA-719: Generate the exact seven 96x96 transparent sprites using the listed references, inspect at 32px, secure Hapadona approval; do not draw with Node/Python/canvas.
-- [ ] Add all seven to `static/assets/game/industry/{resources,buildings,materials}/` on this branch as an asset-only **implementation** commit. Do not fabricate missing images or substitute SVGs.
-- [ ] Before coding, refresh `main` and check that none of the seven paths, four ID union members, or recipe IDs has appeared in another PR.
-- [ ] Re-read `CLAUDE.md` and the existing `industry.ts`, `worldCatalog.ts`, `products.ts`, `gameArt.ts`, and `gameArt.spec.ts` contracts. Keep this design's baseline SHA as provenance, not a reason to ignore newer changes.
+- [ ] Before runtime changes, refresh `main`, check whether any requested IDs or paths already exist, and note the **exact** base commit and code revision. Review `CLAUDE.md`, `industry.ts`, `world.ts`, `worldCatalog.ts`, `products.ts`, `industryFootprint.ts`, `gameArt.ts`, `gameArt.spec.ts` and the existing bot tests. Preserve this design's original inspected SHA as provenance.
+- [ ] Keep HPA-719 running as an independent **art-generation task**: seven approved 96x96 transparent sprites with the ticket's visual references; no scripted pixels, SVG substitutes, art PR, or new asset generation hidden in a code step.
+- [ ] Capture the **current base-SHA** behavior with the existing deterministic progression CLI and its `SWEEP_SEEDS` matrix. Historic `docs/balance/progression-calibration.md` §3 used static credit and predates HPA-679; do not compare HEAD against it. Store generated base JSON in ignored `docs/balance/generated/` or another local untracked folder.
 
-**Gate:** seven approved files actually exist; if not, stop the implementation here while leaving this planning PR draft.
+**Gate:** baseline recorded. Missing PNGs **do not block** Steps 1–3; they block the final release gate only.
 
-## Step 1 — Extend the existing typed catalogs (no new behavior module)
+## Step 1 — Typed catalogs + real world unlocks (no new subsystem)
 
-1. In `src/lib/game/types.ts`, extend `IndustryResourceId`, `MaterialId`, `ProductionRecipeId` and `IndustrialBuildingTypeId` with the design's fixed IDs.
-2. In `src/lib/game/industry.ts`, add the copper-deposit anchor at xFrac=0.278/yFrac=0.222 and three material definitions, three recipe definitions and three building definitions with candidate numbers from the spec.
-3. Add `electronic-accessories` to `FINISHED_PRODUCT_MATERIAL_IDS` and the three building IDs to `CONVENIENCE_BUILDING_TYPE_IDS` (the legacy name is used by the current build-menu catalog; rename is not in scope).
-4. Add `copper-deposit` to resource profiles for `industry-city` and `quarry-works` in `worldCatalog.ts`. Update relevant descriptions without changing cities, unlocks or the terrain-generation algorithm.
-5. Link only `PRODUCTS.accessories.productionMaterialId` to `electronic-accessories`. Preserve all other product fields and electronics products. Delete the now-stale claim in `progression.ts` comments that electronics cannot qualify.
+1. In `src/lib/game/types.ts`, extend `IndustryResourceId`, `MaterialId`, `ProductionRecipeId`, `IndustrialBuildingTypeId` with the fixed copper/board/accessory IDs from the spec.
+2. In `src/lib/game/industry.ts`, add copper deposit at **xFrac=0.25, yFrac=0.222**, three materials, three recipes and three buildings with the already proposed candidate data. In `industry.spec.ts`, **delete** the test-only `CONVENIENCE_BUILDING_TYPE_IDS` and `FINISHED_PRODUCT_MATERIAL_IDS` imports/assertions, and replace useful completeness assertions with catalog-derived iterations. Remove both dead exports and the `FinishedProductMaterialId` alias from `industry.ts`. They are not consumed by the build menu or product-chain runtime.
+3. In `worldCatalog.ts`, add `copper-deposit` to resource profiles for starter `industry-city` and `quarry-works`, not `breadbasket-basin`; adjust the small specialty strings only as needed. No city or terrain change.
+4. In `src/lib/game/world.ts`, derive **two runtime lists** (do not merely append new literals): raw producers = `Object.values(INDUSTRIAL_BUILDING_TYPES).filter(type => type.requiredResource !== null).map(type => type.id)`; Quarry reveal materials = `Object.values(MATERIALS).filter(material => material.kind === 'finished' && (getCategoryTier(material.id) ?? 0) >= 2).map(material => material.id)`. Import the existing catalogs/helpers from `industry.ts`; preserve `hasWarehouseAndRawProducer`, city-attributed finished inventory/report checks and existing tier-1 material exclusions. These catalog projections should retain prior values and automatically add the copper mine/new final product.
+5. In `products.ts`, link **only** `PRODUCTS.accessories.productionMaterialId` to `electronic-accessories`; preserve demand, price, category and all other electronics products.
+6. Update stale comments in both `progression.ts` (the claim electronics cannot qualify) and `tests/balance/bots.ts` (electronics plans no chain and the old hardcoded Quarry material set). Do **not** change their runtime logic.
 
-**Focused tests:** `industry.spec.ts` checks recipe inputs/outputs, chain-building traversal, resource generation and seeded determinism; `products.spec.ts` pins the sole new link; `worldCatalog.spec.ts` pins resource availability. Add no separate graph registry or duplicate product-to-recipe mapping.
+**Focused tests:** `industry.spec.ts`, `products.spec.ts`, `worldCatalog.spec.ts`, `world.spec.ts` cover exact catalog wiring, full recursive chain, city profiles and unlocks. Specifically prove copper mine + warehouse unlocks Breadbasket, locally finished `electronic-accessories` triggers Quarry Works while tier-1 outputs still do not, and no existing city reveal condition changes.
 
-## Step 2 — Prove placement and production/replenishment via existing paths
+## Step 2 — Placement, production and one bot-driven local-delivery regression
 
-- [ ] In `industryPlacement.spec.ts`, prove copper mine accepts only a `copper-deposit` anchor and obeys existing 2x2 footprint/locked/occupied/rail rules; test each processor's industrial-terrain requirement. Confirm the new anchor does not collide with blocked internal separator cells at 18x18 and normal industry size.
-- [ ] In `industryProduction.spec.ts`, build or fixture the three new buildings with required shared suppliers. Tick the real `simulateIndustryProduction` stage order and check quantities, cash accounting, determinism, buffer behavior and imported-input fallback.
-- [ ] Add a *small integration test* using real rails, one warehouse and retail replenishment, not injected `retail-local-units` counters. Show `electronic-accessories` reaches a city inventory, `accessories` is replenished locally, and its `DailyProductReport.warehouseUnits` / tier-3 metric increments. Avoid duplicating an existing integration fixture or weakening the assertion to producer output.
-- [ ] Check `productChainTree.ts`, `productChainGraph.ts`, `supplyPlanner.ts` and advisor result on the new product. First assert reuse: fix only a demonstrable hardcoded materials assumption. `tests/balance/bots.ts` should pick up accessories automatically and must not gain a special-case electronics strategy.
+- [ ] In `industryPlacement.spec.ts` and `industry.spec.ts`, assert the production **56×48** copper anchor at (14,11), a legal 2×2 footprint covering x=14..15 within the extraction district and clear of chemical/blocked tiles. Verify the smaller 18×18 fixture remains legal. Copper mine requires its own resource **only at the anchor**; both factories require industrial terrain.
+- [ ] In `industryProduction.spec.ts`, exercise the three recipes and existing import fallback, cost accounting, buffers, stage ordering and deterministic execution with narrowly scoped test fixtures (do not construct a full 9-building retail/rail fixture).
+- [ ] In the **existing** `tests/balance/progressionBots.spec.ts`, add **one** 365-day `runProgressionBot('electronics', seed, 365)` regression. Choose/pin a seed **only after** a real trial produces local units; do not invent a successful seed. Sum `accessories` `DailyProductReport.warehouseUnits` from actual daily store reports and assert >=25, then confirm production `retail-local-units` tier-3 evidence; pin a claim day if earned. This bot drives the real Supply Planner, placement, rail, warehouse and retail replenishment and replaces the proposed manually wired integration test and separate manual probe step.
+- [ ] Inspect existing `productChainTree.ts`, `productChainGraph.ts`, planner and advisor behavior under that test. Make only an evidenced hardcoded-assumption fix; no special-case electronics bot policy or new UI module. If the 25-unit proof fails, investigate why the real planner/rail/replenishment flow stalls before adding complexity.
 
-**Gate:** one real seeded end-to-end *domain* path shows local delivery, not just nominal industry production.
+**Gate:** a real seeded bot run proves >=25 accessories served from local inventory, not just factory-buffer or warehouse production.
 
-## Step 3 — Assets, copy and existing UI
+## Step 3 — Base-vs-HEAD deterministic measurement before art integration
 
-1. In `src/lib/assets/gameArt.ts`, extend `INDUSTRY_RESOURCE_ART`, `INDUSTRY_MATERIAL_ART` and `INDUSTRIAL_BUILDING_ART` with the seven paths from HPA-719. Do not separately hand-maintain recipe art: `RECIPE_BUILDING_ART` derives it from the building catalog.
-2. Extend the hardcoded corresponding path maps in `gameArt.spec.ts`; assert all seven exact PNGs exist and are 96x96 with alpha, and honor existing duplicate-art checks.
-3. In `src/lib/i18n/messages/en.ts`, `ja.ts`, `zh-Hant.ts`, add keys for three materials, three buildings and copper resource. Update Quarry Works / Industry City specialty descriptions where the new resource should be named.
-4. Review `src/routes/retail-sim.e2e.ts` generated-resource assertions, and any industry map sprite-count expectations (including Phaser preload tests). Update *only* counts/fixtures changed by adding the anchor or sprites. Verify the build menu, Supply Planner and chain-tree UI display the new catalog content without new UI components.
+- [ ] Rerun `bun run tests/balance/progressionRun.ts` using the **same** 50 `SWEEP_SEEDS` (20260501..20260550), all four archetypes, 365 days, on the implementation HEAD and diff against the Step-0 base-SHA sweep. Include the existing 200 idle negative controls.
+- [ ] **Hard comparison:** non-electronics (convenience, grocery, boutique) per-seed progression rows must be **identical**. If any differ, analyze changed industry placement/rail reachability from the anchor and disclose/fix it; don't silently accept them as unrelated tuning. Confirm idle controls and claim invariants remain valid.
+- [ ] Record the electronics tier-3 numerator/50, reached-run claim-day distribution, remaining blockers, real local-vs-imported accessories counts, measured new-chain daily/units costs and seed 20260503's actual trace. If electronics gets no tier-3 claims, investigate without global economic retuning. The candidate recipes are intentionally not a local-profit gate; HPA-721 owns economy balancing.
+- [ ] Rerun the existing `bun run balance` Gate A/scenario checks and preserve historical `docs/balance/baseline.md`, `after.md`, `rail-throughput-calibration.md` and all pre-existing sections of `progression-calibration.md`. Append only an **HPA-720 addendum** with commands and the new base/HEAD comparison. No timestamps in generated artifacts.
 
-**Gate:** approved sprites render at map size, all names are localized, and existing image/scene conventions remain intact.
+**Gate:** reproducible local accessory delivery, honest measured tier-3 result and zero unexplained non-electronics differences.
 
-## Step 4 — Measure the progression consequence; do not tune the economy
+## Step 4 — HPA-719 art, registrations, localization and UI (PR readiness)
 
-- [ ] Run a cheap deterministic named-seed electronics probe first (e.g. 20260503, 365 days) and inspect the bot's recommendations/builds, warehouse rail deliveries, retail-local-units evidence and tier-3 claim. If it never transfers locally, diagnose an existing path/fixture before changing constants or inventing new bot logic.
-- [ ] Run `bun run balance` for existing Gate A/scenario evidence and the existing progression CLI using `SWEEP_SEEDS` 20260501..20260550, all four archetypes, 365 days; also run the 200 idle negative controls. The published baseline is historical; preserve all original sections/results.
-- [ ] Append a clearly dated **HPA-720 addendum** in `docs/balance/progression-calibration.md`. Record exact commands/seeds, tier-3 reached count (especially electronics 0/50 before -> measured after), reached-only claim-day quantiles, seed-20260503 trace, non-electronics changes, remaining blockers, and explicit limitations. Do not assert all electronics seeds succeed just because the structural link exists.
-- [ ] Do not touch `docs/balance/baseline.md`, `after.md`, `rail-throughput-calibration.md`; do not retune `progression.ts` thresholds, salaries, economy constants outside the new chain, or scenario medal curves. If an unrelated invariant materially regresses, retain the PR as draft, disclose it, and fix only a directly caused regression without widening to HPA-721.
-- [ ] Ensure the generated JSON traces stay in `docs/balance/generated/` (git-ignored) unless the repository already explicitly tracks a summarized result; no timestamps or unstated random seeds.
+1. When HPA-719's separately tracked art task delivers seven approved PNGs, commit all seven unchanged on this same HPA-720 branch as a dedicated **art-only commit**. Their arrival does not need to precede the catalog commits; no independent art PR.
+2. Add the paths to exhaustive `INDUSTRY_RESOURCE_ART`, `INDUSTRY_MATERIAL_ART`, `INDUSTRIAL_BUILDING_ART` records in `src/lib/assets/gameArt.ts`; `RECIPE_BUILDING_ART` already derives from buildings. Update only the corresponding fixed path-map fixtures in `gameArt.spec.ts`. Its generic asset tests already cover existence, 96x96, alpha and duplicate bytes; review 32px legibility manually rather than duplicating test logic.
+3. Add names to `src/lib/i18n/messages/{en,ja,zh-Hant}.ts`. Add a `MaterialId`, `IndustrialBuildingTypeId`, `IndustryResourceId` type import to `en.ts`, then enforce nested `materials`, `industrialBuildings`, and `industryResources` object completeness using `satisfies Record<..., string>` for each respective type. Existing locale-shape checks then cover ja/zh-Hant. If nested `satisfies` is not compatible with the current type/layout, use a single small catalog-completeness spec across all locales instead. Adjust affected city specialty copy.
+4. Update only affected sprite/resource counts in `src/routes/retail-sim.e2e.ts` and other industry map tests, then manually verify the build menu, graph/tree, supply planner and sprite visibility with the new data.
 
-**Acceptance:** the new chain genuinely delivers local accessories, and *some* progression-bot electronics seeds claim tier 3. HPA-721 owns the much stronger all-store-type first-year target and global profitability tuning.
+**Gate:** approved art, fully registered paths, exhaustive localized catalog labels, UI/E2E consistency and no missing assets. Only now can the draft PR become ready.
 
 ## Step 5 — Final verification before marking the same PR ready
 
@@ -72,14 +71,16 @@ bun run test:e2e
 git diff --check main...HEAD
 ```
 
-Review exact tests at minimum: `industry.spec.ts`, `industryPlacement.spec.ts`, `industryProduction.spec.ts`, `products.spec.ts`, `worldCatalog.spec.ts`, `productChainTree.spec.ts`, `supplyPlanner.spec.ts`, `progression.spec.ts`, `gameArt.spec.ts`, `industryMapScene.spec.ts`, `retail-sim.e2e.ts`, and `tests/balance/progressionCalibration.ts`/CLI tests.
+Review exact tests at minimum: `industry.spec.ts`, `industryPlacement.spec.ts`, `industryProduction.spec.ts`, `products.spec.ts`, `worldCatalog.spec.ts`, `world.spec.ts`, `tests/balance/progressionBots.spec.ts`, `productChainTree.spec.ts`, `supplyPlanner.spec.ts`, `progression.spec.ts`, `gameArt.spec.ts`, `industryMapScene.spec.ts`, `retail-sim.e2e.ts`, and the progression calibration CLI.
 
 - [ ] Seven real approved sprites, no placeholders/asset script, all path registries consistent
 - [ ] Only `accessories` gets a production material link
-- [ ] Resource placement and recipe graph work from true state transitions
+- [ ] Copper 56×48 footprint and both catalog-derived city unlocks proven
+- [ ] One bot-run integration shows >=25 actual retail-local accessories
+- [ ] Base-SHA vs HEAD sweep records electronics reachability with identical non-electronics rows
 - [ ] No new state owner, save migration or economy/tier retune
 - [ ] Three-language copy complete and UI/e2e tests updated
-- [ ] Reproducible post-change electronics tier-3 measurement in a short dated addendum
+- [ ] Reproducible post-change electronics tier-3 measurement and observed unit costs in an HPA-720 addendum; frozen earlier reports unchanged
 - [ ] CI, unit, e2e, lint/check green and no unresolved blocking review findings
 
 No runtime implementation, art delivery, or test execution is claimed by this planning-only commit. Continue implementation and review in **this one draft PR**; do not split it into a docs PR plus a code PR.
