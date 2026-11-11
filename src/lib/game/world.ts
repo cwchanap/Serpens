@@ -55,7 +55,7 @@ const RAW_PRODUCER_BUILDING_TYPE_IDS: readonly IndustrialBuildingTypeId[] = Obje
 	.map((type) => type.id);
 
 const FINISHED_MATERIAL_IDS: readonly MaterialId[] = Object.values(MATERIALS)
-	.filter((material) => material.kind === 'finished' && (getCategoryTier(material.id) ?? 0) >= 2)
+	.filter((material) => (getCategoryTier(material.id) ?? 0) >= 2)
 	.map((material) => material.id);
 
 export interface WorldCityStatus {
