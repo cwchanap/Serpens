@@ -25,7 +25,7 @@ import { buildRail, buildRailPreview } from '../lib/game/railPlacement';
 import { simulateDay } from '../lib/game/simulateDay';
 import { createNewGame, getExpansionSetupCost, upgradeStore } from '../lib/game/state';
 import { calculateStockHealth, initializeStoreProducts } from '../lib/game/stock';
-import { openWorldCity } from '../lib/game/world';
+import { getWorldCityDefinition, openWorldCity } from '../lib/game/world';
 import { claimEarnedTiers } from '../lib/game/progression';
 import type {
 	DailyLogisticsReport,
@@ -1303,25 +1303,14 @@ interface SavedGame {
 // coordinates from the generated city rather than hardcoding the old
 // fixed-anchor positions (e.g. water-source used to sit at (1,7), grain-field
 // at (1,1), and the industrial district used to cover (9,6)/(11,6)).
+const STARTER_INDUSTRY_CITY_DEFINITION = getWorldCityDefinition('industry-city')!;
 const STARTER_INDUSTRY_CITY = generateIndustryCity({
-	id: 'industry-city',
-	name: 'Industry City',
+	id: STARTER_INDUSTRY_CITY_DEFINITION.id,
+	name: STARTER_INDUSTRY_CITY_DEFINITION.name,
 	width: DEFAULT_INDUSTRY_CITY_WIDTH,
 	height: DEFAULT_INDUSTRY_CITY_HEIGHT,
-	seed: 20260512,
-	resourceProfile: {
-		resourceIds: [
-			'grain-field',
-			'salt-deposit',
-			'oilseed-field',
-			'water-source',
-			'fruit-orchard',
-			'sugar-field',
-			'pulpwood-forest',
-			'chemical-feedstock'
-		],
-		industrialBias: 1
-	}
+	seed: STARTER_INDUSTRY_CITY_DEFINITION.seed,
+	resourceProfile: STARTER_INDUSTRY_CITY_DEFINITION.industryResourceProfile!
 });
 
 type IndustryResourceTile = Parameters<typeof getIndustryTilesByResource>[1];

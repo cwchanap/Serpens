@@ -350,8 +350,6 @@ describe('industry city generation', () => {
 
 		expect(copperTiles).toHaveLength(1);
 		expect(copperTiles[0]).toMatchObject({ x: 14, y: 11, terrain: 'deposit' });
-		// The anchor's 2x2 footprint spans x=14-15, inside the extraction belt
-		// (x<=15), and clears the chemical-feedstock anchor at x=9.
 		expect(footprint.missingCoordinates).toEqual([]);
 		expect(footprint.tiles.every((tile) => tile.x <= 15 && !tile.locked)).toBe(true);
 		expect(footprint.tiles.every((tile) => tile.terrain === 'deposit')).toBe(true);
