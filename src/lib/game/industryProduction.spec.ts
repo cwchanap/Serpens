@@ -1278,10 +1278,10 @@ const unconnectedAssemblyGame = makeProductionGame(makeIndustryCity([]), [
 ]);
 
 const electronicsChainGame = makeProductionGame(makeIndustryCity(straightRails(4, 2, 27, 10)), [
-	makeIndustryBuilding('mine', 'copper-mine', 2, 2),
-	makeIndustryBuilding('plant', 'circuit-board-plant', 10, 2),
+	makeIndustryBuilding('wh1', 'warehouse', 26, 2),
 	makeIndustryBuilding('assembly', 'accessory-assembly-plant', 18, 2),
-	makeIndustryBuilding('wh1', 'warehouse', 26, 2)
+	makeIndustryBuilding('plant', 'circuit-board-plant', 10, 2),
+	makeIndustryBuilding('mine', 'copper-mine', 2, 2)
 ]);
 
 describe('electronics production chain', () => {
