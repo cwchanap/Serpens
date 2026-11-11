@@ -387,12 +387,30 @@ the electronics catalog/map change disturbed anything outside electronics.
   `docs/balance/generated/hpa-720-head-electronics-evidence.json`; reference
   trace `docs/balance/generated/hpa-720-reference-20260503-electronics.json`.
 
-Reproduction (every command below is executable as written; the seed list
-is spelled out in full — the sweep CLI rejects `…` placeholders):
+Reproduction (every command below is executable as written, in the given
+order, on the implementation checkout; the seed list is spelled out in
+full — the sweep CLI rejects `…` placeholders):
 
 ```bash
 SEEDS=20260501,20260502,20260503,20260504,20260505,20260506,20260507,20260508,20260509,20260510,20260511,20260512,20260513,20260514,20260515,20260516,20260517,20260518,20260519,20260520,20260521,20260522,20260523,20260524,20260525,20260526,20260527,20260528,20260529,20260530,20260531,20260532,20260533,20260534,20260535,20260536,20260537,20260538,20260539,20260540,20260541,20260542,20260543,20260544,20260545,20260546,20260547,20260548,20260549,20260550
 
+# --- base artifact (git-ignored): regenerate from base source ---
+# git archive exports the base SHA into a plain directory — no worktree,
+# no checkout switch. The export's own tsconfig.json and bun.lock resolve
+# $lib and dependencies to base code, and the subshell leaves the shell's
+# cwd (and its $SEEDS assignment) in the repository root.
+mkdir -p /tmp/hpa-720-base
+git archive 3b0b56d62a638aca71bb056979e39acc3f68f3b1 | tar -x -C /tmp/hpa-720-base
+( cd /tmp/hpa-720-base && bun install --frozen-lockfile && \
+  bun run tests/balance/progressionRun.ts --seeds "$SEEDS" --days 365 \
+    --output docs/balance/generated/hpa-720-base-3b0b56d )
+
+# copy the regenerated base artifact to the path the diff reads
+mkdir -p docs/balance/generated
+cp /tmp/hpa-720-base/docs/balance/generated/hpa-720-base-3b0b56d.json \
+  docs/balance/generated/
+
+# --- implementation artifacts ---
 # full progression + idle sweep (200 progression runs + 200 idle controls)
 bun run tests/balance/progressionRun.ts --seeds "$SEEDS" --days 365 \
   --output docs/balance/generated/hpa-720-head-6402a579
@@ -408,7 +426,7 @@ bun run tests/balance/chainEvidence.ts --seeds "$SEEDS" --days 365 \
   --cost-buildings copper-mine,circuit-board-plant,accessory-assembly-plant \
   --output docs/balance/generated/hpa-720-head-electronics-evidence
 
-# base-vs-implementation row diff (exits nonzero if a required archetype differs)
+# --- the comparison itself ---
 bun run tests/balance/progressionDiff.ts \
   --base docs/balance/generated/hpa-720-base-3b0b56d.json \
   --head docs/balance/generated/hpa-720-head-6402a579.json \
@@ -423,27 +441,12 @@ progression bot and the saved sweep artifacts — no gameplay code, no
 separate probe — and are pinned by `chainEvidence.spec.ts` /
 `progressionDiff.spec.ts`.
 
-The base artifact is git-ignored, so a fresh clone regenerates it from
-base source before running the diff. `git archive` exports the base SHA
-into a plain directory (no worktree, no checkout switch); the sweep runs
-inside the export, where its own `tsconfig.json` and `bun.lock` resolve
-`$lib` and dependencies to base code:
-
-```bash
-git archive 3b0b56d62a638aca71bb056979e39acc3f68f3b1 | tar -x -C /tmp/hpa-720-base
-cd /tmp/hpa-720-base && bun install --frozen-lockfile
-cd /tmp/hpa-720-base && bun run tests/balance/progressionRun.ts \
-  --seeds "$SEEDS" --days 365 \
-  --output docs/balance/generated/hpa-720-base-3b0b56d
-```
-
-(`$SEEDS` must be re-assigned to the same 50-seed list inside the
-export's shell — the variable does not cross `cd`.)
-
-Validated on a 5-seed sample this session: the exported tree contains no
-`electronic-accessories`/`copper-deposit` source, and all 20 regenerated
-rows were field-identical to the preserved artifact (regenerated
-electronics regional-supplier 0/5, matching the base sweep's 0/50).
+The base regeneration was validated end-to-end on a reduced matrix in
+this session (export → install → sweep → copy → diff against a matching
+implementation smoke): the exported tree contains no
+`electronic-accessories`/`copper-deposit` source, every regenerated base
+row was field-identical to the preserved artifact for its seeds, and the
+smoke diff landed where `--base` reads it.
 
 Measured wall-clock ≈ 12.5 min for the 400 sweep runs on the dev machine;
 the 50-run evidence pass takes a few minutes more.
