@@ -769,8 +769,6 @@ describe('industrial placement', () => {
 			{ x: 14, y: 12 },
 			{ x: 15, y: 12 }
 		]);
-		// x=14..15 stays inside the extraction belt (x<=15); every footprint
-		// tile is unlocked deposit terrain carrying no other resource anchor.
 		expect(
 			footprint.tiles.every(
 				(tile) =>
@@ -803,8 +801,6 @@ describe('industrial placement', () => {
 		expect(getIndustrialPlacementBlockReason(game, copperTile.id, 'salt-mine')).toEqual(
 			decisionContextIndustrialRequiresResource('salt-deposit')
 		);
-		// The resource-free neighbors satisfy the remaining footprint checks,
-		// so anchor-only resource validation still admits the build.
 		expect(getIndustrialPlacementBlockReason(game, copperTile.id, 'copper-mine')).toBeNull();
 	});
 
