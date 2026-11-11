@@ -383,6 +383,12 @@ the electronics catalog/map change disturbed anything outside electronics.
   regeneration commands below).
 - Implementation SHA `6402a57989767925ce3d00536b667dc2164302da`, measured
   artifact `docs/balance/generated/hpa-720-head-6402a579.json` (git-ignored).
+  That SHA is pre-rebase local history and is not reachable from the current
+  branch; `06a5b4df639cd6473f9bcf1e1af36a0e03f3045e` is its patch-identical
+  rebased equivalent (verified by `git range-diff`), whose tree differs from
+  the measured tree only by the seven approved art PNGs added by main
+  (`static/assets/game/industry/**`). Check out the reachable SHA to inspect
+  or re-run the measured source on a fresh clone.
 - Electronics product/material/building detail (git-ignored):
   `docs/balance/generated/hpa-720-head-electronics-evidence.json`; reference
   trace `docs/balance/generated/hpa-720-reference-20260503-electronics.json`.
