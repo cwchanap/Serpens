@@ -215,42 +215,48 @@ describe('summarizeChainEvidence', () => {
 		expect(evidence.product.localDeliveryDays).toBe(2);
 	});
 
-	it('captures deterministic chain evidence for the 20260503 reference run', () => {
-		const evidence = summarizeChainEvidence(
-			20260503,
-			runProgressionBot('electronics', 20260503, 365),
-			{
-				days: 365,
-				product: 'accessories',
-				costBuildings: ['copper-mine', 'circuit-board-plant', 'accessory-assembly-plant']
-			}
-		);
-		expect(evidence.claims).toEqual([
-			{ tierId: 'local-shop', claimedOnDay: 49 },
-			{ tierId: 'neighborhood-chain', claimedOnDay: 57 },
-			{ tierId: 'regional-supplier', claimedOnDay: 260 }
-		]);
-		expect(evidence.product).toMatchObject({
-			warehouseUnits: 463,
-			firstLocalDeliveryDay: 245,
-			localDeliveryDays: 17,
-			demandMissed: 25041
-		});
-		expect(evidence.chainMaterials['electronic-accessories']!.produced).toBe(541);
-		expect(evidence.chainMaterials['circuit-boards']!.produced).toBe(489);
-		expect(evidence.chainMaterials['copper-ore']!.importedInputQuantity).toBe(149);
-		const copperMine = evidence.buildings.find((building) => building.typeId === 'copper-mine');
-		expect(copperMine).toMatchObject({ builtOnDay: 15, producedTotal: 265, chainBuilding: true });
-		expect(copperMine!.fixedOperatingCost).toBeGreaterThan(0);
-		const warehouse = evidence.buildings.find((building) => building.typeId === 'warehouse');
-		expect(warehouse).toMatchObject({ builtOnDay: 113 });
-		expect(warehouse!.fixedOperatingCost).toBe(0);
-		expect(warehouse!.recipeOperatingEstimate).toBe(0);
-		expect(evidence.costScope.buildingTypeIds).toEqual([
-			'accessory-assembly-plant',
-			'circuit-board-plant',
-			'copper-mine'
-		]);
-		expect(evidence.costScope.fixedOperating).toBeGreaterThan(0);
-	});
+	// Re-runs the real 365-day electronics progression bot, so it needs the
+	// heavy-spec headroom progressionBots.spec.ts reserves for the same run.
+	it(
+		'captures deterministic chain evidence for the 20260503 reference run',
+		{ timeout: 30_000 },
+		() => {
+			const evidence = summarizeChainEvidence(
+				20260503,
+				runProgressionBot('electronics', 20260503, 365),
+				{
+					days: 365,
+					product: 'accessories',
+					costBuildings: ['copper-mine', 'circuit-board-plant', 'accessory-assembly-plant']
+				}
+			);
+			expect(evidence.claims).toEqual([
+				{ tierId: 'local-shop', claimedOnDay: 49 },
+				{ tierId: 'neighborhood-chain', claimedOnDay: 57 },
+				{ tierId: 'regional-supplier', claimedOnDay: 260 }
+			]);
+			expect(evidence.product).toMatchObject({
+				warehouseUnits: 463,
+				firstLocalDeliveryDay: 245,
+				localDeliveryDays: 17,
+				demandMissed: 25041
+			});
+			expect(evidence.chainMaterials['electronic-accessories']!.produced).toBe(541);
+			expect(evidence.chainMaterials['circuit-boards']!.produced).toBe(489);
+			expect(evidence.chainMaterials['copper-ore']!.importedInputQuantity).toBe(149);
+			const copperMine = evidence.buildings.find((building) => building.typeId === 'copper-mine');
+			expect(copperMine).toMatchObject({ builtOnDay: 15, producedTotal: 265, chainBuilding: true });
+			expect(copperMine!.fixedOperatingCost).toBeGreaterThan(0);
+			const warehouse = evidence.buildings.find((building) => building.typeId === 'warehouse');
+			expect(warehouse).toMatchObject({ builtOnDay: 113 });
+			expect(warehouse!.fixedOperatingCost).toBe(0);
+			expect(warehouse!.recipeOperatingEstimate).toBe(0);
+			expect(evidence.costScope.buildingTypeIds).toEqual([
+				'accessory-assembly-plant',
+				'circuit-board-plant',
+				'copper-mine'
+			]);
+			expect(evidence.costScope.fixedOperating).toBeGreaterThan(0);
+		}
+	);
 });
