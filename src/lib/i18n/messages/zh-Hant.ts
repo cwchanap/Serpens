@@ -1360,6 +1360,7 @@ export const zhHant = {
 			sugar: '糖',
 			pulpwood: '紙漿木材',
 			'chemical-feedstock': '化工原料',
+			'copper-ore': '銅礦石',
 			flour: '麵粉',
 			'cooking-oil': '食用油',
 			'filtered-water': '過濾水',
@@ -1368,13 +1369,15 @@ export const zhHant = {
 			plastic: '塑膠',
 			packaging: '包裝材料',
 			'cleaning-base': '清潔基底',
+			'circuit-boards': '電路板',
 			snacks: '零食',
 			drinks: '飲料',
 			essentials: '生活必需品',
 			gifts: '禮品',
 			'bottled-water': '瓶裝水',
 			produce: '生鮮蔬果',
-			pantry: '乾貨雜糧'
+			pantry: '乾貨雜糧',
+			'electronic-accessories': '電子配件'
 		},
 		industrialBuildings: {
 			'grain-farm': '穀物農場',
@@ -1385,6 +1388,7 @@ export const zhHant = {
 			'sugar-farm': '糖料作物農場',
 			'pulpwood-grove': '紙漿林場',
 			'chemical-feedstock-well': '化工原料井',
+			'copper-mine': '銅礦',
 			'flour-mill': '麵粉廠',
 			'oil-press': '榨油廠',
 			'water-filtration-plant': '淨水廠',
@@ -1393,10 +1397,12 @@ export const zhHant = {
 			'plastic-plant': '塑膠廠',
 			'packaging-plant': '包裝廠',
 			'chemical-plant': '化工廠',
+			'circuit-board-plant': '電路板廠',
 			'snack-factory': '零食工廠',
 			'drink-bottling-plant': '飲料裝瓶廠',
 			'household-goods-factory': '家用品工廠',
 			'gift-workshop': '禮品工坊',
+			'accessory-assembly-plant': '配件組裝廠',
 			'water-bottler': '瓶裝水工廠',
 			'produce-packhouse': '蔬果包裝場',
 			'pantry-works': '乾貨加工廠',
@@ -1410,7 +1416,8 @@ export const zhHant = {
 			'fruit-orchard': '果園',
 			'sugar-field': '糖料作物田',
 			'pulpwood-forest': '紙漿林',
-			'chemical-feedstock': '化工原料地'
+			'chemical-feedstock': '化工原料地',
+			'copper-deposit': '銅礦層'
 		},
 		neighborhoods: {
 			downtown: '市中心',
@@ -1512,7 +1519,7 @@ export const zhHant = {
 			'quarry-works': {
 				name: '採石工坊區',
 				unlockRequirement: '在本地生產一種成品材料。',
-				specialtySummary: '擅長鹽、化工、紙漿與包裝鏈的採掘加工工業區。'
+				specialtySummary: '擅長鹽、銅、化工、紙漿與包裝鏈的採掘加工工業區。'
 			}
 		},
 		mapViews: {

@@ -1371,6 +1371,7 @@ export const ja = {
 			sugar: '砂糖',
 			pulpwood: '製紙用木材',
 			'chemical-feedstock': '化学原料',
+			'copper-ore': '銅鉱石',
 			flour: '小麦粉',
 			'cooking-oil': '食用油',
 			'filtered-water': 'ろ過水',
@@ -1379,13 +1380,15 @@ export const ja = {
 			plastic: 'プラスチック',
 			packaging: '包装資材',
 			'cleaning-base': '洗浄基材',
+			'circuit-boards': '回路基板',
 			snacks: 'スナック',
 			drinks: '飲料',
 			essentials: '生活必需品',
 			gifts: 'ギフト',
 			'bottled-water': 'ボトルウォーター',
 			produce: '青果',
-			pantry: '常備食材'
+			pantry: '常備食材',
+			'electronic-accessories': '電子アクセサリー'
 		},
 		industrialBuildings: {
 			'grain-farm': '穀物農場',
@@ -1396,6 +1399,7 @@ export const ja = {
 			'sugar-farm': '砂糖作物農場',
 			'pulpwood-grove': '製紙林',
 			'chemical-feedstock-well': '化学原料井',
+			'copper-mine': '銅鉱山',
 			'flour-mill': '製粉所',
 			'oil-press': '搾油所',
 			'water-filtration-plant': '浄水施設',
@@ -1404,10 +1408,12 @@ export const ja = {
 			'plastic-plant': 'プラスチック工場',
 			'packaging-plant': '包装工場',
 			'chemical-plant': '化学工場',
+			'circuit-board-plant': '回路基板工場',
 			'snack-factory': 'スナック工場',
 			'drink-bottling-plant': '飲料ボトリング工場',
 			'household-goods-factory': '日用品工場',
 			'gift-workshop': 'ギフト工房',
+			'accessory-assembly-plant': 'アクセサリー組立工場',
 			'water-bottler': 'ボトルウォーター工場',
 			'produce-packhouse': '青果包装所',
 			'pantry-works': '常備食材工場',
@@ -1421,7 +1427,8 @@ export const ja = {
 			'fruit-orchard': '果樹園',
 			'sugar-field': '砂糖作物畑',
 			'pulpwood-forest': '製紙林地',
-			'chemical-feedstock': '化学原料地'
+			'chemical-feedstock': '化学原料地',
+			'copper-deposit': '銅鉱床'
 		},
 		neighborhoods: {
 			downtown: '中心街',
@@ -1524,7 +1531,7 @@ export const ja = {
 			'quarry-works': {
 				name: 'クオリーワークス',
 				unlockRequirement: '完成品素材を現地生産する。',
-				specialtySummary: '塩、化学品、木材パルプ、包装材チェーンに強い採掘・工業地区です。'
+				specialtySummary: '塩、銅、化学品、木材パルプ、包装材チェーンに強い採掘・工業地区です。'
 			}
 		},
 		mapViews: {

@@ -1,4 +1,5 @@
 import type { RouteOperationalCondition } from '$lib/game/logisticsReadModels';
+import type { IndustrialBuildingTypeId, IndustryResourceId, MaterialId } from '$lib/game/types';
 
 export const en = {
 	app: {
@@ -1382,6 +1383,7 @@ export const en = {
 			sugar: 'Sugar',
 			pulpwood: 'Pulpwood',
 			'chemical-feedstock': 'Chemical Feedstock',
+			'copper-ore': 'Copper Ore',
 			flour: 'Flour',
 			'cooking-oil': 'Cooking Oil',
 			'filtered-water': 'Filtered Water',
@@ -1390,14 +1392,16 @@ export const en = {
 			plastic: 'Plastic',
 			packaging: 'Packaging',
 			'cleaning-base': 'Cleaning Base',
+			'circuit-boards': 'Circuit Boards',
 			snacks: 'Snacks',
 			drinks: 'Drinks',
 			essentials: 'Essentials',
 			gifts: 'Gifts',
 			'bottled-water': 'Bottled Water',
 			produce: 'Produce',
-			pantry: 'Pantry Goods'
-		},
+			pantry: 'Pantry Goods',
+			'electronic-accessories': 'Electronic Accessories'
+		} satisfies Record<MaterialId, string>,
 		industrialBuildings: {
 			'grain-farm': 'Grain Farm',
 			'salt-mine': 'Salt Mine',
@@ -1407,6 +1411,7 @@ export const en = {
 			'sugar-farm': 'Sugar Farm',
 			'pulpwood-grove': 'Pulpwood Grove',
 			'chemical-feedstock-well': 'Chemical Feedstock Well',
+			'copper-mine': 'Copper Mine',
 			'flour-mill': 'Flour Mill',
 			'oil-press': 'Oil Press',
 			'water-filtration-plant': 'Water Filtration Plant',
@@ -1415,15 +1420,17 @@ export const en = {
 			'plastic-plant': 'Plastic Plant',
 			'packaging-plant': 'Packaging Plant',
 			'chemical-plant': 'Chemical Plant',
+			'circuit-board-plant': 'Circuit Board Plant',
 			'snack-factory': 'Snack Factory',
 			'drink-bottling-plant': 'Drink Bottling Plant',
 			'household-goods-factory': 'Household Goods Factory',
 			'gift-workshop': 'Gift Workshop',
+			'accessory-assembly-plant': 'Accessory Assembly Plant',
 			'water-bottler': 'Water Bottler',
 			'produce-packhouse': 'Produce Packhouse',
 			'pantry-works': 'Pantry Works',
 			warehouse: 'Warehouse'
-		},
+		} satisfies Record<IndustrialBuildingTypeId, string>,
 		industryResources: {
 			'grain-field': 'Grain Field',
 			'salt-deposit': 'Salt Deposit',
@@ -1432,8 +1439,9 @@ export const en = {
 			'fruit-orchard': 'Fruit Orchard',
 			'sugar-field': 'Sugar Field',
 			'pulpwood-forest': 'Pulpwood Forest',
-			'chemical-feedstock': 'Chemical Feedstock'
-		},
+			'chemical-feedstock': 'Chemical Feedstock',
+			'copper-deposit': 'Copper Deposit'
+		} satisfies Record<IndustryResourceId, string>,
 		neighborhoods: {
 			downtown: 'Downtown',
 			campus: 'Campus',
@@ -1537,7 +1545,7 @@ export const en = {
 				name: 'Quarry Works',
 				unlockRequirement: 'Produce a finished material locally.',
 				specialtySummary:
-					'Extraction and factory district for salt, chemicals, pulpwood, and packaging chains.'
+					'Extraction and factory district for salt, copper, chemicals, pulpwood, and packaging chains.'
 			}
 		},
 		mapViews: {
