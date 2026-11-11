@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProgressionRunSummary } from './progressionCalibration';
-import { diffProgressionRunRows, formatProgressionDiff } from './progressionDiff';
+import { diffProgressionArtifacts, formatProgressionDiff } from './progressionDiff';
 
 function row(seed: number, archetypeId: string, overrides = {}): ProgressionRunSummary {
 	return {
@@ -26,11 +26,26 @@ function row(seed: number, archetypeId: string, overrides = {}): ProgressionRunS
 	};
 }
 
-describe('diffProgressionRunRows', () => {
+function artifact(
+	runs: ProgressionRunSummary[],
+	configOverrides: Record<string, unknown> = {}
+): { config: unknown; runs: ProgressionRunSummary[] } {
+	return {
+		config: {
+			seeds: runs.map((run) => run.seed),
+			days: 365,
+			archetypes: [...new Set(runs.map((run) => run.archetypeId))],
+			...configOverrides
+		},
+		runs
+	};
+}
+
+describe('diffProgressionArtifacts', () => {
 	it('reports field-identical rows per archetype', () => {
-		const base = [row(1, 'convenience'), row(1, 'electronics', { finalCash: 5 })];
-		const head = [row(1, 'convenience'), row(1, 'electronics', { finalCash: 6 })];
-		const result = diffProgressionRunRows(base, head, ['convenience']);
+		const base = artifact([row(1, 'convenience'), row(1, 'electronics', { finalCash: 5 })]);
+		const head = artifact([row(1, 'convenience'), row(1, 'electronics', { finalCash: 6 })]);
+		const result = diffProgressionArtifacts(base, head, ['convenience']);
 		expect(result.comparedKeys).toBe(2);
 		expect(result.identical.map((run) => run.archetypeId)).toEqual(['convenience']);
 		expect(result.differing).toEqual([
@@ -40,26 +55,88 @@ describe('diffProgressionRunRows', () => {
 	});
 
 	it('fails require-identical when a required archetype differs', () => {
-		const result = diffProgressionRunRows(
-			[row(1, 'convenience')],
-			[row(1, 'convenience', { finalCash: -999 })],
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience')]),
+			artifact([row(1, 'convenience', { finalCash: -999 })]),
 			['convenience']
 		);
 		expect(result.requireIdenticalPassed).toBe(false);
 		expect(result.requireIdenticalFailures).toEqual(['1/convenience']);
 	});
 
-	it('reports keys present in only one artifact', () => {
-		const result = diffProgressionRunRows([row(1, 'convenience')], [row(2, 'convenience')]);
+	it('fails when a required-archetype row is missing from head', () => {
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience'), row(1, 'electronics')]),
+			artifact([row(1, 'electronics')], {
+				seeds: [1],
+				archetypes: ['convenience', 'electronics']
+			}),
+			['convenience']
+		);
 		expect(result.missingInHead).toEqual(['1/convenience']);
-		expect(result.missingInBase).toEqual(['2/convenience']);
-		expect(result.comparedKeys).toBe(0);
+		expect(result.configMismatches).toEqual([]);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.requireIdenticalFailures).toContain('1/convenience');
+	});
+
+	it('fails on missing rows even outside the required archetypes', () => {
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience'), row(2, 'convenience')]),
+			artifact([row(1, 'convenience')], { seeds: [1, 2] }),
+			['convenience']
+		);
+		expect(result.missingInHead).toEqual(['2/convenience']);
+		expect(result.configMismatches).toEqual([]);
+		expect(result.requireIdenticalPassed).toBe(false);
+	});
+
+	it('fails on duplicate keys instead of collapsing them', () => {
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience'), row(1, 'convenience', { finalCash: -5 })]),
+			artifact([row(1, 'convenience')]),
+			['convenience']
+		);
+		expect(result.duplicateBaseKeys).toEqual(['1/convenience']);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.requireIdenticalFailures).toContain('1/convenience');
+	});
+
+	it('fails on incompatible sweep configurations', () => {
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience')]),
+			artifact([row(1, 'convenience')], { days: 90 })
+		);
+		expect(result.configMismatches.length).toBeGreaterThan(0);
+		expect(result.requireIdenticalPassed).toBe(false);
+	});
+
+	it('fails when a required archetype is not represented', () => {
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience')]),
+			artifact([row(1, 'convenience')]),
+			['grocery']
+		);
+		expect(result.unrepresentedArchetypes).toEqual(['grocery']);
+		expect(result.requireIdenticalPassed).toBe(false);
+	});
+
+	it('detects fields present only on the head row', () => {
+		const headRow = { ...row(1, 'convenience'), futureField: 42 } as ProgressionRunSummary;
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience')]),
+			artifact([headRow]),
+			['convenience']
+		);
+		expect(result.differing).toEqual([
+			{ key: '1/convenience', archetypeId: 'convenience', fields: ['futureField'] }
+		]);
+		expect(result.requireIdenticalPassed).toBe(false);
 	});
 
 	it('formats the verdict lines deterministically', () => {
-		const result = diffProgressionRunRows(
-			[row(1, 'convenience')],
-			[row(1, 'convenience')],
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience')]),
+			artifact([row(1, 'convenience')]),
 			['convenience']
 		);
 		const text = formatProgressionDiff(result);

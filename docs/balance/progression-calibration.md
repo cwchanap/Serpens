@@ -379,7 +379,8 @@ per-seed against the pre-change capture — the isolation control for whether
 the electronics catalog/map change disturbed anything outside electronics.
 
 - Base SHA `3b0b56d62a638aca71bb056979e39acc3f68f3b1`, captured artifact
-  `docs/balance/generated/hpa-720-base-3b0b56d.json` (git-ignored).
+  `docs/balance/generated/hpa-720-base-3b0b56d.json` (git-ignored;
+  regeneration commands below).
 - Implementation SHA `6402a57989767925ce3d00536b667dc2164302da`, measured
   artifact `docs/balance/generated/hpa-720-head-6402a579.json` (git-ignored).
 - Electronics product/material/building detail (git-ignored):
@@ -420,8 +421,29 @@ analysis scripts lived in the git-ignored SDD scratch directory, so a
 fresh clone could not regenerate the evidence. Both reuse the real
 progression bot and the saved sweep artifacts — no gameplay code, no
 separate probe — and are pinned by `chainEvidence.spec.ts` /
-`progressionDiff.spec.ts`. The base artifact itself was captured on the
-base SHA and is preserved, not regenerated.
+`progressionDiff.spec.ts`.
+
+The base artifact is git-ignored, so a fresh clone regenerates it from
+base source before running the diff. `git archive` exports the base SHA
+into a plain directory (no worktree, no checkout switch); the sweep runs
+inside the export, where its own `tsconfig.json` and `bun.lock` resolve
+`$lib` and dependencies to base code:
+
+```bash
+git archive 3b0b56d62a638aca71bb056979e39acc3f68f3b1 | tar -x -C /tmp/hpa-720-base
+cd /tmp/hpa-720-base && bun install --frozen-lockfile
+cd /tmp/hpa-720-base && bun run tests/balance/progressionRun.ts \
+  --seeds "$SEEDS" --days 365 \
+  --output docs/balance/generated/hpa-720-base-3b0b56d
+```
+
+(`$SEEDS` must be re-assigned to the same 50-seed list inside the
+export's shell — the variable does not cross `cd`.)
+
+Validated on a 5-seed sample this session: the exported tree contains no
+`electronic-accessories`/`copper-deposit` source, and all 20 regenerated
+rows were field-identical to the preserved artifact (regenerated
+electronics regional-supplier 0/5, matching the base sweep's 0/50).
 
 Measured wall-clock ≈ 12.5 min for the 400 sweep runs on the dev machine;
 the 50-run evidence pass takes a few minutes more.

@@ -327,7 +327,8 @@ export function summarizeChainEvidence(
 			closingInventory: Object.fromEntries(
 				Object.entries(building.inventory).filter(([, quantity]) => (quantity ?? 0) > 0)
 			) as Record<string, number>,
-			fixedOperatingCost: daysAlive * buildingType.dailyOperatingCost,
+			fixedOperatingCost:
+				buildingType.recipeId === null ? 0 : daysAlive * buildingType.dailyOperatingCost,
 			recipeOperatingEstimate:
 				recipe && nominalOutput > 0
 					? (recipe.operatingCost * building.producedTotal) / nominalOutput

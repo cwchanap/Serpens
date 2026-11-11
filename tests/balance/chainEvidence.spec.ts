@@ -86,6 +86,11 @@ describe('summarizeChainEvidence', () => {
 		expect(evidence.chainMaterials['copper-ore']!.importedInputQuantity).toBe(149);
 		const copperMine = evidence.buildings.find((building) => building.typeId === 'copper-mine');
 		expect(copperMine).toMatchObject({ builtOnDay: 15, producedTotal: 265, chainBuilding: true });
+		expect(copperMine!.fixedOperatingCost).toBeGreaterThan(0);
+		const warehouse = evidence.buildings.find((building) => building.typeId === 'warehouse');
+		expect(warehouse).toMatchObject({ builtOnDay: 113 });
+		expect(warehouse!.fixedOperatingCost).toBe(0);
+		expect(warehouse!.recipeOperatingEstimate).toBe(0);
 		expect(evidence.costScope.buildingTypeIds).toEqual([
 			'accessory-assembly-plant',
 			'circuit-board-plant',
