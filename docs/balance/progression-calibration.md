@@ -370,3 +370,158 @@ denial behavior (delinquency refusal, exhausted debt-service capacity) is
 unchanged by construction and pinned by spec. Copy rule for the UI stands: a
 claimed tier grants an **underwriting-base increase / higher possible
 credit**, never guaranteed available credit.
+
+## 10. HPA-720 electronics supply chain — base-vs-implementation re-measurement
+
+The §3–§9 numbers remain the committed historical record. This addendum
+re-runs the **identical** matrix on the HPA-720 implementation and diffs it
+per-seed against the pre-change capture — the isolation control for whether
+the electronics catalog/map change disturbed anything outside electronics.
+
+- Base SHA `3b0b56d62a638aca71bb056979e39acc3f68f3b1`, captured artifact
+  `docs/balance/generated/hpa-720-base-3b0b56d.json` (git-ignored).
+- Implementation SHA `6402a57989767925ce3d00536b667dc2164302da`, measured
+  artifact `docs/balance/generated/hpa-720-head-6402a579.json` (git-ignored).
+- Electronics product/material/building detail (git-ignored):
+  `docs/balance/generated/hpa-720-head-electronics-evidence.json`; reference
+  trace `docs/balance/generated/hpa-720-reference-20260503-electronics.json`.
+
+Reproduction (harness unchanged; artifact names are this addendum's):
+
+```bash
+bun run tests/balance/progressionRun.ts --seeds 20260501,20260502,…,20260550 \
+  --days 365 --output docs/balance/generated/hpa-720-head-6402a579
+bun run tests/balance/progressionRun.ts --seeds 20260503 --days 365 \
+  --archetypes electronics \
+  --trace docs/balance/generated/hpa-720-reference-20260503-electronics.json
+```
+
+(the seed list is the same `20260501`–`20260550` block as §0; measured
+wall-clock ≈ 12.5 min for the 400 runs on the dev machine.)
+
+### Non-electronics diff verdict: identical
+
+All **150/150** non-electronics per-seed `runs` rows (convenience × 50,
+boutique × 50, grocery × 50) are field-identical between the base artifact
+and the implementation artifact — claims, claim days, cash, debt, book
+values, store/city counts, local units, credit use and blocker sets. The
+copper anchor sits on a tile that was already `deposit` terrain
+(resource-free before, `copper-deposit` now), so placement and rail
+legality for existing chains are unchanged; industry-city generation is
+deterministic and consumes no shared RNG. The idle control aggregate is
+also identical (200/200 zero claims, 0 earned-unclaimed, founding book
+value $24,224–$37,180, peak ≤ $42,218). Zero unexplained differences.
+
+### Electronics tier claims (50 runs, base → implementation)
+
+| Tier | Base | Implementation | Claim-day p10 / median / p90 (reached runs) |
+| --- | --- | --- | --- |
+| 1 Local Shop | 50/50 | 50/50 | 48.9 / 50 / 84.1 (base 47 / 49 / 59) |
+| 2 Neighborhood Chain | 50/50 | **48/50** | 57 / 57 / 303.4 (base 50 / 50 / 106) |
+| 3 Regional Supplier | **0/50** | **47/50** | 162 / 183 / 306.2 (min 127, max 330) |
+| 4 Multi-City Operator | 0/50 | 0/50 | — |
+| 5 Market Leader | 0/50 | 0/50 | — |
+
+Whole-sweep tier totals moved only through electronics rows:
+local-shop 184 → 184, neighborhood-chain 163 → 161, regional-supplier
+107 → 154, multi-city-operator 44 → 44, market-leader 44 → 44.
+
+Electronics divergence is the intended change: its runs now plan the
+`accessories` → `electronic-accessories` chain. Two honest regressions
+inside electronics only:
+
+- **Tier-2 slipped 50 → 48.** Seeds `20260519` and `20260520` finish with
+  2 stores, so `neighborhood-chain-store-count` (≥3) fails — chain buildout
+  (~$7k buildings + rails + operating losses) competed with the third
+  store's cash. Both runs still **earned** tier 3 (855 and 943 local units,
+  zero failing tier-3 goals) but the contiguous-prefix gate holds the claim
+  behind tier 2 — the same mechanism §6 documents for boutique's earned-but-
+  unclaimable tier 4/5.
+- Tier-1's p90 tail stretched (59 → 84 days) for the same reason: early
+  book-value growth now shares cash with the chain.
+
+The third unclaimed tier-3 run is a different shape: seed `20260545` built
+the **entire** chain by day 113 (all nine buildings) and produced 80
+accessories, but every one of its 33 `connect-rail` attempts failed
+`railRequiresCash` — cash stayed negative all year, so no rail ever
+connected and nothing reached the warehouse (0 local units; the
+`regional-supplier-local-units` goal correctly fails). Produced-but-
+buffered output is not delivery; this mirrors the §6 boutique
+produces-but-never-delivers shape, with cash starvation as the stated
+cause rather than a missing rail edge.
+
+### Accessory local-vs-imported retail units (measured)
+
+- 49/50 electronics runs delivered ≥1 locally-produced accessory
+  (`warehouseUnits`); median **829 units** per run (min 0, max 1,034;
+  first delivery day min 112 / median 154 / max 273).
+- Imports still dominate: **38,469** local units vs **1,534,020** imported
+  accessory units across the 50 runs (≈ 2.4% local share). The chain
+  supplements imports at this one-chain-per-run scale; it does not
+  displace them.
+- Reference seed `20260503` (electronics, 365 days): claims
+  `local-shop` day 49, `neighborhood-chain` day 57, `regional-supplier`
+  day **260**; **541** accessories produced, **463** delivered to stores
+  (first delivery day 245, 17 delivery days), demand-missed 25,041 units.
+  Final: 5 stores (cap 9), all 6 cities opened, cash −$38,208, book value
+  $174,429. Full action log in the trace artifact; the regression test in
+  `tests/balance/progressionBots.spec.ts` pins the ≥25 delivery and the
+  day-260 claim.
+
+### New-chain cost and throughput evidence (50 electronics runs)
+
+All 50 runs built the complete upstream chain (copper-mine ×1, median ~5
+circuit-board-plants [266 total — the planner keeps adding board capacity,
+the throughput bottleneck], accessory-assembly-plant ×1, plus
+chemical-feedstock-well, pulpwood-grove, pulp-mill, plastic-plant,
+packaging-plant, warehouse). Median per-run output: 397 copper-ore,
+843 circuit-boards, **909 electronic-accessories** (max 1,114).
+
+Cost accounting (methodology disclosed; these are the **three new
+buildings only**, not a local-profit gate — HPA-721 owns economy balance):
+
+- **Fixed operating** = days-alive × catalog `dailyOperatingCost`
+  (copper-mine $12, board plant $24, assembly plant $26), paid from the
+  build day even while stalled: median **$31,854** per run
+  ($19,102–$57,890 — build days and plant count vary).
+- **Recipe operating** ≈ `recipe.operatingCost × producedTotal /
+  nominalOutput` (the engine's per-day `operatingCost × throughput ×
+  actualRatio` summed; throughput cancels, ±per-day rounding): median
+  **$2,736** per run.
+- ≈ **$45.2 median per locally-delivered accessory** (range $29.1–$63.5,
+  49 delivering runs) against the $11/unit retail import price — the
+  spec's ~$10/unit planning estimate did not hold at the measured ramp;
+  per-unit cost is driven by fixed overhead paid from early build days,
+  not by marginal production cost. All-in `productionReport.operatingCost`
+  (adds the six shared upstream buildings + warehouse) medians **$74,595**
+  per run.
+- **Imported-input fallback spend** (materials imported when rails/buffers
+  couldn't supply; per-material attribution is clean here because
+  electronics builds only this chain): copper-ore 12,509 u / $37,527,
+  plastic 3,681 u / $22,086, circuit-boards 2,000 u / $16,000, packaging
+  554 u / $2,770 across 50 runs — i.e. stages sometimes ran on imported
+  inputs while their local supplier sat unconnected.
+- Dominant blockers across the 50 runs: **813** `railRequiresCash`
+  rail failures and **782** `unaffordable` planner no-ops — cash
+  starvation, not catalog or placement defects.
+- Credit: electronics borrowed 764 times / $9.60M total (base:
+  626 / $9.05M); median final cash improved −$59,640 → −$44,671.
+
+### Gate A balance harness on the implementation
+
+`bun tests/balance/run.ts --seeds 20260501,…,20260550 --days 365 --bots
+idle,retail-steady,advisor --output docs/balance/generated/hpa-720-head-balance-sweep`
+(450 runs, artifacts git-ignored) completes deterministically and every
+Gate A sweep check still passes: viability ≥80% per archetype
+(convenience 42/50, boutique 50/50, electronics 43/50, grocery 50/50);
+boundedness (max |cash| $722,959, max principal $14,000, max import spend
+$1,582,909, max waste 5,336 u — all far under 1e9); managed-beats-idle
+**200/200**; forecast **714/714** eligible openings in ±25%; advisor
+served-chain composite **50/50** with an identical 3,360-unit bottled-water
+local delivery in every run — the advisor's existing chain is measurably
+undisturbed by the new anchor. `docs/balance/baseline.md`, `after.md` and
+`rail-throughput-calibration.md` are preserved untouched; those committed
+records predate the intervening engine work (progression, rail throughput,
+supply-source assignment) so they are not byte-comparison targets — the
+HPA-720 isolation evidence is the 150/150 identical non-electronics
+progression rows above plus the identical idle control.
