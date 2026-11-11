@@ -546,8 +546,10 @@ buildings only**, not a local-profit gate — HPA-721 owns economy balance):
   spec's ~$10/unit planning estimate did not hold at the measured ramp;
   per-unit cost is driven by fixed overhead paid from early build days,
   not by marginal production cost. All-in `productionReport.operatingCost`
-  (adds the six shared upstream buildings + warehouse) medians **$74,595**
-  per run.
+  (which also charges the five existing upstream producers —
+  chemical-feedstock-well, pulpwood-grove, pulp-mill, plastic-plant and
+  packaging-plant — while the recipe-less warehouse is skipped entirely)
+  medians **$74,595** per run.
 - **Imported-input fallback spend** (materials imported when rails/buffers
   couldn't supply; per-material attribution is clean here because
   electronics builds only this chain): copper-ore 12,509 u / $37,527,

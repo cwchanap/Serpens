@@ -120,6 +120,47 @@ describe('diffProgressionArtifacts', () => {
 		expect(result.requireIdenticalPassed).toBe(false);
 	});
 
+	it('fails when the same declared rows are missing from both artifacts', () => {
+		const declared = { seeds: [1, 2], archetypes: ['convenience'] };
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience')], declared),
+			artifact([row(1, 'convenience')], { ...declared }),
+			['convenience']
+		);
+		expect(result.missingInBase).toEqual([]);
+		expect(result.missingInHead).toEqual([]);
+		expect(result.baseCoverage.missingKeys).toEqual(['2/convenience']);
+		expect(result.headCoverage.missingKeys).toEqual(['2/convenience']);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.requireIdenticalFailures).toContain('2/convenience');
+	});
+
+	it('fails on rows outside the declared matrix in both artifacts', () => {
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience'), row(2, 'convenience')], { seeds: [1] }),
+			artifact([row(1, 'convenience'), row(2, 'convenience')], { seeds: [1] }),
+			['convenience']
+		);
+		expect(result.missingInBase).toEqual([]);
+		expect(result.missingInHead).toEqual([]);
+		expect(result.baseCoverage.unexpectedKeys).toEqual(['2/convenience']);
+		expect(result.headCoverage.unexpectedKeys).toEqual(['2/convenience']);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.requireIdenticalFailures).toContain('2/convenience');
+	});
+
+	it('fails when both artifacts declare malformed configurations', () => {
+		const result = diffProgressionArtifacts(
+			{ config: { days: 365 }, runs: [row(1, 'convenience')] },
+			{ config: { days: 365 }, runs: [row(1, 'convenience')] },
+			['convenience']
+		);
+		expect(result.configMismatches).toEqual([]);
+		expect(result.baseCoverage.configProblems.length).toBeGreaterThan(0);
+		expect(result.headCoverage.configProblems.length).toBeGreaterThan(0);
+		expect(result.requireIdenticalPassed).toBe(false);
+	});
+
 	it('detects fields present only on the head row', () => {
 		const headRow = { ...row(1, 'convenience'), futureField: 42 } as ProgressionRunSummary;
 		const result = diffProgressionArtifacts(

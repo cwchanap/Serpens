@@ -13,6 +13,12 @@ export interface ProgressionArtifactLike {
 	runs: ProgressionRunSummary[];
 }
 
+export interface ArtifactCoverageIssue {
+	missingKeys: string[];
+	unexpectedKeys: string[];
+	configProblems: string[];
+}
+
 export interface ProgressionDiffResult {
 	comparedKeys: number;
 	missingInBase: string[];
@@ -21,6 +27,8 @@ export interface ProgressionDiffResult {
 	duplicateHeadKeys: string[];
 	configMismatches: string[];
 	unrepresentedArchetypes: string[];
+	baseCoverage: ArtifactCoverageIssue;
+	headCoverage: ArtifactCoverageIssue;
 	identical: ProgressionRunSummary[];
 	differing: ProgressionRunDiff[];
 	requireIdenticalPassed: boolean;
@@ -84,6 +92,70 @@ function compareConfigs(baseConfig: unknown, headConfig: unknown): string[] {
 	return mismatches;
 }
 
+function validateArtifactCoverage(
+	artifact: ProgressionArtifactLike,
+	rowKey: (run: ProgressionRunSummary) => string
+): ArtifactCoverageIssue {
+	const configProblems: string[] = [];
+	const missingKeys: string[] = [];
+	const unexpectedKeys: string[] = [];
+	const config = artifact.config;
+	let seeds: number[] | null = null;
+	let archetypes: string[] | null = null;
+	if (typeof config !== 'object' || config === null) {
+		configProblems.push('config is absent or not an object');
+	} else {
+		const candidate = config as { seeds?: unknown; days?: unknown; archetypes?: unknown };
+		if (
+			Array.isArray(candidate.seeds) &&
+			candidate.seeds.length > 0 &&
+			candidate.seeds.every((seed) => Number.isSafeInteger(seed))
+		) {
+			seeds = [...new Set(candidate.seeds as number[])];
+		} else {
+			configProblems.push('config.seeds must be a non-empty array of integer seeds');
+		}
+		if (
+			Array.isArray(candidate.archetypes) &&
+			candidate.archetypes.length > 0 &&
+			candidate.archetypes.every(
+				(archetypeId) => typeof archetypeId === 'string' && archetypeId.length > 0
+			)
+		) {
+			archetypes = [...new Set(candidate.archetypes as string[])];
+		} else {
+			configProblems.push('config.archetypes must be a non-empty array of archetype ids');
+		}
+		if (
+			typeof candidate.days !== 'number' ||
+			!Number.isFinite(candidate.days) ||
+			candidate.days <= 0
+		) {
+			configProblems.push('config.days must be a positive finite number');
+		}
+	}
+	if (seeds && archetypes) {
+		const expected = new Set<string>();
+		for (const seed of seeds) {
+			for (const archetypeId of archetypes) {
+				expected.add(`${seed}/${archetypeId}`);
+			}
+		}
+		const present = new Set(artifact.runs.map(rowKey));
+		for (const key of expected) {
+			if (!present.has(key)) missingKeys.push(key);
+		}
+		for (const key of present) {
+			if (!expected.has(key)) unexpectedKeys.push(key);
+		}
+	}
+	return {
+		missingKeys: missingKeys.sort(),
+		unexpectedKeys: unexpectedKeys.sort(),
+		configProblems
+	};
+}
+
 export function diffProgressionArtifacts(
 	base: ProgressionArtifactLike,
 	head: ProgressionArtifactLike,
@@ -112,6 +184,8 @@ export function diffProgressionArtifacts(
 	const missingInBase = [...headCounts.keys()].filter((key) => !baseCounts.has(key)).sort();
 	const missingInHead = [...baseCounts.keys()].filter((key) => !headCounts.has(key)).sort();
 	const configMismatches = compareConfigs(base.config, head.config);
+	const baseCoverage = validateArtifactCoverage(base, rowKey);
+	const headCoverage = validateArtifactCoverage(head, rowKey);
 
 	const presentArchetypes = new Set([...baseCounts.keys(), ...headCounts.keys()].map(keyArchetype));
 	const unrepresentedArchetypes = requireIdentical
@@ -148,7 +222,11 @@ export function diffProgressionArtifacts(
 		...missingInBase,
 		...missingInHead,
 		...duplicateBaseKeys,
-		...duplicateHeadKeys
+		...duplicateHeadKeys,
+		...baseCoverage.missingKeys,
+		...baseCoverage.unexpectedKeys,
+		...headCoverage.missingKeys,
+		...headCoverage.unexpectedKeys
 	]) {
 		if (requiredSet.has(keyArchetype(key))) failureKeys.add(key);
 	}
@@ -160,7 +238,13 @@ export function diffProgressionArtifacts(
 		duplicateBaseKeys.length === 0 &&
 		duplicateHeadKeys.length === 0 &&
 		configMismatches.length === 0 &&
-		unrepresentedArchetypes.length === 0;
+		unrepresentedArchetypes.length === 0 &&
+		baseCoverage.missingKeys.length === 0 &&
+		baseCoverage.unexpectedKeys.length === 0 &&
+		baseCoverage.configProblems.length === 0 &&
+		headCoverage.missingKeys.length === 0 &&
+		headCoverage.unexpectedKeys.length === 0 &&
+		headCoverage.configProblems.length === 0;
 
 	return {
 		comparedKeys: identical.length + differing.length,
@@ -170,6 +254,8 @@ export function diffProgressionArtifacts(
 		duplicateHeadKeys,
 		configMismatches,
 		unrepresentedArchetypes,
+		baseCoverage,
+		headCoverage,
 		identical,
 		differing,
 		requireIdenticalPassed,
@@ -182,6 +268,24 @@ export function formatProgressionDiff(result: ProgressionDiffResult): string {
 	lines.push(`compared ${result.comparedKeys} row pair(s)`);
 	for (const mismatch of result.configMismatches) {
 		lines.push(`config mismatch: ${mismatch}`);
+	}
+	for (const [label, coverage] of [
+		['base', result.baseCoverage],
+		['head', result.headCoverage]
+	] as const) {
+		for (const problem of coverage.configProblems) {
+			lines.push(`${label} config problem: ${problem}`);
+		}
+		if (coverage.missingKeys.length > 0) {
+			lines.push(
+				`${label} missing declared row(s) (${coverage.missingKeys.length}): ${coverage.missingKeys.join(', ')}`
+			);
+		}
+		if (coverage.unexpectedKeys.length > 0) {
+			lines.push(
+				`${label} undeclared row(s) (${coverage.unexpectedKeys.length}): ${coverage.unexpectedKeys.join(', ')}`
+			);
+		}
 	}
 	if (result.missingInBase.length > 0) {
 		lines.push(
