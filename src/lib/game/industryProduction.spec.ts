@@ -1264,3 +1264,263 @@ describe('rail-fed production', () => {
 		expect(building.blockedDays).toBeGreaterThan(0);
 	});
 });
+
+// Electronics chain fixtures: same single-line layout as the grain fixtures
+// above, one building per recipe stage plus the shared warehouse.
+const unconnectedMineGame = makeProductionGame(makeIndustryCity([]), [
+	makeIndustryBuilding('mine', 'copper-mine', 2, 2)
+]);
+
+const unconnectedBoardPlantGame = makeProductionGame(makeIndustryCity([]), [
+	makeIndustryBuilding('plant', 'circuit-board-plant', 2, 2)
+]);
+
+const unconnectedAssemblyGame = makeProductionGame(makeIndustryCity([]), [
+	makeIndustryBuilding('assembly', 'accessory-assembly-plant', 2, 2)
+]);
+
+const electronicsChainGame = makeProductionGame(makeIndustryCity(straightRails(4, 2, 27, 10)), [
+	makeIndustryBuilding('mine', 'copper-mine', 2, 2),
+	makeIndustryBuilding('plant', 'circuit-board-plant', 10, 2),
+	makeIndustryBuilding('assembly', 'accessory-assembly-plant', 18, 2),
+	makeIndustryBuilding('wh1', 'warehouse', 26, 2)
+]);
+
+describe('electronics production chain', () => {
+	test('copper mine produces ore into its own buffer without a rail link', () => {
+		expect.assertions(5);
+		const { game, report } = simulateIndustryProduction(unconnectedMineGame);
+		const mine = game.industrialBuildings.find((building) => building.typeId === 'copper-mine')!;
+
+		expect(report.produced).toEqual([
+			{
+				cityId: 'industry-city',
+				materialId: 'copper-ore',
+				quantity: 24,
+				value: 48,
+				source: 'local'
+			}
+		]);
+		expect(mine.inventory['copper-ore']).toBe(24);
+		expect(mine.status).toBe('produced');
+		expect(report.operatingCost).toBe(12);
+		expect(game.cash).toBe(unconnectedMineGame.cash - 12);
+	});
+
+	test('unconnected circuit-board plant imports ore and plastic and reports exact costs', () => {
+		expect.assertions(7);
+		const { game, report } = simulateIndustryProduction(unconnectedBoardPlantGame);
+		const plant = game.industrialBuildings.find(
+			(building) => building.typeId === 'circuit-board-plant'
+		)!;
+
+		expect(report.importedInputs).toEqual([
+			{
+				cityId: 'industry-city',
+				materialId: 'copper-ore',
+				quantity: 6,
+				value: 18,
+				source: 'import'
+			},
+			{
+				cityId: 'industry-city',
+				materialId: 'plastic',
+				quantity: 1,
+				value: 6,
+				source: 'import'
+			}
+		]);
+		expect(report.importSpend).toBe(24);
+		expect(report.operatingCost).toBe(36);
+		expect(report.produced).toEqual([
+			{
+				cityId: 'industry-city',
+				materialId: 'circuit-boards',
+				quantity: 10,
+				value: 50,
+				source: 'local'
+			}
+		]);
+		expect(plant).toMatchObject({
+			status: 'imported-inputs',
+			inventory: { 'circuit-boards': 10 },
+			importedInputTotal: 7
+		});
+		expect(game.cash).toBe(unconnectedBoardPlantGame.cash - 24 - 36);
+		expect(report.warehousePulls).toHaveLength(0);
+	});
+
+	test('unconnected accessory assembly imports boards and packaging and reports exact costs', () => {
+		expect.assertions(6);
+		const { game, report } = simulateIndustryProduction(unconnectedAssemblyGame);
+		const assembly = game.industrialBuildings.find(
+			(building) => building.typeId === 'accessory-assembly-plant'
+		)!;
+
+		expect(report.importedInputs).toEqual([
+			{
+				cityId: 'industry-city',
+				materialId: 'circuit-boards',
+				quantity: 4,
+				value: 32,
+				source: 'import'
+			},
+			{
+				cityId: 'industry-city',
+				materialId: 'packaging',
+				quantity: 1,
+				value: 5,
+				source: 'import'
+			}
+		]);
+		expect(report.importSpend).toBe(37);
+		expect(report.operatingCost).toBe(41);
+		expect(report.produced).toEqual([
+			{
+				cityId: 'industry-city',
+				materialId: 'electronic-accessories',
+				quantity: 8,
+				value: 64,
+				source: 'local'
+			}
+		]);
+		expect(assembly).toMatchObject({
+			status: 'imported-inputs',
+			inventory: { 'electronic-accessories': 8 }
+		});
+		expect(game.cash).toBe(unconnectedAssemblyGame.cash - 37 - 41);
+	});
+
+	test('rail-linked electronics chain runs raw, process, final in stage order and pushes to the warehouse', () => {
+		expect.assertions(12);
+		const { game, report } = simulateIndustryProduction(electronicsChainGame);
+		const buildings = Object.fromEntries(
+			game.industrialBuildings.map((building) => [building.id, building])
+		);
+
+		// Produced movements arrive in recipe-stage order even though the
+		// building ids would sort differently: mine -> plant -> assembly.
+		expect(report.produced.map((movement) => movement.materialId)).toEqual([
+			'copper-ore',
+			'circuit-boards',
+			'electronic-accessories'
+		]);
+		expect(report.produced.map((movement) => movement.quantity)).toEqual([24, 10, 8]);
+		// Same-day rail feeds: the plant pulls ore from the mine and the
+		// assembly pulls boards from the plant; only plastic and packaging
+		// fall back to paid imports.
+		expect(report.railShipments.filter((shipment) => shipment.kind === 'pull-producer')).toEqual([
+			{
+				cityId: 'industry-city',
+				kind: 'pull-producer',
+				fromId: 'mine',
+				toId: 'plant',
+				materialId: 'copper-ore',
+				quantity: 6,
+				value: 12
+			},
+			{
+				cityId: 'industry-city',
+				kind: 'pull-producer',
+				fromId: 'plant',
+				toId: 'assembly',
+				materialId: 'circuit-boards',
+				quantity: 4,
+				value: 20
+			}
+		]);
+		expect(report.importedInputs.map((movement) => movement.materialId)).toEqual([
+			'plastic',
+			'packaging'
+		]);
+		expect(report.importSpend).toBe(11);
+		expect(report.railShipments.filter((shipment) => shipment.kind === 'push-warehouse')).toEqual([
+			{
+				cityId: 'industry-city',
+				kind: 'push-warehouse',
+				fromId: 'assembly',
+				toId: 'wh1',
+				materialId: 'electronic-accessories',
+				quantity: 8,
+				value: 64
+			},
+			{
+				cityId: 'industry-city',
+				kind: 'push-warehouse',
+				fromId: 'plant',
+				toId: 'wh1',
+				materialId: 'circuit-boards',
+				quantity: 6,
+				value: 30
+			},
+			{
+				cityId: 'industry-city',
+				kind: 'push-warehouse',
+				fromId: 'mine',
+				toId: 'wh1',
+				materialId: 'copper-ore',
+				quantity: 18,
+				value: 36
+			}
+		]);
+		expect(game.cityInventories[0]!.materials).toEqual({
+			'electronic-accessories': 8,
+			'circuit-boards': 6,
+			'copper-ore': 18
+		});
+		expect(buildings['mine']!.status).toBe('produced');
+		expect(buildings['plant']!.status).toBe('imported-inputs');
+		expect(buildings['assembly']!.status).toBe('imported-inputs');
+		expect(report.operatingCost).toBe(89);
+		expect(game.cash).toBe(electronicsChainGame.cash - 11 - 89);
+	});
+
+	test('a copper mine with a full buffer and no outlet stalls and pays only the flat daily cost', () => {
+		expect.assertions(3);
+		const fullMineGame = makeProductionGame(makeIndustryCity([]), [
+			makeIndustryBuilding('mine', 'copper-mine', 2, 2, { 'copper-ore': 120 })
+		]);
+
+		const { game, report } = simulateIndustryProduction(fullMineGame);
+		const mine = game.industrialBuildings.find((building) => building.id === 'mine')!;
+
+		expect(mine.status).toBe('stalled');
+		expect(mine.lastProduction).toHaveLength(0);
+		expect(report.operatingCost).toBe(12);
+	});
+
+	test('a partially full assembly buffer clips accessory output and consumes proportional inputs', () => {
+		expect.assertions(6);
+		const partialAssemblyGame = makeProductionGame(makeIndustryCity([]), [
+			makeIndustryBuilding('assembly', 'accessory-assembly-plant', 2, 2, {
+				'electronic-accessories': 76
+			})
+		]);
+
+		const { game, report } = simulateIndustryProduction(partialAssemblyGame);
+		const assembly = game.industrialBuildings.find((building) => building.id === 'assembly')!;
+
+		// 4 free slots of the 8-unit recipe → ratio 0.5: 4 accessories, 2
+		// boards and 1 packaging consumed (all imported — no rail here).
+		expect(assembly.status).toBe('stalled');
+		expect(assembly.inventory['electronic-accessories']).toBe(80);
+		expect(
+			report.importedInputs.map((movement) => [movement.materialId, movement.quantity])
+		).toEqual([
+			['circuit-boards', 2],
+			['packaging', 1]
+		]);
+		expect(report.importSpend).toBe(21);
+		expect(report.operatingCost).toBe(34);
+		expect(game.cash).toBe(partialAssemblyGame.cash - 21 - 34);
+	});
+
+	test('same electronics chain state twice produces identical reports (determinism)', () => {
+		expect.assertions(2);
+		const first = simulateIndustryProduction(electronicsChainGame);
+		const second = simulateIndustryProduction(electronicsChainGame);
+
+		expect(first.report).toEqual(second.report);
+		expect(first.game.cityInventories).toEqual(second.game.cityInventories);
+	});
+});
