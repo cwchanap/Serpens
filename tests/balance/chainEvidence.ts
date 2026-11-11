@@ -234,6 +234,7 @@ export function summarizeChainEvidence(
 		firstLocalDeliveryDay: null as number | null,
 		localDeliveryDays: 0
 	};
+	const localDeliveryDays = new Set<number>();
 	const producedByMaterial = new Map<MaterialId, number>();
 	const importedInputQuantity = new Map<MaterialId, number>();
 	const importedInputValue = new Map<MaterialId, number>();
@@ -286,7 +287,7 @@ export function summarizeChainEvidence(
 				productEvidence.unitsSold += entry.unitsSold;
 				productEvidence.demandMissed += entry.demandMissed;
 				if (entry.warehouseUnits > 0) {
-					productEvidence.localDeliveryDays += 1;
+					localDeliveryDays.add(report.day);
 					if (productEvidence.firstLocalDeliveryDay === null) {
 						productEvidence.firstLocalDeliveryDay = report.day;
 					}
@@ -294,6 +295,7 @@ export function summarizeChainEvidence(
 			}
 		}
 	}
+	productEvidence.localDeliveryDays = localDeliveryDays.size;
 
 	const buildDayByTileId = new Map<string, number>();
 	for (const action of ledger.actions) {

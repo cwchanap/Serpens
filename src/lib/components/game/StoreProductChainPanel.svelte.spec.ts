@@ -110,7 +110,7 @@ describe('StoreProductChainPanel', () => {
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 	});
 
-	it('resets to the new store default chain when the selected store changes', () => {
+	it('falls back to a supported category when the available categories change under the same store id', () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260518);
 		const electronicsGame = createNewGame('electronics', 20260518);
