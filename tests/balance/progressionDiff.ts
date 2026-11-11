@@ -1,13 +1,3 @@
-/**
- * Calibration-artifact row diff (HPA-720 Task 3). Compares the per-seed
- * `runs` rows of two progression-sweep artifacts (same shape
- * `progressionRun.ts` writes) and reports per-archetype identity counts.
- * `--require-identical` names the archetype ids whose rows must be
- * field-identical between the two artifacts; the command exits nonzero on
- * any violation so it can serve as a regression check. Deterministic plain
- * text output — no timestamps or machine paths.
- */
-
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import type { ProgressionRunSummary } from './progressionCalibration';

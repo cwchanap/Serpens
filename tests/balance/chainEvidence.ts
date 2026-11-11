@@ -1,26 +1,3 @@
-/**
- * Product-chain evidence CLI (HPA-720 Task 3). Reruns the real progression
- * bot over an explicit seed list and captures the product- and
- * material-level detail the calibration summary does not retain: local vs
- * imported retail units for one stocked product, upstream chain
- * production/consumption/imported-input movements per material, per-building
- * produced/imported totals with build days, and operating-cost evidence.
- * The chain itself (materials + building types) is derived from the catalog
- * recipe graph upstream of the product's `productionMaterialId`, so the
- * utility works for any industry-linked product.
- *
- * Cost methodology: `fixedOperatingCost` = days alive (build day through the
- * horizon) × catalog `dailyOperatingCost`, matching the engine's flat daily
- * charge even while stalled. `recipeOperatingEstimate` =
- * `recipe.operatingCost × producedTotal / nominalOutput` — the engine's
- * per-day `operatingCost × throughput × actualRatio` summed (throughput
- * cancels; only per-day rounding differs). `costScope` sums those over the
- * `--cost-buildings` subset, defaulting to the whole chain; it is not a
- * profit measure.
- *
- * Plain JSON output — no timestamps, durations, or machine paths.
- */
-
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -147,11 +124,6 @@ export function parseChainEvidenceArgs(argv: readonly string[]): ChainEvidenceOp
 	};
 }
 
-/**
- * Every material the product's chain can consume or produce: the finished
- * root material plus the transitive recipe-input closure upstream of it
- * (same fixpoint the production chain helper uses for building types).
- */
 export function chainMaterialIds(finishedMaterialId: MaterialId): MaterialId[] {
 	const materialIds = new Set<MaterialId>([finishedMaterialId]);
 	let changed = true;
