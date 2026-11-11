@@ -147,7 +147,7 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		importCost: 11,
 		defaultSellingPrice: 22,
 		priceSensitivity: 0.9,
-		productionMaterialId: null,
+		productionMaterialId: 'electronic-accessories',
 		dynamics: {}
 	},
 	devices: {

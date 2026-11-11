@@ -2,7 +2,10 @@ import { DEFAULT_RETAIL_CITY_HEIGHT, DEFAULT_RETAIL_CITY_WIDTH, generateCity } f
 import {
 	DEFAULT_INDUSTRY_CITY_HEIGHT,
 	DEFAULT_INDUSTRY_CITY_WIDTH,
-	generateIndustryCity
+	INDUSTRIAL_BUILDING_TYPES,
+	MATERIALS,
+	generateIndustryCity,
+	getCategoryTier
 } from './industry';
 import {
 	getExpansionFinanceOffer,
@@ -45,18 +48,15 @@ export { WORLD_CITY_CATALOG, getWorldCityDefinition, isWorldCityId } from './wor
 
 const STARTER_CITY_IDS: WorldCityId[] = ['harbor-city', 'industry-city'];
 
-const RAW_PRODUCER_BUILDING_TYPE_IDS: readonly IndustrialBuildingTypeId[] = [
-	'grain-farm',
-	'salt-mine',
-	'oilseed-farm',
-	'water-pump',
-	'fruit-farm',
-	'sugar-farm',
-	'pulpwood-grove',
-	'chemical-feedstock-well'
-];
+const RAW_PRODUCER_BUILDING_TYPE_IDS: readonly IndustrialBuildingTypeId[] = Object.values(
+	INDUSTRIAL_BUILDING_TYPES
+)
+	.filter((type) => type.requiredResource !== null)
+	.map((type) => type.id);
 
-const FINISHED_MATERIAL_IDS: readonly MaterialId[] = ['snacks', 'drinks', 'essentials', 'gifts'];
+const FINISHED_MATERIAL_IDS: readonly MaterialId[] = Object.values(MATERIALS)
+	.filter((material) => material.kind === 'finished' && (getCategoryTier(material.id) ?? 0) >= 2)
+	.map((material) => material.id);
 
 export interface WorldCityStatus {
 	city: WorldCityDefinition;

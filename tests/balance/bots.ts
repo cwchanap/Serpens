@@ -664,11 +664,12 @@ const PROGRESSION_HOME_RETAIL_CITY: WorldCityId = 'harbor-city';
 /**
  * Up to two industry-linked products this archetype actually stocks, in
  * catalog order — the supply chains the company can sell at all. Electronics
- * stocks none, so its runs plan no chain (a documented calibration blocker
- * for the delivery-goal tier). When a planned product's material is one of
- * the branded finished materials {snacks, drinks, essentials, gifts}
- * (convenience → snacks, boutique → gifts), its city-attributed production
- * movement is also the legal reveal path for quarry-works.
+ * stocks `accessories`, so its runs now plan the electronic-accessories
+ * chain. When a planned product's material is one of the tier-2+ finished
+ * materials that reveal quarry-works ({snacks, drinks, essentials, gifts}
+ * plus electronic-accessories; convenience → snacks, boutique → gifts,
+ * electronics → accessories), its city-attributed production movement is
+ * also the legal reveal path for quarry-works.
  */
 function progressionSupplyProductIds(archetypeId: ArchetypeId): ProductId[] {
 	return getArchetype(archetypeId)

@@ -92,7 +92,8 @@ export const WORLD_CITY_CATALOG: readonly WorldCityDefinition[] = [
 				'fruit-orchard',
 				'sugar-field',
 				'pulpwood-forest',
-				'chemical-feedstock'
+				'chemical-feedstock',
+				'copper-deposit'
 			],
 			industrialBias: 1
 		}
@@ -126,11 +127,17 @@ export const WORLD_CITY_CATALOG: readonly WorldCityDefinition[] = [
 		initiallyOpened: false,
 		unlockRequirement: 'Produce a finished material locally.',
 		specialtySummary:
-			'Extraction and factory district for salt, chemicals, pulpwood, and packaging chains.',
+			'Extraction and factory district for salt, copper, chemicals, pulpwood, and packaging chains.',
 		storeCapBonus: 0,
 		retailDemandProfile: {},
 		industryResourceProfile: {
-			resourceIds: ['salt-deposit', 'chemical-feedstock', 'pulpwood-forest', 'water-source'],
+			resourceIds: [
+				'salt-deposit',
+				'chemical-feedstock',
+				'copper-deposit',
+				'pulpwood-forest',
+				'water-source'
+			],
 			industrialBias: 1.25
 		}
 	}

@@ -224,6 +224,7 @@ export type MaterialId =
 	| 'sugar'
 	| 'pulpwood'
 	| 'chemical-feedstock'
+	| 'copper-ore'
 	| 'flour'
 	| 'cooking-oil'
 	| 'filtered-water'
@@ -232,13 +233,15 @@ export type MaterialId =
 	| 'plastic'
 	| 'packaging'
 	| 'cleaning-base'
+	| 'circuit-boards'
 	| 'snacks'
 	| 'drinks'
 	| 'essentials'
 	| 'gifts'
 	| 'bottled-water'
 	| 'produce'
-	| 'pantry';
+	| 'pantry'
+	| 'electronic-accessories';
 export type MaterialKind = 'raw' | 'intermediate' | 'finished';
 export type IndustryTerrainId =
 	| 'farmland'
@@ -255,7 +258,8 @@ export type IndustryResourceId =
 	| 'fruit-orchard'
 	| 'sugar-field'
 	| 'pulpwood-forest'
-	| 'chemical-feedstock';
+	| 'chemical-feedstock'
+	| 'copper-deposit';
 export type WorldCityId =
 	| 'harbor-city'
 	| 'campus-junction'
@@ -324,6 +328,9 @@ export type IndustrialBuildingTypeId =
 	| 'water-bottler'
 	| 'produce-packhouse'
 	| 'pantry-works'
+	| 'copper-mine'
+	| 'circuit-board-plant'
+	| 'accessory-assembly-plant'
 	| 'warehouse';
 export type ProductionRecipeId =
 	| 'grain-harvest'
@@ -348,7 +355,10 @@ export type ProductionRecipeId =
 	| 'gift-production'
 	| 'water-bottling'
 	| 'produce-packing'
-	| 'pantry-goods-production';
+	| 'pantry-goods-production'
+	| 'copper-mining'
+	| 'circuit-board-production'
+	| 'accessory-assembly';
 
 export interface MaterialDefinition {
 	id: MaterialId;

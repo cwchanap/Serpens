@@ -34,8 +34,8 @@ export interface ProgressionTier {
  * legally satisfy the 25-unit goal. The original tier-1-onboarding trio
  * counted only `bottled-water` for convenience and `produce`/`pantry` for
  * grocery — boutique and electronics stocked no countable product at all
- * (step-4 calibration finding). Electronics still stocks none and stays
- * structurally blocked.
+ * (step-4 calibration finding). Electronics now counts `accessories`, which
+ * is supplied by the electronic-accessories chain.
  */
 const REGIONAL_SUPPLIER_PRODUCT_IDS = Object.values(PRODUCTS)
 	.filter((product) => product.productionMaterialId !== null)

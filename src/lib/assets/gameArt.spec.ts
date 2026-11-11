@@ -79,7 +79,8 @@ const industryResourcePaths = {
 	'fruit-orchard': '/assets/game/industry/resources/fruit-orchard.png',
 	'sugar-field': '/assets/game/industry/resources/sugar-field.png',
 	'pulpwood-forest': '/assets/game/industry/resources/pulpwood-forest.png',
-	'chemical-feedstock': '/assets/game/industry/resources/chemical-feedstock.png'
+	'chemical-feedstock': '/assets/game/industry/resources/chemical-feedstock.png',
+	'copper-deposit': '/assets/game/industry/resources/copper-deposit.png'
 } as const;
 const industryMaterialPaths = {
 	grain: '/assets/game/industry/materials/grain.png',
@@ -90,6 +91,7 @@ const industryMaterialPaths = {
 	sugar: '/assets/game/industry/materials/sugar.png',
 	pulpwood: '/assets/game/industry/materials/pulpwood.png',
 	'chemical-feedstock': '/assets/game/industry/materials/chemical-feedstock.png',
+	'copper-ore': '/assets/game/industry/materials/copper-ore.png',
 	flour: '/assets/game/industry/materials/flour.png',
 	'cooking-oil': '/assets/game/industry/materials/cooking-oil.png',
 	'filtered-water': '/assets/game/industry/materials/filtered-water.png',
@@ -98,13 +100,15 @@ const industryMaterialPaths = {
 	plastic: '/assets/game/industry/materials/plastic.png',
 	packaging: '/assets/game/industry/materials/packaging.png',
 	'cleaning-base': '/assets/game/industry/materials/cleaning-base.png',
+	'circuit-boards': '/assets/game/industry/materials/circuit-boards.png',
 	snacks: '/assets/game/industry/materials/snacks.png',
 	drinks: '/assets/game/industry/materials/drinks.png',
 	essentials: '/assets/game/industry/materials/essentials.png',
 	gifts: '/assets/game/industry/materials/gifts.png',
 	'bottled-water': '/assets/game/industry/materials/bottled-water.png',
 	produce: '/assets/game/industry/materials/produce.png',
-	pantry: '/assets/game/industry/materials/pantry.png'
+	pantry: '/assets/game/industry/materials/pantry.png',
+	'electronic-accessories': '/assets/game/industry/materials/electronic-accessories.png'
 } as const;
 const industrialBuildingPaths = {
 	'grain-farm': '/assets/game/industry/buildings/grain-farm.png',
@@ -115,6 +119,7 @@ const industrialBuildingPaths = {
 	'sugar-farm': '/assets/game/industry/buildings/sugar-farm.png',
 	'pulpwood-grove': '/assets/game/industry/buildings/pulpwood-grove.png',
 	'chemical-feedstock-well': '/assets/game/industry/buildings/chemical-feedstock-well.png',
+	'copper-mine': '/assets/game/industry/buildings/copper-mine.png',
 	'flour-mill': '/assets/game/industry/buildings/flour-mill.png',
 	'oil-press': '/assets/game/industry/buildings/oil-press.png',
 	'water-filtration-plant': '/assets/game/industry/buildings/water-filtration-plant.png',
@@ -123,10 +128,12 @@ const industrialBuildingPaths = {
 	'plastic-plant': '/assets/game/industry/buildings/plastic-plant.png',
 	'packaging-plant': '/assets/game/industry/buildings/packaging-plant.png',
 	'chemical-plant': '/assets/game/industry/buildings/chemical-plant.png',
+	'circuit-board-plant': '/assets/game/industry/buildings/circuit-board-plant.png',
 	'snack-factory': '/assets/game/industry/buildings/snack-factory.png',
 	'drink-bottling-plant': '/assets/game/industry/buildings/drink-bottling-plant.png',
 	'household-goods-factory': '/assets/game/industry/buildings/household-goods-factory.png',
 	'gift-workshop': '/assets/game/industry/buildings/gift-workshop.png',
+	'accessory-assembly-plant': '/assets/game/industry/buildings/accessory-assembly-plant.png',
 	'water-bottler': '/assets/game/industry/buildings/water-bottler.png',
 	'produce-packhouse': '/assets/game/industry/buildings/produce-packhouse.png',
 	'pantry-works': '/assets/game/industry/buildings/pantry-works.png',
