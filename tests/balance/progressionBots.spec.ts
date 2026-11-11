@@ -171,19 +171,10 @@ describe('progression bot (HPA-318 Step 4)', { timeout: 30_000 }, () => {
 	});
 });
 
-/**
- * HPA-720: one real 365-day electronics run proving local-delivery of the
- * new copper chain. The bot drives the production Supply Planner, placement,
- * rail, warehouse and retail replenishment; the assertions read only the
- * engine's own report/progression records, not harness bookkeeping.
- */
 describe('electronics local-delivery regression (HPA-720)', { timeout: 30_000 }, () => {
 	it('serves >=25 accessories from local inventory and earns the tier-3 local-units goal', () => {
 		const { game, progression } = runProgressionBot('electronics', REFERENCE_SEED, REFERENCE_DAYS);
 
-		// Accessory-specific proof: sum only the accessories product's
-		// warehouseUnits across every daily store report — retail-local
-		// deliveries, not factory-buffer output.
 		const accessoryWarehouseUnits = game.reports.reduce(
 			(total, report) =>
 				total +
@@ -199,7 +190,6 @@ describe('electronics local-delivery regression (HPA-720)', { timeout: 30_000 },
 		);
 		expect(accessoryWarehouseUnits).toBeGreaterThanOrEqual(25);
 
-		// The run built the real electronics chain to deliver them.
 		expect(game.industrialBuildings.some((building) => building.typeId === 'copper-mine')).toBe(
 			true
 		);
@@ -207,9 +197,6 @@ describe('electronics local-delivery regression (HPA-720)', { timeout: 30_000 },
 			game.industrialBuildings.some((building) => building.typeId === 'accessory-assembly-plant')
 		).toBe(true);
 
-		// Production tier-3 evidence reads the same run-to-date total: the
-		// accessories product is the only industry-linked electronics product,
-		// so the goal's `retail-local-units` actual equals the sum above.
 		const tier3 = evaluateProgression(game).tiers.find(
 			(tier) => tier.tier.id === 'regional-supplier'
 		)!;

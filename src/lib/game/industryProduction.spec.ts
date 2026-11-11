@@ -1265,8 +1265,6 @@ describe('rail-fed production', () => {
 	});
 });
 
-// Electronics chain fixtures: same single-line layout as the grain fixtures
-// above, one building per recipe stage plus the shared warehouse.
 const unconnectedMineGame = makeProductionGame(makeIndustryCity([]), [
 	makeIndustryBuilding('mine', 'copper-mine', 2, 2)
 ]);
@@ -1398,17 +1396,12 @@ describe('electronics production chain', () => {
 			game.industrialBuildings.map((building) => [building.id, building])
 		);
 
-		// Produced movements arrive in recipe-stage order even though the
-		// building ids would sort differently: mine -> plant -> assembly.
 		expect(report.produced.map((movement) => movement.materialId)).toEqual([
 			'copper-ore',
 			'circuit-boards',
 			'electronic-accessories'
 		]);
 		expect(report.produced.map((movement) => movement.quantity)).toEqual([24, 10, 8]);
-		// Same-day rail feeds: the plant pulls ore from the mine and the
-		// assembly pulls boards from the plant; only plastic and packaging
-		// fall back to paid imports.
 		expect(report.railShipments.filter((shipment) => shipment.kind === 'pull-producer')).toEqual([
 			{
 				cityId: 'industry-city',
@@ -1500,8 +1493,6 @@ describe('electronics production chain', () => {
 		const { game, report } = simulateIndustryProduction(partialAssemblyGame);
 		const assembly = game.industrialBuildings.find((building) => building.id === 'assembly')!;
 
-		// 4 free slots of the 8-unit recipe → ratio 0.5: 4 accessories, 2
-		// boards and 1 packaging consumed (all imported — no rail here).
 		expect(assembly.status).toBe('stalled');
 		expect(assembly.inventory['electronic-accessories']).toBe(80);
 		expect(
