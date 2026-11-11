@@ -386,18 +386,45 @@ the electronics catalog/map change disturbed anything outside electronics.
   `docs/balance/generated/hpa-720-head-electronics-evidence.json`; reference
   trace `docs/balance/generated/hpa-720-reference-20260503-electronics.json`.
 
-Reproduction (harness unchanged; artifact names are this addendum's):
+Reproduction (every command below is executable as written; the seed list
+is spelled out in full — the sweep CLI rejects `…` placeholders):
 
 ```bash
-bun run tests/balance/progressionRun.ts --seeds 20260501,20260502,…,20260550 \
-  --days 365 --output docs/balance/generated/hpa-720-head-6402a579
+SEEDS=20260501,20260502,20260503,20260504,20260505,20260506,20260507,20260508,20260509,20260510,20260511,20260512,20260513,20260514,20260515,20260516,20260517,20260518,20260519,20260520,20260521,20260522,20260523,20260524,20260525,20260526,20260527,20260528,20260529,20260530,20260531,20260532,20260533,20260534,20260535,20260536,20260537,20260538,20260539,20260540,20260541,20260542,20260543,20260544,20260545,20260546,20260547,20260548,20260549,20260550
+
+# full progression + idle sweep (200 progression runs + 200 idle controls)
+bun run tests/balance/progressionRun.ts --seeds "$SEEDS" --days 365 \
+  --output docs/balance/generated/hpa-720-head-6402a579
+
+# reference-seed trace with the full action log
 bun run tests/balance/progressionRun.ts --seeds 20260503 --days 365 \
   --archetypes electronics \
   --trace docs/balance/generated/hpa-720-reference-20260503-electronics.json
+
+# per-seed electronics chain detail (product, materials, buildings, costs)
+bun run tests/balance/chainEvidence.ts --seeds "$SEEDS" --days 365 \
+  --archetype electronics --product accessories \
+  --cost-buildings copper-mine,circuit-board-plant,accessory-assembly-plant \
+  --output docs/balance/generated/hpa-720-head-electronics-evidence
+
+# base-vs-implementation row diff (exits nonzero if a required archetype differs)
+bun run tests/balance/progressionDiff.ts \
+  --base docs/balance/generated/hpa-720-base-3b0b56d.json \
+  --head docs/balance/generated/hpa-720-head-6402a579.json \
+  --require-identical convenience,boutique,grocery
 ```
 
-(the seed list is the same `20260501`–`20260550` block as §0; measured
-wall-clock ≈ 12.5 min for the 400 runs on the dev machine.)
+`tests/balance/chainEvidence.ts` and `tests/balance/progressionDiff.ts`
+are two small tracked harness CLIs added for this addendum: the earlier
+analysis scripts lived in the git-ignored SDD scratch directory, so a
+fresh clone could not regenerate the evidence. Both reuse the real
+progression bot and the saved sweep artifacts — no gameplay code, no
+separate probe — and are pinned by `chainEvidence.spec.ts` /
+`progressionDiff.spec.ts`. The base artifact itself was captured on the
+base SHA and is preserved, not regenerated.
+
+Measured wall-clock ≈ 12.5 min for the 400 sweep runs on the dev machine;
+the 50-run evidence pass takes a few minutes more.
 
 ### Non-electronics diff verdict: identical
 
@@ -443,12 +470,13 @@ inside electronics only:
 The third unclaimed tier-3 run is a different shape: seed `20260545` built
 the **entire** chain by day 113 (all nine buildings) and produced 80
 accessories, but every one of its 33 `connect-rail` attempts failed
-`railRequiresCash` — cash stayed negative all year, so no rail ever
-connected and nothing reached the warehouse (0 local units; the
-`regional-supplier-local-units` goal correctly fails). Produced-but-
-buffered output is not delivery; this mirrors the §6 boutique
-produces-but-never-delivers shape, with cash starvation as the stated
-cause rather than a missing rail edge.
+`railRequiresCash` — it could never hold the rail-build cost on an attempt
+day (measured daily cash: negative on 237 of 365 days, last non-negative
+day 299), so no rail ever connected and nothing reached the warehouse (0
+local units; the `regional-supplier-local-units` goal correctly fails).
+Produced-but-buffered output is not delivery; this mirrors the §6
+boutique produces-but-never-delivers shape, with cash starvation as the
+stated cause rather than a missing rail edge.
 
 ### Accessory local-vs-imported retail units (measured)
 
@@ -505,23 +533,45 @@ buildings only**, not a local-profit gate — HPA-721 owns economy balance):
   rail failures and **782** `unaffordable` planner no-ops — cash
   starvation, not catalog or placement defects.
 - Credit: electronics borrowed 764 times / $9.60M total (base:
-  626 / $9.05M); median final cash improved −$59,640 → −$44,671.
+  626 / $9.05M); median final cash improved −$60,030.50 → −$45,798
+  (linear-interpolated median over the 50 runs, the same `median` /
+  `quantile` convention the rest of this document uses).
 
 ### Gate A balance harness on the implementation
 
-`bun tests/balance/run.ts --seeds 20260501,…,20260550 --days 365 --bots
-idle,retail-steady,advisor --output docs/balance/generated/hpa-720-head-balance-sweep`
-(450 runs, artifacts git-ignored) completes deterministically and every
-Gate A sweep check still passes: viability ≥80% per archetype
-(convenience 42/50, boutique 50/50, electronics 43/50, grocery 50/50);
-boundedness (max |cash| $722,959, max principal $14,000, max import spend
-$1,582,909, max waste 5,336 u — all far under 1e9); managed-beats-idle
-**200/200**; forecast **714/714** eligible openings in ±25%; advisor
-served-chain composite **50/50** with an identical 3,360-unit bottled-water
-local delivery in every run — the advisor's existing chain is measurably
-undisturbed by the new anchor. `docs/balance/baseline.md`, `after.md` and
+```bash
+bun tests/balance/run.ts --seeds "$SEEDS" --days 365 \
+  --bots idle,retail-steady,advisor \
+  --output docs/balance/generated/hpa-720-head-balance-sweep
+```
+
+(450 runs, artifact git-ignored; `$SEEDS` is the 50-seed block above.)
+The sweep completes deterministically and every Gate A check still
+passes — evaluating the saved artifact with the existing `evaluateGateA`
+(`tests/balance/measure.ts`) reports `allPassed: true` on complete
+50 × 9 × 365 coverage:
+
+- **Viability** — a positive 30-day operating-income window **completing
+  by day 90**: convenience 42/50, boutique 50/50, electronics **41/50
+  (82%)**, grocery 50/50 — every archetype ≥ the 80% bar. (An earlier
+  draft of this addendum quoted electronics as 43/50; that is the count
+  of positive windows completing any time by day 365 — a different,
+  looser metric. Under the actual Gate A day-90 criterion the figure is
+  41/50.)
+- **Boundedness** — max |cash| $722,959, max principal $14,000, max
+  import spend $1,582,909, max waste 5,336 u — all far under 1e9.
+- **Managed-beats-idle** — **200/200**.
+- **Forecast** — **714/714** eligible openings within ±25%.
+- **Advisor** — served-chain composite **50/50**, with an identical
+  3,360-unit bottled-water local delivery in every run. That uniform
+  figure shows the advisor's existing chain is healthy on HEAD — but no
+  base-SHA Gate A sweep was captured, so it is not a base-equality
+  result and cannot by itself prove the new anchor left the advisor
+  chain undisturbed.
+
+`docs/balance/baseline.md`, `after.md` and
 `rail-throughput-calibration.md` are preserved untouched; those committed
 records predate the intervening engine work (progression, rail throughput,
 supply-source assignment) so they are not byte-comparison targets — the
 HPA-720 isolation evidence is the 150/150 identical non-electronics
-progression rows above plus the identical idle control.
+progression rows above plus the identical idle control aggregate.
