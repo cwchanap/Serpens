@@ -387,8 +387,11 @@ the electronics catalog/map change disturbed anything outside electronics.
   branch; `06a5b4df639cd6473f9bcf1e1af36a0e03f3045e` is its patch-identical
   rebased equivalent (verified by `git range-diff`), whose tree differs from
   the measured tree only by the seven approved art PNGs added by main
-  (`static/assets/game/industry/**`). Check out the reachable SHA to inspect
-  or re-run the measured source on a fresh clone.
+  (`static/assets/game/industry/**`). The reachable SHA is for inspecting the
+  measured source or re-running the original `progressionRun.ts` sweep on a
+  fresh clone; the reproduction sequence below runs on the current
+  implementation checkout, which supplies the later `chainEvidence.ts` and
+  `progressionDiff.ts` utilities added after the measurement commit.
 - Electronics product/material/building detail (git-ignored):
   `docs/balance/generated/hpa-720-head-electronics-evidence.json`; reference
   trace `docs/balance/generated/hpa-720-reference-20260503-electronics.json`.
