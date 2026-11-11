@@ -8,10 +8,19 @@ export interface ProgressionRunDiff {
 	fields: string[];
 }
 
+export interface ProgressionArtifactLike {
+	config?: unknown;
+	runs: ProgressionRunSummary[];
+}
+
 export interface ProgressionDiffResult {
 	comparedKeys: number;
 	missingInBase: string[];
 	missingInHead: string[];
+	duplicateBaseKeys: string[];
+	duplicateHeadKeys: string[];
+	configMismatches: string[];
+	unrepresentedArchetypes: string[];
 	identical: ProgressionRunSummary[];
 	differing: ProgressionRunDiff[];
 	requireIdenticalPassed: boolean;
@@ -22,7 +31,7 @@ function argsError(detail: string): never {
 	throw new Error(`progression-diff: ${detail}`);
 }
 
-function readArtifact(path: string): { config: unknown; runs: ProgressionRunSummary[] } {
+function readArtifact(path: string): ProgressionArtifactLike {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(readFileSync(path, 'utf8'));
@@ -33,28 +42,95 @@ function readArtifact(path: string): { config: unknown; runs: ProgressionRunSumm
 	if (!Array.isArray(runs)) {
 		argsError(`artifact "${path}" has no runs array — expected a progression-sweep artifact.`);
 	}
-	return parsed as { config: unknown; runs: ProgressionRunSummary[] };
+	return parsed as ProgressionArtifactLike;
 }
 
-export function diffProgressionRunRows(
-	baseRuns: ProgressionRunSummary[],
-	headRuns: ProgressionRunSummary[],
+function compareConfigs(baseConfig: unknown, headConfig: unknown): string[] {
+	const mismatches: string[] = [];
+	const read = (config: unknown) => {
+		if (typeof config !== 'object' || config === null) return null;
+		const candidate = config as { seeds?: unknown; days?: unknown; archetypes?: unknown };
+		return {
+			seeds: Array.isArray(candidate.seeds)
+				? [...new Set(candidate.seeds.map(Number))].sort((a, b) => a - b)
+				: null,
+			days: typeof candidate.days === 'number' ? candidate.days : null,
+			archetypes: Array.isArray(candidate.archetypes)
+				? [...candidate.archetypes].map(String).sort()
+				: null
+		};
+	};
+	const base = read(baseConfig);
+	const head = read(headConfig);
+	if (!base || !head) {
+		mismatches.push(
+			base || head ? `config absent in ${base ? 'head' : 'base'}` : 'config absent in both'
+		);
+		return mismatches;
+	}
+	if (base.days !== head.days) {
+		mismatches.push(`days: base ${base.days} vs head ${head.days}`);
+	}
+	if (JSON.stringify(base.seeds) !== JSON.stringify(head.seeds)) {
+		mismatches.push(
+			`seeds: base ${base.seeds?.length ?? 'absent'} seed(s) vs head ${head.seeds?.length ?? 'absent'}`
+		);
+	}
+	if (JSON.stringify(base.archetypes) !== JSON.stringify(head.archetypes)) {
+		mismatches.push(
+			`archetypes: base [${base.archetypes?.join(', ') ?? 'absent'}] vs head [${head.archetypes?.join(', ') ?? 'absent'}]`
+		);
+	}
+	return mismatches;
+}
+
+export function diffProgressionArtifacts(
+	base: ProgressionArtifactLike,
+	head: ProgressionArtifactLike,
 	requireIdentical: string[] = []
 ): ProgressionDiffResult {
 	const rowKey = (run: ProgressionRunSummary) => `${run.seed}/${run.archetypeId}`;
-	const baseByKey = new Map(baseRuns.map((run) => [rowKey(run), run]));
-	const headByKey = new Map(headRuns.map((run) => [rowKey(run), run]));
-	const missingInBase = [...headByKey.keys()].filter((key) => !baseByKey.has(key)).sort();
-	const missingInHead = [...baseByKey.keys()].filter((key) => !headByKey.has(key)).sort();
+	const keyArchetype = (key: string) => key.slice(key.indexOf('/') + 1);
+	const countKeys = (runs: ProgressionRunSummary[]) => {
+		const counts = new Map<string, number>();
+		for (const run of runs) {
+			const key = rowKey(run);
+			counts.set(key, (counts.get(key) ?? 0) + 1);
+		}
+		return counts;
+	};
+	const baseCounts = countKeys(base.runs);
+	const headCounts = countKeys(head.runs);
+	const duplicateBaseKeys = [...baseCounts]
+		.filter(([, count]) => count > 1)
+		.map(([key]) => key)
+		.sort();
+	const duplicateHeadKeys = [...headCounts]
+		.filter(([, count]) => count > 1)
+		.map(([key]) => key)
+		.sort();
+	const missingInBase = [...headCounts.keys()].filter((key) => !baseCounts.has(key)).sort();
+	const missingInHead = [...baseCounts.keys()].filter((key) => !headCounts.has(key)).sort();
+	const configMismatches = compareConfigs(base.config, head.config);
 
+	const presentArchetypes = new Set([...baseCounts.keys(), ...headCounts.keys()].map(keyArchetype));
+	const unrepresentedArchetypes = requireIdentical
+		.filter((archetypeId) => !presentArchetypes.has(archetypeId))
+		.sort();
+
+	const baseByKey = new Map(base.runs.map((run) => [rowKey(run), run]));
+	const headByKey = new Map(head.runs.map((run) => [rowKey(run), run]));
 	const identical: ProgressionRunSummary[] = [];
 	const differing: ProgressionRunDiff[] = [];
 	for (const key of [...baseByKey.keys()].sort()) {
 		const baseRun = baseByKey.get(key)!;
 		const headRun = headByKey.get(key);
 		if (!headRun) continue;
-		const fields = (Object.keys(baseRun) as (keyof ProgressionRunSummary)[]).filter(
-			(field) => JSON.stringify(baseRun[field]) !== JSON.stringify(headRun[field])
+		const fieldUnion = [...new Set([...Object.keys(baseRun), ...Object.keys(headRun)])];
+		const fields = fieldUnion.filter(
+			(field) =>
+				JSON.stringify(baseRun[field as keyof ProgressionRunSummary]) !==
+				JSON.stringify(headRun[field as keyof ProgressionRunSummary])
 		);
 		if (fields.length === 0) {
 			identical.push(baseRun);
@@ -63,21 +139,40 @@ export function diffProgressionRunRows(
 		}
 	}
 
-	const requireIdenticalFailures = [
-		...new Set(
-			differing
-				.filter((diff) => requireIdentical.includes(diff.archetypeId))
-				.map((diff) => diff.key)
-		)
-	].sort();
+	const requiredSet = new Set(requireIdentical);
+	const failureKeys = new Set<string>();
+	for (const diff of differing) {
+		if (requiredSet.has(diff.archetypeId)) failureKeys.add(diff.key);
+	}
+	for (const key of [
+		...missingInBase,
+		...missingInHead,
+		...duplicateBaseKeys,
+		...duplicateHeadKeys
+	]) {
+		if (requiredSet.has(keyArchetype(key))) failureKeys.add(key);
+	}
+	const requireIdenticalFailures = [...failureKeys].sort();
+	const requireIdenticalPassed =
+		requireIdenticalFailures.length === 0 &&
+		missingInBase.length === 0 &&
+		missingInHead.length === 0 &&
+		duplicateBaseKeys.length === 0 &&
+		duplicateHeadKeys.length === 0 &&
+		configMismatches.length === 0 &&
+		unrepresentedArchetypes.length === 0;
 
 	return {
 		comparedKeys: identical.length + differing.length,
 		missingInBase,
 		missingInHead,
+		duplicateBaseKeys,
+		duplicateHeadKeys,
+		configMismatches,
+		unrepresentedArchetypes,
 		identical,
 		differing,
-		requireIdenticalPassed: requireIdenticalFailures.length === 0,
+		requireIdenticalPassed,
 		requireIdenticalFailures
 	};
 }
@@ -85,6 +180,9 @@ export function diffProgressionRunRows(
 export function formatProgressionDiff(result: ProgressionDiffResult): string {
 	const lines: string[] = [];
 	lines.push(`compared ${result.comparedKeys} row pair(s)`);
+	for (const mismatch of result.configMismatches) {
+		lines.push(`config mismatch: ${mismatch}`);
+	}
 	if (result.missingInBase.length > 0) {
 		lines.push(
 			`missing in base (${result.missingInBase.length}): ${result.missingInBase.join(', ')}`
@@ -94,6 +192,19 @@ export function formatProgressionDiff(result: ProgressionDiffResult): string {
 		lines.push(
 			`missing in head (${result.missingInHead.length}): ${result.missingInHead.join(', ')}`
 		);
+	}
+	if (result.duplicateBaseKeys.length > 0) {
+		lines.push(
+			`duplicate in base (${result.duplicateBaseKeys.length}): ${result.duplicateBaseKeys.join(', ')}`
+		);
+	}
+	if (result.duplicateHeadKeys.length > 0) {
+		lines.push(
+			`duplicate in head (${result.duplicateHeadKeys.length}): ${result.duplicateHeadKeys.join(', ')}`
+		);
+	}
+	if (result.unrepresentedArchetypes.length > 0) {
+		lines.push(`required archetype(s) absent: ${result.unrepresentedArchetypes.join(', ')}`);
 	}
 	const byArchetype = new Map<string, { identical: number; differing: number }>();
 	for (const run of result.identical) {
@@ -158,7 +269,7 @@ export function main(argv: readonly string[]): number {
 
 	const base = readArtifact(basePath);
 	const head = readArtifact(headPath);
-	const result = diffProgressionRunRows(base.runs, head.runs, requireIdentical);
+	const result = diffProgressionArtifacts(base, head, requireIdentical);
 	console.log(formatProgressionDiff(result));
 	return result.requireIdenticalPassed ? 0 : 1;
 }
