@@ -197,6 +197,22 @@ describe('electronics local-delivery regression (HPA-720)', { timeout: 30_000 },
 			game.industrialBuildings.some((building) => building.typeId === 'accessory-assembly-plant')
 		).toBe(true);
 
+		// The assembly plant is fed by circuit boards from a real non-import
+		// source; imports may still cover part of the demand.
+		const circuitBoardsConsumedNonImported = game.reports.reduce(
+			(total, report) =>
+				total +
+				report.productionReport.consumed
+					.filter(
+						(movement) =>
+							movement.materialId === 'circuit-boards' &&
+							['local', 'rail', 'warehouse'].includes(movement.source)
+					)
+					.reduce((consumed, movement) => consumed + movement.quantity, 0),
+			0
+		);
+		expect(circuitBoardsConsumedNonImported).toBeGreaterThan(0);
+
 		const tier3 = evaluateProgression(game).tiers.find(
 			(tier) => tier.tier.id === 'regional-supplier'
 		)!;

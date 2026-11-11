@@ -48,16 +48,16 @@ describe('parseChainEvidenceArgs', () => {
 
 describe('chainMaterialIds', () => {
 	it('derives the accessories upstream closure from the recipe graph', () => {
-		const materials = chainMaterialIds('electronic-accessories');
-		for (const expected of [
-			'electronic-accessories',
+		expect(chainMaterialIds('electronic-accessories')).toEqual([
+			'chemical-feedstock',
 			'circuit-boards',
-			'packaging',
 			'copper-ore',
-			'plastic'
-		]) {
-			expect(materials).toContain(expected);
-		}
+			'electronic-accessories',
+			'packaging',
+			'paper-pulp',
+			'plastic',
+			'pulpwood'
+		]);
 	});
 });
 
