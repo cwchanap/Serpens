@@ -21,7 +21,7 @@ import {
 	refreshWorldProgress,
 	selectWorldCity
 } from './world';
-import type { GameState } from './types';
+import type { DailyReport, GameState, MaterialId } from './types';
 import { systemDecision } from './testHelpers';
 
 function gameStub(overrides: Partial<GameState> = {}): GameState {
@@ -1144,5 +1144,112 @@ describe('world city status and decision helpers', () => {
 		expect(getRetailCityDemandMultiplier(game, 'harbor-city', 'games')).toBe(1);
 		// unknown city -> default multiplier
 		expect(getRetailCityDemandMultiplier(game, 'not-a-city', 'games')).toBe(1);
+	});
+});
+
+describe('electronics catalog world reveals', () => {
+	const industryCityStub = {
+		id: 'industry-city',
+		name: 'Industry City',
+		width: 0,
+		height: 0,
+		tiles: [],
+		rails: []
+	} as GameState['industryCities'][number];
+
+	function industrialBuildingStub(
+		typeId: GameState['industrialBuildings'][number]['typeId']
+	): GameState['industrialBuildings'][number] {
+		return {
+			id: `stub-${typeId}`,
+			cityId: 'industry-city',
+			typeId
+		} as GameState['industrialBuildings'][number];
+	}
+
+	function productionReportStub(materialId: MaterialId): DailyReport {
+		return {
+			day: 1,
+			netIncome: 0,
+			productionReport: {
+				produced: [
+					{
+						cityId: 'industry-city',
+						materialId,
+						quantity: 8,
+						value: 88,
+						source: 'local'
+					}
+				]
+			}
+		} as unknown as DailyReport;
+	}
+
+	test('reveals breadbasket-basin when a warehouse and copper mine are built', () => {
+		expect.assertions(1);
+		const game = gameStub({
+			industrialBuildings: [
+				industrialBuildingStub('warehouse'),
+				industrialBuildingStub('copper-mine')
+			]
+		});
+
+		expect(refreshWorldProgress(game).world.revealedCityIds).toContain('breadbasket-basin');
+	});
+
+	test('does not reveal breadbasket-basin with a copper mine but no warehouse', () => {
+		expect.assertions(1);
+		const game = gameStub({
+			industrialBuildings: [industrialBuildingStub('copper-mine')]
+		});
+
+		expect(refreshWorldProgress(game).world.revealedCityIds).not.toContain('breadbasket-basin');
+	});
+
+	test('reveals quarry-works when an opened industry city holds electronic-accessories', () => {
+		expect.assertions(1);
+		const game = gameStub({
+			industryCities: [industryCityStub],
+			cityInventories: [{ cityId: 'industry-city', materials: { 'electronic-accessories': 1 } }]
+		});
+
+		expect(refreshWorldProgress(game).world.revealedCityIds).toContain('quarry-works');
+	});
+
+	test('reveals quarry-works from city-attributed electronic-accessories production', () => {
+		expect.assertions(1);
+		const game = gameStub({
+			industryCities: [industryCityStub],
+			cityInventories: [{ cityId: 'industry-city', materials: {} }],
+			reports: [productionReportStub('electronic-accessories')]
+		});
+
+		expect(refreshWorldProgress(game).world.revealedCityIds).toContain('quarry-works');
+	});
+
+	test('does not reveal quarry-works from tier-1 finished material inventory', () => {
+		expect.assertions(3);
+		for (const materialId of ['bottled-water', 'produce', 'pantry'] as const) {
+			const game = gameStub({
+				industryCities: [industryCityStub],
+				cityInventories: [{ cityId: 'industry-city', materials: { [materialId]: 5 } }]
+			});
+
+			expect(
+				refreshWorldProgress(game).world.revealedCityIds,
+				`${materialId} is a tier-1 finished material and must not reveal quarry-works`
+			).not.toContain('quarry-works');
+		}
+	});
+
+	test('does not reveal quarry-works from tier-1 finished production evidence', () => {
+		expect.assertions(1);
+		const game = gameStub({
+			industryCities: [industryCityStub],
+			cityInventories: [{ cityId: 'industry-city', materials: {} }],
+			reports: [productionReportStub('pantry')]
+		});
+
+		expect(refreshWorldProgress(game).world.revealedCityIds).not.toContain('quarry-works');
 	});
 });

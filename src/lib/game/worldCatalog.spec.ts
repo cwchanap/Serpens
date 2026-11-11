@@ -23,4 +23,14 @@ describe('world catalog primitives', () => {
 		expect(isWorldCityId('campus-junction')).toBe(true);
 		expect(compareWorldCityIds('harbor-city', 'industry-city')).toBeLessThan(0);
 	});
+
+	test('offers copper deposits only in the industry-city and quarry-works resource profiles', () => {
+		expect.assertions(3);
+		const resourceIds = (cityId: string) =>
+			getWorldCityDefinition(cityId)?.industryResourceProfile?.resourceIds ?? [];
+
+		expect(resourceIds('industry-city')).toContain('copper-deposit');
+		expect(resourceIds('quarry-works')).toContain('copper-deposit');
+		expect(resourceIds('breadbasket-basin')).not.toContain('copper-deposit');
+	});
 });

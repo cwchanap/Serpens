@@ -38,6 +38,7 @@ const RESOURCE_ANCHOR_SPECS: ReadonlyArray<{
 	{ xFrac: 0.389, yFrac: 0.056, resource: 'sugar-field', terrain: 'farmland' },
 	{ xFrac: 0.056, yFrac: 0.222, resource: 'salt-deposit', terrain: 'deposit' },
 	{ xFrac: 0.167, yFrac: 0.222, resource: 'chemical-feedstock', terrain: 'deposit' },
+	{ xFrac: 0.25, yFrac: 0.222, resource: 'copper-deposit', terrain: 'deposit' },
 	{ xFrac: 0.056, yFrac: 0.389, resource: 'water-source', terrain: 'water' },
 	{ xFrac: 0.222, yFrac: 0.389, resource: 'pulpwood-forest', terrain: 'forest' }
 ];
@@ -121,6 +122,13 @@ export const MATERIALS: Readonly<Record<MaterialId, MaterialDefinition>> = {
 		importCost: 5,
 		localValue: 3
 	},
+	'copper-ore': {
+		id: 'copper-ore',
+		name: 'Copper Ore',
+		kind: 'raw',
+		importCost: 3,
+		localValue: 2
+	},
 	flour: {
 		id: 'flour',
 		name: 'Flour',
@@ -177,6 +185,13 @@ export const MATERIALS: Readonly<Record<MaterialId, MaterialDefinition>> = {
 		importCost: 7,
 		localValue: 5
 	},
+	'circuit-boards': {
+		id: 'circuit-boards',
+		name: 'Circuit Boards',
+		kind: 'intermediate',
+		importCost: 8,
+		localValue: 5
+	},
 	snacks: {
 		id: 'snacks',
 		name: 'Snacks',
@@ -225,6 +240,13 @@ export const MATERIALS: Readonly<Record<MaterialId, MaterialDefinition>> = {
 		kind: 'finished',
 		importCost: 8,
 		localValue: 5
+	},
+	'electronic-accessories': {
+		id: 'electronic-accessories',
+		name: 'Electronic Accessories',
+		kind: 'finished',
+		importCost: 11,
+		localValue: 8
 	}
 };
 
@@ -282,6 +304,13 @@ export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionR
 		id: 'chemical-feedstock-extraction',
 		inputs: [],
 		outputs: [{ materialId: 'chemical-feedstock', quantity: 18 }],
+		operatingCost: 0,
+		stage: 'raw'
+	},
+	'copper-mining': {
+		id: 'copper-mining',
+		inputs: [],
+		outputs: [{ materialId: 'copper-ore', quantity: 24 }],
 		operatingCost: 0,
 		stage: 'raw'
 	},
@@ -350,6 +379,16 @@ export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionR
 		operatingCost: 22,
 		stage: 'process'
 	},
+	'circuit-board-production': {
+		id: 'circuit-board-production',
+		inputs: [
+			{ materialId: 'copper-ore', quantity: 6 },
+			{ materialId: 'plastic', quantity: 1 }
+		],
+		outputs: [{ materialId: 'circuit-boards', quantity: 10 }],
+		operatingCost: 12,
+		stage: 'process'
+	},
 	'snack-production': {
 		id: 'snack-production',
 		inputs: [
@@ -415,6 +454,16 @@ export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionR
 		inputs: [{ materialId: 'flour', quantity: 6 }],
 		outputs: [{ materialId: 'pantry', quantity: 8 }],
 		operatingCost: 8,
+		stage: 'final'
+	},
+	'accessory-assembly': {
+		id: 'accessory-assembly',
+		inputs: [
+			{ materialId: 'circuit-boards', quantity: 4 },
+			{ materialId: 'packaging', quantity: 1 }
+		],
+		outputs: [{ materialId: 'electronic-accessories', quantity: 8 }],
+		operatingCost: 15,
 		stage: 'final'
 	}
 };
@@ -518,6 +567,18 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		bufferCapacity: 90,
 		tier: 2
 	},
+	'copper-mine': {
+		id: 'copper-mine',
+		name: 'Copper Mine',
+		buildCost: 750,
+		dailyOperatingCost: 12,
+		requiredResource: 'copper-deposit',
+		requiresIndustrialTile: false,
+		recipeId: 'copper-mining',
+		warehouseCapacity: 0,
+		bufferCapacity: 120,
+		tier: 2
+	},
 	'flour-mill': {
 		id: 'flour-mill',
 		name: 'Flour Mill',
@@ -614,6 +675,18 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		bufferCapacity: 80,
 		tier: 2
 	},
+	'circuit-board-plant': {
+		id: 'circuit-board-plant',
+		name: 'Circuit Board Plant',
+		buildCost: 1500,
+		dailyOperatingCost: 24,
+		requiredResource: null,
+		requiresIndustrialTile: true,
+		recipeId: 'circuit-board-production',
+		warehouseCapacity: 0,
+		bufferCapacity: 80,
+		tier: 2
+	},
 	'snack-factory': {
 		id: 'snack-factory',
 		name: 'Snack Factory',
@@ -660,6 +733,18 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		recipeId: 'gift-production',
 		warehouseCapacity: 0,
 		bufferCapacity: 70,
+		tier: 3
+	},
+	'accessory-assembly-plant': {
+		id: 'accessory-assembly-plant',
+		name: 'Accessory Assembly Plant',
+		buildCost: 1750,
+		dailyOperatingCost: 26,
+		requiredResource: null,
+		requiresIndustrialTile: true,
+		recipeId: 'accessory-assembly',
+		warehouseCapacity: 0,
+		bufferCapacity: 80,
 		tier: 3
 	},
 	'water-bottler': {
@@ -711,45 +796,6 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		tier: 1
 	}
 };
-
-export const CONVENIENCE_BUILDING_TYPE_IDS = [
-	'grain-farm',
-	'salt-mine',
-	'oilseed-farm',
-	'water-pump',
-	'fruit-farm',
-	'sugar-farm',
-	'pulpwood-grove',
-	'chemical-feedstock-well',
-	'flour-mill',
-	'oil-press',
-	'water-filtration-plant',
-	'syrup-plant',
-	'pulp-mill',
-	'plastic-plant',
-	'packaging-plant',
-	'chemical-plant',
-	'snack-factory',
-	'drink-bottling-plant',
-	'household-goods-factory',
-	'gift-workshop',
-	'water-bottler',
-	'produce-packhouse',
-	'pantry-works',
-	'warehouse'
-] as const satisfies readonly IndustrialBuildingTypeId[];
-
-export const FINISHED_PRODUCT_MATERIAL_IDS = [
-	'snacks',
-	'drinks',
-	'essentials',
-	'gifts',
-	'bottled-water',
-	'produce',
-	'pantry'
-] as const satisfies readonly MaterialId[];
-
-export type FinishedProductMaterialId = (typeof FINISHED_PRODUCT_MATERIAL_IDS)[number];
 
 export function getIndustrialBuildingTypesForProductChain(
 	productId: string

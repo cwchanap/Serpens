@@ -1,7 +1,5 @@
 import { describe, expect, it, test } from 'vitest';
 import {
-	CONVENIENCE_BUILDING_TYPE_IDS,
-	FINISHED_PRODUCT_MATERIAL_IDS,
 	INDUSTRIAL_BUILDING_TYPES,
 	MATERIALS,
 	PRODUCTION_RECIPES,
@@ -11,7 +9,15 @@ import {
 	getIndustryTileById,
 	getIndustryTilesByResource
 } from './industry';
+import { decisionContextIndustrialRequiresResource } from './decisionContext';
+import {
+	createIndustryTileLookup,
+	getIndustryBuildingFootprint,
+	getOccupiedIndustryTileIds
+} from './industryFootprint';
+import { getIndustrialPlacementBlockReasonWithContext } from './industryPlacement';
 import type {
+	IndustrialBuilding,
 	IndustrialBuildingType,
 	IndustryCity,
 	IndustryResourceId,
@@ -49,14 +55,16 @@ acceptIndustrialBuildingType({
 });
 
 describe('industry domain catalog', () => {
-	test('defines every convenience finished material and required building', () => {
+	test('defines the branded finished materials and resolves every building catalog key to its entry', () => {
 		expect.assertions(5);
 
 		expect(MATERIALS.snacks.kind).toBe('finished');
 		expect(MATERIALS.drinks.kind).toBe('finished');
 		expect(MATERIALS.essentials.kind).toBe('finished');
 		expect(MATERIALS.gifts.kind).toBe('finished');
-		expect(CONVENIENCE_BUILDING_TYPE_IDS.every((id) => INDUSTRIAL_BUILDING_TYPES[id])).toBe(true);
+		expect(Object.entries(INDUSTRIAL_BUILDING_TYPES).every(([key, type]) => key === type.id)).toBe(
+			true
+		);
 	});
 
 	test('connects convenience recipes to known materials', () => {
@@ -324,6 +332,98 @@ describe('industry city generation', () => {
 		expect(highBiasIndustrial).toBeGreaterThan(0);
 	});
 
+	test('anchors the copper deposit inside the extraction belt at production size', () => {
+		expect.assertions(6);
+		const city = generateIndustryCity({
+			id: 'industry-city',
+			name: 'Industry City',
+			width: 56,
+			height: 48,
+			seed: 20260512
+		});
+		const copperTiles = getIndustryTilesByResource(city, 'copper-deposit');
+		const lookup = createIndustryTileLookup(city);
+		const footprint = getIndustryBuildingFootprint(lookup, copperTiles[0]!);
+
+		expect(copperTiles).toHaveLength(1);
+		expect(copperTiles[0]).toMatchObject({ x: 14, y: 11, terrain: 'deposit' });
+		// The anchor's 2x2 footprint spans x=14-15, inside the extraction belt
+		// (x<=15), and clears the chemical-feedstock anchor at x=9.
+		expect(footprint.missingCoordinates).toEqual([]);
+		expect(footprint.tiles.every((tile) => tile.x <= 15 && !tile.locked)).toBe(true);
+		expect(footprint.tiles.every((tile) => tile.terrain === 'deposit')).toBe(true);
+		expect(
+			city.tiles.some(
+				(tile) =>
+					tile.resource !== null &&
+					tile.resource !== 'copper-deposit' &&
+					footprint.tiles.some((footprintTile) => footprintTile.id === tile.id)
+			)
+		).toBe(false);
+	});
+
+	test('anchors the copper deposit at the extraction-belt edge on the small fixture', () => {
+		expect.assertions(3);
+		const city = generateIndustryCity({
+			id: 'industry-city',
+			name: 'Industry City',
+			width: 18,
+			height: 18,
+			seed: 20260512
+		});
+		const copperTiles = getIndustryTilesByResource(city, 'copper-deposit');
+		const footprint = getIndustryBuildingFootprint(createIndustryTileLookup(city), copperTiles[0]!);
+
+		expect(copperTiles).toHaveLength(1);
+		expect(copperTiles[0]).toMatchObject({ x: 5, y: 4, terrain: 'deposit' });
+		expect(footprint.missingCoordinates).toEqual([]);
+	});
+
+	test('copper mine placement needs the anchor tile and survives neighboring extractor footprints', () => {
+		expect.assertions(6);
+		for (const size of [
+			{ width: 56, height: 48 },
+			{ width: 18, height: 18 }
+		]) {
+			const city = generateIndustryCity({
+				id: 'industry-city',
+				name: 'Industry City',
+				...size,
+				seed: 20260512
+			});
+			const tileLookup = createIndustryTileLookup(city);
+			const copperTile = getIndustryTilesByResource(city, 'copper-deposit')[0]!;
+			const saltTile = getIndustryTilesByResource(city, 'salt-deposit')[0]!;
+			const chemicalTile = getIndustryTilesByResource(city, 'chemical-feedstock')[0]!;
+			const waterTile = getIndustryTilesByResource(city, 'water-source')[0]!;
+			const neighbors = [saltTile, chemicalTile].map(
+				(tile) =>
+					({
+						cityId: city.id,
+						tileId: tile.id,
+						mapX: tile.x,
+						mapY: tile.y
+					}) as IndustrialBuilding
+			);
+			const context = {
+				city,
+				tileLookup,
+				occupiedTileIds: getOccupiedIndustryTileIds(city, neighbors, tileLookup),
+				railOccupiedTileIds: new Set<string>()
+			};
+
+			expect(
+				getIndustrialPlacementBlockReasonWithContext(context, copperTile.id, 'copper-mine')
+			).toBeNull();
+			expect(
+				getIndustrialPlacementBlockReasonWithContext(context, copperTile.id, 'salt-mine')
+			).toEqual(decisionContextIndustrialRequiresResource('salt-deposit'));
+			expect(
+				getIndustrialPlacementBlockReasonWithContext(context, waterTile.id, 'copper-mine')
+			).toEqual(decisionContextIndustrialRequiresResource('copper-deposit'));
+		}
+	});
+
 	test('clamps zero or negative industrialBias to a positive minimum', () => {
 		expect.assertions(2);
 		const zeroBias = generateIndustryCity({
@@ -369,11 +469,25 @@ describe('tier 1 chains', () => {
 		}
 	});
 
-	it('lists the new finished materials as supported products', () => {
-		expect(FINISHED_PRODUCT_MATERIAL_IDS).toContain('bottled-water');
-		expect(FINISHED_PRODUCT_MATERIAL_IDS).toContain('produce');
-		expect(FINISHED_PRODUCT_MATERIAL_IDS).toContain('pantry');
-		expect(FINISHED_PRODUCT_MATERIAL_IDS).toHaveLength(7);
+	it('lists the tier-1 materials in the catalog finished-material set', () => {
+		const finishedMaterialIds = Object.values(MATERIALS)
+			.filter((material) => material.kind === 'finished')
+			.map((material) => material.id)
+			.sort();
+
+		expect(finishedMaterialIds).toContain('bottled-water');
+		expect(finishedMaterialIds).toContain('produce');
+		expect(finishedMaterialIds).toContain('pantry');
+		expect(finishedMaterialIds).toEqual([
+			'bottled-water',
+			'drinks',
+			'electronic-accessories',
+			'essentials',
+			'gifts',
+			'pantry',
+			'produce',
+			'snacks'
+		]);
 	});
 
 	it('keeps the bottled water chain at two buildings under the tier 1 cost ceiling', () => {
@@ -426,6 +540,7 @@ describe('tier 1 chains', () => {
 		expect(getCategoryTier('pantry')).toBe(1);
 		expect(getCategoryTier('snacks')).toBe(3);
 		expect(getCategoryTier('gifts')).toBe(3);
+		expect(getCategoryTier('electronic-accessories')).toBe(3);
 		expect(getCategoryTier('apparel')).toBeNull();
 	});
 
@@ -449,15 +564,17 @@ describe('tier 1 chains', () => {
 	});
 
 	it('resolves every finished product material to a non-null tier', () => {
-		for (const materialId of FINISHED_PRODUCT_MATERIAL_IDS) {
-			expect(getCategoryTier(materialId), `${materialId} must resolve to a tier`).not.toBeNull();
+		for (const material of Object.values(MATERIALS)) {
+			if (material.kind !== 'finished') continue;
+			expect(getCategoryTier(material.id), `${material.id} must resolve to a tier`).not.toBeNull();
 		}
 	});
 
 	it('terminates every finished chain in raw materials', () => {
-		for (const materialId of FINISHED_PRODUCT_MATERIAL_IDS) {
+		for (const material of Object.values(MATERIALS)) {
+			if (material.kind !== 'finished') continue;
 			const seen = new Set<string>();
-			const queue: string[] = [materialId];
+			const queue: string[] = [material.id];
 			while (queue.length > 0) {
 				const current = queue.pop()!;
 				if (seen.has(current)) continue;
@@ -465,9 +582,114 @@ describe('tier 1 chains', () => {
 				const producer = Object.values(PRODUCTION_RECIPES).find((recipe) =>
 					recipe.outputs.some((output) => output.materialId === current)
 				);
-				expect(producer, `${current} in ${materialId} chain needs a producer`).toBeDefined();
+				expect(producer, `${current} in ${material.id} chain needs a producer`).toBeDefined();
 				for (const input of producer!.inputs) queue.push(input.materialId);
 			}
 		}
+	});
+});
+
+describe('electronics supply chain catalog', () => {
+	it('defines the three electronics materials with candidate valuations', () => {
+		expect(MATERIALS['copper-ore']).toMatchObject({
+			name: 'Copper Ore',
+			kind: 'raw',
+			importCost: 3,
+			localValue: 2
+		});
+		expect(MATERIALS['circuit-boards']).toMatchObject({
+			name: 'Circuit Boards',
+			kind: 'intermediate',
+			importCost: 8,
+			localValue: 5
+		});
+		expect(MATERIALS['electronic-accessories']).toMatchObject({
+			name: 'Electronic Accessories',
+			kind: 'finished',
+			importCost: 11,
+			localValue: 8
+		});
+	});
+
+	it('defines the three electronics recipes with candidate quantities and costs', () => {
+		expect(PRODUCTION_RECIPES['copper-mining']).toEqual({
+			id: 'copper-mining',
+			inputs: [],
+			outputs: [{ materialId: 'copper-ore', quantity: 24 }],
+			operatingCost: 0,
+			stage: 'raw'
+		});
+		expect(PRODUCTION_RECIPES['circuit-board-production']).toEqual({
+			id: 'circuit-board-production',
+			inputs: [
+				{ materialId: 'copper-ore', quantity: 6 },
+				{ materialId: 'plastic', quantity: 1 }
+			],
+			outputs: [{ materialId: 'circuit-boards', quantity: 10 }],
+			operatingCost: 12,
+			stage: 'process'
+		});
+		expect(PRODUCTION_RECIPES['accessory-assembly']).toEqual({
+			id: 'accessory-assembly',
+			inputs: [
+				{ materialId: 'circuit-boards', quantity: 4 },
+				{ materialId: 'packaging', quantity: 1 }
+			],
+			outputs: [{ materialId: 'electronic-accessories', quantity: 8 }],
+			operatingCost: 15,
+			stage: 'final'
+		});
+	});
+
+	it('defines the three electronics buildings with candidate economics', () => {
+		expect(INDUSTRIAL_BUILDING_TYPES['copper-mine']).toMatchObject({
+			requiredResource: 'copper-deposit',
+			requiresIndustrialTile: false,
+			recipeId: 'copper-mining',
+			buildCost: 750,
+			dailyOperatingCost: 12,
+			warehouseCapacity: 0,
+			bufferCapacity: 120,
+			tier: 2
+		});
+		expect(INDUSTRIAL_BUILDING_TYPES['circuit-board-plant']).toMatchObject({
+			requiredResource: null,
+			requiresIndustrialTile: true,
+			recipeId: 'circuit-board-production',
+			buildCost: 1500,
+			dailyOperatingCost: 24,
+			warehouseCapacity: 0,
+			bufferCapacity: 80,
+			tier: 2
+		});
+		expect(INDUSTRIAL_BUILDING_TYPES['accessory-assembly-plant']).toMatchObject({
+			requiredResource: null,
+			requiresIndustrialTile: true,
+			recipeId: 'accessory-assembly',
+			buildCost: 1750,
+			dailyOperatingCost: 26,
+			warehouseCapacity: 0,
+			bufferCapacity: 80,
+			tier: 3
+		});
+	});
+
+	it('resolves the full upstream building chain for electronic-accessories', () => {
+		expect.assertions(2);
+		const buildingTypeIds = getIndustrialBuildingTypesForProductChain('electronic-accessories').map(
+			(buildingType) => buildingType.id
+		);
+
+		expect(buildingTypeIds).toEqual([
+			'pulpwood-grove',
+			'chemical-feedstock-well',
+			'copper-mine',
+			'pulp-mill',
+			'plastic-plant',
+			'packaging-plant',
+			'circuit-board-plant',
+			'accessory-assembly-plant'
+		]);
+		expect(buildingTypeIds).not.toContain('warehouse');
 	});
 });

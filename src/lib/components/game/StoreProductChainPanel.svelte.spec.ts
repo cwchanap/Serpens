@@ -59,17 +59,14 @@ describe('StoreProductChainPanel', () => {
 		expect(onInteractionFeedback).toHaveBeenCalledTimes(2);
 	});
 
-	it('shows an empty state for stores without supported production categories', async () => {
-		expect.assertions(1);
+	it('shows the supported accessories chain for electronics stores', async () => {
+		expect.assertions(2);
 		const game = createNewGame('electronics', 20260518);
 
 		renderProductChainPanel(game, game.stores[0]!);
 
-		await expect
-			.element(
-				page.getByText("No local production chain available for this store's categories yet.")
-			)
-			.toBeVisible();
+		await expect.element(page.getByRole('option', { name: 'Accessories' })).toBeInTheDocument();
+		await expect.element(page.getByTestId('product-chain-graph-chain:accessories')).toBeVisible();
 	});
 
 	it('resets the selected category whenever the selected store changes', async () => {
@@ -113,7 +110,7 @@ describe('StoreProductChainPanel', () => {
 		await expect.element(page.getByTestId('product-chain-graph-chain:bottled-water')).toBeVisible();
 	});
 
-	it('falls back to activeSelection productId when selectedCategory is null', () => {
+	it('resets to the new store default chain when the selected store changes', () => {
 		expect.assertions(1);
 		const game = createNewGame('convenience', 20260518);
 		const electronicsGame = createNewGame('electronics', 20260518);
@@ -139,9 +136,9 @@ describe('StoreProductChainPanel', () => {
 			props.store = electronicsGame.stores[0]!;
 			flushSync();
 
-			expect(target.textContent).toContain(
-				"No local production chain available for this store's categories yet."
-			);
+			expect(
+				target.querySelector('[data-testid="product-chain-graph-chain:accessories"]')
+			).not.toBeNull();
 		} finally {
 			flushSync(() => unmount(component));
 			target.remove();

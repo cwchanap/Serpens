@@ -18,7 +18,7 @@ describe('product catalog', () => {
 			gifts: 'gifts',
 			'fashion-accessories': null,
 			games: null,
-			accessories: null,
+			accessories: 'electronic-accessories',
 			devices: null,
 			peripherals: null,
 			produce: 'produce',

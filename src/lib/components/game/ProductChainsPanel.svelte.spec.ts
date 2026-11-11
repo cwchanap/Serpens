@@ -264,17 +264,15 @@ describe('ProductChainsPanel', () => {
 		await expect.element(page.getByTestId('category-stamp-bottled-water')).not.toBeInTheDocument();
 	});
 
-	it('renders the empty state when the store archetype has no supported chain categories', async () => {
+	it('renders the accessories chain for the electronics store archetype', async () => {
 		expect.assertions(3);
 		const game = createNewGame('electronics', 20260518);
 
 		renderProductChainsPanel(game);
 
-		await expect
-			.element(page.getByText('No store categories have local production chains yet.'))
-			.toBeVisible();
-		await expect.element(page.getByText('No chain graph is available.')).toBeVisible();
-		await expect.element(page.getByRole('heading', { name: 'Product Chains' })).toBeVisible();
+		await expect.element(page.getByTestId('category-stamp-accessories')).toBeVisible();
+		await expect.element(page.getByTestId('product-chain-graph-chain:accessories')).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Accessories' })).toBeVisible();
 	});
 
 	it('shows the fallback heading in city inventory flow mode when no city inventory stock or report exists', async () => {
