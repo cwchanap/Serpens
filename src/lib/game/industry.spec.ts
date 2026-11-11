@@ -9,7 +9,10 @@ import {
 	getIndustryTileById,
 	getIndustryTilesByResource
 } from './industry';
-import { decisionContextIndustrialRequiresResource } from './decisionContext';
+import {
+	decisionContextIndustrialRequiresIndustrialTile,
+	decisionContextIndustrialRequiresResource
+} from './decisionContext';
 import {
 	createIndustryTileLookup,
 	getIndustryBuildingFootprint,
@@ -421,6 +424,46 @@ describe('industry city generation', () => {
 			expect(
 				getIndustrialPlacementBlockReasonWithContext(context, waterTile.id, 'copper-mine')
 			).toEqual(decisionContextIndustrialRequiresResource('copper-deposit'));
+		}
+	});
+
+	test('electronics factories require industrial terrain at both generated city sizes', () => {
+		expect.assertions(8);
+		for (const size of [
+			{ width: 56, height: 48 },
+			{ width: 18, height: 18 }
+		]) {
+			const city = generateIndustryCity({
+				id: 'industry-city',
+				name: 'Industry City',
+				...size,
+				seed: 20260512
+			});
+			const tileLookup = createIndustryTileLookup(city);
+			const context = {
+				city,
+				tileLookup,
+				occupiedTileIds: new Set<string>(),
+				railOccupiedTileIds: new Set<string>()
+			};
+			const copperTile = getIndustryTilesByResource(city, 'copper-deposit')[0]!;
+			const industrialAnchor = city.tiles.find(
+				(tile) =>
+					tile.terrain === 'industrial' &&
+					!tile.locked &&
+					getIndustryBuildingFootprint(tileLookup, tile).tiles.every(
+						(footprintTile) => footprintTile.terrain === 'industrial' && !footprintTile.locked
+					)
+			)!;
+
+			for (const buildingTypeId of ['circuit-board-plant', 'accessory-assembly-plant'] as const) {
+				expect(
+					getIndustrialPlacementBlockReasonWithContext(context, copperTile.id, buildingTypeId)
+				).toEqual(decisionContextIndustrialRequiresIndustrialTile());
+				expect(
+					getIndustrialPlacementBlockReasonWithContext(context, industrialAnchor.id, buildingTypeId)
+				).toBeNull();
+			}
 		}
 	});
 

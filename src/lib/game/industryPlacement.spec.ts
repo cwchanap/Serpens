@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { getIndustryTileById, getIndustryTilesByResource } from './industry';
+import { generateIndustryCity, getIndustryTileById, getIndustryTilesByResource } from './industry';
 import {
 	decisionContextIndustrialLockedTile,
 	decisionContextIndustrialOccupiedTile,
@@ -10,7 +10,7 @@ import {
 	decisionContextIndustrialUnknownBuilding,
 	decisionContextIndustrialUnknownTile
 } from './decisionContext';
-import { createIndustryTileLookup } from './industryFootprint';
+import { createIndustryTileLookup, getIndustryBuildingFootprint } from './industryFootprint';
 import { getCityInventoryStats } from './cityInventory';
 import {
 	buildIndustrialBuilding,
@@ -751,6 +751,108 @@ describe('industrial placement', () => {
 		};
 
 		expect(getIndustrialPlacementBlockReason(game, anchor.id, 'flour-mill')).toBeNull();
+	});
+
+	test('places a copper mine on the production 56x48 anchor inside the extraction belt', () => {
+		expect.assertions(7);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const copperTile = getIndustryTilesByResource(city, 'copper-deposit')[0]!;
+		const footprint = getIndustryBuildingFootprint(createIndustryTileLookup(city), copperTile);
+
+		expect(city.width).toBe(56);
+		expect(city.height).toBe(48);
+		expect(copperTile).toMatchObject({ x: 14, y: 11, terrain: 'deposit' });
+		expect(footprint.tiles.map((tile) => ({ x: tile.x, y: tile.y }))).toEqual([
+			{ x: 14, y: 11 },
+			{ x: 15, y: 11 },
+			{ x: 14, y: 12 },
+			{ x: 15, y: 12 }
+		]);
+		// x=14..15 stays inside the extraction belt (x<=15); every footprint
+		// tile is unlocked deposit terrain carrying no other resource anchor.
+		expect(
+			footprint.tiles.every(
+				(tile) =>
+					tile.terrain === 'deposit' &&
+					!tile.locked &&
+					(tile.resource === null || tile.id === copperTile.id)
+			)
+		).toBe(true);
+		expect(getIndustrialPlacementBlockReason(game, copperTile.id, 'copper-mine')).toBeNull();
+		expect(
+			buildIndustrialBuilding(game, {
+				tileId: copperTile.id,
+				buildingTypeId: 'copper-mine'
+			}).industrialBuildings.map((building) => building.tileId)
+		).toEqual([copperTile.id]);
+	});
+
+	test('requires the copper deposit only on the copper mine anchor tile', () => {
+		expect.assertions(4);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const copperTile = getIndustryTilesByResource(city, 'copper-deposit')[0]!;
+		const footprint = getIndustryBuildingFootprint(createIndustryTileLookup(city), copperTile);
+		const resourceFreeNeighbor = footprint.tiles.find((tile) => tile.id !== copperTile.id)!;
+
+		expect(resourceFreeNeighbor.resource).toBeNull();
+		expect(getIndustrialPlacementBlockReason(game, resourceFreeNeighbor.id, 'copper-mine')).toEqual(
+			decisionContextIndustrialRequiresResource('copper-deposit')
+		);
+		expect(getIndustrialPlacementBlockReason(game, copperTile.id, 'salt-mine')).toEqual(
+			decisionContextIndustrialRequiresResource('salt-deposit')
+		);
+		// The resource-free neighbors satisfy the remaining footprint checks,
+		// so anchor-only resource validation still admits the build.
+		expect(getIndustrialPlacementBlockReason(game, copperTile.id, 'copper-mine')).toBeNull();
+	});
+
+	test('keeps the smaller 18x18 copper anchor legal through the game placement path', () => {
+		expect.assertions(4);
+		const smallCity = generateIndustryCity({
+			id: 'industry-city',
+			name: 'Industry City',
+			width: 18,
+			height: 18,
+			seed: 20260512
+		});
+		const game = {
+			...createNewGame('convenience', 20260512),
+			cash: 100_000,
+			industryCities: [smallCity],
+			activeIndustryCityId: smallCity.id
+		};
+		const copperTile = getIndustryTilesByResource(smallCity, 'copper-deposit')[0]!;
+
+		expect(copperTile).toMatchObject({ x: 5, y: 4, terrain: 'deposit' });
+		expect(
+			getIndustryBuildingFootprint(createIndustryTileLookup(smallCity), copperTile)
+		).toMatchObject({ missingCoordinates: [] });
+		expect(getIndustrialPlacementBlockReason(game, copperTile.id, 'copper-mine')).toBeNull();
+		expect(
+			buildIndustrialBuilding(game, {
+				tileId: copperTile.id,
+				buildingTypeId: 'copper-mine'
+			}).industrialBuildings
+		).toHaveLength(1);
+	});
+
+	test('requires industrial terrain for the electronics factories', () => {
+		expect.assertions(4);
+		const game = { ...createNewGame('convenience', 20260512), cash: 100_000 };
+		const city = game.industryCities[0]!;
+		const industrialAnchor = findWarehouseAnchor(city);
+		const copperTile = getIndustryTilesByResource(city, 'copper-deposit')[0]!;
+
+		for (const buildingTypeId of ['circuit-board-plant', 'accessory-assembly-plant'] as const) {
+			expect(
+				getIndustrialPlacementBlockReason(game, industrialAnchor.id, buildingTypeId)
+			).toBeNull();
+			expect(getIndustrialPlacementBlockReason(game, copperTile.id, buildingTypeId)).toEqual(
+				decisionContextIndustrialRequiresIndustrialTile()
+			);
+		}
 	});
 });
 
