@@ -27,14 +27,15 @@ export function createRoutePreviewGame(): GameState {
 		height: DEFAULT_RETAIL_CITY_HEIGHT,
 		seed: 20260503
 	});
-	const starterIndustry = getWorldCityDefinition('industry-city');
+	// 'industry-city' is a starter catalog entry and is always defined.
+	const starterIndustry = getWorldCityDefinition('industry-city')!;
 	const starterIndustryCity = generateIndustryCity({
-		id: starterIndustry?.id ?? 'industry-city',
-		name: starterIndustry?.name ?? 'Industry City',
+		id: starterIndustry.id,
+		name: starterIndustry.name,
 		width: DEFAULT_INDUSTRY_CITY_WIDTH,
 		height: DEFAULT_INDUSTRY_CITY_HEIGHT,
-		seed: starterIndustry?.seed ?? 20260512,
-		resourceProfile: starterIndustry?.industryResourceProfile
+		seed: starterIndustry.seed,
+		resourceProfile: starterIndustry.industryResourceProfile
 	});
 	return {
 		seed: 20260503,
