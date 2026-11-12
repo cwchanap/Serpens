@@ -351,6 +351,7 @@ export const PROGRESSION_PACING_TARGETS = {
 
 export interface ArchetypePacingVerdict {
 	archetypeId: ArchetypeId;
+	runCount: number;
 	tier3Reached: number;
 	tier3MedianDay: number | null;
 	tier3Blockers: Record<string, number>;
@@ -418,6 +419,7 @@ export function evaluateProgressionPacing(
 		const pairedGapMedian = median(pairedGaps);
 		return {
 			archetypeId,
+			runCount: runs.length,
 			tier3Reached: tier3.reached,
 			tier3MedianDay: tier3.claimDayMedian,
 			tier3Blockers: tier3.blockerGoalCounts,
