@@ -2,7 +2,6 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ARCHETYPES } from '$lib/game/archetypes';
-import { getCompanyBookValue } from '$lib/game/companyBookValue';
 import {
 	getIndustrialBuildingTypesForProductChain,
 	INDUSTRIAL_BUILDING_TYPES,
@@ -10,7 +9,6 @@ import {
 	PRODUCTION_RECIPES
 } from '$lib/game/industry';
 import { PRODUCTS } from '$lib/game/products';
-import { evaluateProgression } from '$lib/game/progression';
 import type {
 	ArchetypeId,
 	IndustrialBuildingTypeId,
@@ -19,6 +17,7 @@ import type {
 	ProgressionTierId
 } from '$lib/game/types';
 import { runProgressionBot, type ProgressionRunResult } from './bots';
+import { summarizeProgressionRun } from './progressionCalibration';
 
 export interface ChainEvidenceOptions {
 	seeds: number[];
@@ -126,18 +125,11 @@ export function parseChainEvidenceArgs(argv: readonly string[]): ChainEvidenceOp
 
 export function chainMaterialIds(finishedMaterialId: MaterialId): MaterialId[] {
 	const materialIds = new Set<MaterialId>([finishedMaterialId]);
-	let changed = true;
-	while (changed) {
-		changed = false;
-		for (const recipe of Object.values(PRODUCTION_RECIPES)) {
-			if (!recipe.outputs.some((output) => materialIds.has(output.materialId))) continue;
-			for (const input of recipe.inputs) {
-				if (!materialIds.has(input.materialId)) {
-					materialIds.add(input.materialId);
-					changed = true;
-				}
-			}
-		}
+	for (const building of getIndustrialBuildingTypesForProductChain(finishedMaterialId)) {
+		if (!building.recipeId) continue;
+		const recipe = PRODUCTION_RECIPES[building.recipeId];
+		for (const input of recipe.inputs) materialIds.add(input.materialId);
+		for (const output of recipe.outputs) materialIds.add(output.materialId);
 	}
 	return [...materialIds].sort();
 }
@@ -216,7 +208,13 @@ export function summarizeChainEvidence(
 	result: ProgressionRunResult,
 	options: { days: number; product: ProductId; costBuildings: IndustrialBuildingTypeId[] }
 ): ChainRunEvidence {
-	const { game, ledger, progression } = result;
+	const { game, ledger } = result;
+	const reportDays = game.reports.length;
+	if (options.days !== reportDays) {
+		throw new Error(
+			`summarizeChainEvidence: options.days (${options.days}) does not match game.reports count (${reportDays})`
+		);
+	}
 	const product = PRODUCTS[options.product];
 	const finishedMaterialId = product.productionMaterialId!;
 	const materialIds = new Set(chainMaterialIds(finishedMaterialId));
@@ -313,7 +311,7 @@ export function summarizeChainEvidence(
 		const buildingType = INDUSTRIAL_BUILDING_TYPES[building.typeId];
 		const recipe = buildingType.recipeId ? PRODUCTION_RECIPES[buildingType.recipeId] : undefined;
 		const builtOnDay = buildDayByTileId.get(building.tileId) ?? null;
-		const daysAlive = builtOnDay === null ? 0 : options.days - builtOnDay + 1;
+		const daysAlive = builtOnDay === null ? 0 : reportDays - builtOnDay + 1;
 		const nominalOutput =
 			recipe?.outputs.reduce((total, output) => total + output.quantity, 0) ?? 0;
 		return {
@@ -343,8 +341,11 @@ export function summarizeChainEvidence(
 	const plannerNoOpReasons: Record<string, number> = {};
 	const railFailureReasons: Record<string, number> = {};
 	for (const action of ledger.actions) {
-		if (action.action === 'progression:none' && action.detail?.startsWith(`${options.product}:`)) {
-			const reason = action.detail.split(': ')[1]!;
+		const isPlannerNoOp =
+			action.action === 'progression:none' ||
+			(action.action === 'progression:plan' && action.outcome === 'no-op');
+		if (isPlannerNoOp && action.detail?.startsWith(`${options.product}:`)) {
+			const reason = action.detail.slice(options.product.length + 1).trim();
 			plannerNoOpReasons[reason] = (plannerNoOpReasons[reason] ?? 0) + 1;
 		}
 		if (action.action === 'progression:connect-rail' && action.outcome !== 'applied') {
@@ -353,14 +354,8 @@ export function summarizeChainEvidence(
 		}
 	}
 
-	const evaluation = evaluateProgression(game);
-	const unclaimedTierGoalIds: Record<string, string[]> = {};
-	for (const tier of evaluation.tiers) {
-		if (tier.claimed) continue;
-		unclaimedTierGoalIds[tier.tier.id] = tier.goals
-			.filter((goal) => !goal.passes)
-			.map((goal) => goal.goal.id);
-	}
+	const archetypeId = (ledger.archetypeId as ArchetypeId) ?? 'convenience';
+	const runSummary = summarizeProgressionRun(seed, archetypeId, result);
 
 	const chainMaterials: ChainRunEvidence['chainMaterials'] = {};
 	for (const materialId of materialIds) {
@@ -380,19 +375,13 @@ export function summarizeChainEvidence(
 
 	return {
 		seed,
-		claims: progression.claims.map((claim) => ({ ...claim })),
-		finalCash: game.cash,
-		finalDebt: game.finance.loans.reduce(
-			(total, loan) => total + Math.max(0, loan.remainingPrincipal),
-			0
-		),
-		finalBookValue: getCompanyBookValue(game).total,
-		peakBookValue: game.reports.reduce(
-			(peak, report) => Math.max(peak, report.companyBookValueAfter),
-			0
-		),
-		storeCount: game.stores.length,
-		openedCityCount: game.world.openedCityIds.length,
+		claims: runSummary.claims,
+		finalCash: runSummary.finalCash,
+		finalDebt: runSummary.finalDebt,
+		finalBookValue: runSummary.finalBookValue,
+		peakBookValue: runSummary.peakBookValue,
+		storeCount: runSummary.storeCount,
+		openedCityCount: runSummary.openedCityCount,
 		product: productEvidence,
 		chainMaterials,
 		otherProducedMaterials: Object.fromEntries(
@@ -417,9 +406,9 @@ export function summarizeChainEvidence(
 		},
 		plannerNoOpReasons,
 		railFailureReasons,
-		borrowCount: progression.creditEvents.length,
-		totalBorrowed: progression.creditEvents.reduce((total, event) => total + event.amount, 0),
-		unclaimedTierGoalIds
+		borrowCount: runSummary.borrowCount,
+		totalBorrowed: runSummary.totalBorrowed,
+		unclaimedTierGoalIds: runSummary.unclaimedTierGoalIds
 	};
 }
 

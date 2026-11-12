@@ -1,4 +1,4 @@
-import { getArchetype } from './archetypes';
+import { ARCHETYPES } from './archetypes';
 import { getCityInventory, getCityInventoryStats, getCityInventoryUsed } from './cityInventory';
 import { INDUSTRIAL_BUILDING_TYPES, MATERIALS, PRODUCTION_RECIPES } from './industry';
 import { getBuildingThroughputMultiplier } from './leveling';
@@ -148,9 +148,11 @@ export const SUPPORTED_FINISHED_MATERIALS = createSupportedFinishedMaterials();
 
 export function getSupportedStoreChainCategories(store: Store): ProductDefinition[] {
 	const supported = new Set<string>(SUPPORTED_FINISHED_MATERIALS);
+	const archetype = ARCHETYPES.find((candidate) => candidate.id === store.archetypeId);
+	if (!archetype) return [];
 
-	return getArchetype(store.archetypeId)
-		.startingProductIds.map((productId) => getProductDefinition(productId))
+	return archetype.startingProductIds
+		.map((productId) => getProductDefinition(productId))
 		.filter(
 			(product) =>
 				product.productionMaterialId !== null && supported.has(product.productionMaterialId)

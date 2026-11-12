@@ -1,4 +1,17 @@
-import type { WorldCityDefinition, WorldCityId } from './types';
+import type { MaterialId, WorldCityDefinition, WorldCityId } from './types';
+
+/**
+ * Advanced finished materials whose city-local production or inventory reveals
+ * Quarry Works. Excludes tier-1 onboarding chains (bottled water, produce,
+ * pantry) without coupling world reveal rules to building-tier grouping.
+ */
+export const QUARRY_WORKS_FINISHED_MATERIALS: readonly MaterialId[] = [
+	'snacks',
+	'drinks',
+	'essentials',
+	'gifts',
+	'electronic-accessories'
+];
 
 /**
  * Canonical world-city data and its ordering primitives. Keeping this module
@@ -125,7 +138,7 @@ export const WORLD_CITY_CATALOG: readonly WorldCityDefinition[] = [
 		seed: 20260534,
 		openingCost: 26_000,
 		initiallyOpened: false,
-		unlockRequirement: 'Produce a finished material locally.',
+		unlockRequirement: 'Produce an advanced finished material locally.',
 		specialtySummary:
 			'Extraction and factory district for salt, copper, chemicals, pulpwood, and packaging chains.',
 		storeCapBonus: 0,

@@ -1518,7 +1518,7 @@ export const zhHant = {
 			},
 			'quarry-works': {
 				name: '採石工坊區',
-				unlockRequirement: '在本地生產一種成品材料。',
+				unlockRequirement: '在本地生產一種高級成品材料。',
 				specialtySummary: '擅長鹽、銅、化工、紙漿與包裝鏈的採掘加工工業區。'
 			}
 		},

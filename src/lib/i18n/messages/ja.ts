@@ -1530,7 +1530,7 @@ export const ja = {
 			},
 			'quarry-works': {
 				name: 'クオリーワークス',
-				unlockRequirement: '完成品素材を現地生産する。',
+				unlockRequirement: '高度な完成品素材を現地生産する。',
 				specialtySummary: '塩、銅、化学品、木材パルプ、包装材チェーンに強い採掘・工業地区です。'
 			}
 		},

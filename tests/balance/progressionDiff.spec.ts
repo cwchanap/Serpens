@@ -184,4 +184,35 @@ describe('diffProgressionArtifacts', () => {
 		expect(text).toContain('convenience: 1 identical, 0 differing');
 		expect(text).toContain('require-identical: PASS');
 	});
+
+	it('fails require-identical and reports mismatch when idle aggregate differs', () => {
+		const base = {
+			...artifact([row(1, 'convenience')]),
+			idle: { totalRuns: 1, totalEarnedUnclaimed: 0 }
+		};
+		const head = {
+			...artifact([row(1, 'convenience')]),
+			idle: { totalRuns: 1, totalEarnedUnclaimed: 1 }
+		};
+		const result = diffProgressionArtifacts(base, head, ['convenience']);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.idleControlMismatches).toEqual(['idle aggregate differs between base and head']);
+		expect(result.requireIdenticalFailures).toContain(
+			'idle-control:idle aggregate differs between base and head'
+		);
+		const text = formatProgressionDiff(result);
+		expect(text).toContain('idle-control mismatch: idle aggregate differs between base and head');
+		expect(text).toContain('require-identical: FAIL (1 violation(s))');
+	});
+
+	it('reports non-zero violation count in formatted verdict when config mismatches', () => {
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience')]),
+			artifact([row(1, 'convenience')], { days: 90 })
+		);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.requireIdenticalFailures.length).toBeGreaterThan(0);
+		const text = formatProgressionDiff(result);
+		expect(text).toMatch(/require-identical: FAIL \([1-9]\d* violation\(s\)\)/);
+	});
 });

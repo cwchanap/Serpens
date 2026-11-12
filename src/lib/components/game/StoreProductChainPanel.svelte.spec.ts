@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { flushSync, mount, unmount } from 'svelte';
 import { createNewGame } from '$lib/game/state';
 import { createI18n } from '$lib/i18n';
-import type { GameState, Store } from '$lib/game/types';
+import type { ArchetypeId, GameState, Store } from '$lib/game/types';
 import StoreProductChainPanel from './StoreProductChainPanel.svelte';
 
 function renderProductChainPanel(
@@ -67,6 +67,23 @@ describe('StoreProductChainPanel', () => {
 
 		await expect.element(page.getByRole('option', { name: 'Accessories' })).toBeInTheDocument();
 		await expect.element(page.getByTestId('product-chain-graph-chain:accessories')).toBeVisible();
+	});
+
+	it('shows an empty state when a store has no supported production categories', async () => {
+		expect.assertions(1);
+		const game = createNewGame('convenience', 20260518);
+		const unsupportedStore: Store = {
+			...game.stores[0]!,
+			archetypeId: 'custom' as ArchetypeId
+		};
+
+		renderProductChainPanel(game, unsupportedStore);
+
+		await expect
+			.element(
+				page.getByText("No local production chain available for this store's categories yet.")
+			)
+			.toBeVisible();
 	});
 
 	it('resets the selected category whenever the selected store changes', async () => {

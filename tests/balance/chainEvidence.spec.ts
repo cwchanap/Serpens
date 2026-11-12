@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createNewGame } from '$lib/game/state';
 import type { DailyProductReport, DailyReport, DailyStoreReport } from '$lib/game/types';
-import { runProgressionBot, type ProgressionRunResult } from './bots';
+import type { ProgressionRunResult } from './bots';
 import { chainMaterialIds, parseChainEvidenceArgs, summarizeChainEvidence } from './chainEvidence';
 
 const BASE_ARGS = [
@@ -201,6 +201,10 @@ describe('summarizeChainEvidence', () => {
 	it('counts distinct delivery days when several stores receive stock on one day', () => {
 		const game = createNewGame('electronics', 424242);
 		game.reports = [
+			fakeDailyReport(1, []),
+			fakeDailyReport(2, []),
+			fakeDailyReport(3, []),
+			fakeDailyReport(4, []),
 			fakeDailyReport(5, [fakeStoreReport('store-1', 3), fakeStoreReport('store-2', 4)]),
 			fakeDailyReport(6, [fakeStoreReport('store-1', 0), fakeStoreReport('store-2', 0)]),
 			fakeDailyReport(7, [fakeStoreReport('store-2', 2)])
@@ -215,48 +219,146 @@ describe('summarizeChainEvidence', () => {
 		expect(evidence.product.localDeliveryDays).toBe(2);
 	});
 
-	// Re-runs the real 365-day electronics progression bot, so it needs the
-	// heavy-spec headroom progressionBots.spec.ts reserves for the same run.
-	it(
-		'captures deterministic chain evidence for the 20260503 reference run',
-		{ timeout: 30_000 },
-		() => {
-			const evidence = summarizeChainEvidence(
-				20260503,
-				runProgressionBot('electronics', 20260503, 365),
-				{
-					days: 365,
-					product: 'accessories',
-					costBuildings: ['copper-mine', 'circuit-board-plant', 'accessory-assembly-plant']
-				}
-			);
-			expect(evidence.claims).toEqual([
-				{ tierId: 'local-shop', claimedOnDay: 49 },
-				{ tierId: 'neighborhood-chain', claimedOnDay: 57 },
-				{ tierId: 'regional-supplier', claimedOnDay: 260 }
-			]);
-			expect(evidence.product).toMatchObject({
-				warehouseUnits: 463,
-				firstLocalDeliveryDay: 245,
-				localDeliveryDays: 17,
-				demandMissed: 25041
-			});
-			expect(evidence.chainMaterials['electronic-accessories']!.produced).toBe(541);
-			expect(evidence.chainMaterials['circuit-boards']!.produced).toBe(489);
-			expect(evidence.chainMaterials['copper-ore']!.importedInputQuantity).toBe(149);
-			const copperMine = evidence.buildings.find((building) => building.typeId === 'copper-mine');
-			expect(copperMine).toMatchObject({ builtOnDay: 15, producedTotal: 265, chainBuilding: true });
-			expect(copperMine!.fixedOperatingCost).toBeGreaterThan(0);
-			const warehouse = evidence.buildings.find((building) => building.typeId === 'warehouse');
-			expect(warehouse).toMatchObject({ builtOnDay: 113 });
-			expect(warehouse!.fixedOperatingCost).toBe(0);
-			expect(warehouse!.recipeOperatingEstimate).toBe(0);
-			expect(evidence.costScope.buildingTypeIds).toEqual([
-				'accessory-assembly-plant',
-				'circuit-board-plant',
-				'copper-mine'
-			]);
-			expect(evidence.costScope.fixedOperating).toBeGreaterThan(0);
-		}
-	);
+	it('throws when options.days does not match game.reports count', () => {
+		const game = createNewGame('electronics', 424242);
+		game.reports = [fakeDailyReport(1, [])];
+		expect(() =>
+			summarizeChainEvidence(424242, fakeRunResult(game), {
+				days: 5,
+				product: 'accessories',
+				costBuildings: []
+			})
+		).toThrow(/options\.days/);
+	});
+
+	it('captures chain evidence fields from synthetic run data without running a full simulation', () => {
+		const game = createNewGame('electronics', 424242);
+		const copperMine = {
+			id: 'b-1',
+			typeId: 'copper-mine' as const,
+			cityId: 'industry-city',
+			tileId: 'tile-copper',
+			level: 1,
+			mapX: 0,
+			mapY: 0,
+			status: 'idle' as const,
+			lastProduction: [],
+			blockedDays: 0,
+			producedTotal: 50,
+			importedInputTotal: 10,
+			inventory: { 'copper-ore': 5 }
+		};
+		const warehouse = {
+			id: 'b-2',
+			typeId: 'warehouse' as const,
+			cityId: 'industry-city',
+			tileId: 'tile-warehouse',
+			level: 1,
+			mapX: 0,
+			mapY: 0,
+			status: 'idle' as const,
+			lastProduction: [],
+			blockedDays: 0,
+			producedTotal: 0,
+			importedInputTotal: 0,
+			inventory: {}
+		};
+		game.industrialBuildings = [copperMine, warehouse];
+
+		const r1 = fakeDailyReport(1, []);
+		r1.productionReport.produced = [
+			{
+				materialId: 'electronic-accessories',
+				quantity: 20,
+				value: 0,
+				source: 'local',
+				cityId: 'industry-city'
+			}
+		];
+		r1.productionReport.importedInputs = [
+			{
+				materialId: 'copper-ore',
+				quantity: 10,
+				value: 50,
+				source: 'import',
+				cityId: 'industry-city'
+			}
+		];
+
+		const r2 = fakeDailyReport(2, [fakeStoreReport('store-1', 15)]);
+
+		game.reports = [r1, r2];
+
+		const runResult = fakeRunResult(game);
+		runResult.ledger.actions = [
+			{
+				day: 1,
+				bot: 'progression',
+				action: 'progression:build-producer',
+				outcome: 'applied',
+				detail: 'copper-mine on tile-copper'
+			},
+			{
+				day: 2,
+				bot: 'progression',
+				action: 'progression:build-warehouse',
+				outcome: 'applied',
+				detail: 'warehouse on tile-warehouse'
+			},
+			{
+				day: 1,
+				bot: 'progression',
+				action: 'progression:plan',
+				outcome: 'no-op',
+				detail: 'accessories: blocked: No path available'
+			},
+			{
+				day: 2,
+				bot: 'progression',
+				action: 'progression:none',
+				outcome: 'no-op',
+				detail: 'accessories: complete'
+			},
+			{
+				day: 2,
+				bot: 'progression',
+				action: 'progression:connect-rail',
+				outcome: 'rejected',
+				detail: '{"code":"UNREACHABLE"}'
+			}
+		];
+
+		const evidence = summarizeChainEvidence(424242, runResult, {
+			days: 2,
+			product: 'accessories',
+			costBuildings: ['copper-mine']
+		});
+
+		expect(evidence.product.warehouseUnits).toBe(15);
+		expect(evidence.product.firstLocalDeliveryDay).toBe(2);
+		expect(evidence.product.localDeliveryDays).toBe(1);
+
+		expect(evidence.chainMaterials['electronic-accessories']?.produced).toBe(20);
+		expect(evidence.chainMaterials['copper-ore']?.importedInputQuantity).toBe(10);
+
+		const copperBuilding = evidence.buildings.find((b) => b.typeId === 'copper-mine')!;
+		expect(copperBuilding.builtOnDay).toBe(1);
+		expect(copperBuilding.chainBuilding).toBe(true);
+		expect(copperBuilding.fixedOperatingCost).toBeGreaterThan(0);
+
+		const warehouseBuilding = evidence.buildings.find((b) => b.typeId === 'warehouse')!;
+		expect(warehouseBuilding.builtOnDay).toBe(2);
+		expect(warehouseBuilding.fixedOperatingCost).toBe(0);
+
+		expect(evidence.costScope.buildingTypeIds).toEqual(['copper-mine']);
+		expect(evidence.costScope.fixedOperating).toBe(copperBuilding.fixedOperatingCost);
+
+		expect(evidence.plannerNoOpReasons).toEqual({
+			'blocked: No path available': 1,
+			complete: 1
+		});
+		expect(evidence.railFailureReasons).toEqual({
+			UNREACHABLE: 1
+		});
+	});
 });

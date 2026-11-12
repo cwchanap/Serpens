@@ -1543,7 +1543,7 @@ export const en = {
 			},
 			'quarry-works': {
 				name: 'Quarry Works',
-				unlockRequirement: 'Produce a finished material locally.',
+				unlockRequirement: 'Produce an advanced finished material locally.',
 				specialtySummary:
 					'Extraction and factory district for salt, copper, chemicals, pulpwood, and packaging chains.'
 			}
