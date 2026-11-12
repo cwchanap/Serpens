@@ -34,7 +34,7 @@ function argsError(detail: string): never {
 
 function parsePositiveInteger(flag: string, raw: string): number {
 	const value = Number(raw);
-	if (!Number.isSafeInteger(value) || value < 1) {
+	if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1) {
 		argsError(`--${flag} expects a positive integer, got "${raw}".`);
 	}
 	return value;

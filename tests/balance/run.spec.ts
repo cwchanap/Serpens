@@ -55,6 +55,17 @@ describe('parseBalanceSweepArgs', () => {
 		).toThrow(/--days expects a positive integer/);
 	});
 
+	it('rejects scientific notation and malformed numeric strings', () => {
+		for (const seed of ['2.02605e+07', '7.0', '-7', '']) {
+			expect(() =>
+				parseBalanceSweepArgs(['--seeds', seed, '--days', '30', '--bots', 'idle'])
+			).toThrow(/--seeds expects a positive integer/);
+		}
+		expect(() =>
+			parseBalanceSweepArgs(['--seeds', '7', '--days', '3e2', '--bots', 'idle'])
+		).toThrow(/--days expects a positive integer/);
+	});
+
 	it('rejects unknown flags, empty bot names, and missing flag values', () => {
 		expect(() => parseBalanceSweepArgs(['--seed', '7', '--days', '30', '--bots', 'idle'])).toThrow(
 			/unknown argument "--seed"/

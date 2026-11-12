@@ -26,6 +26,17 @@ describe('parseChainEvidenceArgs', () => {
 		).toThrow(/positive integer/);
 	});
 
+	it('rejects scientific notation for seeds and days', () => {
+		for (const seed of ['2.02605e+07', '7.0', '-7', '']) {
+			const args = [...BASE_ARGS];
+			args[1] = seed;
+			expect(() => parseChainEvidenceArgs(args)).toThrow(/--seeds expects a positive integer/);
+		}
+		const args = [...BASE_ARGS];
+		args[3] = '3e2';
+		expect(() => parseChainEvidenceArgs(args)).toThrow(/--days expects a positive integer/);
+	});
+
 	it('requires archetype and product flags', () => {
 		expect(() => parseChainEvidenceArgs(['--seeds', '42', '--days', '10'])).toThrow(/--archetype/);
 	});

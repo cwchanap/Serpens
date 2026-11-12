@@ -232,6 +232,33 @@ describe('diffProgressionArtifacts', () => {
 		expect(text).toContain('require-identical: FAIL (1 violation(s))');
 	});
 
+	it('reports changed idle book values without failing an ordinary before/after comparison', () => {
+		const base = {
+			...artifact([row(1, 'convenience')]),
+			idle: { totalClaims: 0, totalEarnedUnclaimed: 0, finalBookValue: { median: 40 } },
+			tier1NonDecorative: { idlePeakReportBookValueMax: 42, tier1PeakTarget: 70, passes: true }
+		};
+		const head = {
+			...artifact([row(1, 'convenience', { finalCash: 10 })]),
+			idle: { totalClaims: 0, totalEarnedUnclaimed: 0, finalBookValue: { median: 30 } },
+			tier1NonDecorative: { idlePeakReportBookValueMax: 45, tier1PeakTarget: 70, passes: true }
+		};
+		const result = diffProgressionArtifacts(base, head);
+		expect(result.idleControlMismatches).toEqual([
+			'idle aggregate differs between base and head',
+			'tier1NonDecorative differs between base and head'
+		]);
+		expect(result.requireIdenticalPassed).toBe(true);
+		expect(result.requireIdenticalFailures).toEqual([]);
+		expect(formatProgressionDiff(result)).toContain('idle-control mismatch: idle aggregate differs');
+		// Identical mode retains its strict idle checks.
+		const strict = diffProgressionArtifacts(base, head, ['convenience']);
+		expect(strict.requireIdenticalPassed).toBe(false);
+		expect(strict.requireIdenticalFailures).toContain(
+			'idle-control:idle aggregate differs between base and head'
+		);
+	});
+
 	it('reports non-zero violation count in formatted verdict when config mismatches', () => {
 		const result = diffProgressionArtifacts(
 			artifact([row(1, 'convenience')]),

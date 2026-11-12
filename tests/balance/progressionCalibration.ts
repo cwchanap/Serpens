@@ -12,6 +12,7 @@ import { getCompanyBookValue } from '$lib/game/companyBookValue';
 import { claimEarnedTiers, evaluateProgression, PROGRESSION_TIERS } from '$lib/game/progression';
 import type { ArchetypeId, GameState, ProgressionTierId } from '$lib/game/types';
 import type { ProgressionRunResult } from './bots';
+import { GATE_A_OFFICIAL_DAYS, SWEEP_ARCHETYPES, SWEEP_SEEDS } from './measure';
 
 /**
  * Linear-interpolation quantile on the (n − 1) positional grid: q(sample, 0.5)
@@ -335,5 +336,131 @@ export function buildProgressionCalibrationReport(
 		finalBookValue: minMedianMax(progressionRuns.map((run) => run.finalBookValue)),
 		finalStoreCount: minMedianMax(progressionRuns.map((run) => run.storeCount)),
 		runs: progressionRuns.map((run) => ({ ...run }))
+	};
+}
+
+/** Approved HPA-721 first-year gates; see the signed-off PR #73 review. */
+export const PROGRESSION_PACING_TARGETS = {
+	tier3MinShare: 0.8,
+	tier3MedianDayMin: 90,
+	tier3MedianDayMax: 150,
+	tier5MinShare: 0.5,
+	tier4To5MedianGapMin: 30,
+	maxMedianPeakValueRatio: 3
+} as const;
+
+export interface ArchetypePacingVerdict {
+	archetypeId: ArchetypeId;
+	runCount: number;
+	tier3Reached: number;
+	tier3MedianDay: number | null;
+	tier3Blockers: Record<string, number>;
+	tier3Passed: boolean;
+	tier5Reached: number;
+	tier5Blockers: Record<string, number>;
+	tier5Passed: boolean;
+	pairedGapMedian: number | null;
+	sameDayTier4Tier5: number;
+	spacingPassed: boolean;
+	medianPeakBookValue: number | null;
+}
+
+export interface ProgressionPacingVerdict {
+	coverageComplete: boolean;
+	archetypes: ArchetypePacingVerdict[];
+	peakBookValueRatio: number | null;
+	equityPassed: boolean;
+	allPassed: boolean;
+}
+
+/**
+ * Pure verdict over the same official matrix used by the HPA-502 Gate A harness.
+ * Partial pilots are always diagnostic (never an official PASS).
+ */
+export function evaluateProgressionPacing(
+	report: ProgressionCalibrationReport
+): ProgressionPacingVerdict {
+	const expectedCount = SWEEP_SEEDS.length * SWEEP_ARCHETYPES.length;
+	const counts = new Map<string, number>();
+	for (const run of report.runs) {
+		const key = `${run.seed}/${run.archetypeId}`;
+		counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+	const coverageComplete =
+		report.config.days === GATE_A_OFFICIAL_DAYS &&
+		report.config.seeds.length === SWEEP_SEEDS.length &&
+		new Set(report.config.seeds).size === SWEEP_SEEDS.length &&
+		report.config.seeds.every((seed) => SWEEP_SEEDS.includes(seed)) &&
+		report.config.archetypes.length === SWEEP_ARCHETYPES.length &&
+		new Set(report.config.archetypes).size === SWEEP_ARCHETYPES.length &&
+		report.config.archetypes.every((id) => SWEEP_ARCHETYPES.includes(id)) &&
+		report.runs.length === expectedCount &&
+		report.progressionRuns === expectedCount &&
+		report.idleRuns === expectedCount &&
+		report.idle.runs === expectedCount &&
+		counts.size === expectedCount &&
+		SWEEP_SEEDS.every((seed) =>
+			SWEEP_ARCHETYPES.every((id) => counts.get(`${seed}/${id}`) === 1)
+		);
+
+	const archetypes = SWEEP_ARCHETYPES.map<ArchetypePacingVerdict>((archetypeId) => {
+		const runs = report.runs.filter((run) => run.archetypeId === archetypeId);
+		const tier3 = calibrateTier('regional-supplier', runs);
+		const tier5 = calibrateTier('market-leader', runs);
+		const pairedGaps: number[] = [];
+		for (const run of runs) {
+			const day5 = run.claims.find((claim) => claim.tierId === 'market-leader')?.claimedOnDay;
+			if (day5 === undefined) continue;
+			const day4 = run.claims.find(
+				(claim) => claim.tierId === 'multi-city-operator'
+			)?.claimedOnDay;
+			if (day4 !== undefined && day5 >= day4) pairedGaps.push(day5 - day4);
+		}
+		const pairedGapMedian = median(pairedGaps);
+		return {
+			archetypeId,
+			runCount: runs.length,
+			tier3Reached: tier3.reached,
+			tier3MedianDay: tier3.claimDayMedian,
+			tier3Blockers: tier3.blockerGoalCounts,
+			tier3Passed:
+				runs.length > 0 &&
+				tier3.reached / runs.length >= PROGRESSION_PACING_TARGETS.tier3MinShare &&
+				tier3.claimDayMedian !== null &&
+				tier3.claimDayMedian >= PROGRESSION_PACING_TARGETS.tier3MedianDayMin &&
+				tier3.claimDayMedian <= PROGRESSION_PACING_TARGETS.tier3MedianDayMax,
+			tier5Reached: tier5.reached,
+			tier5Blockers: tier5.blockerGoalCounts,
+			tier5Passed:
+				runs.length > 0 &&
+				tier5.reached / runs.length >= PROGRESSION_PACING_TARGETS.tier5MinShare,
+			pairedGapMedian,
+			sameDayTier4Tier5: pairedGaps.filter((gap) => gap === 0).length,
+			spacingPassed:
+				tier5.reached > 0 &&
+				pairedGaps.length === tier5.reached &&
+				pairedGapMedian !== null &&
+				pairedGapMedian >= PROGRESSION_PACING_TARGETS.tier4To5MedianGapMin,
+			medianPeakBookValue: median(runs.map((run) => run.peakBookValue))
+		};
+	});
+	const medians = archetypes.map((row) => row.medianPeakBookValue);
+	const minMedian = Math.min(...medians.map((value) => value ?? 0));
+	const maxMedian = Math.max(...medians.map((value) => value ?? 0));
+	// No Infinity/NaN verdicts when an archetype has no positive peak value.
+	const peakBookValueRatio =
+		minMedian > 0 && Number.isFinite(maxMedian) ? maxMedian / minMedian : null;
+	const equityPassed =
+		peakBookValueRatio !== null &&
+		peakBookValueRatio <= PROGRESSION_PACING_TARGETS.maxMedianPeakValueRatio;
+	return {
+		coverageComplete,
+		archetypes,
+		peakBookValueRatio,
+		equityPassed,
+		allPassed:
+			coverageComplete &&
+			equityPassed &&
+			archetypes.every((row) => row.tier3Passed && row.tier5Passed && row.spacingPassed)
 	};
 }
