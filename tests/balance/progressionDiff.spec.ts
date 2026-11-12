@@ -135,6 +135,33 @@ describe('diffProgressionArtifacts', () => {
 		expect(result.requireIdenticalFailures).toContain('2/convenience');
 	});
 
+	it('fails when declared rows for a non-required archetype are missing from both artifacts', () => {
+		const declared = { seeds: [1, 2], archetypes: ['convenience', 'electronics'] };
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience'), row(2, 'convenience')], declared),
+			artifact([row(1, 'convenience'), row(2, 'convenience')], { ...declared }),
+			['convenience']
+		);
+		expect(result.missingInBase).toEqual([]);
+		expect(result.missingInHead).toEqual([]);
+		expect(result.baseCoverage.missingKeys).toEqual(['1/electronics', '2/electronics']);
+		expect(result.headCoverage.missingKeys).toEqual(['1/electronics', '2/electronics']);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.requireIdenticalFailures).toContain('matrix-issue:1/electronics');
+	});
+
+	it('fails on undeclared rows for a non-required archetype present in both artifacts', () => {
+		const declared = { seeds: [1, 2], archetypes: ['convenience'] };
+		const result = diffProgressionArtifacts(
+			artifact([row(1, 'convenience'), row(2, 'electronics')], declared),
+			artifact([row(1, 'convenience'), row(2, 'electronics')], { ...declared }),
+			['convenience']
+		);
+		expect(result.baseCoverage.unexpectedKeys).toEqual(['2/electronics']);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.requireIdenticalFailures).toContain('matrix-issue:2/electronics');
+	});
+
 	it('fails on rows outside the declared matrix in both artifacts', () => {
 		const result = diffProgressionArtifacts(
 			artifact([row(1, 'convenience'), row(2, 'convenience')], { seeds: [1] }),

@@ -279,7 +279,11 @@ export function diffProgressionArtifacts(
 		...missingInBase,
 		...missingInHead,
 		...duplicateBaseKeys,
-		...duplicateHeadKeys
+		...duplicateHeadKeys,
+		...baseCoverage.missingKeys,
+		...baseCoverage.unexpectedKeys,
+		...headCoverage.missingKeys,
+		...headCoverage.unexpectedKeys
 	]) {
 		if (!requiredSet.has(keyArchetype(key))) {
 			failureKeys.add(`matrix-issue:${key}`);
