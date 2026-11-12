@@ -135,14 +135,15 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		height: DEFAULT_RETAIL_CITY_HEIGHT,
 		seed: normalizedSeed
 	});
-	const starterIndustry = getWorldCityDefinition('industry-city');
+	// 'industry-city' is a starter catalog entry and is always defined.
+	const starterIndustry = getWorldCityDefinition('industry-city')!;
 	const industryCity = generateIndustryCity({
-		id: starterIndustry?.id ?? 'industry-city',
-		name: starterIndustry?.name ?? 'Industry City',
+		id: starterIndustry.id,
+		name: starterIndustry.name,
 		width: DEFAULT_INDUSTRY_CITY_WIDTH,
 		height: DEFAULT_INDUSTRY_CITY_HEIGHT,
-		seed: starterIndustry?.seed ?? normalizedSeed + 101,
-		resourceProfile: starterIndustry?.industryResourceProfile
+		seed: starterIndustry.seed,
+		resourceProfile: starterIndustry.industryResourceProfile
 	});
 	const fallbackTile = city.tiles.find(isTileBuildable) ?? city.tiles[0]!;
 	const openingStore = createStore({
