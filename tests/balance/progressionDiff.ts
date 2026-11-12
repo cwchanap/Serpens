@@ -269,8 +269,13 @@ export function diffProgressionArtifacts(
 	for (const archetypeId of unrepresentedArchetypes) {
 		failureKeys.add(`unrepresented-archetype:${archetypeId}`);
 	}
-	for (const mismatch of idleControlMismatches) {
-		failureKeys.add(`idle-control:${mismatch}`);
+	// In normal before/after economy comparisons, idle book values may change.
+	// Preserve the diagnostic, but require identical idle evidence only when
+	// the caller explicitly requests a byte-identical archetype comparison.
+	if (requireIdentical.length > 0) {
+		for (const mismatch of idleControlMismatches) {
+			failureKeys.add(`idle-control:${mismatch}`);
+		}
 	}
 	for (const problem of [...baseCoverage.configProblems, ...headCoverage.configProblems]) {
 		failureKeys.add(`config-problem:${problem}`);
