@@ -3,9 +3,7 @@ import {
 	DEFAULT_INDUSTRY_CITY_HEIGHT,
 	DEFAULT_INDUSTRY_CITY_WIDTH,
 	INDUSTRIAL_BUILDING_TYPES,
-	MATERIALS,
-	generateIndustryCity,
-	getCategoryTier
+	generateIndustryCity
 } from './industry';
 import {
 	getExpansionFinanceOffer,
@@ -20,7 +18,7 @@ import {
 	initializeRetailSupplyAssignment
 } from './cityInventory';
 import { ensureCompetitorsForRetailCity } from './competitors';
-import { getWorldCityDefinition } from './worldCatalog';
+import { QUARRY_WORKS_FINISHED_MATERIALS, getWorldCityDefinition } from './worldCatalog';
 import {
 	decisionContextWorldCityNotAvailableYet,
 	decisionContextWorldCityOpeningCost,
@@ -54,9 +52,7 @@ const RAW_PRODUCER_BUILDING_TYPE_IDS: readonly IndustrialBuildingTypeId[] = Obje
 	.filter((type) => type.requiredResource !== null)
 	.map((type) => type.id);
 
-const FINISHED_MATERIAL_IDS: readonly MaterialId[] = Object.values(MATERIALS)
-	.filter((material) => (getCategoryTier(material.id) ?? 0) >= 2)
-	.map((material) => material.id);
+const FINISHED_MATERIAL_IDS: readonly MaterialId[] = QUARRY_WORKS_FINISHED_MATERIALS;
 
 export interface WorldCityStatus {
 	city: WorldCityDefinition;

@@ -10,6 +10,9 @@ export interface ProgressionRunDiff {
 
 export interface ProgressionArtifactLike {
 	config?: unknown;
+	idle?: unknown;
+	tier1NonDecorative?: unknown;
+	idleRuns?: unknown;
 	runs: ProgressionRunSummary[];
 }
 
@@ -27,6 +30,7 @@ export interface ProgressionDiffResult {
 	duplicateHeadKeys: string[];
 	configMismatches: string[];
 	unrepresentedArchetypes: string[];
+	idleControlMismatches: string[];
 	baseCoverage: ArtifactCoverageIssue;
 	headCoverage: ArtifactCoverageIssue;
 	identical: ProgressionRunSummary[];
@@ -46,6 +50,9 @@ function readArtifact(path: string): ProgressionArtifactLike {
 	} catch (error) {
 		argsError(`cannot read artifact "${path}": ${(error as Error).message}`);
 	}
+	if (typeof parsed !== 'object' || parsed === null) {
+		argsError(`artifact "${path}" is not a valid JSON object.`);
+	}
 	const runs = (parsed as { runs?: unknown }).runs;
 	if (!Array.isArray(runs)) {
 		argsError(`artifact "${path}" has no runs array — expected a progression-sweep artifact.`);
@@ -64,7 +71,7 @@ function compareConfigs(baseConfig: unknown, headConfig: unknown): string[] {
 				: null,
 			days: typeof candidate.days === 'number' ? candidate.days : null,
 			archetypes: Array.isArray(candidate.archetypes)
-				? [...candidate.archetypes].map(String).sort()
+				? [...new Set(candidate.archetypes.map(String))].sort()
 				: null
 		};
 	};
@@ -156,6 +163,31 @@ function validateArtifactCoverage(
 	};
 }
 
+function compareIdleControls(
+	base: ProgressionArtifactLike,
+	head: ProgressionArtifactLike
+): string[] {
+	const mismatches: string[] = [];
+	if ('idle' in base || 'idle' in head) {
+		if (JSON.stringify(base.idle) !== JSON.stringify(head.idle)) {
+			mismatches.push('idle aggregate differs between base and head');
+		}
+	}
+	if ('tier1NonDecorative' in base || 'tier1NonDecorative' in head) {
+		if (JSON.stringify(base.tier1NonDecorative) !== JSON.stringify(head.tier1NonDecorative)) {
+			mismatches.push('tier1NonDecorative differs between base and head');
+		}
+	}
+	if ('idleRuns' in base || 'idleRuns' in head) {
+		if (JSON.stringify(base.idleRuns) !== JSON.stringify(head.idleRuns)) {
+			mismatches.push(
+				`idleRuns count differs: base ${base.idleRuns ?? 'absent'} vs head ${head.idleRuns ?? 'absent'}`
+			);
+		}
+	}
+	return mismatches;
+}
+
 export function diffProgressionArtifacts(
 	base: ProgressionArtifactLike,
 	head: ProgressionArtifactLike,
@@ -184,6 +216,7 @@ export function diffProgressionArtifacts(
 	const missingInBase = [...headCounts.keys()].filter((key) => !baseCounts.has(key)).sort();
 	const missingInHead = [...baseCounts.keys()].filter((key) => !headCounts.has(key)).sort();
 	const configMismatches = compareConfigs(base.config, head.config);
+	const idleControlMismatches = compareIdleControls(base, head);
 	const baseCoverage = validateArtifactCoverage(base, rowKey);
 	const headCoverage = validateArtifactCoverage(head, rowKey);
 
@@ -230,21 +263,30 @@ export function diffProgressionArtifacts(
 	]) {
 		if (requiredSet.has(keyArchetype(key))) failureKeys.add(key);
 	}
+	for (const mismatch of configMismatches) {
+		failureKeys.add(`config:${mismatch}`);
+	}
+	for (const archetypeId of unrepresentedArchetypes) {
+		failureKeys.add(`unrepresented-archetype:${archetypeId}`);
+	}
+	for (const mismatch of idleControlMismatches) {
+		failureKeys.add(`idle-control:${mismatch}`);
+	}
+	for (const problem of [...baseCoverage.configProblems, ...headCoverage.configProblems]) {
+		failureKeys.add(`config-problem:${problem}`);
+	}
+	for (const key of [
+		...missingInBase,
+		...missingInHead,
+		...duplicateBaseKeys,
+		...duplicateHeadKeys
+	]) {
+		if (!requiredSet.has(keyArchetype(key))) {
+			failureKeys.add(`matrix-issue:${key}`);
+		}
+	}
 	const requireIdenticalFailures = [...failureKeys].sort();
-	const requireIdenticalPassed =
-		requireIdenticalFailures.length === 0 &&
-		missingInBase.length === 0 &&
-		missingInHead.length === 0 &&
-		duplicateBaseKeys.length === 0 &&
-		duplicateHeadKeys.length === 0 &&
-		configMismatches.length === 0 &&
-		unrepresentedArchetypes.length === 0 &&
-		baseCoverage.missingKeys.length === 0 &&
-		baseCoverage.unexpectedKeys.length === 0 &&
-		baseCoverage.configProblems.length === 0 &&
-		headCoverage.missingKeys.length === 0 &&
-		headCoverage.unexpectedKeys.length === 0 &&
-		headCoverage.configProblems.length === 0;
+	const requireIdenticalPassed = requireIdenticalFailures.length === 0;
 
 	return {
 		comparedKeys: identical.length + differing.length,
@@ -254,6 +296,7 @@ export function diffProgressionArtifacts(
 		duplicateHeadKeys,
 		configMismatches,
 		unrepresentedArchetypes,
+		idleControlMismatches,
 		baseCoverage,
 		headCoverage,
 		identical,
@@ -329,6 +372,9 @@ export function formatProgressionDiff(result: ProgressionDiffResult): string {
 	}
 	if (result.differing.length > 20) {
 		lines.push(`…and ${result.differing.length - 20} more differing rows`);
+	}
+	for (const mismatch of result.idleControlMismatches) {
+		lines.push(`idle-control mismatch: ${mismatch}`);
 	}
 	lines.push(
 		result.requireIdenticalPassed

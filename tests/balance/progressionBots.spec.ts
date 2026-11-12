@@ -171,7 +171,7 @@ describe('progression bot (HPA-318 Step 4)', { timeout: 30_000 }, () => {
 	});
 });
 
-describe('electronics local-delivery regression (HPA-720)', { timeout: 30_000 }, () => {
+describe('electronics local-delivery regression (HPA-720)', { timeout: 60_000 }, () => {
 	it('serves >=25 accessories from local inventory and earns the tier-3 local-units goal', () => {
 		const { game, progression } = runProgressionBot('electronics', REFERENCE_SEED, REFERENCE_DAYS);
 

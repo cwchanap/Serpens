@@ -12,7 +12,11 @@ import {
 } from '$lib/game/industry';
 import { DEFAULT_POLICY } from '$lib/game/state';
 import type { GameState } from '$lib/game/types';
-import { STARTER_STORE_CAP, createInitialWorldProgress } from '$lib/game/world';
+import {
+	STARTER_STORE_CAP,
+	createInitialWorldProgress,
+	getWorldCityDefinition
+} from '$lib/game/world';
 
 /** Presentation fallback before founding, not a playable company or persisted save. */
 export function createRoutePreviewGame(): GameState {
@@ -23,12 +27,14 @@ export function createRoutePreviewGame(): GameState {
 		height: DEFAULT_RETAIL_CITY_HEIGHT,
 		seed: 20260503
 	});
+	const starterIndustry = getWorldCityDefinition('industry-city');
 	const starterIndustryCity = generateIndustryCity({
-		id: 'industry-city',
-		name: 'Industry City',
+		id: starterIndustry?.id ?? 'industry-city',
+		name: starterIndustry?.name ?? 'Industry City',
 		width: DEFAULT_INDUSTRY_CITY_WIDTH,
 		height: DEFAULT_INDUSTRY_CITY_HEIGHT,
-		seed: 20260512
+		seed: starterIndustry?.seed ?? 20260512,
+		resourceProfile: starterIndustry?.industryResourceProfile
 	});
 	return {
 		seed: 20260503,

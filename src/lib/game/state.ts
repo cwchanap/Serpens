@@ -44,7 +44,12 @@ import {
 	HIRING_CANDIDATE_COUNT
 } from './staffing';
 import { calculateStockHealth, createStoreProduct, initializeStoreProducts } from './stock';
-import { STARTER_STORE_CAP, createInitialWorldProgress, refreshWorldProgress } from './world';
+import {
+	STARTER_STORE_CAP,
+	createInitialWorldProgress,
+	getWorldCityDefinition,
+	refreshWorldProgress
+} from './world';
 import { createFoundingFinanceState } from './finance';
 import { initializeCityInventory, initializeRetailSupplyAssignment } from './cityInventory';
 import { ensureCompetitorsForRetailCity } from './competitors';
@@ -130,12 +135,14 @@ export function createNewGame(archetypeId: ArchetypeId, seed = Date.now()): Game
 		height: DEFAULT_RETAIL_CITY_HEIGHT,
 		seed: normalizedSeed
 	});
+	const starterIndustry = getWorldCityDefinition('industry-city');
 	const industryCity = generateIndustryCity({
-		id: 'industry-city',
-		name: 'Industry City',
+		id: starterIndustry?.id ?? 'industry-city',
+		name: starterIndustry?.name ?? 'Industry City',
 		width: DEFAULT_INDUSTRY_CITY_WIDTH,
 		height: DEFAULT_INDUSTRY_CITY_HEIGHT,
-		seed: normalizedSeed + 101
+		seed: starterIndustry?.seed ?? normalizedSeed + 101,
+		resourceProfile: starterIndustry?.industryResourceProfile
 	});
 	const fallbackTile = city.tiles.find(isTileBuildable) ?? city.tiles[0]!;
 	const openingStore = createStore({

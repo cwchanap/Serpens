@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+	QUARRY_WORKS_FINISHED_MATERIALS,
 	WORLD_CITY_CATALOG,
 	compareWorldCityIds,
 	getWorldCityDefinition,
@@ -32,5 +33,19 @@ describe('world catalog primitives', () => {
 		expect(resourceIds('industry-city')).toContain('copper-deposit');
 		expect(resourceIds('quarry-works')).toContain('copper-deposit');
 		expect(resourceIds('breadbasket-basin')).not.toContain('copper-deposit');
+	});
+
+	test('quarry-works defines advanced unlock requirements and materials', () => {
+		expect.assertions(2);
+		expect(getWorldCityDefinition('quarry-works')?.unlockRequirement).toBe(
+			'Produce an advanced finished material locally.'
+		);
+		expect(QUARRY_WORKS_FINISHED_MATERIALS).toEqual([
+			'snacks',
+			'drinks',
+			'essentials',
+			'gifts',
+			'electronic-accessories'
+		]);
 	});
 });
