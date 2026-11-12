@@ -208,7 +208,7 @@ export function main(argv: readonly string[]): number {
 	);
 	for (const row of pacing.archetypes) {
 		console.log(
-			`    ${row.archetypeId}: T3 ${row.tier3Reached}/50 median ${row.tier3MedianDay ?? '—'}d (${row.tier3Passed ? 'PASS' : 'FAIL'}), T5 ${row.tier5Reached}/50 (${row.tier5Passed ? 'PASS' : 'FAIL'}), paired T4→T5 ${row.pairedGapMedian ?? '—'}d (${row.spacingPassed ? 'PASS' : 'FAIL'}), same-day ${row.sameDayTier4Tier5}`
+			`    ${row.archetypeId}: T3 ${row.tier3Reached}/${row.runCount} median ${row.tier3MedianDay ?? '—'}d (${row.tier3Passed ? 'PASS' : 'FAIL'}), T5 ${row.tier5Reached}/${row.runCount} (${row.tier5Passed ? 'PASS' : 'FAIL'}), paired T4→T5 ${row.pairedGapMedian ?? '—'}d (${row.spacingPassed ? 'PASS' : 'FAIL'}), same-day ${row.sameDayTier4Tier5}`
 		);
 	}
 	console.log(
