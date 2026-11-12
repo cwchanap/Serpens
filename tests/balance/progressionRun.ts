@@ -19,6 +19,7 @@ import { createFoundingGame, runBot, runProgressionBot } from './bots';
 import { SWEEP_ARCHETYPES } from './measure';
 import {
 	buildProgressionCalibrationReport,
+	evaluateProgressionPacing,
 	summarizeIdleRun,
 	summarizeProgressionRun,
 	type IdleRunSummary,
@@ -201,6 +202,18 @@ export function main(argv: readonly string[]): number {
 					: ' (never claimed)')
 		);
 	}
+	const pacing = evaluateProgressionPacing(report);
+	console.log(
+		`  pacing: ${pacing.coverageComplete ? (pacing.allPassed ? 'PASS' : 'FAIL') : 'DIAGNOSTIC (partial matrix)'}`
+	);
+	for (const row of pacing.archetypes) {
+		console.log(
+			`    ${row.archetypeId}: T3 ${row.tier3Reached}/50 median ${row.tier3MedianDay ?? '—'}d (${row.tier3Passed ? 'PASS' : 'FAIL'}), T5 ${row.tier5Reached}/50 (${row.tier5Passed ? 'PASS' : 'FAIL'}), paired T4→T5 ${row.pairedGapMedian ?? '—'}d (${row.spacingPassed ? 'PASS' : 'FAIL'}), same-day ${row.sameDayTier4Tier5}`
+		);
+	}
+	console.log(
+		`  peak book-value median ratio: ${pacing.peakBookValueRatio?.toFixed(2) ?? 'not positive'} (${pacing.equityPassed ? 'PASS' : 'FAIL'})`
+	);
 	console.log(
 		`  idle: ${report.idle.zeroClaimRuns}/${report.idle.runs} zero-claim runs, ${report.idle.totalEarnedUnclaimed} earned-unclaimed, peak book value max ${report.idle.peakReportBookValue.max}`
 	);
