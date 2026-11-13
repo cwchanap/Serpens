@@ -1946,7 +1946,6 @@ export const zhHant = {
 			multiCityOperatorOpenedCities: '開放 {target} 個城市',
 			multiCityOperatorMaxStoreLevel: '將一間店鋪升級到等級 {target}',
 			marketLeaderStoreCount: '經營 {target} 間店鋪',
-			marketLeaderOpenedCities: '開放全部 {target} 個城市',
 			marketLeaderPeakBookValue: '將已回報的公司帳面價值峰值提升到 {target}'
 		}
 	},

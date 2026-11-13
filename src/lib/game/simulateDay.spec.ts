@@ -272,7 +272,7 @@ describe('daily simulation', () => {
 
 		expect(projectOneCityParity(after)).toMatchInlineSnapshot(`
 			{
-			  "cash": 99785,
+			  "cash": 99790,
 			  "cityInventories": [
 			    {
 			      "cityId": "industry-city",
@@ -284,7 +284,7 @@ describe('daily simulation', () => {
 			  ],
 			  "report": {
 			    "importSpend": 10,
-			    "netCashChange": -215,
+			    "netCashChange": -210,
 			    "production": {
 			      "cityInventories": [
 			        {
@@ -306,7 +306,7 @@ describe('daily simulation', () => {
 			      ],
 			      "importSpend": 0,
 			      "importedInputs": [],
-			      "operatingCost": 19,
+			      "operatingCost": 14,
 			      "overflowCost": 0,
 			      "overflowUnits": 0,
 			      "produced": [
@@ -1498,10 +1498,12 @@ describe('daily simulation', () => {
 				}
 			],
 			boutique: [
+				// HPA-721 Step 2 boutique normalization (price/cost ×≈0.95)
+				// re-seated the founding cash curve under seed 277_280.
 				{
 					day: 8,
-					cashBefore: 38_214,
-					cashAfter: 41_367,
+					cashBefore: 38_181,
+					cashAfter: 41_154,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1509,8 +1511,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 39_151,
-					cashAfter: 42_834,
+					cashBefore: 39_028,
+					cashAfter: 42_505,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1518,8 +1520,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 40_088,
-					cashAfter: 43_299,
+					cashBefore: 39_875,
+					cashAfter: 42_904,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,

@@ -223,7 +223,9 @@ describe('electronics local-delivery regression (HPA-720)', { timeout: 60_000 },
 		expect(localUnitsGoal.evidence.actual).toBe(accessoryWarehouseUnits);
 
 		const claim = progression.claims.find((claim) => claim.tierId === 'regional-supplier');
-		expect(claim).toEqual({ tierId: 'regional-supplier', claimedOnDay: 260 });
+		// HPA-721 Step 2 industry fixed-cost cut pulls the electronics
+		// accessories chain through its rail stalls earlier (260 → 162).
+		expect(claim).toEqual({ tierId: 'regional-supplier', claimedOnDay: 162 });
 	});
 });
 

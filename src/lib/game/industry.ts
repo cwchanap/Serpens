@@ -468,6 +468,15 @@ export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionR
 	}
 };
 
+/**
+ * HPA-721 Step 2: the measured local chains recovered only a small fraction of
+ * their imports (seed 20260503: bottled-water 3,360/51,229 units, gifts
+ * 482/28,644, accessories 463/35,750, produce 2,760/13,772) while their fixed
+ * building costs dominated the cash bleed. The chain buildings used by those
+ * four evidence runs have `dailyOperatingCost` at ~0.6× the previous value;
+ * doubling the circuit-board recipe output was tested and rejected because it
+ * still left four parallel plants and delayed electronics tier 3 (134 → 162).
+ */
 export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 	Record<IndustrialBuildingTypeId, IndustrialBuildingType>
 > = {
@@ -475,7 +484,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'grain-farm',
 		name: 'Grain Farm',
 		buildCost: 600,
-		dailyOperatingCost: 10,
+		dailyOperatingCost: 6,
 		requiredResource: 'grain-field',
 		requiresIndustrialTile: false,
 		recipeId: 'grain-harvest',
@@ -511,7 +520,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'water-pump',
 		name: 'Water Pump',
 		buildCost: 500,
-		dailyOperatingCost: 8,
+		dailyOperatingCost: 5,
 		requiredResource: 'water-source',
 		requiresIndustrialTile: false,
 		recipeId: 'water-pumping',
@@ -523,7 +532,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'fruit-farm',
 		name: 'Fruit Farm',
 		buildCost: 800,
-		dailyOperatingCost: 14,
+		dailyOperatingCost: 8,
 		requiredResource: 'fruit-orchard',
 		requiresIndustrialTile: false,
 		recipeId: 'fruit-harvest',
@@ -547,7 +556,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'pulpwood-grove',
 		name: 'Pulpwood Grove',
 		buildCost: 650,
-		dailyOperatingCost: 10,
+		dailyOperatingCost: 6,
 		requiredResource: 'pulpwood-forest',
 		requiresIndustrialTile: false,
 		recipeId: 'pulpwood-harvest',
@@ -559,7 +568,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'chemical-feedstock-well',
 		name: 'Chemical Feedstock Well',
 		buildCost: 1100,
-		dailyOperatingCost: 20,
+		dailyOperatingCost: 12,
 		requiredResource: 'chemical-feedstock',
 		requiresIndustrialTile: false,
 		recipeId: 'chemical-feedstock-extraction',
@@ -571,7 +580,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'copper-mine',
 		name: 'Copper Mine',
 		buildCost: 750,
-		dailyOperatingCost: 12,
+		dailyOperatingCost: 7,
 		requiredResource: 'copper-deposit',
 		requiresIndustrialTile: false,
 		recipeId: 'copper-mining',
@@ -583,7 +592,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'flour-mill',
 		name: 'Flour Mill',
 		buildCost: 1200,
-		dailyOperatingCost: 24,
+		dailyOperatingCost: 14,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'flour-milling',
@@ -631,7 +640,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'pulp-mill',
 		name: 'Pulp Mill',
 		buildCost: 1250,
-		dailyOperatingCost: 24,
+		dailyOperatingCost: 14,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'pulp-milling',
@@ -643,7 +652,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'plastic-plant',
 		name: 'Plastic Plant',
 		buildCost: 1500,
-		dailyOperatingCost: 30,
+		dailyOperatingCost: 18,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'plastic-production',
@@ -655,7 +664,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'packaging-plant',
 		name: 'Packaging Plant',
 		buildCost: 1450,
-		dailyOperatingCost: 28,
+		dailyOperatingCost: 17,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'packaging-production',
@@ -679,7 +688,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'circuit-board-plant',
 		name: 'Circuit Board Plant',
 		buildCost: 1500,
-		dailyOperatingCost: 24,
+		dailyOperatingCost: 14,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'circuit-board-production',
@@ -727,7 +736,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'gift-workshop',
 		name: 'Gift Workshop',
 		buildCost: 1500,
-		dailyOperatingCost: 30,
+		dailyOperatingCost: 18,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'gift-production',
@@ -739,7 +748,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'accessory-assembly-plant',
 		name: 'Accessory Assembly Plant',
 		buildCost: 1750,
-		dailyOperatingCost: 26,
+		dailyOperatingCost: 16,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'accessory-assembly',
@@ -751,7 +760,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'water-bottler',
 		name: 'Water Bottler',
 		buildCost: 600,
-		dailyOperatingCost: 6,
+		dailyOperatingCost: 4,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'water-bottling',
@@ -763,7 +772,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'produce-packhouse',
 		name: 'Produce Packhouse',
 		buildCost: 650,
-		dailyOperatingCost: 8,
+		dailyOperatingCost: 5,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'produce-packing',
@@ -775,7 +784,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'pantry-works',
 		name: 'Pantry Works',
 		buildCost: 900,
-		dailyOperatingCost: 10,
+		dailyOperatingCost: 6,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'pantry-goods-production',
