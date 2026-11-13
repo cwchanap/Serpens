@@ -784,7 +784,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'pantry-works',
 		name: 'Pantry Works',
 		buildCost: 900,
-		dailyOperatingCost: 6,
+		dailyOperatingCost: 10,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'pantry-goods-production',
