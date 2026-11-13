@@ -129,12 +129,12 @@ describe('brand catalog', () => {
 	test('writes a rounded minimum-one default selling price for a brand', () => {
 		expect.assertions(2);
 
-		expect(getBrandDefaultSellingPrice(PRODUCTS.apparel, 'northstar-select')).toBe(45);
+		expect(getBrandDefaultSellingPrice(PRODUCTS.apparel, 'northstar-select')).toBe(42);
 		expect(getBrandDefaultSellingPrice(PRODUCTS['bottled-water'], 'common-ground')).toBe(6);
 	});
 
 	test('resolves unit cost, demand, and market attraction without a customer price', () => {
-		expect.assertions(5);
+		expect.assertions(6);
 
 		expect(resolveBrandEconomics(PRODUCTS.snacks, 'budget-bay')).toEqual({
 			// Snacks importCost is 2 since HPA-502 Step 4 round 2 (2 × 0.84).
@@ -143,9 +143,12 @@ describe('brand catalog', () => {
 			marketAttractionMultiplier: 1.026
 		});
 		expect(resolveBrandEconomics(PRODUCTS.apparel, 'northstar-select')).toMatchObject({
-			unitCost: 19.8,
 			demandMultiplier: 0.94
 		});
+		expect(resolveBrandEconomics(PRODUCTS.apparel, 'northstar-select').unitCost).toBeCloseTo(
+			18.7,
+			10
+		);
 		expect(
 			resolveBrandEconomics(PRODUCTS.apparel, 'northstar-select').marketAttractionMultiplier
 		).toBeCloseTo(1.0304, 10);

@@ -1971,7 +1971,6 @@ export const ja = {
 			multiCityOperatorOpenedCities: '{target}都市を開放する',
 			multiCityOperatorMaxStoreLevel: '店舗をレベル{target}にアップグレードする',
 			marketLeaderStoreCount: '{target}店舗を運営する',
-			marketLeaderOpenedCities: '全{target}都市を開放する',
 			marketLeaderPeakBookValue: '報告済み会社帳簿価値のピークを{target}に伸ばす'
 		}
 	},

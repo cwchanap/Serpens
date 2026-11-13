@@ -344,9 +344,8 @@ describe('retail placement preview', () => {
 			seed: 20260503
 		});
 
-		// Golden values re-captured after the HPA-502 round-2 economy change
-		// (founding breadth 2, capacity ×2, product data); the memoization must
-		// not move any estimate.
+		// Golden values re-captured after the HPA-721 boutique price/cost
+		// normalization; the memoization must not move any estimate.
 		expect(getRetailBuildMenuOptions({ game: null, city, seed: 0 })).toEqual([
 			{
 				archetypeId: 'convenience',
@@ -360,7 +359,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'boutique',
 				setupCostRange: { min: 14930, max: 22652 },
-				projectedDailyRevenueRange: { min: 708, max: 708 },
+				projectedDailyRevenueRange: { min: 676, max: 676 },
 				projectedDailyOperatingCost: 204,
 				validTileCount: 100,
 				disabledReason: null,
@@ -408,7 +407,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'boutique',
 				setupCostRange: { min: 14930, max: 22652 },
-				projectedDailyRevenueRange: { min: 708, max: 708 },
+				projectedDailyRevenueRange: { min: 676, max: 676 },
 				projectedDailyOperatingCost: 204,
 				validTileCount: 98,
 				disabledReason: null,

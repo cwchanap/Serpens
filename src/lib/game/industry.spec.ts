@@ -688,7 +688,7 @@ describe('electronics supply chain catalog', () => {
 			requiresIndustrialTile: false,
 			recipeId: 'copper-mining',
 			buildCost: 750,
-			dailyOperatingCost: 12,
+			dailyOperatingCost: 7,
 			warehouseCapacity: 0,
 			bufferCapacity: 120,
 			tier: 2
@@ -698,7 +698,7 @@ describe('electronics supply chain catalog', () => {
 			requiresIndustrialTile: true,
 			recipeId: 'circuit-board-production',
 			buildCost: 1500,
-			dailyOperatingCost: 24,
+			dailyOperatingCost: 14,
 			warehouseCapacity: 0,
 			bufferCapacity: 80,
 			tier: 2
@@ -708,7 +708,7 @@ describe('electronics supply chain catalog', () => {
 			requiresIndustrialTile: true,
 			recipeId: 'accessory-assembly',
 			buildCost: 1750,
-			dailyOperatingCost: 26,
+			dailyOperatingCost: 16,
 			warehouseCapacity: 0,
 			bufferCapacity: 80,
 			tier: 3

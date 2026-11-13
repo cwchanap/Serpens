@@ -82,9 +82,7 @@ describe('evaluateProgressionPacing', () => {
 		expect(partial.allPassed).toBe(false);
 		const duplicated = [...rows.slice(0, -1), { ...rows[0]! }];
 		expect(evaluateProgressionPacing(input(duplicated)).coverageComplete).toBe(false);
-		expect(
-			evaluateProgressionPacing(input(rows, { days: 364 })).coverageComplete
-		).toBe(false);
+		expect(evaluateProgressionPacing(input(rows, { days: 364 })).coverageComplete).toBe(false);
 	});
 
 	it('treats an absent Tier 5 as a failed, not vacuously passing, spacing gate', () => {

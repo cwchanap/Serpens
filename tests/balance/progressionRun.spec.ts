@@ -10,15 +10,15 @@ describe('parseProgressionSweepArgs', () => {
 
 	it('rejects scientific notation, decimals, negative, and empty seeds', () => {
 		for (const seed of ['2.02605e+07', '7.0', '-7', '']) {
-			expect(() =>
-				parseProgressionSweepArgs(['--seeds', seed, '--days', '365'])
-			).toThrow(/--seeds expects a positive integer/);
+			expect(() => parseProgressionSweepArgs(['--seeds', seed, '--days', '365'])).toThrow(
+				/--seeds expects a positive integer/
+			);
 		}
 	});
 
 	it('rejects scientific notation for the days horizon', () => {
-		expect(() =>
-			parseProgressionSweepArgs(['--seeds', '20260501', '--days', '3e2'])
-		).toThrow(/--days expects a positive integer/);
+		expect(() => parseProgressionSweepArgs(['--seeds', '20260501', '--days', '3e2'])).toThrow(
+			/--days expects a positive integer/
+		);
 	});
 });

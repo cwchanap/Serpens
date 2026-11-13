@@ -153,7 +153,6 @@ describe('PROGRESSION_TIERS catalog', () => {
 			],
 			[
 				['store-count', 7],
-				['opened-city-count', 6],
 				['peak-company-book-value', 150_000]
 			]
 		]);

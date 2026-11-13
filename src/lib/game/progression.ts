@@ -176,14 +176,6 @@ export const PROGRESSION_TIERS: readonly ProgressionTier[] = [
 				window: CURRENT_WINDOW
 			},
 			{
-				id: 'market-leader-opened-cities',
-				labelKey: 'progression.goals.marketLeaderOpenedCities',
-				query: { metric: 'opened-city-count' },
-				comparator: 'gte',
-				target: 6,
-				window: CURRENT_WINDOW
-			},
-			{
 				id: 'market-leader-peak-book-value',
 				labelKey: 'progression.goals.marketLeaderPeakBookValue',
 				query: { metric: 'peak-company-book-value' },

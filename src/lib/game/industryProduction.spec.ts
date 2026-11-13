@@ -466,7 +466,7 @@ describe('industry production simulation', () => {
 
 		expect(result.report.importedInputs.some((item) => item.materialId === 'grain')).toBe(true);
 		expect(result.report.importSpend).toBe(20);
-		expect(result.report.operatingCost).toBe(42);
+		expect(result.report.operatingCost).toBe(32);
 		// Output fills the mill's own buffer (bufferCapacity 90), not the shared
 		// warehouse, so there's no warehouse-capacity overflow to pay for.
 		expect(result.report.overflowCost).toBe(0);
@@ -532,7 +532,7 @@ describe('industry production simulation', () => {
 		const result = simulateIndustryProduction(leveled);
 
 		expect(Number.isInteger(result.report.operatingCost)).toBe(true);
-		expect(result.report.operatingCost).toBe(46); // Math.round(18 * 1.2 + 24)
+		expect(result.report.operatingCost).toBe(36); // Math.round(18 * 1.2 + 14)
 	});
 
 	test('output rounding is single-pass at non-integer throughput (level 2)', () => {
@@ -822,8 +822,8 @@ describe('rail-fed production', () => {
 
 		expect(farm.status).toBe('stalled');
 		expect(farm.lastProduction).toHaveLength(0);
-		// operating cost = only the flat 10 (no recipe cost at ratio 0)
-		expect(report.operatingCost).toBe(10);
+		// operating cost = only the HPA-721 flat 6 (no recipe cost at ratio 0)
+		expect(report.operatingCost).toBe(6);
 	});
 
 	test('partially full buffer clips production and consumes proportional inputs', () => {
@@ -1301,8 +1301,8 @@ describe('electronics production chain', () => {
 		]);
 		expect(mine.inventory['copper-ore']).toBe(24);
 		expect(mine.status).toBe('produced');
-		expect(report.operatingCost).toBe(12);
-		expect(game.cash).toBe(unconnectedMineGame.cash - 12);
+		expect(report.operatingCost).toBe(7);
+		expect(game.cash).toBe(unconnectedMineGame.cash - 7);
 	});
 
 	test('unconnected circuit-board plant imports ore and plastic and reports exact costs', () => {
@@ -1329,7 +1329,7 @@ describe('electronics production chain', () => {
 			}
 		]);
 		expect(report.importSpend).toBe(24);
-		expect(report.operatingCost).toBe(36);
+		expect(report.operatingCost).toBe(26);
 		expect(report.produced).toEqual([
 			{
 				cityId: 'industry-city',
@@ -1344,7 +1344,7 @@ describe('electronics production chain', () => {
 			inventory: { 'circuit-boards': 10 },
 			importedInputTotal: 7
 		});
-		expect(game.cash).toBe(unconnectedBoardPlantGame.cash - 24 - 36);
+		expect(game.cash).toBe(unconnectedBoardPlantGame.cash - 24 - 26);
 		expect(report.warehousePulls).toHaveLength(0);
 	});
 
@@ -1372,7 +1372,7 @@ describe('electronics production chain', () => {
 			}
 		]);
 		expect(report.importSpend).toBe(37);
-		expect(report.operatingCost).toBe(41);
+		expect(report.operatingCost).toBe(31);
 		expect(report.produced).toEqual([
 			{
 				cityId: 'industry-city',
@@ -1386,7 +1386,7 @@ describe('electronics production chain', () => {
 			status: 'imported-inputs',
 			inventory: { 'electronic-accessories': 8 }
 		});
-		expect(game.cash).toBe(unconnectedAssemblyGame.cash - 37 - 41);
+		expect(game.cash).toBe(unconnectedAssemblyGame.cash - 37 - 31);
 	});
 
 	test('rail-linked electronics chain runs raw, process, final in stage order and pushes to the warehouse', () => {
@@ -1464,8 +1464,8 @@ describe('electronics production chain', () => {
 		expect(buildings['mine']!.status).toBe('produced');
 		expect(buildings['plant']!.status).toBe('imported-inputs');
 		expect(buildings['assembly']!.status).toBe('imported-inputs');
-		expect(report.operatingCost).toBe(89);
-		expect(game.cash).toBe(electronicsChainGame.cash - 11 - 89);
+		expect(report.operatingCost).toBe(64);
+		expect(game.cash).toBe(electronicsChainGame.cash - 11 - 64);
 	});
 
 	test('a copper mine with a full buffer and no outlet stalls and pays only the flat daily cost', () => {
@@ -1479,7 +1479,7 @@ describe('electronics production chain', () => {
 
 		expect(mine.status).toBe('stalled');
 		expect(mine.lastProduction).toHaveLength(0);
-		expect(report.operatingCost).toBe(12);
+		expect(report.operatingCost).toBe(7);
 	});
 
 	test('a partially full assembly buffer clips accessory output and consumes proportional inputs', () => {
@@ -1502,8 +1502,8 @@ describe('electronics production chain', () => {
 			['packaging', 1]
 		]);
 		expect(report.importSpend).toBe(21);
-		expect(report.operatingCost).toBe(34);
-		expect(game.cash).toBe(partialAssemblyGame.cash - 21 - 34);
+		expect(report.operatingCost).toBe(24);
+		expect(game.cash).toBe(partialAssemblyGame.cash - 21 - 24);
 	});
 
 	test('same electronics chain state twice produces identical reports (determinism)', () => {

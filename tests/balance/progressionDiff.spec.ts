@@ -250,7 +250,9 @@ describe('diffProgressionArtifacts', () => {
 		]);
 		expect(result.requireIdenticalPassed).toBe(true);
 		expect(result.requireIdenticalFailures).toEqual([]);
-		expect(formatProgressionDiff(result)).toContain('idle-control mismatch: idle aggregate differs');
+		expect(formatProgressionDiff(result)).toContain(
+			'idle-control mismatch: idle aggregate differs'
+		);
 		// Identical mode retains its strict idle checks.
 		const strict = diffProgressionArtifacts(base, head, ['convenience']);
 		expect(strict.requireIdenticalPassed).toBe(false);

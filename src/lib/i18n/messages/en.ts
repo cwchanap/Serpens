@@ -2003,7 +2003,6 @@ export const en = {
 			multiCityOperatorOpenedCities: 'Open {target} cities',
 			multiCityOperatorMaxStoreLevel: 'Upgrade a store to level {target}',
 			marketLeaderStoreCount: 'Operate {target} stores',
-			marketLeaderOpenedCities: 'Open all {target} cities',
 			marketLeaderPeakBookValue: 'Grow reported peak company book value to {target}'
 		}
 	},

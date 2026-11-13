@@ -565,7 +565,7 @@ describe('supply planner actions', () => {
 		expect(candidate.comparison.importReduction30).toBe(300);
 		// Water retail importCost is 1 since HPA-502 round 2 (was 2).
 		expect(candidate.comparison.importSpendReduction30).toBe(300);
-		expect(candidate.comparison.preRailNetCashBenefit30).toBe(-930);
+		expect(candidate.comparison.preRailNetCashBenefit30).toBe(-870);
 	});
 
 	it('does not mutate the game while evaluating candidates', () => {

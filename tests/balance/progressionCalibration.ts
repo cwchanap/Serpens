@@ -399,9 +399,7 @@ export function evaluateProgressionPacing(
 		report.idleRuns === expectedCount &&
 		report.idle.runs === expectedCount &&
 		counts.size === expectedCount &&
-		SWEEP_SEEDS.every((seed) =>
-			SWEEP_ARCHETYPES.every((id) => counts.get(`${seed}/${id}`) === 1)
-		);
+		SWEEP_SEEDS.every((seed) => SWEEP_ARCHETYPES.every((id) => counts.get(`${seed}/${id}`) === 1));
 
 	const archetypes = SWEEP_ARCHETYPES.map<ArchetypePacingVerdict>((archetypeId) => {
 		const runs = report.runs.filter((run) => run.archetypeId === archetypeId);
@@ -411,9 +409,7 @@ export function evaluateProgressionPacing(
 		for (const run of runs) {
 			const day5 = run.claims.find((claim) => claim.tierId === 'market-leader')?.claimedOnDay;
 			if (day5 === undefined) continue;
-			const day4 = run.claims.find(
-				(claim) => claim.tierId === 'multi-city-operator'
-			)?.claimedOnDay;
+			const day4 = run.claims.find((claim) => claim.tierId === 'multi-city-operator')?.claimedOnDay;
 			if (day4 !== undefined && day5 >= day4) pairedGaps.push(day5 - day4);
 		}
 		const pairedGapMedian = median(pairedGaps);
@@ -432,8 +428,7 @@ export function evaluateProgressionPacing(
 			tier5Reached: tier5.reached,
 			tier5Blockers: tier5.blockerGoalCounts,
 			tier5Passed:
-				runs.length > 0 &&
-				tier5.reached / runs.length >= PROGRESSION_PACING_TARGETS.tier5MinShare,
+				runs.length > 0 && tier5.reached / runs.length >= PROGRESSION_PACING_TARGETS.tier5MinShare,
 			pairedGapMedian,
 			sameDayTier4Tier5: pairedGaps.filter((gap) => gap === 0).length,
 			spacingPassed:

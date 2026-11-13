@@ -73,8 +73,11 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultBrandId: 'common-ground',
 		name: 'Apparel',
 		demandWeight: 1,
-		importCost: 18,
-		defaultSellingPrice: 38,
+		// HPA-721 Step 2 boutique normalization: price and cost ×≈0.95 preserve
+		// the premium unit margin rate while narrowing the measured peak
+		// book-value spread against the everyday archetypes.
+		importCost: 17,
+		defaultSellingPrice: 36,
 		priceSensitivity: 1.05,
 		productionMaterialId: null,
 		dynamics: {
@@ -88,8 +91,9 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultBrandId: 'common-ground',
 		name: 'Home Goods',
 		demandWeight: 0.85,
-		importCost: 14,
-		defaultSellingPrice: 28,
+		// Same HPA-721 boutique normalization as apparel (price/cost ×≈0.95).
+		importCost: 13,
+		defaultSellingPrice: 27,
 		priceSensitivity: 0.85,
 		productionMaterialId: null,
 		dynamics: {}
@@ -100,8 +104,9 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultBrandId: 'common-ground',
 		name: 'Gifts',
 		demandWeight: 0.75,
+		// Same HPA-721 boutique normalization as apparel (price/cost ×≈0.95).
 		importCost: 9,
-		defaultSellingPrice: 20,
+		defaultSellingPrice: 19,
 		priceSensitivity: 0.95,
 		productionMaterialId: 'gifts',
 		dynamics: {}
@@ -112,8 +117,9 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		defaultBrandId: 'common-ground',
 		name: 'Fashion Accessories',
 		demandWeight: 0.7,
-		importCost: 12,
-		defaultSellingPrice: 26,
+		// Same HPA-721 boutique normalization as apparel (price/cost ×≈0.95).
+		importCost: 11,
+		defaultSellingPrice: 25,
 		priceSensitivity: 1,
 		productionMaterialId: null,
 		dynamics: {}
