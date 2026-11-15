@@ -22,6 +22,22 @@ export interface ArtifactCoverageIssue {
 	configProblems: string[];
 }
 
+/**
+ * Idle-control mismatch kinds. `value-drift` is the only informational kind:
+ * book-value aggregates legitimately move under economy tuning. Every other
+ * kind is a structural or verdict change and fails even an ordinary diff.
+ */
+export type IdleControlMismatchKind =
+	| 'value-drift'
+	| 'control-violation'
+	| 'check-flip'
+	| 'coverage';
+
+export interface IdleControlMismatch {
+	kind: IdleControlMismatchKind;
+	message: string;
+}
+
 export interface ProgressionDiffResult {
 	comparedKeys: number;
 	missingInBase: string[];
@@ -30,7 +46,7 @@ export interface ProgressionDiffResult {
 	duplicateHeadKeys: string[];
 	configMismatches: string[];
 	unrepresentedArchetypes: string[];
-	idleControlMismatches: string[];
+	idleControlMismatches: IdleControlMismatch[];
 	baseCoverage: ArtifactCoverageIssue;
 	headCoverage: ArtifactCoverageIssue;
 	identical: ProgressionRunSummary[];
@@ -163,26 +179,65 @@ function validateArtifactCoverage(
 	};
 }
 
+/** The idle aggregate fields that are allowed to drift under economy tuning. */
+const IDLE_VALUE_FIELDS = ['foundingBookValue', 'peakReportBookValue', 'finalBookValue'] as const;
+/** The tier1NonDecorative field fed by those drifting book values. */
+const TIER1_VALUE_FIELDS = ['idlePeakReportBookValueMax'] as const;
+
+function stripFields(value: unknown, fields: readonly string[]): unknown {
+	if (typeof value !== 'object' || value === null) return value;
+	const clone: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+	for (const field of fields) delete clone[field];
+	return clone;
+}
+
 function compareIdleControls(
 	base: ProgressionArtifactLike,
 	head: ProgressionArtifactLike
-): string[] {
-	const mismatches: string[] = [];
+): IdleControlMismatch[] {
+	const mismatches: IdleControlMismatch[] = [];
 	if ('idle' in base || 'idle' in head) {
 		if (JSON.stringify(base.idle) !== JSON.stringify(head.idle)) {
-			mismatches.push('idle aggregate differs between base and head');
+			if (
+				JSON.stringify(stripFields(base.idle, IDLE_VALUE_FIELDS)) !==
+				JSON.stringify(stripFields(head.idle, IDLE_VALUE_FIELDS))
+			) {
+				mismatches.push({
+					kind: 'control-violation',
+					message: 'idle claim/earned-unclaimed counters differ between base and head'
+				});
+			} else {
+				mismatches.push({
+					kind: 'value-drift',
+					message: 'idle book-value aggregates differ between base and head'
+				});
+			}
 		}
 	}
 	if ('tier1NonDecorative' in base || 'tier1NonDecorative' in head) {
 		if (JSON.stringify(base.tier1NonDecorative) !== JSON.stringify(head.tier1NonDecorative)) {
-			mismatches.push('tier1NonDecorative differs between base and head');
+			if (
+				JSON.stringify(stripFields(base.tier1NonDecorative, TIER1_VALUE_FIELDS)) !==
+				JSON.stringify(stripFields(head.tier1NonDecorative, TIER1_VALUE_FIELDS))
+			) {
+				mismatches.push({
+					kind: 'check-flip',
+					message: 'tier1NonDecorative verdict differs between base and head'
+				});
+			} else {
+				mismatches.push({
+					kind: 'value-drift',
+					message: 'tier1NonDecorative idle peak input differs between base and head'
+				});
+			}
 		}
 	}
 	if ('idleRuns' in base || 'idleRuns' in head) {
 		if (JSON.stringify(base.idleRuns) !== JSON.stringify(head.idleRuns)) {
-			mismatches.push(
-				`idleRuns count differs: base ${base.idleRuns ?? 'absent'} vs head ${head.idleRuns ?? 'absent'}`
-			);
+			mismatches.push({
+				kind: 'coverage',
+				message: `idleRuns count differs: base ${base.idleRuns ?? 'absent'} vs head ${head.idleRuns ?? 'absent'}`
+			});
 		}
 	}
 	return mismatches;
@@ -269,13 +324,12 @@ export function diffProgressionArtifacts(
 	for (const archetypeId of unrepresentedArchetypes) {
 		failureKeys.add(`unrepresented-archetype:${archetypeId}`);
 	}
-	// In normal before/after economy comparisons, idle book values may change.
-	// An idleRuns sample-count mismatch is a coverage loss, not a value diff,
-	// so it always fails; other idle evidence requires identity only when the
-	// caller explicitly requests a byte-identical archetype comparison.
+	// In normal before/after economy comparisons, idle book values may change —
+	// `value-drift` stays informational. Coverage loss, changed claim counters
+	// or a flipped tier-1 verdict always fail; strict mode fails on any drift.
 	for (const mismatch of idleControlMismatches) {
-		if (mismatch.startsWith('idleRuns count differs') || requireIdentical.length > 0) {
-			failureKeys.add(`idle-control:${mismatch}`);
+		if (mismatch.kind !== 'value-drift' || requireIdentical.length > 0) {
+			failureKeys.add(`idle-control:${mismatch.message}`);
 		}
 	}
 	for (const problem of [...baseCoverage.configProblems, ...headCoverage.configProblems]) {
@@ -384,7 +438,7 @@ export function formatProgressionDiff(result: ProgressionDiffResult): string {
 		lines.push(`…and ${result.differing.length - 20} more differing rows`);
 	}
 	for (const mismatch of result.idleControlMismatches) {
-		lines.push(`idle-control mismatch: ${mismatch}`);
+		lines.push(`idle-control mismatch: ${mismatch.message}`);
 	}
 	lines.push(
 		result.requireIdenticalPassed

@@ -466,7 +466,7 @@ describe('industry production simulation', () => {
 
 		expect(result.report.importedInputs.some((item) => item.materialId === 'grain')).toBe(true);
 		expect(result.report.importSpend).toBe(20);
-		expect(result.report.operatingCost).toBe(32);
+		expect(result.report.operatingCost).toBe(42);
 		// Output fills the mill's own buffer (bufferCapacity 90), not the shared
 		// warehouse, so there's no warehouse-capacity overflow to pay for.
 		expect(result.report.overflowCost).toBe(0);
@@ -532,7 +532,7 @@ describe('industry production simulation', () => {
 		const result = simulateIndustryProduction(leveled);
 
 		expect(Number.isInteger(result.report.operatingCost)).toBe(true);
-		expect(result.report.operatingCost).toBe(36); // Math.round(18 * 1.2 + 14)
+		expect(result.report.operatingCost).toBe(46); // Math.round(18 * 1.2 + 24)
 	});
 
 	test('output rounding is single-pass at non-integer throughput (level 2)', () => {

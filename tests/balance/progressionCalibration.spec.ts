@@ -87,6 +87,15 @@ describe('evaluateProgressionPacing', () => {
 		expect(evaluateProgressionPacing(input(rows, { days: 364 })).coverageComplete).toBe(false);
 	});
 
+	it('scopes verdict rows to the configured archetypes on a pilot', () => {
+		const runs = SWEEP_SEEDS.map((seed) => run(seed, 'convenience'));
+		const pilot = evaluateProgressionPacing(input(runs, { archetypes: ['convenience'] }));
+		expect(pilot.archetypes.map((row) => row.archetypeId)).toEqual(['convenience']);
+		expect(pilot.archetypes[0]?.runCount).toBe(SWEEP_SEEDS.length);
+		expect(pilot.coverageComplete).toBe(false);
+		expect(pilot.allPassed).toBe(false);
+	});
+
 	it('treats an absent Tier 5 as a failed, not vacuously passing, spacing gate', () => {
 		const rows = completeRuns().map((entry) =>
 			entry.archetypeId === 'grocery'
@@ -227,7 +236,7 @@ describe('evaluateProgressionPacing horizon boundary', () => {
 		expect(tier('market-leader').claimDayMax).toBeNull();
 	});
 
-	it('surfaces an after-horizon receipt as a blocker diagnostic', () => {
+	it('surfaces an after-horizon receipt as its own diagnostic, not a goal id', () => {
 		const idle: IdleRunSummary = {
 			seed: 1,
 			archetypeId: 'boutique',
@@ -243,12 +252,13 @@ describe('evaluateProgressionPacing horizon boundary', () => {
 			[idle]
 		);
 		const tier = (tierId: ProgressionTierId) => report.tiers.find((row) => row.tierId === tierId)!;
-		expect(tier('market-leader').blockerGoalCounts).toEqual({
-			'claimed-after-horizon:day-366': 1
-		});
-		expect(tier('multi-city-operator').blockerGoalCounts).toEqual({
-			'claimed-after-horizon:day-366': 1
-		});
-		expect(tier('local-shop').blockerGoalCounts).toEqual({});
+		expect(tier('market-leader').blockerGoalCounts).toEqual({});
+		expect(tier('market-leader').claimedAfterHorizon).toEqual([
+			{ seed: 1, archetypeId: 'boutique', claimedOnDay: 366 }
+		]);
+		expect(tier('multi-city-operator').claimedAfterHorizon).toEqual([
+			{ seed: 1, archetypeId: 'boutique', claimedOnDay: 366 }
+		]);
+		expect(tier('local-shop').claimedAfterHorizon).toEqual([]);
 	});
 });

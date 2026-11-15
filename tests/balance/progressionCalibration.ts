@@ -193,6 +193,12 @@ export interface TierClaimCalibration {
 	neverClaimedByArchetype: Record<string, number>;
 	/** Failing goal id → run count among the runs that never claimed the tier. */
 	blockerGoalCounts: Record<string, number>;
+	/**
+	 * Runs with a receipt for this tier stamped after the configured horizon —
+	 * never-claimed for verdict purposes, but the receipt is real diagnostic
+	 * evidence (terminal-state goal scanning is silent for it).
+	 */
+	claimedAfterHorizon: { seed: number; archetypeId: ArchetypeId; claimedOnDay: number }[];
 	/** Reached runs whose claim day lands strictly after the tier's p90. */
 	outliers: { seed: number; archetypeId: ArchetypeId; claimedOnDay: number }[];
 }
@@ -212,17 +218,19 @@ export function calibrateTier(
 	);
 	const neverClaimedByArchetype: Record<string, number> = {};
 	const blockerGoalCounts: Record<string, number> = {};
+	const claimedAfterHorizon: TierClaimCalibration['claimedAfterHorizon'] = [];
 	for (const run of neverClaimedRuns) {
 		neverClaimedByArchetype[run.archetypeId] = (neverClaimedByArchetype[run.archetypeId] ?? 0) + 1;
 		for (const goalId of run.unclaimedTierGoalIds[tierId] ?? []) {
 			blockerGoalCounts[goalId] = (blockerGoalCounts[goalId] ?? 0) + 1;
 		}
-		// Terminal-state goal scanning is silent for a tier claimed after the
-		// horizon; surface the late receipt as its own blocker diagnostic.
 		const lateClaim = run.claims.find((claim) => claim.tierId === tierId);
 		if (lateClaim) {
-			const goalId = `claimed-after-horizon:day-${lateClaim.claimedOnDay}`;
-			blockerGoalCounts[goalId] = (blockerGoalCounts[goalId] ?? 0) + 1;
+			claimedAfterHorizon.push({
+				seed: run.seed,
+				archetypeId: run.archetypeId,
+				claimedOnDay: lateClaim.claimedOnDay
+			});
 		}
 	}
 	const claimDayP90 = quantile(claimDays, 0.9);
@@ -238,6 +246,7 @@ export function calibrateTier(
 		claimDayMax: claimDays.length > 0 ? Math.max(...claimDays) : null,
 		neverClaimedByArchetype,
 		blockerGoalCounts,
+		claimedAfterHorizon,
 		outliers:
 			claimDayP90 === null
 				? []
@@ -424,7 +433,10 @@ export function evaluateProgressionPacing(
 		counts.size === expectedCount &&
 		SWEEP_SEEDS.every((seed) => SWEEP_ARCHETYPES.every((id) => counts.get(`${seed}/${id}`) === 1));
 
-	const archetypes = SWEEP_ARCHETYPES.map<ArchetypePacingVerdict>((archetypeId) => {
+	// Verdict rows cover exactly the configured archetypes: a partial pilot
+	// gets honest rows only for what it ran, while `coverageComplete` still
+	// requires the full official matrix for an official PASS.
+	const archetypes = report.config.archetypes.map<ArchetypePacingVerdict>((archetypeId) => {
 		const runs = report.runs.filter((run) => run.archetypeId === archetypeId);
 		const tier3 = calibrateTier('regional-supplier', runs, report.config.days);
 		const tier5 = calibrateTier('market-leader', runs, report.config.days);

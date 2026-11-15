@@ -13,9 +13,9 @@
  *   sizing bar on all 10 balance-replay seeds inside the 1.2–2.0× band
  *   (measured: convenience 1.32–1.64×, grocery 1.47–1.86×);
  * - no seed overshoots the 2.0× hard cap on the sizing band;
- * - boutique (positive control) is not weaker than its round-1 measured
- *   founding ratio (≈ 2.56×; the breadth/capacity levers strengthen it, which
- *   the ruling explicitly allows);
+ * - boutique (positive control) held its round-1 measured founding ratio
+ *   (≈ 2.56×) through round 2; HPA-721 Step 2 deliberately normalized it to
+ *   a measured ≈2.45× floor to narrow the peak-book-value spread;
  * - electronics single-store viability stays above the 1.2× bar (the
  *   expansion-pairing demand-split is a documented diagnosis, re-measured in
  *   the round-2 replay, not asserted here);
@@ -198,16 +198,17 @@ describe('repaired founding unit economics (HPA-502 Step 4 round 2)', () => {
 		}
 	});
 
-	test('boutique control is not weaker than its round-1 founding ratio', () => {
+	test('boutique control keeps the HPA-721 normalized founding-ratio floor', () => {
 		const rows = BALANCE_SEEDS.map((seed) => ({
 			seed,
 			...measureFoundingEconomics('boutique', seed)
 		}));
 		for (const row of rows) {
 			// HPA-721 Step 2 normalized boutique price/cost by ~5% (still the
-			// premium archetype) to narrow the peak-book-value spread; the
-			// measured founding control floor is ≈2.45×, still far above the
-			// 1.2× sizing bar and the round-1 2.56× reference.
+			// premium archetype) to narrow the peak-book-value spread. That
+			// deliberately weakened the control below the round-1 2.56×
+			// reference: the measured floor is ≈2.45× (min seed 20260506), the
+			// rest 2.70–4.42×, so pin just under it.
 			expect(row.ratio).toBeGreaterThanOrEqual(2.4);
 		}
 	});

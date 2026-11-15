@@ -212,24 +212,53 @@ describe('diffProgressionArtifacts', () => {
 		expect(text).toContain('require-identical: PASS');
 	});
 
-	it('fails require-identical and reports mismatch when idle aggregate differs', () => {
+	it('fails even an ordinary diff when idle claim counters differ', () => {
 		const base = {
 			...artifact([row(1, 'convenience')]),
-			idle: { totalRuns: 1, totalEarnedUnclaimed: 0 }
+			idle: { runs: 1, zeroClaimRuns: 1, totalClaims: 0, totalEarnedUnclaimed: 0 }
 		};
 		const head = {
 			...artifact([row(1, 'convenience')]),
-			idle: { totalRuns: 1, totalEarnedUnclaimed: 1 }
+			idle: { runs: 1, zeroClaimRuns: 1, totalClaims: 0, totalEarnedUnclaimed: 1 }
 		};
-		const result = diffProgressionArtifacts(base, head, ['convenience']);
+		const result = diffProgressionArtifacts(base, head);
 		expect(result.requireIdenticalPassed).toBe(false);
-		expect(result.idleControlMismatches).toEqual(['idle aggregate differs between base and head']);
+		expect(result.idleControlMismatches).toEqual([
+			{
+				kind: 'control-violation',
+				message: 'idle claim/earned-unclaimed counters differ between base and head'
+			}
+		]);
 		expect(result.requireIdenticalFailures).toContain(
-			'idle-control:idle aggregate differs between base and head'
+			'idle-control:idle claim/earned-unclaimed counters differ between base and head'
 		);
 		const text = formatProgressionDiff(result);
-		expect(text).toContain('idle-control mismatch: idle aggregate differs between base and head');
+		expect(text).toContain(
+			'idle-control mismatch: idle claim/earned-unclaimed counters differ between base and head'
+		);
 		expect(text).toContain('require-identical: FAIL (1 violation(s))');
+	});
+
+	it('fails even an ordinary diff when the tier-1 verdict flips', () => {
+		const base = {
+			...artifact([row(1, 'convenience')]),
+			tier1NonDecorative: { idlePeakReportBookValueMax: 42, tier1PeakTarget: 70, passes: true }
+		};
+		const head = {
+			...artifact([row(1, 'convenience')]),
+			tier1NonDecorative: { idlePeakReportBookValueMax: 71, tier1PeakTarget: 70, passes: false }
+		};
+		const result = diffProgressionArtifacts(base, head);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.idleControlMismatches).toEqual([
+			{
+				kind: 'check-flip',
+				message: 'tier1NonDecorative verdict differs between base and head'
+			}
+		]);
+		expect(result.requireIdenticalFailures).toContain(
+			'idle-control:tier1NonDecorative verdict differs between base and head'
+		);
 	});
 
 	it('reports changed idle book values without failing an ordinary before/after comparison', () => {
@@ -245,19 +274,22 @@ describe('diffProgressionArtifacts', () => {
 		};
 		const result = diffProgressionArtifacts(base, head);
 		expect(result.idleControlMismatches).toEqual([
-			'idle aggregate differs between base and head',
-			'tier1NonDecorative differs between base and head'
+			{ kind: 'value-drift', message: 'idle book-value aggregates differ between base and head' },
+			{
+				kind: 'value-drift',
+				message: 'tier1NonDecorative idle peak input differs between base and head'
+			}
 		]);
 		expect(result.requireIdenticalPassed).toBe(true);
 		expect(result.requireIdenticalFailures).toEqual([]);
 		expect(formatProgressionDiff(result)).toContain(
-			'idle-control mismatch: idle aggregate differs'
+			'idle-control mismatch: idle book-value aggregates differ'
 		);
 		// Identical mode retains its strict idle checks.
 		const strict = diffProgressionArtifacts(base, head, ['convenience']);
 		expect(strict.requireIdenticalPassed).toBe(false);
 		expect(strict.requireIdenticalFailures).toContain(
-			'idle-control:idle aggregate differs between base and head'
+			'idle-control:idle book-value aggregates differ between base and head'
 		);
 	});
 
@@ -265,7 +297,9 @@ describe('diffProgressionArtifacts', () => {
 		const base = { ...artifact([row(1, 'convenience')]), idleRuns: 2 };
 		const head = { ...artifact([row(1, 'convenience')]), idleRuns: 1 };
 		const result = diffProgressionArtifacts(base, head);
-		expect(result.idleControlMismatches).toEqual(['idleRuns count differs: base 2 vs head 1']);
+		expect(result.idleControlMismatches).toEqual([
+			{ kind: 'coverage', message: 'idleRuns count differs: base 2 vs head 1' }
+		]);
 		expect(result.requireIdenticalPassed).toBe(false);
 		expect(result.requireIdenticalFailures).toContain(
 			'idle-control:idleRuns count differs: base 2 vs head 1'
