@@ -270,10 +270,11 @@ export function diffProgressionArtifacts(
 		failureKeys.add(`unrepresented-archetype:${archetypeId}`);
 	}
 	// In normal before/after economy comparisons, idle book values may change.
-	// Preserve the diagnostic, but require identical idle evidence only when
-	// the caller explicitly requests a byte-identical archetype comparison.
-	if (requireIdentical.length > 0) {
-		for (const mismatch of idleControlMismatches) {
+	// An idleRuns sample-count mismatch is a coverage loss, not a value diff,
+	// so it always fails; other idle evidence requires identity only when the
+	// caller explicitly requests a byte-identical archetype comparison.
+	for (const mismatch of idleControlMismatches) {
+		if (mismatch.startsWith('idleRuns count differs') || requireIdentical.length > 0) {
 			failureKeys.add(`idle-control:${mismatch}`);
 		}
 	}
