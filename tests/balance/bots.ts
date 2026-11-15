@@ -648,6 +648,48 @@ export interface ProgressionRunResult {
 	digest: ProgressionRunDigest;
 }
 
+/**
+ * Synchronous observer of every production claim evaluation: the pre-claim
+ * game, the `claimEarnedTiers` result and the ledger action index the
+ * evaluation followed. Must be a pure, synchronous function returning
+ * `undefined`; a thenable return aborts the run (and its rejection is absorbed
+ * so it cannot surface as an unhandled rejection). Read-only — it must never
+ * mutate either game (see `progressionClaimTrace.ts`).
+ */
+export type ProgressionClaimProbe = (
+	before: GameState,
+	after: GameState,
+	actionIndex: number
+) => void;
+
+/**
+ * Active probe, set for the duration of one `runProgressionBot` call. Module
+ * state keeps the observer out of ~15 helper signatures; runs are synchronous,
+ * and a nested run saves and restores the caller's probe in `finally`.
+ */
+let activeClaimProbe: ProgressionClaimProbe | null = null;
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+	return (
+		value !== null &&
+		(typeof value === 'object' || typeof value === 'function') &&
+		typeof (value as { then?: unknown }).then === 'function'
+	);
+}
+
+/**
+ * A thenable probe violates the synchronous contract: absorb its later
+ * rejection first (so aborting cannot leave an unhandled rejection), then fail
+ * the run with the contract error.
+ */
+function assertSynchronousProbeResult(value: unknown): void {
+	if (!isThenable(value)) return;
+	void Promise.resolve(value).catch(() => {});
+	throw new Error(
+		'progression claim probe must return void; asynchronous probes are not supported.'
+	);
+}
+
 /** The progression bot replans on the same weekly cadence as the advisor. */
 export const PROGRESSION_CADENCE_DAYS = ADVISOR_CADENCE_DAYS;
 
@@ -692,6 +734,8 @@ function claimNewlyEarnedTiers(
 	day: number
 ): GameState {
 	const claimed = claimEarnedTiers(game);
+	const probe = activeClaimProbe;
+	if (probe) assertSynchronousProbeResult(probe(game, claimed, ledger.actions.length));
 	if (claimed === game) return game;
 	for (const claim of claimed.progression.claims.slice(game.progression.claims.length)) {
 		progression.claims.push({ tierId: claim.tierId, claimedOnDay: claim.claimedOnDay });
@@ -1305,7 +1349,8 @@ function runProgressionDay(
 export function runProgressionBot(
 	archetypeId: ArchetypeId,
 	seed: number,
-	days: number
+	days: number,
+	probe?: ProgressionClaimProbe
 ): ProgressionRunResult {
 	const { game: founded, tile } = createFoundingGame(archetypeId, seed);
 	const foundingEstimate = estimateOpeningRevenue({
@@ -1342,13 +1387,20 @@ export function runProgressionBot(
 	};
 
 	let game = founded;
-	for (let day = 1; day <= days; day += 1) {
-		game = runProgressionDay(game, ledger, progression, day, archetypeId);
-		const advanced = applyGameCommand(game, { kind: 'advanceDay' });
-		if (!advanced.ok) {
-			throw new Error(`advanceDay was rejected on day ${day}; this is a harness bug.`);
+	// A nested run must restore this probe, not clear it (see the nested-run spec).
+	const previousProbe = activeClaimProbe;
+	activeClaimProbe = probe ?? null;
+	try {
+		for (let day = 1; day <= days; day += 1) {
+			game = runProgressionDay(game, ledger, progression, day, archetypeId);
+			const advanced = applyGameCommand(game, { kind: 'advanceDay' });
+			if (!advanced.ok) {
+				throw new Error(`advanceDay was rejected on day ${day}; this is a harness bug.`);
+			}
+			game = claimNewlyEarnedTiers(advanced.game, ledger, progression, day);
 		}
-		game = claimNewlyEarnedTiers(advanced.game, ledger, progression, day);
+	} finally {
+		activeClaimProbe = previousProbe;
 	}
 
 	const digest: ProgressionRunDigest = {
