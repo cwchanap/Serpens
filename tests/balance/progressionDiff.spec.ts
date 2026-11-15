@@ -261,6 +261,17 @@ describe('diffProgressionArtifacts', () => {
 		);
 	});
 
+	it('keeps an idleRuns sample-count mismatch as a failure in ordinary comparisons', () => {
+		const base = { ...artifact([row(1, 'convenience')]), idleRuns: 2 };
+		const head = { ...artifact([row(1, 'convenience')]), idleRuns: 1 };
+		const result = diffProgressionArtifacts(base, head);
+		expect(result.idleControlMismatches).toEqual(['idleRuns count differs: base 2 vs head 1']);
+		expect(result.requireIdenticalPassed).toBe(false);
+		expect(result.requireIdenticalFailures).toContain(
+			'idle-control:idleRuns count differs: base 2 vs head 1'
+		);
+	});
+
 	it('reports non-zero violation count in formatted verdict when config mismatches', () => {
 		const result = diffProgressionArtifacts(
 			artifact([row(1, 'convenience')]),
