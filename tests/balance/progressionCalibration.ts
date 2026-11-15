@@ -217,6 +217,13 @@ export function calibrateTier(
 		for (const goalId of run.unclaimedTierGoalIds[tierId] ?? []) {
 			blockerGoalCounts[goalId] = (blockerGoalCounts[goalId] ?? 0) + 1;
 		}
+		// Terminal-state goal scanning is silent for a tier claimed after the
+		// horizon; surface the late receipt as its own blocker diagnostic.
+		const lateClaim = run.claims.find((claim) => claim.tierId === tierId);
+		if (lateClaim) {
+			const goalId = `claimed-after-horizon:day-${lateClaim.claimedOnDay}`;
+			blockerGoalCounts[goalId] = (blockerGoalCounts[goalId] ?? 0) + 1;
+		}
 	}
 	const claimDayP90 = quantile(claimDays, 0.9);
 	return {

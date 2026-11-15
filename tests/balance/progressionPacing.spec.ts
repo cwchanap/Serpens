@@ -226,4 +226,29 @@ describe('evaluateProgressionPacing horizon boundary', () => {
 		expect(tier('market-leader').neverClaimed).toBe(1);
 		expect(tier('market-leader').claimDayMax).toBeNull();
 	});
+
+	it('surfaces an after-horizon receipt as a blocker diagnostic', () => {
+		const idle: IdleRunSummary = {
+			seed: 1,
+			archetypeId: 'boutique',
+			claimCount: 0,
+			earnedUnclaimedClaims: 0,
+			foundingBookValue: 0,
+			peakReportBookValue: 0,
+			finalBookValue: 0
+		};
+		const report = buildProgressionCalibrationReport(
+			{ seeds: [1], days: 365, archetypes: ['boutique'] },
+			[horizonRow(1, 366, 366)],
+			[idle]
+		);
+		const tier = (tierId: ProgressionTierId) => report.tiers.find((row) => row.tierId === tierId)!;
+		expect(tier('market-leader').blockerGoalCounts).toEqual({
+			'claimed-after-horizon:day-366': 1
+		});
+		expect(tier('multi-city-operator').blockerGoalCounts).toEqual({
+			'claimed-after-horizon:day-366': 1
+		});
+		expect(tier('local-shop').blockerGoalCounts).toEqual({});
+	});
 });
