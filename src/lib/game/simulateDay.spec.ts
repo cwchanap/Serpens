@@ -1469,10 +1469,12 @@ describe('daily simulation', () => {
 			}>
 		> = {
 			convenience: [
+				// HPA-721 product-margin pilot (convenience water 6 → 7) re-seated
+				// the founding cash curve under seed 277_280.
 				{
 					day: 8,
-					cashBefore: 31_474,
-					cashAfter: 31_510,
+					cashBefore: 31_558,
+					cashAfter: 31_665,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1480,8 +1482,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 15,
-					cashBefore: 30_568,
-					cashAfter: 30_591,
+					cashBefore: 30_760,
+					cashAfter: 30_853,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,
@@ -1489,8 +1491,8 @@ describe('daily simulation', () => {
 				},
 				{
 					day: 22,
-					cashBefore: 29_663,
-					cashAfter: 29_710,
+					cashBefore: 29_963,
+					cashAfter: 30_085,
 					reserveWarning: false,
 					cashPressureDecision: false,
 					missedPaymentCount: 0,

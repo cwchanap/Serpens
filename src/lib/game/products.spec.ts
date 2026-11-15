@@ -56,6 +56,20 @@ describe('product catalog', () => {
 		expect(convenienceIds).toEqual(expect.arrayContaining(['bottled-water', 'soft-drinks']));
 	});
 
+	it('keeps the HPA-721 convenience water pilot price without inflating inventory cost', () => {
+		const water = getProductDefinition('bottled-water');
+
+		// HPA-721 product-margin pilot: the convenience water shelf price moves
+		// 6 → 7 while the catalog import cost stays 1, so inventory keeps its
+		// original per-unit valuation and the gain is realised sales margin.
+		expect(water).toMatchObject({
+			defaultSellingPrice: 7,
+			importCost: 1,
+			demandWeight: 1.2,
+			priceSensitivity: 0.7
+		});
+	});
+
 	it('uses one catalog definition for shared product economics', () => {
 		const product = getProductDefinition('soft-drinks');
 

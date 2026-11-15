@@ -130,7 +130,8 @@ describe('brand catalog', () => {
 		expect.assertions(2);
 
 		expect(getBrandDefaultSellingPrice(PRODUCTS.apparel, 'northstar-select')).toBe(42);
-		expect(getBrandDefaultSellingPrice(PRODUCTS['bottled-water'], 'common-ground')).toBe(6);
+		// HPA-721 product-margin pilot: bottled water 6 → 7.
+		expect(getBrandDefaultSellingPrice(PRODUCTS['bottled-water'], 'common-ground')).toBe(7);
 	});
 
 	test('resolves unit cost, demand, and market attraction without a customer price', () => {
