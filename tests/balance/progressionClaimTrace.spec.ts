@@ -66,6 +66,18 @@ describe('progression claim trace collector (noninterference)', { timeout: 180_0
 		);
 	});
 
+	it('drains state on build so one collector can be reused across runs', () => {
+		const collector = createProgressionClaimTraceCollector();
+		const first = runProgressionBot('convenience', SEED, 10, collector.probe);
+		collector.build(SEED, 'convenience', 10, first);
+		const second = runProgressionBot('convenience', SEED, 5, collector.probe);
+		const reused = collector.build(SEED, 'convenience', 5, second);
+
+		const fresh = createProgressionClaimTraceCollector();
+		const baseline = runProgressionBot('convenience', SEED, 5, fresh.probe);
+		expect(reused).toEqual(fresh.build(SEED, 'convenience', 5, baseline));
+	});
+
 	it('reports receipts, daily reports and peak evidence that match the finished run', () => {
 		const collector = createProgressionClaimTraceCollector();
 		const result = runProgressionBot('boutique', SEED, DAYS, collector.probe);

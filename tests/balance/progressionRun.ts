@@ -25,6 +25,7 @@ import {
 	type IdleRunSummary,
 	type ProgressionRunSummary
 } from './progressionCalibration';
+import { createProgressionClaimTraceCollector } from './progressionClaimTrace';
 
 export interface ProgressionSweepOptions {
 	seeds: number[];
@@ -125,7 +126,8 @@ function runReferenceTrace(options: ProgressionSweepOptions): number {
 	}
 	const seed = options.seeds[0]!;
 	const archetypeId = options.archetypes[0]!;
-	const result = runProgressionBot(archetypeId, seed, options.days);
+	const claimTrace = createProgressionClaimTraceCollector();
+	const result = runProgressionBot(archetypeId, seed, options.days, claimTrace.probe);
 	writeJson(options.trace!, {
 		seed,
 		archetypeId,
@@ -136,6 +138,7 @@ function runReferenceTrace(options: ProgressionSweepOptions): number {
 		claims: result.progression.claims,
 		creditEvents: result.progression.creditEvents,
 		repayments: result.progression.repayments,
+		claimTrace: claimTrace.build(seed, archetypeId, options.days, result),
 		final: {
 			cash: result.game.cash,
 			bookValue: getCompanyBookValue(result.game).total,
@@ -208,8 +211,16 @@ export function main(argv: readonly string[]): number {
 	);
 	for (const row of pacing.archetypes) {
 		console.log(
-			`    ${row.archetypeId}: T3 ${row.tier3Reached}/${row.runCount} median ${row.tier3MedianDay ?? '—'}d (${row.tier3Passed ? 'PASS' : 'FAIL'}), T5 ${row.tier5Reached}/${row.runCount} (${row.tier5Passed ? 'PASS' : 'FAIL'}), paired T4→T5 ${row.pairedGapMedian ?? '—'}d (${row.spacingPassed ? 'PASS' : 'FAIL'}), same-day ${row.sameDayTier4Tier5}`
+			`    ${row.archetypeId}: T3 ${row.tier3Reached}/${row.runCount} median ${row.tier3MedianDay ?? '—'}d (${row.tier3Passed ? 'PASS' : 'FAIL'}), T5 ${row.tier5Reached}/${row.runCount} (${row.tier5Passed ? 'PASS' : 'FAIL'}), paired T4→T5 ${row.pairedGapMedian ?? '—'}d (${row.spacingPassed ? 'PASS' : 'FAIL'}), same-day ${row.sameDayTier4Tier5}, peak median ${row.medianPeakBookValue ?? '—'}`
 		);
+		for (const [label, blockers] of [
+			['T3', row.tier3Blockers],
+			['T5', row.tier5Blockers]
+		] as const) {
+			if (Object.keys(blockers).length > 0) {
+				console.log(`      ${label} blockers: ${JSON.stringify(blockers)}`);
+			}
+		}
 	}
 	console.log(
 		`  peak book-value median ratio: ${pacing.peakBookValueRatio?.toFixed(2) ?? 'not positive'} (${pacing.equityPassed ? 'PASS' : 'FAIL'})`

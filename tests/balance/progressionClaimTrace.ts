@@ -191,6 +191,16 @@ export function createProgressionClaimTraceCollector(): {
 } {
 	const evaluations: ProgressionClaimEvaluation[] = [];
 	let lastReportDay: number | null = null;
+	// The peak metric is a pure function of the report series, so it only
+	// changes when a new daily report lands — not between intra-day commands.
+	let peakCache: { reportDay: number | null; value: number } | null = null;
+	const peakFor = (game: GameState): number => {
+		const reportDay = game.reports.at(-1)?.day ?? null;
+		if (peakCache === null || peakCache.reportDay !== reportDay) {
+			peakCache = { reportDay, value: peakBookValue(game) };
+		}
+		return peakCache.value;
+	};
 
 	return {
 		probe(before, after, actionIndex) {
@@ -207,7 +217,7 @@ export function createProgressionClaimTraceCollector(): {
 				storeCap: before.storeCap,
 				cities: before.world.openedCityIds.length,
 				maxLevel: before.stores.reduce((level, store) => Math.max(level, store.level), 0),
-				peakBookValue: peakBookValue(before),
+				peakBookValue: peakFor(before),
 				localUnits: localUnits(before),
 				claimsBefore,
 				claimsAfter: after.progression.claims.length,
@@ -217,13 +227,19 @@ export function createProgressionClaimTraceCollector(): {
 		},
 		build(seed, archetypeId, days, result) {
 			const { game, ledger, progression } = result;
+			// Drain the accumulator so reusing this collector for another run
+			// cannot mix runs; the report-day peak cache resets with it.
+			const claimEvaluations = evaluations.splice(0);
+			lastReportDay = null;
+			peakCache = null;
+			const bookValue = getCompanyBookValue(game);
 			return {
 				seed,
 				archetypeId,
 				days,
 				claims: progression.claims.map((claim) => ({ ...claim })),
 				daily: dailyRows(game.reports),
-				claimEvaluations: evaluations,
+				claimEvaluations,
 				final: {
 					day: game.day,
 					reportDay: game.reports.at(-1)?.day ?? null,
@@ -232,10 +248,10 @@ export function createProgressionClaimTraceCollector(): {
 					openedCityIds: [...game.world.openedCityIds],
 					maxLevel: game.stores.reduce((level, store) => Math.max(level, store.level), 0),
 					cash: game.cash,
-					debt: getCompanyBookValue(game).debt,
-					peakBookValue: peakBookValue(game),
+					debt: bookValue.debt,
+					peakBookValue: peakFor(game),
 					localUnits: localUnits(game),
-					bookValue: getCompanyBookValue(game),
+					bookValue,
 					stores: game.stores.map((store) => ({
 						id: store.id,
 						cityId: store.cityId,

@@ -475,7 +475,10 @@ export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionR
  * building costs dominated the cash bleed. The chain buildings used by those
  * four evidence runs have `dailyOperatingCost` at ~0.6× the previous value;
  * doubling the circuit-board recipe output was tested and rejected because it
- * still left four parallel plants and delayed electronics tier 3 (134 → 162).
+ * still left four parallel plants and delayed electronics tier 3 (134 → 162
+ * under the earlier setup-cut head; the final head already claims it on day
+ * 162 — see task-2-report). `flour-mill` was left out: no evidence run builds
+ * it, the same reason the `pantry-works` cut was reverted.
  */
 export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 	Record<IndustrialBuildingTypeId, IndustrialBuildingType>
@@ -592,7 +595,7 @@ export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 		id: 'flour-mill',
 		name: 'Flour Mill',
 		buildCost: 1200,
-		dailyOperatingCost: 14,
+		dailyOperatingCost: 24,
 		requiredResource: null,
 		requiresIndustrialTile: true,
 		recipeId: 'flour-milling',
