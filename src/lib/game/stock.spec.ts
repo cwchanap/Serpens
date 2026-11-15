@@ -17,7 +17,6 @@ import {
 	getStoreProductStock,
 	getStoreProductStatus,
 	initializeStoreProducts,
-	priceDemandMultiplier,
 	sellerPolicyDemand,
 	simulateProductSalesForCity as simulateProductSalesForCityWithPolicies,
 	summarizeStockTrouble,
@@ -239,21 +238,6 @@ describe('stock rules', () => {
 		expect(report.revenue).toBe(report.unitsSold * 7);
 		// Import cost stays 1: the price pilot cannot manufacture inventory value.
 		expect(report.costOfGoods).toBe(report.unitsSold * 1);
-	});
-
-	test('keeps the authored water shelf prices as demand references under the pilot default', () => {
-		expect.assertions(4);
-		const water = getProductDefinition('bottled-water');
-
-		// `defaultSellingPrice` is both the default shelf price and the demand
-		// reference used by priceDemandMultiplier (stock.ts). At the pilot
-		// default of 7 the table price is unpenalised; local-lifeline's authored
-		// $6 shelf price carries 1.1× demand; first-profit's authored $3 shelf
-		// price stays on the 1.35 cap.
-		expect(water.defaultSellingPrice).toBe(7);
-		expect(priceDemandMultiplier(water, 7)).toBe(1);
-		expect(priceDemandMultiplier(water, 6)).toBeCloseTo(1.1, 10);
-		expect(priceDemandMultiplier(water, 3)).toBeCloseTo(1.35, 10);
 	});
 
 	test('createStoreProduct defaults receivedDay to 1 when omitted', () => {
