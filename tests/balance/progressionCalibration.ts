@@ -32,6 +32,19 @@ export function median(sample: readonly number[]): number | null {
 	return quantile(sample, 0.5);
 }
 
+/**
+ * Receipts inside the run's configured day horizon. The bot claims after its
+ * final `advanceDay`, so a `days`-day run can record a receipt on game day
+ * `days + 1`; the approved pacing gates are "by day <days>", making a later
+ * receipt terminal evidence rather than in-window reach or spacing.
+ */
+function claimsWithinHorizon(
+	run: ProgressionRunSummary,
+	horizonDays: number
+): ProgressionRunSummary['claims'] {
+	return run.claims.filter((claim) => claim.claimedOnDay <= horizonDays);
+}
+
 function minMedianMax(sample: readonly number[]): { min: number; median: number; max: number } {
 	if (sample.length === 0) throw new Error('minMedianMax requires a nonempty sample');
 	const sorted = [...sample].sort((left, right) => left - right);
@@ -186,13 +199,16 @@ export interface TierClaimCalibration {
 
 export function calibrateTier(
 	tierId: ProgressionTierId,
-	runs: readonly ProgressionRunSummary[]
+	runs: readonly ProgressionRunSummary[],
+	horizonDays: number
 ): TierClaimCalibration {
 	const claimDays = runs.flatMap((run) =>
-		run.claims.filter((claim) => claim.tierId === tierId).map((claim) => claim.claimedOnDay)
+		claimsWithinHorizon(run, horizonDays)
+			.filter((claim) => claim.tierId === tierId)
+			.map((claim) => claim.claimedOnDay)
 	);
 	const neverClaimedRuns = runs.filter(
-		(run) => !run.claims.some((claim) => claim.tierId === tierId)
+		(run) => !claimsWithinHorizon(run, horizonDays).some((claim) => claim.tierId === tierId)
 	);
 	const neverClaimedByArchetype: Record<string, number> = {};
 	const blockerGoalCounts: Record<string, number> = {};
@@ -219,7 +235,7 @@ export function calibrateTier(
 			claimDayP90 === null
 				? []
 				: runs.flatMap((run) =>
-						run.claims
+						claimsWithinHorizon(run, horizonDays)
 							.filter((claim) => claim.tierId === tierId && claim.claimedOnDay > claimDayP90)
 							.map((claim) => ({
 								seed: run.seed,
@@ -325,7 +341,7 @@ export function buildProgressionCalibrationReport(
 		},
 		progressionRuns: progressionRuns.length,
 		idleRuns: idleRuns.length,
-		tiers: PROGRESSION_TIERS.map((tier) => calibrateTier(tier.id, progressionRuns)),
+		tiers: PROGRESSION_TIERS.map((tier) => calibrateTier(tier.id, progressionRuns, config.days)),
 		credit: calibrateCredit(progressionRuns),
 		idle,
 		tier1NonDecorative: {
@@ -403,13 +419,14 @@ export function evaluateProgressionPacing(
 
 	const archetypes = SWEEP_ARCHETYPES.map<ArchetypePacingVerdict>((archetypeId) => {
 		const runs = report.runs.filter((run) => run.archetypeId === archetypeId);
-		const tier3 = calibrateTier('regional-supplier', runs);
-		const tier5 = calibrateTier('market-leader', runs);
+		const tier3 = calibrateTier('regional-supplier', runs, report.config.days);
+		const tier5 = calibrateTier('market-leader', runs, report.config.days);
 		const pairedGaps: number[] = [];
 		for (const run of runs) {
-			const day5 = run.claims.find((claim) => claim.tierId === 'market-leader')?.claimedOnDay;
+			const claims = claimsWithinHorizon(run, report.config.days);
+			const day5 = claims.find((claim) => claim.tierId === 'market-leader')?.claimedOnDay;
 			if (day5 === undefined) continue;
-			const day4 = run.claims.find((claim) => claim.tierId === 'multi-city-operator')?.claimedOnDay;
+			const day4 = claims.find((claim) => claim.tierId === 'multi-city-operator')?.claimedOnDay;
 			if (day4 !== undefined && day5 >= day4) pairedGaps.push(day5 - day4);
 		}
 		const pairedGapMedian = median(pairedGaps);
