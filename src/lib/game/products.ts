@@ -8,13 +8,16 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		name: 'Bottled Water',
 		demandWeight: 1.2,
 		// HPA-502 Step 4 round 2: founding capacity fills in sorted-id order, so
-		// the alphabetically-first product's margin leads convenience economics
-		// (demand is unpunished because the store price tracks the table default).
+		// the alphabetically-first product's margin leads convenience economics.
 		// HPA-721 product-margin pilot: shelf price 6 → 7 (2.33× the pre-HPA-502
 		// price of 3; the HPA-502 "×2 data-lever" note governed that pass) with
-		// import cost unchanged, so inventory valuation does not move. Scenario
-		// contracts re-run green: each scenario authors its own shelf price and
-		// the water-selling traces keep their calibrated outcomes.
+		// import cost unchanged, so inventory valuation does not move.
+		// `defaultSellingPrice` is also the demand reference
+		// (stock.ts `priceDemandMultiplier`): at local-lifeline's authored $6
+		// shelf price the water demand multiplier moves 1.0 → 1.1, while
+		// first-profit's authored $3 stays on the 1.35 cap and two-city has no
+		// authored water price. The scenario contracts still pass at their
+		// pinned outcomes — a measured result, not a general invariance claim.
 		importCost: 1,
 		defaultSellingPrice: 7,
 		priceSensitivity: 0.7,
