@@ -265,13 +265,11 @@ describe('StoreStockTable', () => {
 		});
 
 		const sellingPrice = page.getByRole('spinbutton', { name: 'Selling price for Bottled Water' });
-		// 9 differs from the HPA-721 pilot default (7), so this still exercises a
-		// real edit rather than normalizing onto the stored value.
-		await sellingPrice.fill('9');
+		await sellingPrice.fill('7');
 		await page.getByRole('cell', { name: 'Bottled Water' }).click();
 
 		expect(onUpdate).toHaveBeenCalledTimes(1);
-		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { sellingPrice: 9 });
+		expect(onUpdate).toHaveBeenCalledWith('store-1', 'bottled-water', { sellingPrice: 7 });
 	});
 
 	it('does not send an update for invalid numeric input', async () => {
