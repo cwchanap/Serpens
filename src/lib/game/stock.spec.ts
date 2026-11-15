@@ -208,7 +208,36 @@ describe('stock rules', () => {
 
 		expect(products.map((product) => product.productId)).toEqual(['bottled-water', 'snacks']);
 		expect(products[0]!.brandId).toBe('common-ground');
-		expect(products[0]!.sellingPrice).toBe(6);
+		// HPA-721 product-margin pilot: convenience water 6 → 7.
+		expect(products[0]!.sellingPrice).toBe(7);
+	});
+
+	test('books the convenience water pilot price as sales margin at unchanged import cost', () => {
+		expect.assertions(4);
+		const game = createNewGame('convenience', 20260508);
+		const product = {
+			...createStoreProduct('bottled-water'),
+			lots: [{ receivedDay: 1, quantity: 500 }],
+			reorderThreshold: 1,
+			targetStock: 500
+		};
+		const store: GameState['stores'][number] = { ...game.stores[0]!, products: [product] };
+		const result = simulateProductSalesForCity({
+			// Rivals are irrelevant to the per-unit arithmetic and dropping them
+			// keeps the expected values independent of rival calibration.
+			game: { ...game, day: 1, stores: [store], competitors: [] },
+			city: game.cities[0]!,
+			rng: createRng(5),
+			storeCapacity: new Map([[store.id, 500]])
+		});
+		const report = result.productReports.get(store.id)?.[0];
+		if (!report) throw new Error('expected bottled-water sales report');
+
+		expect(report.unitsSold).toBeGreaterThan(0);
+		expect(report.baseSellingPrice).toBe(7);
+		expect(report.revenue).toBe(report.unitsSold * 7);
+		// Import cost stays 1: the price pilot cannot manufacture inventory value.
+		expect(report.costOfGoods).toBe(report.unitsSold * 1);
 	});
 
 	test('createStoreProduct defaults receivedDay to 1 when omitted', () => {
@@ -267,7 +296,8 @@ describe('stock rules', () => {
 
 		expect(updated).toBe(game);
 		expect(updated.stores[0]!.products[0]!.brandId).toBe('common-ground');
-		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(6);
+		// HPA-721 product-margin pilot: convenience water 6 → 7.
+		expect(updated.stores[0]!.products[0]!.sellingPrice).toBe(7);
 	});
 
 	test('applies non-brand edits and heals a missing brand identity through the product default', () => {
