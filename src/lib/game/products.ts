@@ -9,14 +9,10 @@ export const PRODUCTS: Readonly<Record<ProductId, ProductDefinition>> = {
 		demandWeight: 1.2,
 		// HPA-502 Step 4 round 2: founding capacity fills in sorted-id order, so
 		// the alphabetically-first product's margin leads convenience economics
-		// (demand is unpunished because the store price tracks the table default).
-		// HPA-721 product-margin pilot: shelf price 6 → 7 (2.33× the pre-HPA-502
-		// price of 3; the HPA-502 "×2 data-lever" note governed that pass) with
-		// import cost unchanged, so inventory valuation does not move. Scenario
-		// contracts re-run green: each scenario authors its own shelf price and
-		// the water-selling traces keep their calibrated outcomes.
+		// (price ×2 is the authorized data-lever cap; demand is unpunished
+		// because the store price tracks the table default).
 		importCost: 1,
-		defaultSellingPrice: 7,
+		defaultSellingPrice: 6,
 		priceSensitivity: 0.7,
 		productionMaterialId: 'bottled-water',
 		dynamics: {}

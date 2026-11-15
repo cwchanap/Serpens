@@ -345,13 +345,12 @@ describe('retail placement preview', () => {
 		});
 
 		// Golden values re-captured after the HPA-721 boutique price/cost
-		// normalization and the HPA-721 convenience water price pilot; the
-		// memoization must not move any estimate.
+		// normalization; the memoization must not move any estimate.
 		expect(getRetailBuildMenuOptions({ game: null, city, seed: 0 })).toEqual([
 			{
 				archetypeId: 'convenience',
 				setupCostRange: { min: 14570, max: 22292 },
-				projectedDailyRevenueRange: { min: 187, max: 187 },
+				projectedDailyRevenueRange: { min: 174, max: 174 },
 				projectedDailyOperatingCost: 186,
 				validTileCount: 100,
 				disabledReason: null,
@@ -399,8 +398,7 @@ describe('retail placement preview', () => {
 			{
 				archetypeId: 'convenience',
 				setupCostRange: { min: 14570, max: 22292 },
-				// HPA-721 convenience water price pilot (6 → 7).
-				projectedDailyRevenueRange: { min: 187, max: 187 },
+				projectedDailyRevenueRange: { min: 174, max: 174 },
 				projectedDailyOperatingCost: 186,
 				validTileCount: 98,
 				disabledReason: null,
