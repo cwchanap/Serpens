@@ -31,6 +31,7 @@ check execution. No additional numeric design choice is delegated.
 - No schema, saved fields, migration, dependency, UI, live player app, save writes or deployment.
 - Replay captured store-opening financing; use the 2,000 reserve only for subsequent startup staffing and local construction, not a replacement opening-loan calculation.
 - Capture source patches/hashes, HEAD/dirty status, commands and exit codes; use exclusive new `hpa-721-linked-screen-*` artifacts.
+- Archived inputs are not committed; copy them from the generating workspace's ignored `docs/balance/generated/` before Task 2 preflight: `hpa-721-expansion-stock-cash.ts` (sha256 `36a4d44e30793b308ff3d45062255382a53a5ebfaa43c16956285fc24a68a575`), `hpa-721-expansion-stock-cases.json` (`5b645dc73a8092568584c0606118ad180e74a0ebbfbe8a32c19fe32cad3fb08c`), `hpa-721-expansion-stock-cash-reconciled.json` (`8470a48ed110924de4a243f747477975c026dcfb34a6a86e41bf331d656293f7`), `c7-scenarios-runner.ts` (`771284d7bca19e0461db00f9f9001484c3d99734955f252e1782bb1835c8c271`).
 - No source changes during measurements; source/helper hash changes invalidate the locked run.
 - No later strategic actions, rescue borrowing, discretionary repayments or inventory liquidation.
 - All4 store mature operating gaps>0 and gift-debited funding-neutral365 gaps>0; both primary local365 gaps>0 with productive-flow evidence.

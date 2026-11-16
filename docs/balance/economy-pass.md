@@ -717,21 +717,24 @@ from `b50c90c3`; leave the harness and bot policy unchanged.
 SEEDS=20260501,20260502,20260503,20260504,20260505,20260506,20260507,20260508,20260509,20260510,20260511,20260512,20260513,20260514,20260515,20260516,20260517,20260518,20260519,20260520,20260521,20260522,20260523,20260524,20260525,20260526,20260527,20260528,20260529,20260530,20260531,20260532,20260533,20260534,20260535,20260536,20260537,20260538,20260539,20260540,20260541,20260542,20260543,20260544,20260545,20260546,20260547,20260548,20260549,20260550
 
 bun tests/balance/progressionRun.ts --seeds "$SEEDS" --days 365 \
-  --output docs/balance/generated/hpa-721-head-3250caea-progression
+  --output docs/balance/generated/hpa-721-head-3250caea-progression-rerun
 bun run balance --seeds "$SEEDS" --days 365 --bots idle,retail-steady,advisor \
-  --output docs/balance/generated/hpa-721-head-3250caea-gate
+  --output docs/balance/generated/hpa-721-head-3250caea-gate-rerun
 bun tests/balance/progressionRun.ts --seeds 20260503 --days 365 \
   --archetypes convenience \
-  --trace docs/balance/generated/hpa-721-head-3250caea-reference-20260503.json
+  --trace docs/balance/generated/hpa-721-head-3250caea-reference-20260503-rerun.json
 bun tests/balance/chainEvidence.ts --seeds 20260503 --days 365 \
   --archetype grocery --product pantry \
-  --output docs/balance/generated/hpa-721-head-3250caea-grocery-pantry
+  --output docs/balance/generated/hpa-721-head-3250caea-grocery-pantry-rerun
 bun run test:unit -- --run src/lib/game/retailUnitEconomics.spec.ts \
   src/lib/scenarios/runtime.spec.ts
 ```
 
-For the untuned checkout use distinct `*-before` output names; preserve existing
-artifacts instead of overwriting them. The rejected import-margin pilot uses the same
+The `*-rerun` names keep a rerun from overwriting the retained
+`hpa-721-head-3250caea-*` evidence; compare rerun outputs against the retained
+files and never write to the retained names. For the untuned checkout use
+distinct `*-before` output names; preserve existing artifacts instead of
+overwriting them. The rejected import-margin pilot uses the same
 progression and Gate A commands with `--seeds 20260503,20260515` and its own
 `hpa-721-import-margin-*` output prefix, while its two-line patch is active.
 The isolated upgrade-cost pilot uses that seed subset with its single-constant
@@ -747,6 +750,17 @@ inputs; `cash` reads those inputs and the preserved initial cash output, retaini
 already validated cases and correcting only the borrowed-opening boundaries.
 Do not overwrite the preserved outputs. Raw snapshots and cached result hashes
 are part of this diagnostic recipe, not an independent official certification.
+The patch, helper, frozen inputs and preserved outputs are not committed; they
+exist only in the generating workspace's ignored `docs/balance/generated/` and
+must be obtained from that archive before a rerun. SHA-256:
+`hpa-721-expansion-stock-production.patch`
+`7fc21f1e2b681edc80bfcf0f4774e9745bc3b76bb8d8ea3c4d2b5b229f37776e`,
+`hpa-721-expansion-stock-cash.ts`
+`36a4d44e30793b308ff3d45062255382a53a5ebfaa43c16956285fc24a68a575`,
+`hpa-721-expansion-stock-cases.json`
+`5b645dc73a8092568584c0606118ad180e74a0ebbfbe8a32c19fe32cad3fb08c`,
+`hpa-721-expansion-stock-cash.json`
+`d7308ab2a3b8e815544a5f03ce41e3f162093cbce434ba17e684e02f5cd4c91d`.
 
 ## Remaining Acceptance Work
 
