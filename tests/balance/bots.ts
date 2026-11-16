@@ -653,13 +653,15 @@ export interface ProgressionRunResult {
  * game, the `claimEarnedTiers` result and the ledger action index the
  * evaluation followed. Must be a pure, synchronous function returning
  * `undefined`; a thenable return aborts the run (and its rejection is absorbed
- * so it cannot surface as an unhandled rejection). Read-only — it must never
- * mutate either game (see `progressionClaimTrace.ts`).
+ * so it cannot surface as an unhandled rejection). Wrapped commands include
+ * their original state and command. Read-only — it must never mutate its
+ * inputs (see `progressionClaimTrace.ts`).
  */
 export type ProgressionClaimProbe = (
 	before: GameState,
 	after: GameState,
-	actionIndex: number
+	actionIndex: number,
+	context?: Readonly<{ beforeCommand: GameState; command: ScenarioCommand }>
 ) => void;
 
 /**
@@ -731,11 +733,12 @@ function claimNewlyEarnedTiers(
 	game: GameState,
 	ledger: BotLedger,
 	progression: ProgressionLedger,
-	day: number
+	day: number,
+	context?: Readonly<{ beforeCommand: GameState; command: ScenarioCommand }>
 ): GameState {
 	const claimed = claimEarnedTiers(game);
 	const probe = activeClaimProbe;
-	if (probe) assertSynchronousProbeResult(probe(game, claimed, ledger.actions.length));
+	if (probe) assertSynchronousProbeResult(probe(game, claimed, ledger.actions.length, context));
 	if (claimed === game) return game;
 	for (const claim of claimed.progression.claims.slice(game.progression.claims.length)) {
 		progression.claims.push({ tierId: claim.tierId, claimedOnDay: claim.claimedOnDay });
@@ -774,7 +777,10 @@ function runProgressionCommand(
 		return game;
 	}
 	record(ledger, day, action, result.changed ? 'applied' : 'no-op', detail, command.kind);
-	return claimNewlyEarnedTiers(result.game, ledger, progression, day);
+	return claimNewlyEarnedTiers(result.game, ledger, progression, day, {
+		beforeCommand: game,
+		command
+	});
 }
 
 function runProgressionDelegation(

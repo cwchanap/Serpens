@@ -8,7 +8,9 @@
 import { describe, expect, it } from 'vitest';
 import { PROGRESSION_TIERS } from '$lib/game/progression';
 import { PRODUCTS } from '$lib/game/products';
-import type { DailyReport } from '$lib/game/types';
+import type { DailyReport, GameState } from '$lib/game/types';
+import { applyGameCommand } from '$lib/scenarios/runtime';
+import type { ScenarioCommand } from '$lib/scenarios/types';
 import { runProgressionBot, type ProgressionClaimProbe } from './bots';
 import { summarizeProgressionRun } from './progressionCalibration';
 import {
@@ -55,8 +57,38 @@ describe('progression claim trace collector (noninterference)', { timeout: 180_0
 	it('leaves the run byte-identical: digest, RNG and summary match an untraced run', () => {
 		const plain = runProgressionBot('boutique', SEED, DAYS);
 		const collector = createProgressionClaimTraceCollector();
-		const traced = runProgressionBot('boutique', SEED, DAYS, collector.probe);
+		let replayedCommand = false;
+		let observedDailyEvaluation = false;
+		let reportCount = 0;
+		const traced = runProgressionBot(
+			'boutique',
+			SEED,
+			DAYS,
+			(
+				before,
+				after,
+				actionIndex,
+				context?: Readonly<{ beforeCommand: GameState; command: ScenarioCommand }>
+			) => {
+				collector.probe(before, after, actionIndex);
+				if (before.reports.length > reportCount) {
+					expect(context).toBeUndefined();
+					observedDailyEvaluation = true;
+					reportCount = before.reports.length;
+				}
+				if (!context || replayedCommand) return;
+				const original = structuredClone(context.beforeCommand);
+				const replayed = applyGameCommand(context.beforeCommand, context.command);
+				expect(replayed.ok).toBe(true);
+				if (!replayed.ok) throw new Error('observed command must replay');
+				expect(replayed.game).toEqual(before);
+				expect(context.beforeCommand).toEqual(original);
+				replayedCommand = replayed.changed;
+			}
+		);
 
+		expect(replayedCommand).toBe(true);
+		expect(observedDailyEvaluation).toBe(true);
 		expect(JSON.stringify(traced.digest)).toBe(JSON.stringify(plain.digest));
 		expect(JSON.stringify(traced.ledger.actions)).toBe(JSON.stringify(plain.ledger.actions));
 		expect(traced.game.rngState).toBe(plain.game.rngState);
