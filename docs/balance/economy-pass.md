@@ -705,6 +705,130 @@ demonstrate positive COGS-based operating income, not only cash from opening
 goods. New numeric presets/reference actions require approval before a pilot.
 Candidate sandbox payback and progression remain unmeasured.
 
+## Corrected Linked Candidate: Bounded Screen Rejected
+
+This approved follow-up supersedes the earlier “not yet measured” status; it
+does not replace the official `3250caea` checkpoint or turn it into acceptance.
+The temporary linked bundle was reapplied at `18a6f846`, with First Profit
+opening water/snacks explicitly priced at 3/8 and its reference repricing both
+to 8/18 before any reports. Cash-based objectives, scoring bands, medal
+thresholds, bot policy and progression goals were unchanged.
+
+The frozen correction guard completes on day 4: no action scores 682/bronze,
+reference 862/gold. Cash-based income is 1,306/2,812; COGS-based operating
+income is -284/+1,222. No-action satisfaction is 46 rather than the original
+48, with the same zero satisfaction bonus. These three-report opening-stock
+results establish the teaching separation, not recurring cash payback.
+Both native captures and the focused two-test RED/GREEN evidence are retained
+under `hpa-721-first-profit-correction-guard-*`.
+
+The six other scenario pairs reuse the frozen linked-candidate captures only
+after exact global-runtime hashes, unchanged native helper/reference bodies
+and the complete scenario definitions are checked. All references remain
+gold with the original no-action outcome/medal/day separation. Rival's frozen
+reference share is `0.5295667447306791`, cash-based income 2,693 and score 951
+instead of 949; no target or scoring rule is repinned. The candidate guard
+run passes 510 tests across 11 files; six First Profit tests are deliberately
+excluded because their corrected evidence is already frozen. This is not a
+new standalone 14-row replay capture.
+
+The original linked assertions now have a clean test-first receipt: eight
+old-value assertion failures/two passes before production changes, then all
+ten pass. Reviewed arithmetic/fixture corrections preserve fractional and
+negative-zero rounding, local-versus-import valuation and brand modifiers.
+The price-elasticity fixture requires positive uncapped sales and a strict
+price effect; the planner cost-table guard distinguishes pantry retail 8.5
+from material import 8 rather than comparing equal water/snacks import prices.
+
+### Matched Cash Results
+
+Four day-one expansion opportunities use the locked real-financing recipe.
+Year-end cash is financing-neutral and debited for the actual free opening
+inventory gift: 1,092 for convenience and 2,149 for grocery. Neither book-value
+revaluation nor borrowed principal is counted as cash benefit.
+
+| Archetype   | Seed     | Days 61–90 marginal operating cash | Day-90 adjusted cash gap | Day-365 adjusted cash gap | Cash gate |
+| ----------- | -------- | ---------------------------------: | -----------------------: | ------------------------: | --------- |
+| convenience | 20260503 |                             +5,323 |                  -17,908 |                   +12,703 | pass      |
+| convenience | 20260515 |                             +5,387 |                  -18,407 |                   +12,769 | pass      |
+| grocery     | 20260503 |                             +1,330 |                  -18,724 |                   -16,672 | fail      |
+| grocery     | 20260515 |                             +2,396 |                  -19,169 |                   -15,820 | fail      |
+
+All four mature operating gaps are positive, but grocery still fails the
+required positive day-365 adjusted cash gap. All four day-90 gaps are negative;
+90-day payback is reported, not introduced as a new acceptance gate.
+These isolated store arms have zero year-end arrears and unpaid interest.
+
+The two primary local-chain cash comparisons use seed 20260503 only:
+
+| Chain             | Day-90 financing-neutral gap | Day-365 financing-neutral gap | Local deliveries | Conservative local-sales lower bound | Gate                      |
+| ----------------- | ---------------------------: | ----------------------------: | ---------------: | -----------------------------------: | ------------------------- |
+| convenience water |                       -3,019 |                        +1,523 |            3,360 |                                2,260 | pass                      |
+| grocery produce   |                       -1,971 |                        +6,244 |            2,760 |                                    0 | productive sales unproven |
+
+The produce arm records 4,042 waste units, 2,207 shrink units and 401 closing
+units across mixed local/imported supply. A zero conservative bound does not
+prove all local goods were wasted; it means the frozen recipe cannot establish
+productive local retail sales. Positive cash alone does not clear that gate.
+Eight progression chain summaries are diagnostic only; overlapping warehouse
+cost scopes must not be summed, and secondary-chain or second-seed local cash
+payback is not certified. The combined component screen therefore fails.
+
+### Bounded Progression And Engineering Result
+
+The locked capture produces eight progression runs and eight idle controls:
+two seeds × four archetypes × 365 days, compared with the already validated
+matched HEAD subset rather than rerunning the baseline.
+
+| Archetype   | Tier 3 reach | Tier 3 median day | Tier 5 reach | Paired T4→T5 median gap |
+| ----------- | ------------ | ----------------: | ------------ | ----------------------: |
+| convenience | 2/2          |             249.5 | 0/2          |             not reached |
+| boutique    | 2/2          |               239 | 2/2          |                       0 |
+| electronics | 2/2          |               148 | 0/2          |             not reached |
+| grocery     | 2/2          |                71 | 0/2          |             not reached |
+
+Native pacing evaluation fails; coverage is explicitly incomplete. The sample
+median-peak ratio is `6.023274937283728`, above 3×, not an official 50-seed
+equity result. Convenience/boutique Tier 3 is late, grocery is early, and the
+non-boutique Tier-5 and boutique spacing blockers remain. All eight progression
+runs end with negative cash. All eight idle controls earn and claim zero
+tiers; idle book-value aggregates do differ from HEAD, so behavioral controls
+must not be described as numerically identical.
+
+The separate Gate A diagnostic captures 18 rows and passes all five check
+items, but the native report explicitly says partial sweep: 432 combinations
+are missing. This is not an official Gate A certification or a reason to
+launch the full acceptance matrix.
+
+All 14 temporary gameplay/fixture/test paths are restored byte-for-byte to
+`18a6f846`; every tracked `src`/`tests` hash matches the pre-screen snapshot.
+Fresh restored verification passes 504 focused guards plus 19 retained-observer
+tests, with no exclusions. Closure verifies the frozen archives, eight locked
+helpers and measurement recipe are unchanged. Only this report and the tuning
+log are retained as tracked edits; no candidate gameplay, commit or push is
+retained.
+
+Evidence uses the ignored local archive prefix
+`docs/balance/generated/hpa-721-linked-corrected-pilot-*`: `before.json`,
+`scenario-proof.json`, `candidate-{progression,pacing,diff,traces,chains,forks,components}.json`,
+`gate.{json,md}`, `evaluation.json`, `audit.json`, `closure.json`, command/test
+logs and `prepared-final.patch`. The original frozen recipe is untouched;
+the executed copy changes only the source-SHA assertion, output prefix and
+lock-file path. Preflight proves the intervening industry edit emits identical
+runtime code with comments removed. SHA-256:
+
+- candidate patch: `0ef2cd75774efdc3f0246e2e1cb1169c7cdecfcb528bc854cbbc353a73f5fd73`;
+- executed recipe: `6dfd7cbee0db8f6bd91a2675ad828f199a37605fb139b6059723915317e65f4a`;
+- frozen evaluation: `f45ab741164701e036e66b9bb354f4246e67bf33c173ce13a60512351732418a`.
+
+The archive is not committed; obtain it from the generating workspace before
+attempting reproduction, and use fresh output names. Do not recompute frozen
+captures merely to regenerate a table. This candidate is rejected for further
+certification: grocery capital recovery, productive local-sales evidence,
+archetype pacing/equity and spacing need a separately reviewed joint design.
+Existing-save economics remain uncertified. No official matrix, final
+check/lint/full-unit/build/affected E2E or macOS/Windows smoke is run.
+
 ## Reproduction
 
 Run from a clean checkout of the source identified for the evidence. Never run

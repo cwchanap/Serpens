@@ -303,3 +303,41 @@ The next proposal must address both tutorial SKUs and retain a meaningful
 pricing lesson; no new numeric pilot is approved or run by this diagnosis.
 No new unit/matrix/E2E/smoke run follows this observation-only exercise; the
 prior 523-test receipt is not presented as a fresh test run.
+
+### Corrected Linked Candidate: Bounded Screen Rejected
+
+The approved First Profit correction keeps opening water/snacks at 3/8 and
+reprices both to 8/18 in the reference before reports. Frozen day-4 outcomes
+are 682/bronze without actions and 862/gold for the reference; reference
+COGS-based operating income is +1,222. Scoring, thresholds and cash semantics
+stay unchanged. Source-identity proof preserves the other six scenario pairs;
+the candidate's reviewed guard run passes 510 tests with six explicit First
+Profit exclusions. A genuine structural RED/GREEN cycle now has eight intended
+failures/two passes, then all ten passing.
+
+- Four matched expansion cases have positive days 61–90 operating gaps.
+  Financing-neutral, gift-debited day-365 cash gaps are +12,703/+12,769 for
+  convenience, but -16,672/-15,820 for grocery: the expansion cash gate fails.
+- Primary seed-20260503 local cash gaps are +1,523 water and +6,244 produce.
+  Water has a conservative local-sales lower bound of 2,260 units; produce's
+  bound is zero, so productive local sales remain unproven, not waived.
+- Eight progression/eight idle runs use the fixed two-seed/365-day recipe.
+  Non-boutique Tier 5 remains 0/2 each; boutique reaches 2/2 with a zero-day
+  T4→T5 gap. Tier-3 median days are 249.5/239/148/71 in
+  convenience/boutique/electronics/grocery order; sample peak-value ratio
+  6.023× still exceeds 3×. All eight progression runs finish cash-negative.
+  Idle earned/claimed tiers remain zero, but valuation aggregates differ.
+- Eighteen Gate A diagnostic rows pass five check items with incomplete
+  coverage; no official 450-run verdict is claimed.
+
+The component screen and credible progression-path check fail. Do not run the
+full acceptance matrix or adopt this bundle. All 14 temporary source/test
+paths are restored to `18a6f846`; fresh restored checks pass 504 focused plus
+19 observer tests without exclusions. Frozen archive/helper/recipe integrity
+passes. Only these evidence notes remain as tracked changes; no commit/push.
+Artifacts, hashes, precise cash boundaries and remaining obligations are in
+`economy-pass.md` and the ignored local
+`docs/balance/generated/hpa-721-linked-corrected-pilot-*` archive. Obtain that
+archive before reproduction; it is not committed. Full
+check/lint/unit/build/E2E, official matrices, existing-save certification and
+macOS/Windows smoke remain outstanding.
