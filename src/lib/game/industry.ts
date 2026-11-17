@@ -477,8 +477,11 @@ export const PRODUCTION_RECIPES: Readonly<Record<ProductionRecipeId, ProductionR
  * doubling the circuit-board recipe output was tested and rejected because it
  * still left four parallel plants and delayed electronics tier 3 (134 → 162
  * under the earlier setup-cut head; the final head already claims it on day
- * 162 — see task-2-report). `flour-mill` was left out: no evidence run builds
- * it, the same reason the `pantry-works` cut was reverted.
+ * 162 — see task-2-report). `flour-mill` was left out: none of those four
+ * samples builds one, so its cut had no direct evidence and was restored
+ * like `pantry-works`'s. The seed-20260503 grocery/pantry diagnostic does
+ * build one, but the chain stalls before `pantry-works` — the measured
+ * blocker is the stall, not the mill's daily cost.
  */
 export const INDUSTRIAL_BUILDING_TYPES: Readonly<
 	Record<IndustrialBuildingTypeId, IndustrialBuildingType>
