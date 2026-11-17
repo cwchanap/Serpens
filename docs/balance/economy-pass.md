@@ -122,8 +122,8 @@ Their fixed cost is **5,952**, with recipe operating estimate **202.5**;
 these are partial-chain expenses, not cash saved. The whole industrial program,
 including the produce chain, costs 12,941 in production operations and 546 in
 imported inputs. There is no pantry payback claim. This measured construction
-also contradicts the existing `industry.ts` comment that no evidence run builds
-a flour-mill; that comment must not justify a new cost change or acceptance.
+contradicted the earlier `industry.ts` comment that no evidence run builds
+a flour-mill; that rationale must not justify a new cost change or acceptance.
 
 All six non-boutique seed/archetype controls in the rejected import-margin pilot
 exactly match the corresponding fresh current-source summaries. Thus its
