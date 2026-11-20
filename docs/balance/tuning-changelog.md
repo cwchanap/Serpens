@@ -341,3 +341,147 @@ Artifacts, hashes, precise cash boundaries and remaining obligations are in
 archive before reproduction; it is not committed. Full
 check/lint/unit/build/E2E, official matrices, existing-save certification and
 macOS/Windows smoke remain outstanding.
+
+### Joint Recovery: Fixed-Source Diagnostic, No New Tuning
+
+The approved fourteen-trajectory diagnostic temporarily reuses the exact
+rejected corrected candidate at documentation HEAD `95ff7dfb`. Eight native
+progression summaries/claim traces and six grocery component arms match their
+frozen counterparts exactly. The additional reports, complete action ledgers,
+commands and boutique/electronics chain summaries are retained; no new observer,
+policy, numeric lever or acceptance definition is introduced.
+
+- Rival-free grocery/20260515 already has player share 1. In reports 61-90,
+  pantry consumes shared capacity and both stores sell zero produce with zero
+  produce stockout-lost demand; capacity-excluded produce demand is 3,953/3,827.
+  The entrant sells only 138 produce units all year, with 362 zero-sale days,
+  6,581 waste and 1,120 shrink. More stock/production is not the sole remedy.
+- Every non-boutique run records 52 level-2 upgrade deferrals after its day-1
+  upgrade. Convenience/20260503's best observed cash above reserve is only
+  3,160 versus the 16,000 bill. Other-price liquidity arithmetic is not a
+  counterfactual run and does not justify an isolated upgrade-price choice.
+- Boutique first stocks its level-4 gifts on days 113/78 and first receives
+  local gifts on days 210/238; Tier 3 arrives 225/253. Electronics builds its
+  first assembly plant on day 57 in both seeds but first local flow is 119/147.
+  Unlock, actual construction, funding and route timing must not be conflated
+  with a terminal recipe throughput problem.
+- The produce local-sales lower bound remains zero. No source-allocation,
+  threshold, cash-accounting or scoring change is used to make it pass.
+
+All 475 tracked application/test hashes return to baseline; restored checks
+pass 504 guards plus 19 observers without exclusions. The preliminary cleanup
+trap's early apply/restore is preserved separately; no captures ran before it
+and no simulation was duplicated. Final restore/closure and immutable input/
+recipe hashes pass.
+
+The candidate is still rejected. The evidence narrows the required joint design
+but does not select or approve a new numeric bundle. Frozen evidence, the
+lead-executed analysis and hashes use the ignored local
+`hpa-721-joint-recovery-diagnostic-*` prefix; see `economy-pass.md`.
+No official/idle/scenario/Gate A matrix, final full checks/build/E2E, save
+certification, platform smoke, commit or push is performed.
+
+### Joint Recovery R1 Design: Pre-Trial Analytical Record
+
+At this design-only checkpoint, proposed but not yet applied: relative to the rejected corrected candidate, produce
+shelf 11 -> 13; Harbor pantry profile 1 -> 0.4; nonfounder pantry target/
+threshold 1,000 -> 500; retail upgrade base 8,000 -> 2,000; non-milestone
+revenue bonus 10% -> 5%. Preserve other linked controls and update the listed
+scenario produce price offsets to opening/reference 13/14 as applicable.
+No bot, ladder, scoring, recipe or throughput adjustment.
+
+Ten new native canonical grocery rows lie at 1.59325-1.93250 gross/cost,
+with both products sold. Thirty unaffected L1 rows are reused, not rerun.
+The fractional-price sketch 13.5 is explicitly rejected: brand rounding
+makes actual shelf 14 and breaches the unchanged 2.0 cap at 2.02344.
+Conditional pantry-demand peaks are 282/419, supporting a 500 target only
+under frozen share/policy/state assumptions. Empty fill is 5,330 versus
+9,580, and the opening gift debit stays 2,149.
+
+The exact approval packet, scenario teaching/guard stop risks, and proposed
+fourteen scenario plays plus 28 year-long bounded trajectories are in
+`docs/superpowers/specs/2026-11-17-hpa-721-joint-recovery-candidate-design.md`.
+Design evidence uses the ignored local
+`hpa-721-joint-recovery-candidate-design-*` prefix. No source edit, runtime
+pilot, new app-suite/platform run, acceptance, commit or push accompanied that
+design step. The approved runtime outcome follows.
+
+### Joint Recovery R1 Runtime Trial: Rejected And Restored (2026-11-17)
+
+- **Treatment:** user-approved exact five-control bundle on restored
+  `95ff7dfb`, with the frozen corrected candidate and specified scenario price
+  offsets. No further parameter search, bot/ladder/scoring/recipe/throughput
+  change. All temporary gameplay/test edits are restored; no R1 lever is retained.
+- **Scope:** fourteen fresh scenario plays, then eight progression + eight
+  idle + twelve matched component arms, all 365-day economy trajectories.
+  Source/recipes and 10,220 native report days are independently checked.
+- **Scenario disclosure:** references retain gold/days; no-action
+  outcomes/medals/failure deadlines stay intact. Import Squeeze no-action moves
+  d15/663 -> d16/680 under the smaller preset-L4 revenue multiplier, still
+  bronze within day 21. Rival scores/share/income and Fresh Market reference
+  volume are reviewed numeric fixture changes, not identical historical pins.
+  First Profit stays d4/682 bronze vs d4/862 gold, reference COGS income +1,222.
+  No objective, score band or medal threshold changes.
+- **Cash:** all four expansion annual screens pass, after financing and
+  opening-gift adjustments: convenience +8,129/+8,996; grocery
+  +43,673/+1,412 for seeds 20260503/20260515. Days-61-90 marginal operating
+  cash is positive in all four; day-90 payback is not reached. Water local
+  cash is +1,652 with a 2,260-unit productive lower bound. Produce cash is
+  +6,244, but its conservative local-sales bound is zero/unproven, not proof
+  of zero actual local sales.
+- **Pacing/equity:** Tier-3 reach is 1/2, 2/2, 2/2, 1/2 for
+  convenience/boutique/electronics/grocery; medians 239/183/137.5/106.
+  Tier-5 reach is 0/2, 2/2, 2/2, 0/2. Boutique spacing remains 0;
+  electronics spacing is 24.5 (<30); other spacing is unavailable.
+  Peak-median ratio is **9.98290755984483**, not <=3. Five progression runs
+  end cash-negative; eight idle controls have zero earned/claimed tiers.
+- **Evidence/verification:** full SKU/market/chain reports are retained,
+  including post-third-SKU grocery mix. No opening-SKU omissions or gaps
+  within observed additional-SKU spans. Five behavior tests RED/GREEN;
+  candidate 531 guards + 19 observers pass without skips; restored 514
+  guards + 19 observers pass, all 475 baseline source hashes match.
+
+Full tables, calibration disclosure and hashes are in `economy-pass.md`,
+using ignored `hpa-721-joint-recovery-r1-*` evidence. R1 is **rejected**, not
+an accepted economy or official matrix result. No new Gate A/official
+matrices, full engineering/E2E/platform checks, save certification, commit,
+push or PR action is performed.
+
+### HPA-721 Joint Recovery R2 — Rejected, Restored
+
+The approved 33-field bundle is a temporary measurement trial, not an adopted
+economy change. It includes retail upgrade base 1,000, soft-drinks price 8,
+devices price 200, gifts import cost 14/shelf 19, Harbor prepared demand 0.1,
+and the approved industrial/rail cost and fee reset. Founding-product prices,
+bot policy, ladder, scoring and production rates stay fixed.
+
+- **Scenarios:** all 14 native plays preserve R1 outcomes, medals and completion
+  days; every reference is gold. First Profit remains day 4/682/bronze versus
+  day 4/862/gold, reference COGS operating income +1,222. Import Squeeze
+  no-action score 680->665 is disclosed numeric drift, still day 16/bronze.
+  Cash/COGS drift remains recorded even where result pins match.
+- **Pacing:** eight progression and eight idle trajectories run once.
+  Tier-3 reach/median is convenience 2/2/day 267, boutique 2/2/day 211,
+  electronics 2/2/day 148, grocery 1/2/day 106. Tier-5 reach is 0/2, 2/2, 2/2, 1/2.
+  Boutique/electronics T4->T5 gaps are 0; grocery 56; convenience unavailable.
+  Sample peak-median ratio **3.105090812722131** exceeds 3. Idle earned/claimed: 0.
+  Native `coverageComplete`/`allPassed` remain false.
+- **Stop:** R2 is **REJECTED** on eight native pacing/equity flags.
+  All 32 conditional component arms are skipped, leaving 16/48 maximum annual
+  matrix trajectories used. No R2 cash-payback or conservative local-sales
+  acceptance is claimed, despite all 8 primary entry schedules being captured.
+- **Checks/provenance:** focused 43 expected RED failures ->45 GREEN;
+  candidate 775 guards and 23 observers pass without skips. The first observer
+  preflight22/23 failure and temporary day162->141 observation are preserved
+  in separate V1/V2 artifacts, without any bot/ladder change or annual rerun.
+  An overwritten capture patch is recovered to its exact pinned hash and
+  the updated patch is separately retained.
+- **Restored:** all 475 baseline source/test hashes and 268 frozen inputs match;
+  source/test diff empty, temporary test removed. Restored 718 guards plus 23
+  observers pass, zero failures/skips; original day162 pin passes again.
+
+Full rows, numeric-drift disclosure and source/output/restoration receipts are
+in `economy-pass.md` and ignored `hpa-721-joint-recovery-r2-*` artifacts.
+The approved design's sizing/pre-trial text remains historical, not rewritten
+as payback proof. No official matrices/Gate A, full engineering/E2E/platform
+checks, save certification, commit/push/PR, adoption or merge approval occurs.
