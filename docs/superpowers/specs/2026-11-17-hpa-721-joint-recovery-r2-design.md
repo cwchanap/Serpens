@@ -49,7 +49,8 @@ Approaches discussed before this document:
    54/day of imports at quote 9. This cannot repair that configuration.
 3. Broaden existing economic data controls to unlocked SKUs and industrial
    costs/import quotes. **User selected this scope.** The exact proposal
-   below is my design choice, not a user-approved numeric bundle.
+   below is my design choice, since approved for the bounded trial (see
+   Status and `hpa-721-joint-recovery-r2-approval.json`).
 
 Do not change planner ranking, SKU ordering, manager playbooks, bot cadence,
 claim evaluation, reveal rules, recipe quantities, or factory/rail capacities.
@@ -347,7 +348,7 @@ purchase pays back.
 
 ## Deliverables And Explicit Exclusions
 
-If approved, the next step is a source-pinned implementation plan and
+The approved next step is a source-pinned implementation plan and
 lead-authored measurement/recipe artifacts, not immediate gameplay editing.
 Retain raw reports, applied command/cash journals, claim evaluations, SKU
 windows, chain builds/buffers and all restoration receipts.
