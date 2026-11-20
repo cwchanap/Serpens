@@ -94,6 +94,25 @@ function tier3Game(): GameState {
 	});
 }
 
+function tier4ReadyGame(): GameState {
+	const game = tier3Game();
+	return {
+		...game,
+		day: 100,
+		stores: Array.from({ length: 7 }, (_, i) => storeStub(`store-${i + 1}`, 4)),
+		world: { ...game.world, openedCityIds: WORLD_CITY_CATALOG.map((city) => city.id) },
+		reports: [...game.reports, ...profitableReports(70, 30)]
+	};
+}
+
+function profitableReports(start: number, count: number): DailyReport[] {
+	return Array.from({ length: count }, (_, i) => ({
+		...reportStub(start + i, 200_000),
+		operatingCashFlow: 1,
+		operatingIncome: 1
+	}));
+}
+
 describe('PROGRESSION_TIERS catalog', () => {
 	test('has exactly five tiers in fixed ladder order with stable ids', () => {
 		expect(PROGRESSION_TIERS.map((tier) => tier.id)).toEqual([
@@ -153,7 +172,8 @@ describe('PROGRESSION_TIERS catalog', () => {
 			],
 			[
 				['store-count', 7],
-				['peak-company-book-value', 150_000]
+				['peak-company-book-value', 150_000],
+				['post-tier4-profitable-operating-month', 1]
 			]
 		]);
 	});
@@ -217,30 +237,58 @@ describe('evaluateProgression', () => {
 		expect(evaluation.tiers.slice(0, 3).every((tier) => tier.claimed)).toBe(true);
 	});
 
-	test('allTiersClaimed flips only when every tier receipt exists', () => {
-		const game = tier3Game();
-		let next = claimEarnedTiers(game);
-		// Force-claim the remaining tiers by satisfying later goals step by step.
-		const allCities = WORLD_CITY_CATALOG.map((city) => city.id);
-		next = claimEarnedTiers({
-			...next,
-			stores: [
-				storeStub('store-1', 4),
-				storeStub('store-2', 4),
-				storeStub('store-3', 4),
-				storeStub('store-4', 4),
-				storeStub('store-5', 2),
-				storeStub('store-6', 2),
-				storeStub('store-7', 2)
-			],
-			reports: [reportStub(1, 200_000)],
-			world: { ...next.world, openedCityIds: allCities } as GameState['world'],
-			day: 30
+	test('claims Market Leader only after a qualifying month and grants its reward once', () => {
+		const throughTier4 = claimEarnedTiers(tier4ReadyGame());
+		expect(throughTier4.progression.claims.at(-1)).toEqual({
+			tierId: 'multi-city-operator',
+			claimedOnDay: 100
 		});
-		expect(next.progression.claims.map((claim) => claim.tierId)).toHaveLength(5);
-		const evaluation = evaluateProgression(next);
-		expect(evaluation.allTiersClaimed).toBe(true);
-		expect(evaluation.currentTier).toBeNull();
+		expect(evaluateProgression(throughTier4).allTiersClaimed).toBe(false);
+		const early = {
+			...throughTier4,
+			day: 129,
+			reports: [...throughTier4.reports, ...profitableReports(100, 29)]
+		};
+		expect(claimEarnedTiers(early)).toBe(early);
+		const ready = {
+			...early,
+			day: 130,
+			reports: [...early.reports, ...profitableReports(129, 1)]
+		};
+		const claimed = claimEarnedTiers(ready);
+		expect(claimed.progression.claims.slice(4)).toEqual([
+			{ tierId: 'market-leader', claimedOnDay: 130 }
+		]);
+		expect(claimed.storeCap).toBe(ready.storeCap + 1);
+		expect(claimed.decisions.slice(ready.decisions.length).map((decision) => decision.id)).toEqual([
+			'progression-tier-claimed-market-leader'
+		]);
+		expect(evaluateProgression(claimed)).toMatchObject({
+			allTiersClaimed: true,
+			currentTier: null
+		});
+		expect(claimEarnedTiers(claimed)).toBe(claimed);
+	});
+
+	test.each([
+		[6, 200_000],
+		[7, 149_999]
+	])('still requires seven stores and a 150,000 peak (%i stores, %i peak)', (stores, peak) => {
+		const throughTier4 = claimEarnedTiers(tier4ReadyGame());
+		const game = {
+			...throughTier4,
+			day: 130,
+			stores: throughTier4.stores.slice(0, stores),
+			reports: [...throughTier4.reports, ...profitableReports(100, 30)].map((report) => ({
+				...report,
+				companyBookValueAfter: peak
+			}))
+		};
+		expect(evaluateProgression(game).currentTier).toMatchObject({
+			tier: { id: 'market-leader' },
+			allGoalsPass: false
+		});
+		expect(claimEarnedTiers(game)).toBe(game);
 	});
 
 	test('does not mutate the input game', () => {

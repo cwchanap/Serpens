@@ -183,6 +183,14 @@ export const PROGRESSION_TIERS: readonly ProgressionTier[] = [
 				target: 150_000,
 				window: RUN_TO_DATE_WINDOW,
 				requiresCompleteWindow: true
+			},
+			{
+				id: 'market-leader-profitable-operating-month',
+				labelKey: 'progression.goals.marketLeaderProfitableOperatingMonth',
+				query: { metric: 'post-tier4-profitable-operating-month' },
+				comparator: 'gte',
+				target: 1,
+				window: RUN_TO_DATE_WINDOW
 			}
 		],
 		reward: PROGRESSION_TIER_REWARD

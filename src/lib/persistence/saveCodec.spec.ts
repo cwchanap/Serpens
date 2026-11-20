@@ -11,22 +11,29 @@ import {
 	demolishIndustrialBuilding,
 	getIndustrialPlacementBlockReason
 } from '$lib/game/industryPlacement';
-import { formatLocation } from '$lib/game/placement';
+import { formatLocation, openStoreAtTile } from '$lib/game/placement';
 import type { DecisionContext } from '$lib/game/decisionContext';
 import { simulateDay } from '$lib/game/simulateDay';
 import { createFoundingFinanceState } from '$lib/game/finance';
 import { createInitialEventRuntime } from '$lib/game/eventSelection';
 import { cloneTimedEffect } from '$lib/game/eventModifiers';
-import { createNewGame, resolveDecision } from '$lib/game/state';
+import { createNewGame, resolveDecision, upgradeStore } from '$lib/game/state';
 import { claimEarnedTiers } from '$lib/game/progression';
 import { ensureCompetitorsForRetailCity } from '$lib/game/competitors';
 import { MANAGER_ACTION_HISTORY_LIMIT } from '$lib/game/managerDelegation';
 import { getProductDefinition } from '$lib/game/products';
 import { calculateStockHealth, initializeStoreProducts } from '$lib/game/stock';
 import {
+	createCityTileLookup,
+	getOccupiedStoreTileIds,
+	getStoreFootprintPlacementBlockReason
+} from '$lib/game/storeFootprint';
+import {
 	STARTER_STORE_CAP,
+	WORLD_CITY_CATALOG,
 	createInitialWorldProgress,
 	getWorldCityDefinition,
+	isWorldCityId,
 	openWorldCity,
 	refreshWorldProgress
 } from '$lib/game/world';
@@ -10300,6 +10307,121 @@ describe('saveCodec', () => {
 				/must cover every earned tier/
 			);
 		});
+
+		function createEarnedTier5Game(): GameState {
+			let game = createCurrentMultiCityGame();
+			game = openWorldCity(
+				{
+					...game,
+					world: {
+						...game.world,
+						revealedCityIds: [...game.world.revealedCityIds, 'garden-borough']
+					}
+				},
+				'garden-borough'
+			);
+			game = { ...game, storeCap: Math.max(game.storeCap, 8) };
+			const city = game.cities.find((item) => item.id === game.activeCityId);
+			const founder = game.stores[0];
+			const supplyCity = WORLD_CITY_CATALOG.find((item) => item.id === 'industry-city');
+			if (!city || !founder || !supplyCity || !isWorldCityId(founder.cityId)) {
+				throw new Error('Expected a retail city, founder, and supply city');
+			}
+			const lookup = createCityTileLookup(city);
+			while (game.stores.length < 7) {
+				const occupied = getOccupiedStoreTileIds(city, game.stores, lookup);
+				const tile = city.tiles.find(
+					(candidate) => getStoreFootprintPlacementBlockReason(lookup, candidate, occupied) === null
+				);
+				if (!tile) throw new Error('Expected an open store footprint');
+				const next = openStoreAtTile(game, { tileId: tile.id, archetypeId: 'convenience' });
+				if (next.stores.length !== game.stores.length + 1) {
+					throw new Error('Expected a seventh-store fixture opening');
+				}
+				game = next;
+			}
+			for (let level = founder.level; level < 4; level += 1) {
+				game = upgradeStore(game, founder.id);
+			}
+			const report = createDailyReport({
+				day: 99,
+				companyBookValueAfter: 200_000,
+				storeReports: [
+					createDailyStoreReport({
+						storeId: founder.id,
+						replenishment: {
+							retailCityId: founder.cityId,
+							configuredSupplyCityId: null,
+							resolvedSupplyCityId: supplyCity.id
+						},
+						productReports: [
+							createDailyProductReport({ productId: 'bottled-water', warehouseUnits: 25 })
+						]
+					})
+				]
+			});
+			return refreshWorldProgress({
+				...game,
+				day: 130,
+				finance: {
+					...game.finance,
+					currentDayActivity: { ...game.finance.currentDayActivity, day: 130 },
+					loans: []
+				},
+				reports: [
+					report,
+					...Array.from({ length: 30 }, (_, i) =>
+						createDailyReport({ day: 100 + i, operatingCashFlow: 1, operatingIncome: 1 })
+					)
+				],
+				progression: {
+					claims: [
+						{ tierId: 'local-shop', claimedOnDay: 100 },
+						{ tierId: 'neighborhood-chain', claimedOnDay: 100 },
+						{ tierId: 'regional-supplier', claimedOnDay: 100 },
+						{ tierId: 'multi-city-operator', claimedOnDay: 100 },
+						{ tierId: 'market-leader', claimedOnDay: 130 }
+					]
+				}
+			});
+		}
+
+		it('retains a qualifying Market Leader receipt and reports without granting another reward', () => {
+			const game = createEarnedTier5Game();
+			const decoded = validateSaveRecord(createManualSaveRecord({ game })).game;
+			expect(decoded.reports.map((report) => report.day)).toEqual(
+				game.reports.map((report) => report.day)
+			);
+			expect(decoded.progression.claims).toEqual(game.progression.claims);
+			expect(claimEarnedTiers(decoded)).toBe(decoded);
+		});
+
+		it.each(['backdated receipt', 'no qualifying month'])(
+			'rejects a Market Leader save with %s',
+			(variant) => {
+				const game = createEarnedTier5Game();
+				const invalid: GameState =
+					variant === 'backdated receipt'
+						? {
+								...game,
+								progression: {
+									claims: game.progression.claims.map((claim) =>
+										claim.tierId === 'market-leader' ? { ...claim, claimedOnDay: 129 } : claim
+									)
+								}
+							}
+						: {
+								...game,
+								reports: game.reports.map((report) => ({
+									...report,
+									operatingIncome: 0
+								}))
+							};
+				expect(() => validateSaveRecord(createManualSaveRecord({ game: invalid }))).toThrow(
+					/no longer satisfies its goals: market-leader/
+				);
+			}
+		);
 	});
 
 	describe('save schema version validation', () => {

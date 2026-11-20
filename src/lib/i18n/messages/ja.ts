@@ -1971,7 +1971,9 @@ export const ja = {
 			multiCityOperatorOpenedCities: '{target}都市を開放する',
 			multiCityOperatorMaxStoreLevel: '店舗をレベル{target}にアップグレードする',
 			marketLeaderStoreCount: '{target}店舗を運営する',
-			marketLeaderPeakBookValue: '報告済み会社帳簿価値のピークを{target}に伸ばす'
+			marketLeaderPeakBookValue: '報告済み会社帳簿価値のピークを{target}に伸ばす',
+			marketLeaderProfitableOperatingMonth:
+				'「マルチシティオペレーター」達成後の連続30日間で、営業キャッシュフローと営業利益をともに黒字にする'
 		}
 	},
 	scenarioDefinitions: {

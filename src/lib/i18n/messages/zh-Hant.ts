@@ -1946,7 +1946,9 @@ export const zhHant = {
 			multiCityOperatorOpenedCities: '開放 {target} 個城市',
 			multiCityOperatorMaxStoreLevel: '將一間店鋪升級到等級 {target}',
 			marketLeaderStoreCount: '經營 {target} 間店鋪',
-			marketLeaderPeakBookValue: '將已回報的公司帳面價值峰值提升到 {target}'
+			marketLeaderPeakBookValue: '將已回報的公司帳面價值峰值提升到 {target}',
+			marketLeaderProfitableOperatingMonth:
+				'達成「多城市營運者」後，連續 30 天的營業現金流與營業利益合計皆為正值'
 		}
 	},
 	scenarioDefinitions: {
