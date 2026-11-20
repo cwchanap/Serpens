@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-svelte';
 import { createI18n } from '$lib/i18n';
 import { getCompanyBookValue } from '$lib/game/companyBookValue';
 import { createNewGame } from '$lib/game/state';
+import { simulateDay } from '$lib/game/simulateDay';
 import type { DailyReport, GameState, ProgressionTierId } from '$lib/game/types';
 import SandboxProgression from './SandboxProgression.svelte';
 
@@ -111,6 +112,57 @@ describe('SandboxProgression', () => {
 			.toBeVisible();
 		await expect.element(page.getByText('higher possible credit', { exact: false })).toBeVisible();
 	});
+
+	it.each([
+		[29, 7, 0],
+		[30, 6, 1]
+	])(
+		'shows the operating-month evidence with %i closed reports and %i stores',
+		async (count, stores, actual) => {
+			const base = gameWith({});
+			const store = base.stores[0];
+			const report = simulateDay(base).reports[0];
+			if (!store || !report) throw new Error('Expected a founding store and daily report');
+			render(SandboxProgression, {
+				i18n: createI18n('en'),
+				game: {
+					...base,
+					day: 150 + count,
+					stores: Array.from({ length: stores }, (_, i) => ({
+						...store,
+						id: `store-${i + 1}`
+					})),
+					reports: Array.from({ length: count }, (_, i) => ({
+						...report,
+						day: 150 + i,
+						companyBookValueAfter: 200_000,
+						operatingCashFlow: 1,
+						operatingIncome: 1
+					})),
+					progression: { claims: allClaims().slice(0, 4) }
+				}
+			});
+			await expect
+				.element(page.getByRole('heading', { name: 'Next milestone: Market Leader' }))
+				.toBeVisible();
+			const row = page.getByRole('article').filter({
+				has: page.getByRole('heading', {
+					name: 'Complete a 30-day operating month after Multi-City Operator with positive operating cash flow and operating income',
+					exact: true
+				})
+			});
+			await expect
+				.element(row.getByText(`Actual ${actual} · Target 1`, { exact: true }))
+				.toBeVisible();
+			if (actual === 1) {
+				await expect.element(row.getByText(/Day 150 report.*Day 179 report/)).toBeVisible();
+				const storeRow = page.getByRole('article').filter({
+					has: page.getByRole('heading', { name: 'Operate 7 stores', exact: true })
+				});
+				await expect.element(storeRow.getByText('Pending', { exact: true })).toBeVisible();
+			}
+		}
+	);
 
 	it('uses a distinct sandbox root id and the shared objective-panel row markup', async () => {
 		expect.assertions(3);

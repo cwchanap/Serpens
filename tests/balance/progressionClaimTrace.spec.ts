@@ -13,6 +13,7 @@ import { applyGameCommand } from '$lib/scenarios/runtime';
 import type { ScenarioCommand } from '$lib/scenarios/types';
 import { runProgressionBot, type ProgressionClaimProbe } from './bots';
 import { summarizeProgressionRun } from './progressionCalibration';
+import { evaluateCondition } from '$lib/scenarios/metrics';
 import {
 	buildProgressionClaimTraceReport,
 	createProgressionClaimTraceCollector
@@ -20,7 +21,7 @@ import {
 
 const SEED = 20260503;
 const DAYS = 260;
-/** Established pilot seed whose T3+T4+T5 receipts land in one evaluation. */
+/** Established pilot seed whose T3+T4 receipts land in one evaluation; the operating month keeps T5 later. */
 const MULTI_SEED = 20260529;
 const MULTI_DAYS = 198;
 
@@ -95,6 +96,41 @@ describe('progression claim trace collector (noninterference)', { timeout: 180_0
 		expect(traced.game.day).toBe(plain.game.day);
 		expect(summarizeProgressionRun(SEED, 'boutique', traced)).toEqual(
 			summarizeProgressionRun(SEED, 'boutique', plain)
+		);
+	});
+
+	it('observes the operating month from the pre-claim game', () => {
+		const collector = createProgressionClaimTraceCollector();
+		const result = runProgressionBot('convenience', SEED, 1);
+		const report = result.game.reports[0];
+		if (!report) throw new Error('Expected a daily report');
+		const before: GameState = {
+			...result.game,
+			day: 130,
+			reports: Array.from({ length: 30 }, (_, i) => ({
+				...report,
+				day: 100 + i,
+				operatingCashFlow: 1,
+				operatingIncome: 1
+			})),
+			progression: { claims: [] }
+		};
+		const afterTier4: GameState = {
+			...before,
+			progression: { claims: [{ tierId: 'multi-city-operator', claimedOnDay: 100 }] }
+		};
+		// Identical reports in both observations; deliberately pass different
+		// after-state to the first probe so reading it would yield the wrong value.
+		collector.probe(before, afterTier4, 0);
+		collector.probe(afterTier4, afterTier4, 1);
+		const goal = PROGRESSION_TIERS.find((tier) => tier.id === 'market-leader')?.goals.find(
+			(goal) => goal.id === 'market-leader-profitable-operating-month'
+		);
+		if (!goal) throw new Error('Expected operating-month goal');
+		const evaluations = collector.build(SEED, 'convenience', 1, result).claimEvaluations;
+		expect(evaluations.map((row) => row.marketLeaderOperatingMonthPassed)).toEqual([false, true]);
+		expect(evaluations.map((row) => row.marketLeaderOperatingMonthPassed)).toEqual(
+			[before, afterTier4].map((game) => evaluateCondition(goal, game).passes)
 		);
 	});
 
@@ -379,7 +415,7 @@ describe('progression claim trace collector (noninterference)', { timeout: 180_0
 		}
 	});
 
-	it('records the unchanged ladder header from the catalog instead of duplicate constants', () => {
+	it('records the ladder header from the catalog instead of duplicate constants', () => {
 		const collector = createProgressionClaimTraceCollector();
 		const result = runProgressionBot('convenience', SEED, 30, collector.probe);
 		const report = buildProgressionClaimTraceReport(
@@ -393,6 +429,12 @@ describe('progression claim trace collector (noninterference)', { timeout: 180_0
 		);
 		expect(report.ladder.map((tier) => tier.reward)).toEqual(
 			PROGRESSION_TIERS.map((tier) => tier.reward)
+		);
+		expect(report.ladder.find((tier) => tier.id === 'market-leader')?.goals).toContainEqual(
+			expect.objectContaining({
+				id: 'market-leader-profitable-operating-month',
+				query: { metric: 'post-tier4-profitable-operating-month' }
+			})
 		);
 		expect(report.runs).toHaveLength(1);
 	});

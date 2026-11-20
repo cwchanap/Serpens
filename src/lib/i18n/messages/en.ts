@@ -2003,7 +2003,9 @@ export const en = {
 			multiCityOperatorOpenedCities: 'Open {target} cities',
 			multiCityOperatorMaxStoreLevel: 'Upgrade a store to level {target}',
 			marketLeaderStoreCount: 'Operate {target} stores',
-			marketLeaderPeakBookValue: 'Grow reported peak company book value to {target}'
+			marketLeaderPeakBookValue: 'Grow reported peak company book value to {target}',
+			marketLeaderProfitableOperatingMonth:
+				'Complete a 30-day operating month after Multi-City Operator with positive operating cash flow and operating income'
 		}
 	},
 	scenarioDefinitions: {

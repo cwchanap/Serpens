@@ -237,6 +237,7 @@ export type ScenarioMetricQuery =
 	| { metric: 'max-store-level' }
 	| { metric: 'opened-city-count' }
 	| { metric: 'peak-company-book-value' }
+	| { metric: 'post-tier4-profitable-operating-month' }
 	| { metric: 'industrial-building-count'; buildingTypeIds: readonly IndustrialBuildingTypeId[] }
 	| { metric: 'city-inventory-quantity'; cityId: WorldCityId; materialId: MaterialId }
 	| {

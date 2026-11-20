@@ -63,7 +63,8 @@ export interface ProgressionDailyRow {
 
 /**
  * One production claim evaluation. Every goal actual of the ladder is covered
- * by { stores, cities, maxLevel, peakBookValue, localUnits } against the static
+ * by { stores, cities, maxLevel, peakBookValue, localUnits,
+ * marketLeaderOperatingMonthPassed } against the static
  * targets in the ladder header; `bookValue` is kept on the post-advance and
  * claim-appending evaluations, where the decomposition actually gets used.
  */
@@ -80,6 +81,7 @@ export interface ProgressionClaimEvaluation {
 	peakBookValue: number;
 	/** Tier-3 local-delivery units while that tier is unclaimed, else null. */
 	localUnits: number | null;
+	marketLeaderOperatingMonthPassed: boolean;
 	claimsBefore: number;
 	claimsAfter: number;
 	newTierIds: ProgressionTierId[];
@@ -124,6 +126,13 @@ const TIER3_LOCAL_UNITS_GOAL = PROGRESSION_TIERS.find(
 const PEAK_GOAL = PROGRESSION_TIERS[0]!.goals.find(
 	(goal) => goal.id === 'local-shop-peak-book-value'
 )!;
+const MARKET_LEADER_OPERATING_MONTH_GOAL = (() => {
+	const goal = PROGRESSION_TIERS.find((tier) => tier.id === 'market-leader')?.goals.find(
+		(goal) => goal.id === 'market-leader-profitable-operating-month'
+	);
+	if (!goal) throw new Error('Missing Market Leader operating-month goal');
+	return goal;
+})();
 
 /** Peak metric actual, evaluated through the production metric registry. */
 function peakBookValue(game: GameState): number {
@@ -219,6 +228,10 @@ export function createProgressionClaimTraceCollector(): {
 				maxLevel: before.stores.reduce((level, store) => Math.max(level, store.level), 0),
 				peakBookValue: peakFor(before),
 				localUnits: localUnits(before),
+				marketLeaderOperatingMonthPassed: evaluateCondition(
+					MARKET_LEADER_OPERATING_MONTH_GOAL,
+					before
+				).passes,
 				claimsBefore,
 				claimsAfter: after.progression.claims.length,
 				newTierIds: newClaims.map((claim) => claim.tierId),

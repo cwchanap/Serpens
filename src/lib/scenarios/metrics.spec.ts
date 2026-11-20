@@ -1635,6 +1635,96 @@ describe('progression metrics', () => {
 	});
 });
 
+describe('post-tier4-profitable-operating-month', () => {
+	const query = { metric: 'post-tier4-profitable-operating-month' } as const;
+	const window = { kind: 'run-to-date' } as const;
+	const operatingReports = (start: number, count: number, cash = 1, income = 1) =>
+		Array.from({ length: count }, (_, i) =>
+			report(start + i, cash, [], { operatingIncome: income })
+		);
+	function assess(reports: DailyReport[], day: number, tier4 = true, tier5Day?: number) {
+		const claims: GameState['progression']['claims'] = tier4
+			? [{ tierId: 'multi-city-operator', claimedOnDay: 100 }]
+			: [];
+		if (tier5Day !== undefined) claims.push({ tierId: 'market-leader', claimedOnDay: tier5Day });
+		return evaluateMetric(game({ day, reports, progression: { claims } }), query, window);
+	}
+	it('counts only closed reports on or after the Tier 4 receipt', () => {
+		const rows = operatingReports(99, 31);
+		expect(assess(rows.slice(0, -1), 129)).toMatchObject({ actual: 0, contributingIds: [] });
+		expect(assess(rows, 129).actual).toBe(0);
+		expect(assess(rows, 130, false).actual).toBe(0);
+		expect(assess(rows, 130)).toMatchObject({
+			actual: 1,
+			contributingIds: ['report:100', 'report:129']
+		});
+	});
+	it.each([
+		[1, -1],
+		[-1, 1],
+		[0, 1],
+		[1, 0],
+		[0, 0]
+	])('rejects cash %i and operating income %i even with financing inflows', (cash, income) => {
+		const rows = operatingReports(100, 30, cash, income).map((row) => ({
+			...row,
+			financingCashFlow: 10_000,
+			netCashChange: cash + 10_000
+		}));
+		expect(assess(rows, 130).actual).toBe(0);
+	});
+	it('allows individual losing days when both totals are positive', () => {
+		expect(
+			assess(
+				[
+					...operatingReports(100, 1, 2, 2),
+					...operatingReports(101, 28, 0, 0),
+					...operatingReports(129, 1, -1, -1)
+				],
+				130
+			).actual
+		).toBe(1);
+	});
+	it('requires both positive sums in the same window', () => {
+		expect(
+			assess(
+				[
+					...operatingReports(100, 30, 1, -2),
+					...operatingReports(130, 1, 0, 0),
+					...operatingReports(131, 30, -2, 1)
+				],
+				161
+			).actual
+		).toBe(0);
+	});
+	it('requires consecutive days but accepts a later clean window', () => {
+		const rows = [...operatingReports(100, 15), ...operatingReports(116, 14, -100, -100)];
+		expect(
+			assess(
+				operatingReports(100, 30).filter((row) => row.day !== 115),
+				130
+			).actual
+		).toBe(0);
+		expect(assess([...rows, ...operatingReports(130, 30)], 160)).toMatchObject({
+			actual: 1,
+			contributingIds: ['report:130', 'report:159']
+		});
+	});
+	it('excludes both occurrences of a duplicate closing day', () => {
+		expect(
+			assess(operatingReports(100, 30).concat(operatingReports(129, 1, -100, -100)), 130).actual
+		).toBe(0);
+	});
+	it('keeps the earliest qualifying month but cannot use it to validate an earlier receipt', () => {
+		const rows = [...operatingReports(100, 30), ...operatingReports(130, 30, -100, -100)];
+		expect(assess(rows, 160, true, 130)).toMatchObject({
+			actual: 1,
+			contributingIds: ['report:100', 'report:129']
+		});
+		expect(assess(rows, 160, true, 129).actual).toBe(0);
+	});
+});
+
 describe('METRIC_REGISTRY / METRIC_WINDOWS parity', () => {
 	it('exposes the same metric keys in both registries', () => {
 		const registryKeys = new Set(Object.keys(METRIC_REGISTRY));

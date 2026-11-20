@@ -126,6 +126,48 @@ function averageOperatingCashFlow(reports: readonly DailyReport[], neutral: numb
 	};
 }
 
+function profitableOperatingMonth({ game, reports }: MetricContext): MetricValue {
+	const tier4 = game.progression.claims.find((claim) => claim.tierId === 'multi-city-operator');
+	if (!tier4) return { actual: 0, contributingIds: [] };
+	const tier5 = game.progression.claims.find((claim) => claim.tierId === 'market-leader');
+	const endDayExclusive = Math.min(game.day, tier5?.claimedOnDay ?? game.day);
+	const windowDays = 30;
+	let start = 0;
+	let cash = 0;
+	let income = 0;
+	for (const [index, report] of reports.entries()) {
+		if (report.day < tier4.claimedOnDay) {
+			start = index + 1;
+			continue;
+		}
+		if (report.day >= endDayExclusive) break;
+		const previousDay = reports[index - 1]?.day;
+		// Duplicate dates cannot contribute, including the first copy in the sorted history.
+		if (previousDay === report.day || reports[index + 1]?.day === report.day) {
+			start = index + 1;
+			cash = 0;
+			income = 0;
+			continue;
+		}
+		if (previousDay !== report.day - 1) {
+			start = index;
+			cash = 0;
+			income = 0;
+		}
+		cash += report.operatingCashFlow;
+		income += report.operatingIncome;
+		if (index - start + 1 < windowDays) continue;
+		const first = reports[start];
+		if (cash > 0 && income > 0) {
+			return { actual: 1, contributingIds: reportIds([first, report]) };
+		}
+		cash -= first.operatingCashFlow;
+		income -= first.operatingIncome;
+		start += 1;
+	}
+	return { actual: 0, contributingIds: [] };
+}
+
 function productIds(query: ScenarioMetricQuery): ReadonlySet<ProductId> {
 	return new Set('productIds' in query ? query.productIds : []);
 }
@@ -487,6 +529,15 @@ export const METRIC_REGISTRY = {
 				)
 			};
 		}
+	},
+	'post-tier4-profitable-operating-month': {
+		supportedWindows: RUN_TO_DATE,
+		productScoped: false,
+		format: 'decimal',
+		requiresLocalProductionPath: false,
+		neutral: 0,
+		isComplete: stateMetricComplete,
+		evaluate: profitableOperatingMonth
 	},
 	'industrial-building-count': {
 		supportedWindows: CURRENT,
