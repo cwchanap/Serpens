@@ -60,7 +60,8 @@ Same-day Tier-4/Tier-5 counts are diagnostics, not a separate zero-count gate.
 A missing Tier-5 sample cannot pass spacing. Partial pilots cannot establish an
 official progression or Gate A PASS.
 
-**Tier 5 operating month (implemented locally, not approved for acceptance):**
+**Tier 5 operating month (implemented in `1ab91df6`, not approved for
+acceptance):**
 For new receipts under that rule, report the 30-day spacing floor as **enforced
 by rule, not independent evidence of economic pacing**. Still report receipt
 gaps and verify same-run pairing.
@@ -68,7 +69,10 @@ Tier 5 reach (at least 25/50 by day 365, separately per archetype) and
 the operating-month results remain the meaningful checks for the new goal.
 Gate A is a separate five-check matrix; it does not include progression spacing.
 Use of the rule for official progression acceptance is pending explicit sign-off
-on this treatment in PR #73. No thresholds or historical verdicts change here.
+on this treatment in PR #73. Separately, the owner decided in the PR #73 review
+thread (2026-11-21 UTC) to ship the implemented rule in this PR; that ship
+decision does not grant acceptance sign-off. No thresholds or historical
+verdicts change here.
 
 ## Untuned Reference
 
