@@ -15,7 +15,9 @@ meeting the minimum gap under this rule is not evidence of improved economic
 pacing. The Approved Gates section of `docs/balance/economy-pass.md` records
 the distinction: the new floor is enforced by rule, Tier 5 reach remains a
 measured gate, and Gate A is separate. Use of this rule for official progression
-acceptance is pending explicit sign-off on that treatment in PR #73.
+acceptance is pending explicit sign-off on that treatment in PR #73. Separately,
+the owner decided in the PR #73 review thread (2026-11-21 UTC) to ship this
+implemented rule in the PR; that ship decision is not acceptance sign-off.
 
 ## Alternatives
 
