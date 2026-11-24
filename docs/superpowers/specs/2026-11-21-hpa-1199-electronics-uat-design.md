@@ -63,7 +63,7 @@ Tests cover save vs no-save startup, corrupt/read-error state, asynchronous init
 
 ## 5. Evidence, scope and review
 
-- Pin baseline and final runtime SHAs. Run equivalent **corrected bot harness** on both to avoid a bot-induced comparison artifact; verify harness-only change reproduces pre-autoassign baseline behavior.
+- Pin baseline and final runtime SHAs. Run equivalent **corrected bot harness** on both to avoid a bot-induced comparison artifact; check and disclose whether correcting the existing first-unassigned-staffer bug changes the historical baseline; do not demand identical outputs from different harnesses.
 - Reuse `tests/balance/progressionRun.ts`, `progressionCalibration.ts` and **`progressionDiff.ts --base <base-artifact> --head <head-artifact>`** instead of hand-rolling a summary. Run 50 seeds × 365 days for all four archetypes **after stock step and again at final head**. Record per-tier reach/timing, final cash, zero-revenue days, import spend, morale. Quote actual tool outputs in `docs/balance/hpa-1199-uat-evidence.md`.
 - Gate A remains **5/5** with `bun run balance`; official scenario reference and no-action contracts, unit/browser E2E and screenshots remain automated acceptance checks.
 - Ticket's historical source `0c7f815` reported tier 3 reached in 158/200, tier 4 in 42/200, tier 5 in 41/200 (last two boutique only), 189/200 negative final-cash runs, and electronics median −$51,464. These are historical, **not** final measurements or an economy-profitability gate.
