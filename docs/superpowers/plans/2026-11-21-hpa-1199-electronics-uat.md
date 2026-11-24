@@ -1,105 +1,101 @@
 # HPA-1199 — Electronics UAT Fixes: Single-PR Implementation Plan
 
-**Linear:** https://linear.app/cwchanap/issue/HPA-1199/bug-fix-empty-shelves-store-morale-save-resume-and-ui-bugs-found-in  
+**Issue:** https://linear.app/cwchanap/issue/HPA-1199/bug-fix-empty-shelves-store-morale-save-resume-and-ui-bugs-found-in  
 **Design:** `docs/superpowers/specs/2026-11-21-hpa-1199-electronics-uat-design.md`  
-**Roadmap:** HPA-717. **Deferred, not included:** HPA-1147.  
-**Branch:** `docs/hpa-1199-electronics-uat-fixes` -> `main`; **one PR for design + implementation + tests + evidence**. Do not open another implementation PR for this ticket.  
-**Inspected base:** `main@0c7f81507398ffe829878956fcae30f8fdfb0fb8`, 2026-11-21.  
-**Current state:** spec and plan only. No implementation, screenshot verification, balance results or passing tests claimed.
+**Delivery:** Existing **draft PR #74**, `docs/hpa-1199-electronics-uat-fixes` → `main`. Complete all implementation, code/tests, visual checks and measured evidence **in this one PR**.  
+**Inspected base:** `main@0c7f81507398ffe829878956fcae30f8fdfb0fb8`, November 21, 2026.  
+**Status:** revised after the GitHub design review; **documentation only**. No code fix, measurements or passing test claimed.
 
-## Delivery rules
+## Rules and order
 
-Use KISS/YAGNI: fix the existing stock/replenishment, staff, save and presenter paths. Avoid new frameworks, global stores, hardcoded archetype branches, extra tickets, compatibility migration, or economy-wide retuning. Reuse existing Svelte components/styles and HPA-719 electronic-accessories PNG; **no new art/SFX production**. Keep this same PR draft during implementation and the required economy review.
+Use current simulation and UI owners; keep KISS/YAGNI. No new inventory/state subsystems, save migrations, artificial cash gates, broad HPA-1147 economy tuning, new layout, art/SFX generation or another implementation PR. Preserve current-schema saved games, scenario permissions and deterministic seeds.
 
-Group work into reviewable commits **inside this PR**. Before changing code, re-read the updated `main` and rebase if needed; use measured behavior to choose stock values rather than setting a speculative hardcoded 600. Stop and revise this plan in-place if a source-contract mismatch is found.
+**Commit order within this PR:** first the no-balance-impact UI/i18n/art fixes (distinct, reviewable commits), then stock and morale/staffing (economy-affecting commits), then autosave/new-game flow, tests and evidence. Fix `tests/balance/bots.ts` **before** starting a comparative economy run. Do not hide balance impact in a UI-only commit.
 
-## Step 0 — Pin baseline and reproduce defects
+## Step 0 — Recheck baseline, reproduce and normalize the measurement harness
 
-- [ ] Confirm starting SHA and inspect `CLAUDE.md`, `stock.ts`, `retailSupply.ts`, `simulateDay.ts`, `staffing.ts`, `gameRouteController.ts`, `saveUi.svelte.ts`, `+page.svelte`, relevant components, localization and existing tests. Preserve only current-schema save support.
-- [ ] Reproduce default Harbor City electronics opening at tile (32,20), seed `20260503`, 28 days; record revenue, zero-revenue days, in-stock days, stockout-lost demand, paid import units/spend, cash and daily balance. Confirm the ticket's historical 20/28 zero-revenue reference or record any legitimate SHA-specific discrepancy.
-- [ ] Pin a fully staffed default-policy 60-day/205-day morale trace alongside the employees' morale; capture a current staffing-shortage case and the scorecard-versus-daily-income example.
-- [ ] Reproduce saved-game reload and fresh-install founding separately in a browser. Capture the relevant UAT UI at 1440px plus a narrow viewport; use screenshots already attached to HPA-1199 as references.
-- [ ] Capture **same-source** baseline Gate A and 50-seed progression output, with all four archetypes, using the commands in Step 6. Preserve raw generated JSON outside tracked source; report the summarized baseline in `docs/balance/hpa-1199-uat-evidence.md` when final comparison is available.
+- [ ] Check current `main` against pinned SHA before coding; update both docs on the **same PR** if code ownership changed. Re-read `CLAUDE.md` and the actual `stock.ts`, `retailSupply.ts`, `placement.ts`, `stockRecovery.ts`, `supplyPlanner.ts`, `simulateDay.ts`, `staffing.ts`, `managerDelegation.ts`, `gameRouteController.ts`, `SavePanel`/`saveUi`, i18n and tests.
+- [ ] Reproduce ticket cases and capture source-specific before snapshots: Harbor City (32,20) electronics, seed `20260503`, 28 days (reported default revenue $24,854, 20 zero-revenue days); full-staffed 60+ day store morale/employee morale; fresh versus resumed save; scorecard Profit 0 with positive daily operating income; ticket screenshot defects.
+- [ ] **Repair the balance bot's hiring identity assumption first**: `tests/balance/bots.ts:323–347` uses the first unassigned staffer after hiring. Look up the new hire by deterministic staff ID derived from candidate ID instead. Skip an assignment if the hire is already assigned to the intended store; otherwise use the existing assignment command. Add a focused bot regression test, including an **older unassigned employee**. Avoid an unrelated change to bot spending/playbooks.
+- [ ] Run the **same corrected harness** on the pinned base runtime and subsequent implementation runtime, using separate source/output directories. If harness-only baseline differs from historical output, **report this fact explicitly** rather than claiming identical historical behavior. Verify harness/test source hashes so bot drift cannot contaminate the before/after economy comparison.
+- [ ] Generate the pinned baseline `bun run balance` and `progressionRun` artifacts and make those exact JSON artifacts available for `progressionDiff`. Keep generated bulk files untracked; put only summarized measured evidence and reproduction commands in `docs/balance/hpa-1199-uat-evidence.md` when available.
 
-**Gate:** baseline source and reproducible defects recorded; none of this is a claim of implementation correctness.
+**Gate:** source SHA, defects and measurement harness are pinned. This is not an implementation-pass claim.
 
-## Step 1 — Fix inventory cadence and policy application
+## Step 1 — Apply zero-balance-impact UI, locale and art fixes first
 
-**Existing paths:** `src/lib/game/stock.ts`, `retailSupply.ts`, effective policy resolution (`policyInheritance.ts` and `simulateDay.ts`), `stockRecovery.ts`, related `*.spec.ts`.
+Make small component/spec updates; preserve existing paper/brass design and current state flows.
 
-- [ ] RED tests: a founder's first seven days, two full later import cycles, default/on-hand coverage for each archetype, and current-vs-last-day stockout status; probe the seeded Harbor electronics case.
-- [ ] Implement minimally larger/demand-aware initial lots, reorder thresholds and default target quantities that can cover one seven-day import cycle. Derive a bounded, deterministic amount from real product demand/capacity and preserve explicit user edits. Avoid duplicating the weekly interval in conflicting modules or introducing circular imports.
-- [ ] Make `lean`, `balanced` and `generous` inventory policies change the **effective refill quantities**, including scoped store policy overrides. Test monotonicity (Lean < Par < Deep where budget and caps permit), manual product-level custom target persistence, production-supported supply, import fallback, insufficient funds, and unchanged stock accounting.
-- [ ] Fix the forward-looking coverage warning using existing stock recovery/status read models. UI should clearly distinguish “stock on hand now” from a prior day's stockout stamp; show shortage before next check instead of “Healthy”.
-- [ ] Record focused before/after 28-day numbers. A candidate that buys more stock by breaking cash accounting, balance Gate A or scenario outcomes is rejected/revised **within this PR**, not disguised by HPA-1147 tuning.
+- [ ] **Accessory art:** repoint `PRODUCT_ART.accessories` in `src/lib/assets/gameArt.ts` to the existing `/assets/game/industry/materials/electronic-accessories.png`. Search references and **remove orphaned** `static/assets/game/products/accessories.png` in the same commit; update `gameArt.spec.ts` completeness/registry assertions. Do not affect fashion accessories. No new assets.
+- [ ] **Localization:** add `game.managementPanels.logistics` in `en.ts`, `ja.ts` and `zh-Hant.ts`. Add `satisfies Record<ManagementPanelId, string>` to **EN managementPanels** (type-only import from `keyboardShortcuts.ts`), so future omissions fail typecheck. Replace EN “Desktop Saves” with “Saves” and verify neutral localized headings. Add key-parity and rendered menu tests.
+- [ ] **Inspector/table:** fix `IndustryTileInspector.svelte` long-title/eyebrow wrapping, and `StoreStockTable.svelte` horizontal overflow so **LATEST** is visible or clearly reachable at 1440px. Update stock-table risk wording after the Step 2 read model is implemented; do not invent an independent status rule now.
+- [ ] **Build/header relevance:** replace hardcoded `quickProductIds` in `BuildMenu.svelte` with stable product IDs from stores' actual saleable products; preserve search/all-products and a sensible no-store fallback. Replace `TopBar.svelte`'s grain/flour/oilseeds defaults with three relevant inventory/material-chain readouts based on current stores and actual city inventory, passed through `RouteHeader.svelte`. Test electronics/convenience/multiple stores/empty state.
+- [ ] **Results dialog and scorecard labels:** use existing styling to distinguish challenge name, outcome, medal and score; keep terminal result in front of empty founding instead of displaying a fake new game behind it. Confirm `buildScorecard`'s rolling 0–100 semantics before changing math; label “Profit score” and show actual daily operating result separately, unless a reproducible arithmetic defect justifies a source fix. Add positive-income/low-score test; do not retune scenario scores by relabeling.
 
-**End-to-end check:** policy change -> daily simulation/replenishment -> actual stock receipt -> future sales -> readable store warning, with no forced inventory duplication.
+**Gate:** mounted component tests plus **MCP browser screenshots** at 1440px and narrow width; compare the supplied ticket references for art, menu, overflow, inspector, and challenge results. No economy settings changed by these commits.
 
-## Step 2 — Fix morale and staffing behavior
+## Step 2 — Fix the seven-day stock/default policy contract
 
-**Existing paths:** `simulateDay.ts`, `staffing.ts`, `StoreOverview.svelte`, `StaffPanel.svelte`, `TileInspector.svelte`, their specs and locale strings.
+**Touch:** `src/lib/game/stock.ts`, `retailSupply.ts`, `placement.ts`, `stockRecovery.ts`, `managerDelegation.ts`, `supplyPlanner.ts`, `simulateDay.ts`, `StoreStockTable.svelte`, `TileInspector.svelte`, `gameCopy.ts`, their specs and messages.
 
-- [ ] RED simulations: a default-policy fully staffed store with employees at 60–80 morale; shortage, low-morale staff, policy change, employee assignment and a store upgrade that raises staffing requirements.
-- [ ] Remove the unconditional `-3`-per-day morale drain. Use a simple, clamped adjustment towards actual assigned morale and existing policy/manager effects, while keeping specific shortage and overload penalties meaningful. Assert deterministic 60+ day traces, staff/sales capacity and scorecard behavior.
-- [ ] Derive immediate warnings from **current** `summarizeStoreStaffing` requirements in `StoreOverview`, rather than only using the latest completed `report.warnings`. Deduplicate warnings when the report already contains the same shortage. Preserve context/locale.
-- [ ] On hire, choose an eligible store missing that role; prefer existing relevant staff-panel selection if available and otherwise stable store order/ID. Auto-assign in `staffing.ts` in the same immutable transition, not a second UI command. If full, keep Unassigned. Test role and multiple-store ties, no extra salary/duplicate hire, manual reassignment and scenario command paths.
-- [ ] A successful store upgrade acknowledges the **new** required staff in the existing inspector feedback and live warning; do not announce extra need for a rejected/no-op upgrade.
-- [ ] Make same-batch candidate display names unique using deterministic generation with a bounded collision fallback. Remove internal IDs from hire accessibility labels in EN/JA/zh-Hant, while retaining internal IDs as React/Svelte keys and command payloads.
+- [ ] **RED** unit/spec trace: seed `20260503`, tile (32,20), 28 days; require **fewer than 20 zero-revenue days** on final defaults, while recording imported units/spend, revenue, debt-adjusted cash and stockout-lost units. Cover first stocked lot, day-7 and subsequent refill boundaries, and each archetype's default product mix.
+- [ ] Retune the **three `demandWeight` multipliers** of `createStoreProduct` (initial lot, threshold, target) as constants. Test the cross-archetype consequences; no per-city dynamic target formula or fixed universal 600.
+- [ ] Add pure `getEffectiveStockLevels(product, policy.inventory)` in `stock.ts` with stored **Par base** and two monotonic scaling policies. Normalize rounding and valid target/threshold bounds. Player edits and manager playbook continue editing the stored base; policy switching never writes to products. If needed, relocate seven-day cadence constant down to `stock.ts` and re-export from `retailSupply.ts` without a dependency cycle.
+- [ ] Add `effectivePolicyByStoreId` (already created by `simulateDay`) to `WeeklyReplenishmentInput`. Use effective threshold and target to trigger and fulfill orders; report **actual** post-refill stock. Explicitly retain unconditional imports and potential negative cash; **do not test for or create a refill budget gate**.
+- [ ] Route the effective levels through `placement.ts` forecasting, `stockRecovery.ts` eligibility, `supplyPlanner.ts` ceiling/cost, and `StoreStockTable.svelte` / `TileInspector.svelte` base-vs-effective display. Search all raw `targetStock`/`reorderThreshold` consumers and document intentional base-value writers.
+- [ ] Extract the existing last-seven-reports `getSellableDemandCap` into `stockRecovery.ts` (reuse in `managerDelegation.ts`). Use its **current-stock vs remaining-days cap** and **effective-target vs full-cycle cap** checks to compute contextual **At risk** status. Feed precomputed risk into the `stock.ts` status helper (optional parameter; no stock→recovery cycle), localize all four status values, and distinguish current stock from *last-day* stockout evidence. No-history state does not falsely certify seven-day coverage.
+- [ ] Test per-store/scoped effective policies, Lean < Par < Deep at comparable allowed conditions, direct custom base edit, manager adjustment, local city-supply/import fallback, FIFO accounting, unchanged seed determinism and report/planner/forecast agreement.
+- [ ] **Immediate economy gate, before proceeding to staffing/saves:** run `bun run balance` and a complete 50-seed × 365-day `progressionRun` **on this stock-only commit**, compare to pinned base with existing `progressionDiff`. Record tier reach by archetype and median cash/negative-run count. If Gate A/scenarios break or constants overfit electronics at other archetypes' expense, adjust **within this PR** before Step 3.
 
-**End-to-end check:** open a second unstaffed store -> immediate warning -> hire manager and general staff -> automatic assignment and changed coverage -> upgrade -> visible new shortage -> hire again -> morale stabilizes over days.
+**End-to-end gate:** MCP/browser set Lean/Par/Deep -> inspect *effective* target -> advance across day-7 refill -> verify actual stock, import expense, next forecast, planner ceiling and stock risk all agree; no phantom stock or money.
 
-## Step 3 — Fix launch/resume without destructive writes
+## Step 3 — Fix morale, staffing warnings, hiring and deterministic names
 
-**Existing paths:** `src/routes/+page.svelte`, `saveUi.svelte.ts`, `gameRouteController.ts`, save repository and current page/menu confirmation patterns.
+**Touch:** `simulateDay.ts`, `staffing.ts`, `StoreOverview.svelte`, `StaffPanel.svelte`, `TileInspector.svelte`, scenario/bot tests and locale copy.
 
-- [ ] RED browser/controller tests: fresh no-save startup; valid day-N autosave at reload; stored autosave with a different active scenario; corrupted/unavailable read; explicit start-over cancel/confirm; quick reload before save completion.
-- [ ] Reuse `initializeSaves` / `resumeAutoSave` and normal startup wiring. When a valid sandbox autosave exists, adopt it **before** showing interactive founding and before any auto-write could replace it. Remove reliance on `?ui-comparison=1` for normal resume while preserving the comparison test's selection behavior.
-- [ ] Keep founding for genuinely empty stores. Make reset/new-game a user-initiated, confirmed action using existing dialog style and permission flow; cancel leaves state and stored save untouched. Do not invent a migration or change the manual-save format.
-- [ ] If storage read fails, show existing save error/diagnostic and avoid writes that might erase the record; preserve scenario run/resume lifecycles. Maintain controller as owner of save mutations.
+- [ ] **RED** committed 60+ day deterministic morale test: fully staffed defaults with assigned employees holding 60–80 morale must stabilize rather than drift to zero (choose/pin an explicit lower bound such as 35 using actual seeded fixture). Add poor-morale, zero-staff, shortage, service-tier, and capacity counterexamples. Replace the unconditional `-3` with bounded convergence toward employee morale while retaining the existing penalties and score clamps.
+- [ ] Create one pure `getStaffingShortageWarnings(summary, storeId)` in `staffing.ts`; have the daily report and `StoreOverview` consume it. The overview replaces outdated `shortManager`/`shortGeneral` from its last report with *current* values, leaving other historical warnings intact; no parallel UI warning rules or dedupe logic. Test a **new 0% staffed store before first day** and an upgrade increasing the required headcount.
+- [ ] `hireCandidate` auto-assigns to the **first `game.stores` entry missing the hired role**; otherwise Unassigned. Do not use a selected UI store or a second assignment command. Keep explicit assignments/reassignments and scenario permission gates unchanged. Verify the corrected `tests/balance/bots.ts` exact-hire lookup does not misassign an older idle staffer, and run the official scenario reference tests here.
+- [ ] For duplicate hiring-market names, keep the original first+last RNG draws exactly; walk unused name combinations deterministically on collisions with **zero extra RNG consumption**. Add same-seed `rngState` assertions for collision and noncollision batches. Remove internal IDs from hire accessibility labels in EN/JA/zh-Hant; distinguish by name/role without exposing implementation IDs.
 
-**End-to-end check:** create/advance/save -> reload -> same day, cash, stores and stock automatically visible -> cancel New Game and reload unchanged -> confirm New Game yields a fresh founding path; scenario save remains independently restorable.
+**End-to-end gate:** MCP browser create unstaffed store -> immediate warnings -> hire manager/general and auto-assign -> inspect live coverage -> upgrade to higher headcount -> warning updates -> hire to fill gap -> advance days and observe nonzero stable morale.
 
-## Step 4 — Fix existing UI, art and localization surfaces
+## Step 4 — Safe startup resume and new-game flow (one commit together)
 
-Keep each change in its current owner, with nearby mounted Svelte tests. Use the Linear screenshots as the visual comparison set.
+**Touch:** `gameRouteController.ts`, `saveUi.svelte.ts`, `SavePanelHost.svelte`, `SavePanel.svelte`, `+page.svelte`, controller/page/browser tests and i18n strings.
 
-- [ ] **Product art:** `src/lib/assets/gameArt.ts` maps electronics `accessories` to the pre-existing `industry/materials/electronic-accessories.png`. Update asset mapping spec, ensure fashion accessories art unchanged; no new sprite.
-- [ ] **Stock table:** `StoreStockTable.svelte` status/evidence wording matches the forward-looking coverage fix; make its horizontal scrolling or column reflow usable at 1440px so **LATEST** is visible/reachable and no data overlap occurs.
-- [ ] **Industry inspector:** `IndustryTileInspector.svelte` gets only targeted wrapping/gap/min-width adjustment for long Accessory Assembly Plant names and eyebrow; no inspector redesign.
-- [ ] **Build quick filters:** `BuildMenu.svelte` derives a small deterministic set from active stores' sellable/unlocked products (not `['snacks','soft-drinks','essentials']`), with an empty/founding fallback; retain full filter/search.
-- [ ] **Industry header:** `TopBar.svelte` / `RouteHeader.svelte` derive three material readouts from nonzero city inventory and the products actually sold, avoiding the `grain/flour/oilseeds` default in electronics; retain useful empty-state behavior. Test electronics and convenience.
-- [ ] **Localization/save title:** fill `game.managementPanels.logistics` in JA and zh-Hant. Use neutral “Saves” in EN and equivalent locale strings rather than “Desktop Saves” in a browser.
-- [ ] **Scorecard:** add a deterministic regression for positive daily income after a run of poor scores. If computation is incorrect, correct it at source; otherwise clearly rename/describe the rolling `0–100` Profit *score* and show daily recorded income separately, with no false monetary implication. Keep scenario scoring stable.
-- [ ] **Scenario results:** `ScenarioResultsDialog.svelte` / root scenario host use existing typography to distinguish title, outcome and medal and ensure terminal results obscure/hide the empty founding state; do not reintroduce a fake playable game.
+- [ ] RED controller + browser tests for empty saves, valid persisted day-N autosave, corrupt/read-error save, concurrent scenario bootstrap, cancellation, confirmed new game, and reload **before** a new founding store. Verify save records never mutate during unsuccessful startup.
+- [ ] Put automatic sandbox resume in `GameRouteController.initializeSaves`: read/adopt persisted game **before any autosave write** and before founding becomes interactive. Normal app startup no longer depends on `?ui-comparison=1`; keep that query only for explicit test selection if needed. Preserve isolated scenario initialization and manual save workflows.
+- [ ] Add a sandbox **New Game** controller command and wire it into the existing **Saves** dialog. Inline confirmation follows `ScenarioMenuSection.svelte`, not a new modal. Cancel = no-op; confirm = clear **memory only**, return to founding, **do not delete autosave**. If the app reloads before founding again, old autosave must return; successful new founding is the first point at which current autosave may be replaced. Disable this action for active scenarios.
+- [ ] On storage failure, preserve prior stored data and show existing diagnostic; no automatic overwrite or migration. Test controller and real browser refresh/restore, with deterministic saved state inspection.
 
-**Visual check:** browser MCP renders at 1440px and narrower width; compare screenshots with HPA-1199 attachments for electronics purse, Store Stock table, manufacturing inspector, staff warnings, translated menu and challenge results. Verify no horizontal clipping or overlap and that screenshot content matches actual displayed data.
+**End-to-end gate:** MCP browser found -> simulate/snapshot/save -> reload into exact same day/stores/cash/stock -> choose New Game and cancel -> reload unchanged -> confirm New Game -> reload **before** founding still restores old save -> confirm again and found a different shop -> reload restores the newly founded shop. Verify scenario save remains independent.
 
-## Step 5 — Automated and MCP-driven end-to-end acceptance
+## Step 5 — Final automated and MCP E2E acceptance
 
-Acceptance is **machine/visual verification only**; no human acceptance/sign-off checklist item.
+Every checkbox is a machine-testable or visual-verification condition; no human sign-off is used as acceptance.
 
-- [ ] **Static and test suite:** `bun run check`, `bun run lint`, `bun run test:unit -- --run`, `bun run test:e2e` all green on final implementation head. No skipped tests or broad snapshot rewrites used to conceal behavior.
-- [ ] **MCP browser E2E:** using connected browser automation/Playwright MCP, complete the fresh-found -> sell/refill -> policy change -> hire/assign -> upgrade -> warning -> reload/resume -> start-over cancel/confirm journey; inspect persisted game state, not only visual labels. A **single browser platform** is sufficient; no native Tauri acceptance required for these cross-platform changes.
-- [ ] **Challenge E2E:** run a deterministic official scenario through completion, verify its objective/medal/report semantics unchanged, and inspect the results modal screenshot without the founding map behind it.
-- [ ] **Visual MCP regression:** capture 1440px and narrow screenshots for stock table, two-line industrial inspector, electronics Build menu/material header, product icon, staffing panel, EN/JA/zh-Hant Logistics, Saves dialog and scenario results; compare to relevant Linear ticket screenshots (no separate UI mockup is supplied). Check no clipped LATEST, overlapping titles, wrong art or untranslated menu labels.
-- [ ] **Stock and morale expectations:** first-cycle and subsequent-cycle defaults cover expected sellable demand up to scheduled refill under tested normal conditions; inventory policies materially change refill quantities; the Harbor 28-day case has fewer than the reported 20 zero-revenue days without hidden economy changes; a fully staffed default-policy 60+ day store does not drift to zero morale. Bad-policy/understaffing penalties still appear.
-- [ ] **Coverage and feedback:** warnings appear immediately for newly opened/leveled stores; hiring auto-assigns to real vacancies; staff names are unique in the visible candidate list and hire labels have no IDs; source/replenishment and report terminology remains truthful.
-- [ ] **Persistence:** no-save founding, valid autosave reload, cancelled new game and confirmed new game preserve/replace the intended save as expected; corrupt-load error cannot destructively auto-save over the last good record; scenario resume unaffected.
-- [ ] **Balance Gate A:** `bun run balance` passes **5/5** on final HEAD (not just historic base). Existing official scenario/reference and no-action behaviors retain their intended contracts.
-- [ ] **Progression measurement:** same 50 seeds × 365 days on both base and final HEAD. Evidence includes tier 1–5 reach **for each archetype**, median/quantiles of reach days, final cash per archetype/median/negative counts, plus overall sums and changes. Report electronics zero-revenue days, paid import spending and morale on the 28-day UAT seed separately; disclose any regressions instead of claiming full economy balance.
-- [ ] **Documentation:** commit final `docs/balance/hpa-1199-uat-evidence.md` with exact HEAD/base SHAs, commands, before/after tabulation, known limitations and screenshot pointers. Final PR description links the spec, plan and evidence. `git diff --check main...HEAD` is clean.
+- [ ] `bun run check`, `bun run lint`, `bun run test:unit -- --run`, `bun run test:e2e` and `git diff --check main...HEAD` pass on the final head. Add focused tests for every changed game rule, UI behaviour and save command; no skipped tests or blanket fixture regeneration.
+- [ ] **MCP browser E2E** runs stock -> policy -> refill -> sales/report -> staff -> upgrade -> warning -> autosave/reload -> new-game confirmation, with persisted state and accounting assertions, not text-only checks. **One browser platform is enough**; native Tauri acceptance is not required.
+- [ ] **MCP challenge E2E** completes a seeded official scenario and verifies objective/medal/report semantics remain correct; terminal results stay visually separated from founding. Validate scenario `hireStaff` follows the updated assignment rule.
+- [ ] **Visual screenshot check:** at 1440px and narrower, compare actual rendered screenshots against the Linear issue's attached UAT screenshots (no independent mockup): electronics icon vs purse, stock LATEST/at-risk status, inspector two-line eyebrow/title, quick filters/material header, live staff warnings, candidate label, translated JA/zh-Hant Logistics, neutral Saves, challenge-results hierarchy. No clipped/overlapping elements or unintended skin changes.
+- [ ] **Unit/spec economics:** seeded Harbor 28-day stock test has fewer than 20 zero-revenue days with measured paid import/cash; default fully staffed 60+ day morale remains over pinned floor; bad staffing/policy still has negative consequence. All tests deterministic without additional candidate RNG draws.
+- [ ] **Balance Gate A: 5/5** on final HEAD (`bun run balance`); official scenario reference and no-action guard runs pass. Use the same corrected bot harness for base and final HEAD, recording exact runtime/harness identities.
+- [ ] **Progression measurement:** rerun `progressionRun` 50 seeds × 365 days on final HEAD and `progressionDiff` against pinned base. Confirm per-archetype tier 1–5 reach (including p10/median/p90 where available), final cash distribution, negative final-cash count, stockout-day and staffing effects. Disclose regressions; HPA-1147 economics are **not** smuggled into this PR.
+- [ ] Commit `docs/balance/hpa-1199-uat-evidence.md` with exact base/intermediate/final source SHAs, corrected bot-harness hash, CLI invocations, actual before/after results, failed/retuned candidates if any, and screenshot references. Update this PR description to point to evidence.
 
-### Reproducible balance commands
-
-Run each command on the pinned base and separately on the same-source final implementation HEAD (isolated checkout/output directories; do not mix artifacts or mutate an active worktree during measurement):
+### Measurement commands (each source/phase in isolated output directory)
 
 ```sh
 bun run balance
-bun tests/balance/progressionRun.ts --seeds 20260501..20260550 --days 365 --output <dir>
+bun tests/balance/progressionRun.ts --seeds 20260501..20260550 --days 365 --output <output-dir>
+bun tests/balance/progressionDiff.ts --base <base-artifact.json> --head <head-artifact.json>
 ```
 
-The historical HPA-1199 report from `main@0c7f815` says Gate A 5/5, tier 3 in 158/200, tiers 4/5 in 42/200 and 41/200 (boutique only), negative final cash in 189/200 and electronics median final cash −$51,464. **Re-run and label source**; do not treat these quoted values as the final after-fix result or a promise of profitability.
+The ticket's historical reference at `0c7f815` says tier 3 158/200, tier 4 42/200 and tier 5 41/200 (boutique only), 189/200 negative final cash, electronics median −$51,464. **Do not reuse those values as an implementation result** or mistake Harbor improvement for proof of overall economy health.
 
-## Review hold point (outside acceptance criteria)
+## Merge/review hold — distinct from acceptance
 
-HPA-1199 calls for Hapadona to review measured before/after economy figures before merge. Preserve those numbers and keep the **single PR** in draft during review. HPA-1147 remains separate and in Backlog: no Harbor founding-economics, expansion/local-chain profitability or Tier-5 rebalancing work is authorized by this ticket.
+HPA-1199 requests owner review of the economic before/after numbers before merge. Keep **this same PR in draft** during that review. Manual approval is **not** a test acceptance criterion, and HPA-1147 remains in Backlog with no authorized follow-up run.
+
+**Status:** plan/docs only; implementation and evidence pending.
